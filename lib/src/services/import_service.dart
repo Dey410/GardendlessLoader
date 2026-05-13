@@ -137,7 +137,7 @@ class ImportService {
         phase: ImportPhase.failed,
         message: failure.message,
       ));
-      return Future<ResourceManifest>.error(failure);
+      throw failure;
     } finally {
       await _resetDirectory(paths.stagingDir);
     }
