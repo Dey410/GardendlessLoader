@@ -25,6 +25,13 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
+
+    buildTypes {
+        release {
+            // Use the debug key so CI release APK artifacts can be installed for testing.
+            signingConfig = signingConfigs.debug
+        }
+    }
 }
 
 flutter {
