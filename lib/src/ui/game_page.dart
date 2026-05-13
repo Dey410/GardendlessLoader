@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
@@ -65,70 +66,76 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            InAppWebView(
-              gestureRecognizers: {
-                Factory<OneSequenceGestureRecognizer>(
-                  () => EagerGestureRecognizer(),
+            Positioned.fill(
+              child: GameViewportFrame(
+                child: InAppWebView(
+                  gestureRecognizers: {
+                    Factory<OneSequenceGestureRecognizer>(
+                      () => EagerGestureRecognizer(),
+                    ),
+                  },
+                  initialUserScripts: UnmodifiableListView<UserScript>([
+                    UserScript(
+                      source: gardendlessTouchPatchSource,
+                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                      forMainFrameOnly: false,
+                    ),
+                  ]),
+                  initialUrlRequest:
+                      URLRequest(url: WebUri('$localOrigin/index.html')),
+                  initialSettings: InAppWebViewSettings(
+                    javaScriptEnabled: true,
+                    javaScriptCanOpenWindowsAutomatically: false,
+                    mediaPlaybackRequiresUserGesture: false,
+                    allowsInlineMediaPlayback: true,
+                    transparentBackground: false,
+                    supportZoom: false,
+                    builtInZoomControls: false,
+                    displayZoomControls: false,
+                    verticalScrollBarEnabled: false,
+                    horizontalScrollBarEnabled: false,
+                    disableContextMenu: true,
+                    useShouldOverrideUrlLoading: true,
+                    useShouldInterceptRequest: true,
+                    allowFileAccess: false,
+                    allowContentAccess: false,
+                    mixedContentMode:
+                        MixedContentMode.MIXED_CONTENT_NEVER_ALLOW,
+                  ),
+                  onWebViewCreated: (controller) {
+                    _webViewController = controller;
+                  },
+                  shouldOverrideUrlLoading: (controller, action) async {
+                    final url = action.request.url;
+                    if (_isLocalUrl(url)) {
+                      return NavigationActionPolicy.ALLOW;
+                    }
+                    if (_isGitHubUrl(url)) {
+                      final browser = ChromeSafariBrowser();
+                      await browser.open(url: url);
+                    }
+                    return NavigationActionPolicy.CANCEL;
+                  },
+                  shouldInterceptRequest: (controller, request) async {
+                    if (_isLocalUrl(request.url)) {
+                      return null;
+                    }
+                    return WebResourceResponse(
+                      statusCode: 204,
+                      reasonPhrase: 'No Content',
+                      contentType: 'text/plain',
+                      data: Uint8List(0),
+                    );
+                  },
+                  onPermissionRequest: (controller, request) async {
+                    return PermissionResponse(
+                      resources: request.resources,
+                      action: PermissionResponseAction.DENY,
+                    );
+                  },
+                  onDownloadStartRequest: (controller, request) async {},
                 ),
-              },
-              initialUserScripts: UnmodifiableListView<UserScript>([
-                UserScript(
-                  source: gardendlessTouchPatchSource,
-                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                  forMainFrameOnly: false,
-                ),
-              ]),
-              initialUrlRequest: URLRequest(url: WebUri('$localOrigin/index.html')),
-              initialSettings: InAppWebViewSettings(
-                javaScriptEnabled: true,
-                javaScriptCanOpenWindowsAutomatically: false,
-                mediaPlaybackRequiresUserGesture: false,
-                allowsInlineMediaPlayback: true,
-                transparentBackground: false,
-                supportZoom: false,
-                builtInZoomControls: false,
-                displayZoomControls: false,
-                verticalScrollBarEnabled: false,
-                horizontalScrollBarEnabled: false,
-                disableContextMenu: true,
-                useShouldOverrideUrlLoading: true,
-                useShouldInterceptRequest: true,
-                allowFileAccess: false,
-                allowContentAccess: false,
-                mixedContentMode: MixedContentMode.MIXED_CONTENT_NEVER_ALLOW,
               ),
-              onWebViewCreated: (controller) {
-                _webViewController = controller;
-              },
-              shouldOverrideUrlLoading: (controller, action) async {
-                final url = action.request.url;
-                if (_isLocalUrl(url)) {
-                  return NavigationActionPolicy.ALLOW;
-                }
-                if (_isGitHubUrl(url)) {
-                  final browser = ChromeSafariBrowser();
-                  await browser.open(url: url);
-                }
-                return NavigationActionPolicy.CANCEL;
-              },
-              shouldInterceptRequest: (controller, request) async {
-                if (_isLocalUrl(request.url)) {
-                  return null;
-                }
-                return WebResourceResponse(
-                  statusCode: 204,
-                  reasonPhrase: 'No Content',
-                  contentType: 'text/plain',
-                  data: Uint8List(0),
-                );
-              },
-              onPermissionRequest: (controller, request) async {
-                return PermissionResponse(
-                  resources: request.resources,
-                  action: PermissionResponseAction.DENY,
-                );
-              },
-              onDownloadStartRequest: (controller, request) async {},
             ),
             Positioned(
               top: 12,
@@ -172,7 +179,8 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   }
 
   bool _isGitHubUrl(WebUri? url) {
-    return url != null && (url.host == 'github.com' || url.host.endsWith('.github.com'));
+    return url != null &&
+        (url.host == 'github.com' || url.host.endsWith('.github.com'));
   }
 
   Future<void> _showMenu() async {
@@ -236,7 +244,8 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<bool> _confirm({required String title, required String message}) async {
+  Future<bool> _confirm(
+      {required String title, required String message}) async {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -281,6 +290,50 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
           ),
         ],
       ),
+    );
+  }
+}
+
+class GameViewportFrame extends StatelessWidget {
+  const GameViewportFrame({
+    super.key,
+    required this.child,
+    this.aspectRatio = 16 / 9,
+  });
+
+  final Widget child;
+  final double aspectRatio;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fallbackSize = MediaQuery.sizeOf(context);
+        final maxWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : fallbackSize.width;
+        final maxHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : fallbackSize.height;
+
+        if (maxWidth <= 0 || maxHeight <= 0 || aspectRatio <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        final width = math.min(maxWidth, maxHeight * aspectRatio);
+        final height = width / aspectRatio;
+
+        return ColoredBox(
+          color: Colors.black,
+          child: Center(
+            child: SizedBox(
+              width: width,
+              height: height,
+              child: ClipRect(child: child),
+            ),
+          ),
+        );
+      },
     );
   }
 }
