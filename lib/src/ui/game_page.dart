@@ -232,8 +232,13 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => GameMenuDialog(
           autoCollectSunlightEnabled: _autoCollectSunlightEnabled,
+          stretchGameViewportEnabled: _stretchGameViewport,
           onAutoCollectSunlightChanged: (enabled) {
             _setAutoCollectSunlightEnabled(enabled);
+            setDialogState(() {});
+          },
+          onStretchGameViewportChanged: (enabled) {
+            _setStretchGameViewport(enabled);
             setDialogState(() {});
           },
           onContinue: () => Navigator.of(context).pop(),
@@ -263,6 +268,16 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       _autoCollectSunlightEnabled = enabled;
     });
     _autoSunCollector.setEnabled(enabled);
+  }
+
+  void _setStretchGameViewport(bool enabled) {
+    if (_stretchGameViewport == enabled) {
+      return;
+    }
+
+    setState(() {
+      _stretchGameViewport = enabled;
+    });
   }
 
   Future<void> _pressCollectSunlightKey() async {
@@ -349,7 +364,9 @@ class GameMenuDialog extends StatelessWidget {
   const GameMenuDialog({
     super.key,
     required this.autoCollectSunlightEnabled,
+    required this.stretchGameViewportEnabled,
     required this.onAutoCollectSunlightChanged,
+    required this.onStretchGameViewportChanged,
     required this.onContinue,
     required this.onReturnHome,
     required this.onReload,
@@ -357,7 +374,9 @@ class GameMenuDialog extends StatelessWidget {
   });
 
   final bool autoCollectSunlightEnabled;
+  final bool stretchGameViewportEnabled;
   final ValueChanged<bool> onAutoCollectSunlightChanged;
+  final ValueChanged<bool> onStretchGameViewportChanged;
   final VoidCallback onContinue;
   final VoidCallback onReturnHome;
   final VoidCallback onReload;
@@ -373,6 +392,12 @@ class GameMenuDialog extends StatelessWidget {
           subtitle: const Text('每 1.5 秒自动按下 A 键'),
           value: autoCollectSunlightEnabled,
           onChanged: onAutoCollectSunlightChanged,
+        ),
+        SwitchListTile(
+          title: const Text('强制拉伸'),
+          subtitle: const Text('填满屏幕，画面可能变形'),
+          value: stretchGameViewportEnabled,
+          onChanged: onStretchGameViewportChanged,
         ),
         const Divider(height: 1),
         SimpleDialogOption(
