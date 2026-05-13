@@ -1,0 +1,23 @@
+name: gardendless_loader
+description: Local Flutter loader for user-supplied PvZ2 Gardendless web resources.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_inappwebview: ^6.1.5
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  wakelock_plus: ^1.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

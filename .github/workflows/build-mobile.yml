@@ -1,0 +1,86 @@
+name: Build Mobile Artifacts
+
+"on":
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.9"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Test
+        run: flutter test
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gardendless-loader-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+  ios:
+    name: Build unsigned iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.9"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods dependencies
+        run: pod install
+        working-directory: ios
+
+      - name: Test
+        run: flutter test
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p build/ios/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/Runner.app
+          cd build/ios/ipa
+          zip -r GardendlessLoader-unsigned.ipa Payload
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: gardendless-loader-unsigned-ipa
+          path: build/ios/ipa/GardendlessLoader-unsigned.ipa
+          if-no-files-found: error
