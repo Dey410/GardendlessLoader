@@ -35,7 +35,8 @@ void main() {
       await directory.create(recursive: true);
     }
     server = LocalGameServer();
-    importService = ImportService(validator: ResourceValidator(), server: server);
+    importService =
+        ImportService(validator: ResourceValidator(), server: server);
     manifestStore = ManifestStore(paths.manifestFile);
   });
 
@@ -54,31 +55,44 @@ void main() {
       manifestStore: manifestStore,
     );
 
-    expect(await File(p.join(paths.currentDir.path, 'index.html')).exists(), isTrue);
-    expect(await File(p.join(paths.importDocsDir.path, 'index.html')).exists(), isTrue);
+    expect(await File(p.join(paths.currentDir.path, 'index.html')).exists(),
+        isTrue);
+    expect(await File(p.join(paths.importDocsDir.path, 'index.html')).exists(),
+        isTrue);
     expect(manifest.resourceStatus, ResourceStatus.ready);
     expect(manifest.transactionState, TransactionState.idle);
     expect(manifest.fileCount, greaterThan(0));
   });
 
   test('rolls back to previous current when selfCheck fails', () async {
-    await _writeValidResource(paths.currentDir, title: 'PvZ2 Gardendless Previous');
-    await _writeValidResource(paths.importDocsDir, includeCcJs: false);
+    server = _FailingSelfCheckServer();
+    importService =
+        ImportService(validator: ResourceValidator(), server: server);
+
+    await _writeValidResource(paths.currentDir,
+        title: 'PvZ2 Gardendless Previous');
+    await _writeValidResource(paths.importDocsDir);
 
     await expectLater(
       importService.importResources(paths: paths, manifestStore: manifestStore),
       throwsA(isA<ImportFailure>()),
     );
 
-    final index = await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
+    final index =
+        await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
     expect(index, contains('PvZ2 Gardendless Previous'));
   });
 
-  test('recovers switching transaction by promoting valid previous if current is bad', () async {
-    await _writeValidResource(paths.previousDir, title: 'PvZ2 Gardendless Previous');
-    await File(p.join(paths.currentDir.path, 'broken.txt')).writeAsString('bad');
+  test(
+      'recovers switching transaction by promoting valid previous if current is bad',
+      () async {
+    await _writeValidResource(paths.previousDir,
+        title: 'PvZ2 Gardendless Previous');
+    await File(p.join(paths.currentDir.path, 'broken.txt'))
+        .writeAsString('bad');
     await manifestStore.write(
-      ResourceManifest.initial().copyWith(transactionState: TransactionState.switching),
+      ResourceManifest.initial()
+          .copyWith(transactionState: TransactionState.switching),
     );
 
     final manifest = await importService.recoverStartupTransaction(
@@ -86,7 +100,8 @@ void main() {
       manifestStore: manifestStore,
     );
 
-    final index = await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
+    final index =
+        await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
     expect(index, contains('PvZ2 Gardendless Previous'));
     expect(manifest.transactionState, TransactionState.idle);
     expect(manifest.resourceStatus, ResourceStatus.ready);
@@ -104,9 +119,18 @@ Future<void> _writeValidResource(
   await File(p.join(root.path, 'index.html')).writeAsString(
     '<html><head><title>$title</title></head><body>play.pvzge.com</body></html>',
   );
-  await File(p.join(root.path, 'src', 'settings.json')).writeAsString('{"platform":"web-mobile"}');
+  await File(p.join(root.path, 'src', 'settings.json'))
+      .writeAsString('{"platform":"web-mobile"}');
   await File(p.join(root.path, 'src', 'import-map.json')).writeAsString('{}');
   if (includeCcJs) {
-    await File(p.join(root.path, 'cocos-js', 'cc.js')).writeAsString('console.log("cc");');
+    await File(p.join(root.path, 'cocos-js', 'cc.js'))
+        .writeAsString('console.log("cc");');
+  }
+}
+
+class _FailingSelfCheckServer extends LocalGameServer {
+  @override
+  Future<void> selfCheck({required Directory root}) async {
+    throw StateError('self check failed');
   }
 }
