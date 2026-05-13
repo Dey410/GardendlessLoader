@@ -57,4 +57,91 @@ void main() {
     expect(size.width, 1920);
     expect(size.height, 1080);
   });
+
+  testWidgets('game viewport can stretch to fill iPad landscape',
+      (tester) async {
+    const childKey = Key('game-child');
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1024, 768);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: GameViewportFrame(
+          fit: GameViewportFit.stretch,
+          child: ColoredBox(
+            key: childKey,
+            color: Colors.green,
+          ),
+        ),
+      ),
+    );
+
+    final size = tester.getSize(find.byKey(childKey));
+
+    expect(size.width, 1024);
+    expect(size.height, 768);
+  });
+
+  testWidgets('game menu exposes auto sunlight collection switch',
+      (tester) async {
+    bool? requestedValue;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            stretchGameViewportEnabled: false,
+            onAutoCollectSunlightChanged: (value) {
+              requestedValue = value;
+            },
+            onStretchGameViewportChanged: (_) {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('自动收集阳光'), findsOneWidget);
+
+    await tester.tap(find.text('自动收集阳光'));
+    await tester.pump();
+
+    expect(requestedValue, isTrue);
+  });
+
+  testWidgets('game menu exposes force stretch switch', (tester) async {
+    bool? requestedValue;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            stretchGameViewportEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            onStretchGameViewportChanged: (value) {
+              requestedValue = value;
+            },
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('强制拉伸'), findsOneWidget);
+
+    await tester.tap(find.text('强制拉伸'));
+    await tester.pump();
+
+    expect(requestedValue, isTrue);
+  });
 }

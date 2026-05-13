@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:collection';
 
@@ -10,7 +11,38 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../app_controller.dart';
 import '../constants.dart';
+import '../services/auto_sun_collector.dart';
 import '../web/touch_patch.dart';
+
+const _collectSunlightKeyPressScript = r'''
+(function () {
+  const eventInit = {
+    key: "a",
+    code: "KeyA",
+    keyCode: 65,
+    which: 65,
+    bubbles: true,
+    cancelable: true,
+    composed: true
+  };
+  const targets = [
+    document.activeElement,
+    document.getElementById("GameCanvas"),
+    document,
+    window
+  ].filter(Boolean);
+  const uniqueTargets = Array.from(new Set(targets));
+
+  for (const target of uniqueTargets) {
+    target.dispatchEvent(new KeyboardEvent("keydown", eventInit));
+  }
+  setTimeout(function () {
+    for (const target of uniqueTargets) {
+      target.dispatchEvent(new KeyboardEvent("keyup", eventInit));
+    }
+  }, 30);
+})();
+''';
 
 class GamePage extends StatefulWidget {
   const GamePage({super.key, required this.controller});
@@ -23,11 +55,17 @@ class GamePage extends StatefulWidget {
 
 class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   InAppWebViewController? _webViewController;
+  late final AutoSunCollector _autoSunCollector;
+  bool _autoCollectSunlightEnabled = false;
+  bool _stretchGameViewport = false;
   bool _resumeReloadNotified = false;
 
   @override
   void initState() {
     super.initState();
+    _autoSunCollector = AutoSunCollector(
+      onPressCollectKey: _pressCollectSunlightKey,
+    );
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     SystemChrome.setPreferredOrientations([
@@ -40,6 +78,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _autoSunCollector.dispose();
     WakelockPlus.disable();
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -68,6 +107,9 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
           children: [
             Positioned.fill(
               child: GameViewportFrame(
+                fit: _stretchGameViewport
+                    ? GameViewportFit.stretch
+                    : GameViewportFit.contain,
                 child: InAppWebView(
                   gestureRecognizers: {
                     Factory<OneSequenceGestureRecognizer>(
@@ -187,36 +229,45 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => SimpleDialog(
-        title: const Text('游戏菜单'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('继续游戏'),
-          ),
-          SimpleDialogOption(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await _confirmReturnHome();
-            },
-            child: const Text('返回首页'),
-          ),
-          SimpleDialogOption(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await _confirmReload();
-            },
-            child: const Text('重新加载'),
-          ),
-          SimpleDialogOption(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _showDiagnostics();
-            },
-            child: const Text('诊断信息'),
-          ),
-        ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => GameMenuDialog(
+          autoCollectSunlightEnabled: _autoCollectSunlightEnabled,
+          onAutoCollectSunlightChanged: (enabled) {
+            _setAutoCollectSunlightEnabled(enabled);
+            setDialogState(() {});
+          },
+          onContinue: () => Navigator.of(context).pop(),
+          onReturnHome: () {
+            Navigator.of(context).pop();
+            unawaited(_confirmReturnHome());
+          },
+          onReload: () {
+            Navigator.of(context).pop();
+            unawaited(_confirmReload());
+          },
+          onDiagnostics: () {
+            Navigator.of(context).pop();
+            unawaited(_showDiagnostics());
+          },
+        ),
       ),
+    );
+  }
+
+  void _setAutoCollectSunlightEnabled(bool enabled) {
+    if (_autoCollectSunlightEnabled == enabled) {
+      return;
+    }
+
+    setState(() {
+      _autoCollectSunlightEnabled = enabled;
+    });
+    _autoSunCollector.setEnabled(enabled);
+  }
+
+  Future<void> _pressCollectSunlightKey() async {
+    await _webViewController?.evaluateJavascript(
+      source: _collectSunlightKeyPressScript,
     );
   }
 
@@ -294,15 +345,68 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   }
 }
 
+class GameMenuDialog extends StatelessWidget {
+  const GameMenuDialog({
+    super.key,
+    required this.autoCollectSunlightEnabled,
+    required this.onAutoCollectSunlightChanged,
+    required this.onContinue,
+    required this.onReturnHome,
+    required this.onReload,
+    required this.onDiagnostics,
+  });
+
+  final bool autoCollectSunlightEnabled;
+  final ValueChanged<bool> onAutoCollectSunlightChanged;
+  final VoidCallback onContinue;
+  final VoidCallback onReturnHome;
+  final VoidCallback onReload;
+  final VoidCallback onDiagnostics;
+
+  @override
+  Widget build(BuildContext context) {
+    return SimpleDialog(
+      title: const Text('游戏菜单'),
+      children: [
+        SwitchListTile(
+          title: const Text('自动收集阳光'),
+          subtitle: const Text('每 1.5 秒自动按下 A 键'),
+          value: autoCollectSunlightEnabled,
+          onChanged: onAutoCollectSunlightChanged,
+        ),
+        const Divider(height: 1),
+        SimpleDialogOption(
+          onPressed: onContinue,
+          child: const Text('继续游戏'),
+        ),
+        SimpleDialogOption(
+          onPressed: onReturnHome,
+          child: const Text('返回首页'),
+        ),
+        SimpleDialogOption(
+          onPressed: onReload,
+          child: const Text('重新加载'),
+        ),
+        SimpleDialogOption(
+          onPressed: onDiagnostics,
+          child: const Text('诊断信息'),
+        ),
+      ],
+    );
+  }
+}
+
 class GameViewportFrame extends StatelessWidget {
   const GameViewportFrame({
     super.key,
     required this.child,
     this.aspectRatio = 16 / 9,
+    this.fit = GameViewportFit.contain,
   });
 
   final Widget child;
   final double aspectRatio;
+  final GameViewportFit fit;
 
   @override
   Widget build(BuildContext context) {
@@ -320,8 +424,13 @@ class GameViewportFrame extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        final width = math.min(maxWidth, maxHeight * aspectRatio);
-        final height = width / aspectRatio;
+        final (width, height) = switch (fit) {
+          GameViewportFit.contain => (
+              math.min(maxWidth, maxHeight * aspectRatio),
+              math.min(maxWidth, maxHeight * aspectRatio) / aspectRatio,
+            ),
+          GameViewportFit.stretch => (maxWidth, maxHeight),
+        };
 
         return ColoredBox(
           color: Colors.black,
@@ -336,4 +445,9 @@ class GameViewportFrame extends StatelessWidget {
       },
     );
   }
+}
+
+enum GameViewportFit {
+  contain,
+  stretch,
 }
