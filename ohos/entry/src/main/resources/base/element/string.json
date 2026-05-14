@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "GardendlessLoader entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "GardendlessLoader"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "GardendlessLoader"
+    }
+  ]
+}

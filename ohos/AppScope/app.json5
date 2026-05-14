@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "io.github.dey410.gardendlessloader",
+    "vendor": "dey410",
+    "versionCode": 1000000,
+    "versionName": "0.1.0",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}

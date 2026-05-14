@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "GardendlessLoader entry module.",
+  "main": "",
+  "author": "",
+  "license": "GPL-3.0",
+  "dependencies": {}
+}

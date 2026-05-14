@@ -34,6 +34,25 @@ jobs:
       - name: Test
         run: flutter test
 
+      - name: Configure Android signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+            {
+              echo "storeFile=release.keystore"
+              echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+              echo "keyAlias=$ANDROID_KEY_ALIAS"
+              echo "keyPassword=$ANDROID_KEY_PASSWORD"
+            } > android/key.properties
+          else
+            echo "No Android signing secrets configured; using debug signing."
+          fi
+
       - name: Build release APK
         run: flutter build apk --release
 
@@ -83,4 +102,70 @@ jobs:
         with:
           name: gardendless-loader-unsigned-ipa
           path: build/ios/ipa/GardendlessLoader-unsigned.ipa
+          if-no-files-found: error
+
+  harmonyos:
+    name: Build HarmonyOS HAP
+    runs-on: ubuntu-latest
+
+    env:
+      OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-sig/flutter_flutter.git
+      OHOS_FLUTTER_SDK_REF: master
+      OHOS_COMMANDLINE_TOOLS_URL: ${{ secrets.OHOS_COMMANDLINE_TOOLS_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up OpenHarmony Flutter SDK
+        run: |
+          git clone --depth 1 --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$RUNNER_TEMP/flutter_ohos"
+          echo "$RUNNER_TEMP/flutter_ohos/bin" >> "$GITHUB_PATH"
+          echo "PUB_HOSTED_URL=https://pub.flutter-io.cn" >> "$GITHUB_ENV"
+          echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> "$GITHUB_ENV"
+
+      - name: Set up OpenHarmony command-line tools
+        run: |
+          if [ -z "$OHOS_COMMANDLINE_TOOLS_URL" ]; then
+            echo "OHOS_COMMANDLINE_TOOLS_URL secret is required to build HarmonyOS HAP artifacts."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/deveco"
+          curl -L "$OHOS_COMMANDLINE_TOOLS_URL" -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
+          unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$RUNNER_TEMP/deveco"
+          TOOL_HOME="$(find "$RUNNER_TEMP/deveco" -type d \( -name command-line-tools -o -name 'DevEco Studio' \) | head -n 1)"
+          if [ -z "$TOOL_HOME" ]; then
+            echo "Could not locate DevEco command-line tools in downloaded archive."
+            exit 1
+          fi
+          echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
+          echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
+          echo "$TOOL_HOME/tools/ohpm/bin" >> "$GITHUB_PATH"
+          echo "$TOOL_HOME/tools/hvigor/bin" >> "$GITHUB_PATH"
+          echo "$TOOL_HOME/tools/node/bin" >> "$GITHUB_PATH"
+          echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
+          echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
+
+      - name: Install dependencies
+        run: |
+          cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
+          flutter pub get
+
+      - name: Test
+        run: flutter test
+
+      - name: Build HAP
+        run: flutter build hap --release --target-platform ohos-arm64
+
+      - name: Upload HAP
+        uses: actions/upload-artifact@v4
+        with:
+          name: gardendless-loader-hap
+          path: ohos/entry/build/default/outputs/default/entry-default-signed.hap
           if-no-files-found: error

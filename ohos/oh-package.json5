@@ -1,0 +1,18 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "gardendless_loader",
+  "version": "1.0.0",
+  "description": "OpenHarmony shell for GardendlessLoader.",
+  "main": "",
+  "author": "",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "@ohos/flutter_ohos": "file:./har/flutter.har"
+  },
+  "devDependencies": {
+    "@ohos/hypium": "1.0.6"
+  },
+  "overrides": {
+    "@ohos/flutter_ohos": "file:./har/flutter.har"
+  }
+}

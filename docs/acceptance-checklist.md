@@ -15,6 +15,7 @@
 - Returning home asks for confirmation, then stops server and destroys WebView.
 - Relaunch validates `current`.
 - Reimport keeps the same origin and does not clear WebView localStorage/IndexedDB.
+- HarmonyOS build exports `ohos/entry/build/default/outputs/default/entry-default-signed.hap` when the OpenHarmony Flutter and DevEco command-line toolchain is configured.
 
 ## Failure paths
 
@@ -24,3 +25,4 @@
 - Port `26410` occupation retries once, then fails and rolls back.
 - MIME self-check failure rolls back.
 - Broken `current` at startup falls back to valid `previous`, or returns to import state if both are invalid.
+- HarmonyOS CI fails with a clear setup error when `OHOS_COMMANDLINE_TOOLS_URL` is not configured.
