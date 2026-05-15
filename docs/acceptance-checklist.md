@@ -25,4 +25,4 @@
 - Port `26410` occupation retries once, then fails and rolls back.
 - MIME self-check failure rolls back.
 - Broken `current` at startup falls back to valid `previous`, or returns to import state if both are invalid.
-- HarmonyOS CI fails with a clear setup error when `OHOS_COMMANDLINE_TOOLS_URL` is not configured.
+- HarmonyOS CI emits a skip notice instead of failing when `OHOS_COMMANDLINE_TOOLS_URL` is not configured.

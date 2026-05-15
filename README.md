@@ -46,4 +46,4 @@ The expected HAP artifact is:
 ohos/entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
-GitHub Actions can build the same artifact when the `OHOS_COMMANDLINE_TOOLS_URL` secret points to a DevEco/OpenHarmony command-line tools archive.
+GitHub Actions builds the same artifact when the `OHOS_COMMANDLINE_TOOLS_URL` secret points to a DevEco/OpenHarmony command-line tools archive. If that secret is missing, the HarmonyOS job emits a notice and skips the HAP steps so the Android/iOS artifacts can still build.

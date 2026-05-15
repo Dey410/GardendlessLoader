@@ -27,6 +27,9 @@ void main() {
         File('.github/workflows/build-mobile.yml').readAsStringSync();
 
     expect(workflow, contains('Build HarmonyOS HAP'));
+    expect(workflow, contains('HarmonyOS HAP skipped'));
+    expect(workflow, contains('enabled=false'));
+    expect(workflow, isNot(contains('OHOS_COMMANDLINE_TOOLS_URL secret is required')));
     expect(workflow, contains('cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml'));
     expect(workflow, contains('flutter build hap --release --target-platform ohos-arm64'));
     expect(workflow, contains('gardendless-loader-hap'));

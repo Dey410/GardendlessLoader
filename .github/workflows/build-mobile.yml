@@ -117,13 +117,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check OpenHarmony tools configuration
+        id: ohos-tools
+        run: |
+          if [ -z "$OHOS_COMMANDLINE_TOOLS_URL" ]; then
+            echo "::notice title=HarmonyOS HAP skipped::Set the OHOS_COMMANDLINE_TOOLS_URL repository secret to build and upload the HAP artifact."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Java
+        if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up OpenHarmony Flutter SDK
+        if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           git clone --depth 1 --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$RUNNER_TEMP/flutter_ohos"
           echo "$RUNNER_TEMP/flutter_ohos/bin" >> "$GITHUB_PATH"
@@ -131,11 +143,8 @@ jobs:
           echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> "$GITHUB_ENV"
 
       - name: Set up OpenHarmony command-line tools
+        if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
-          if [ -z "$OHOS_COMMANDLINE_TOOLS_URL" ]; then
-            echo "OHOS_COMMANDLINE_TOOLS_URL secret is required to build HarmonyOS HAP artifacts."
-            exit 1
-          fi
           mkdir -p "$RUNNER_TEMP/deveco"
           curl -L "$OHOS_COMMANDLINE_TOOLS_URL" -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
           unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$RUNNER_TEMP/deveco"
@@ -153,17 +162,21 @@ jobs:
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
 
       - name: Install dependencies
+        if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
           flutter pub get
 
       - name: Test
+        if: steps.ohos-tools.outputs.enabled == 'true'
         run: flutter test
 
       - name: Build HAP
+        if: steps.ohos-tools.outputs.enabled == 'true'
         run: flutter build hap --release --target-platform ohos-arm64
 
       - name: Upload HAP
+        if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gardendless-loader-hap
