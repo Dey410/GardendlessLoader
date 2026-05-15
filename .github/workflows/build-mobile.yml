@@ -106,18 +106,17 @@ jobs:
   harmonyos:
     name: Build HarmonyOS HAP
     runs-on: ubuntu-latest
-
+  
     env:
       OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-tpc/flutter_flutter.git
       OHOS_FLUTTER_SDK_REF: oh-3.35.7-release
-      OHOS_FLUTTER_SDK_VERSION: 3.35.7
       OHOS_MIN_DART_VERSION: 3.5.0
       OHOS_COMMANDLINE_TOOLS_URL: ${{ secrets.OHOS_COMMANDLINE_TOOLS_URL }}
-
+  
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+  
       - name: Check OpenHarmony tools configuration
         id: ohos-tools
         run: |
@@ -127,90 +126,94 @@ jobs:
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
-
+  
       - name: Set up Java
         if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
+  
       - name: Set up OpenHarmony Flutter SDK
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
-          git clone --depth 1 --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$RUNNER_TEMP/flutter_ohos"
-          framework_revision="$(git -C "$RUNNER_TEMP/flutter_ohos" rev-parse HEAD)"
-          framework_commit_date="$(git -C "$RUNNER_TEMP/flutter_ohos" log -1 --pretty=format:%ad --date=iso)"
-          engine_revision="$(cat "$RUNNER_TEMP/flutter_ohos/bin/internal/engine.version" 2>/dev/null || printf '%s' "$framework_revision")"
-          devtools_version="$(cat "$RUNNER_TEMP/flutter_ohos/bin/internal/devtools.version" 2>/dev/null || printf '0.0.0')"
-          mkdir -p "$RUNNER_TEMP/flutter_ohos/bin/cache"
-          cat > "$RUNNER_TEMP/flutter_ohos/bin/cache/flutter.version.json" <<EOF
-          {
-            "frameworkVersion": "$OHOS_FLUTTER_SDK_VERSION",
-            "channel": "stable",
-            "repositoryUrl": "$OHOS_FLUTTER_SDK_REPOSITORY",
-            "frameworkRevision": "$framework_revision",
-            "frameworkCommitDate": "$framework_commit_date",
-            "engineRevision": "$engine_revision",
-            "engineCommitDate": null,
-            "dartSdkVersion": "unknown",
-            "devToolsVersion": "$devtools_version",
-            "flutterVersion": "$OHOS_FLUTTER_SDK_VERSION"
-          }
-          EOF
-          printf '%s\n' "$OHOS_FLUTTER_SDK_VERSION" > "$RUNNER_TEMP/flutter_ohos/version"
+          git clone --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$RUNNER_TEMP/flutter_ohos"
+  
+          cd "$RUNNER_TEMP/flutter_ohos"
+          git fetch --tags --force
+  
           echo "$RUNNER_TEMP/flutter_ohos/bin" >> "$GITHUB_PATH"
+          echo "FLUTTER_ROOT=$RUNNER_TEMP/flutter_ohos" >> "$GITHUB_ENV"
           echo "PUB_HOSTED_URL=https://pub.flutter-io.cn" >> "$GITHUB_ENV"
           echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> "$GITHUB_ENV"
-
+  
+          "$RUNNER_TEMP/flutter_ohos/bin/flutter" --version
+          "$RUNNER_TEMP/flutter_ohos/bin/flutter" doctor -v
+  
       - name: Verify OpenHarmony Dart SDK compatibility
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           "$RUNNER_TEMP/flutter_ohos/bin/flutter" --version
+  
           dart_version="$("$RUNNER_TEMP/flutter_ohos/bin/dart" --version 2>&1 | sed -E 's/.*Dart SDK version: ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+  
           if [ -z "$dart_version" ]; then
             echo "Could not determine Dart version from OpenHarmony Flutter SDK."
             exit 1
           fi
+  
+          echo "Detected Dart SDK version: $dart_version"
+  
           if [ "$(printf '%s\n%s\n' "$OHOS_MIN_DART_VERSION" "$dart_version" | sort -V | head -n 1)" != "$OHOS_MIN_DART_VERSION" ]; then
             echo "OpenHarmony Flutter SDK Dart $dart_version is too old; GardendlessLoader requires Dart >=$OHOS_MIN_DART_VERSION."
             echo "Use a newer OpenHarmony Flutter SDK branch, for example oh-3.35.7-release or newer."
             exit 1
           fi
-
+  
       - name: Set up OpenHarmony command-line tools
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/deveco"
+  
           curl -L "$OHOS_COMMANDLINE_TOOLS_URL" -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
+  
           unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$RUNNER_TEMP/deveco"
+  
           TOOL_HOME="$(find "$RUNNER_TEMP/deveco" -type d \( -name command-line-tools -o -name 'DevEco Studio' \) | head -n 1)"
+  
           if [ -z "$TOOL_HOME" ]; then
             echo "Could not locate DevEco command-line tools in downloaded archive."
             exit 1
           fi
+  
           echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
           echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
+  
           echo "$TOOL_HOME/tools/ohpm/bin" >> "$GITHUB_PATH"
           echo "$TOOL_HOME/tools/hvigor/bin" >> "$GITHUB_PATH"
           echo "$TOOL_HOME/tools/node/bin" >> "$GITHUB_PATH"
+  
           echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
-
+  
       - name: Install dependencies
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
-          flutter pub get
-
+  
+          "$RUNNER_TEMP/flutter_ohos/bin/flutter" --version
+          "$RUNNER_TEMP/flutter_ohos/bin/flutter" pub get
+  
       - name: Test
         if: steps.ohos-tools.outputs.enabled == 'true'
-        run: flutter test
-
+        run: |
+          "$RUNNER_TEMP/flutter_ohos/bin/flutter" test
+  
       - name: Build HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
-        run: flutter build hap --release --target-platform ohos-arm64
-
+        run: |
+          "$RUNNER_TEMP/flutter_ohos/bin/flutter" build hap --release --target-platform ohos-arm64
+  
       - name: Upload HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
