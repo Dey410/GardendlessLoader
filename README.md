@@ -28,6 +28,8 @@ flutter run
 
 HAP builds require the OpenHarmony-compatible Flutter SDK plus DevEco Studio or command-line tools with `ohpm`, `hvigor`, `node`, and JDK 17 configured. The stock Flutter stable SDK does not expose `flutter build hap`.
 
+Use an OpenHarmony Flutter branch with Dart 3.5 or newer. CI defaults to `https://gitcode.com/openharmony-tpc/flutter_flutter.git` at `oh-3.35.7-release`; older `openharmony-sig/flutter_flutter` branches can fail `pub get` because their bundled Dart SDK is too old for this project.
+
 After configuring that toolchain:
 
 ```powershell

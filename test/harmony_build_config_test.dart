@@ -6,11 +6,11 @@ void main() {
   test('OpenHarmony override uses compatible plugin forks', () {
     final pubspec = File('pubspec_overrides.ohos.yaml').readAsStringSync();
 
-    expect(pubspec, contains('openharmony-sig/flutter_packages.git'));
+    expect(pubspec, contains('openharmony-tpc/flutter_packages.git'));
     expect(pubspec, contains('packages/path_provider/path_provider'));
-    expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
+    expect(pubspec, contains('openharmony-tpc/flutter_inappwebview.git'));
     expect(pubspec, contains('flutter_inappwebview'));
-    expect(pubspec, contains('openharmony-sig/fluttertpc_wakelock_plus.git'));
+    expect(pubspec, contains('openharmony-tpc/fluttertpc_wakelock_plus.git'));
     expect(pubspec, contains('wakelock_plus'));
   });
 
@@ -27,6 +27,10 @@ void main() {
         File('.github/workflows/build-mobile.yml').readAsStringSync();
 
     expect(workflow, contains('Build HarmonyOS HAP'));
+    expect(workflow, contains('openharmony-tpc/flutter_flutter.git'));
+    expect(workflow, contains('oh-3.35.7-release'));
+    expect(workflow, contains('OHOS_MIN_DART_VERSION: 3.5.0'));
+    expect(workflow, contains('Verify OpenHarmony Dart SDK compatibility'));
     expect(workflow, contains('HarmonyOS HAP skipped'));
     expect(workflow, contains('enabled=false'));
     expect(workflow, isNot(contains('OHOS_COMMANDLINE_TOOLS_URL secret is required')));

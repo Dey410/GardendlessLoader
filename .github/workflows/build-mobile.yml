@@ -109,8 +109,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-sig/flutter_flutter.git
-      OHOS_FLUTTER_SDK_REF: master
+      OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-tpc/flutter_flutter.git
+      OHOS_FLUTTER_SDK_REF: oh-3.35.7-release
+      OHOS_MIN_DART_VERSION: 3.5.0
       OHOS_COMMANDLINE_TOOLS_URL: ${{ secrets.OHOS_COMMANDLINE_TOOLS_URL }}
 
     steps:
@@ -141,6 +142,21 @@ jobs:
           echo "$RUNNER_TEMP/flutter_ohos/bin" >> "$GITHUB_PATH"
           echo "PUB_HOSTED_URL=https://pub.flutter-io.cn" >> "$GITHUB_ENV"
           echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> "$GITHUB_ENV"
+
+      - name: Verify OpenHarmony Dart SDK compatibility
+        if: steps.ohos-tools.outputs.enabled == 'true'
+        run: |
+          "$RUNNER_TEMP/flutter_ohos/bin/flutter" --version
+          dart_version="$("$RUNNER_TEMP/flutter_ohos/bin/dart" --version 2>&1 | sed -E 's/.*Dart SDK version: ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+          if [ -z "$dart_version" ]; then
+            echo "Could not determine Dart version from OpenHarmony Flutter SDK."
+            exit 1
+          fi
+          if [ "$(printf '%s\n%s\n' "$OHOS_MIN_DART_VERSION" "$dart_version" | sort -V | head -n 1)" != "$OHOS_MIN_DART_VERSION" ]; then
+            echo "OpenHarmony Flutter SDK Dart $dart_version is too old; GardendlessLoader requires Dart >=$OHOS_MIN_DART_VERSION."
+            echo "Use a newer OpenHarmony Flutter SDK branch, for example oh-3.35.7-release or newer."
+            exit 1
+          fi
 
       - name: Set up OpenHarmony command-line tools
         if: steps.ohos-tools.outputs.enabled == 'true'
