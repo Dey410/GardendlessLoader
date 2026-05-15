@@ -10,7 +10,7 @@ permissions:
 jobs:
   android:
     name: Build Android APK
-    runs-on: home_server
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
