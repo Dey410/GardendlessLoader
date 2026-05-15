@@ -105,7 +105,7 @@ jobs:
 
   harmonyos:
     name: Build HarmonyOS HAP
-    runs-on: home_server
+    runs-on: ubuntu-latest
 
     env:
       OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-tpc/flutter_flutter.git
