@@ -9,5 +9,5 @@ dependency_overrides:
       path: "packages/path_provider/path_provider"
   wakelock_plus:
     git:
-      url: "https://gitcode.com/openharmony-tpc/fluttertpc_wakelock_plus.git"
+      url: "https://gitcode.com/openharmony-sig/fluttertpc_wakelock_plus.git"
       path: "wakelock_plus"
