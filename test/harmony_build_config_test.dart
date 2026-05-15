@@ -8,7 +8,8 @@ void main() {
 
     expect(pubspec, contains('openharmony-tpc/flutter_packages.git'));
     expect(pubspec, contains('packages/path_provider/path_provider'));
-    expect(pubspec, contains('openharmony-tpc/flutter_inappwebview.git'));
+    expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
+    expect(pubspec, contains('br_v6.1.5_ohos'));
     expect(pubspec, contains('flutter_inappwebview'));
     expect(pubspec, contains('openharmony-sig/fluttertpc_wakelock_plus.git'));
     expect(pubspec, contains('wakelock_plus'));
