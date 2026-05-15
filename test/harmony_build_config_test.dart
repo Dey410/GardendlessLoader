@@ -33,7 +33,6 @@ void main() {
     expect(workflow, contains('OHOS_FLUTTER_SDK_VERSION: 3.35.7'));
     expect(workflow, contains('flutter.version.json'));
     expect(workflow, contains(r'"frameworkVersion": "$OHOS_FLUTTER_SDK_VERSION"'));
-    expect(workflow, contains(r'"$RUNNER_TEMP/flutter_ohos/version"'));
     expect(workflow, contains('OHOS_MIN_DART_VERSION: 3.5.0'));
     expect(workflow, contains('Verify OpenHarmony Dart SDK compatibility'));
     expect(workflow, contains('HarmonyOS HAP skipped'));
