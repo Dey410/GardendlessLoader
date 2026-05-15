@@ -111,6 +111,7 @@ jobs:
     env:
       OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-tpc/flutter_flutter.git
       OHOS_FLUTTER_SDK_REF: oh-3.35.7-release
+      OHOS_FLUTTER_SDK_VERSION: 3.35.7
       OHOS_MIN_DART_VERSION: 3.5.0
       OHOS_COMMANDLINE_TOOLS_URL: ${{ secrets.OHOS_COMMANDLINE_TOOLS_URL }}
 
@@ -139,6 +140,25 @@ jobs:
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           git clone --depth 1 --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$RUNNER_TEMP/flutter_ohos"
+          framework_revision="$(git -C "$RUNNER_TEMP/flutter_ohos" rev-parse HEAD)"
+          framework_commit_date="$(git -C "$RUNNER_TEMP/flutter_ohos" log -1 --pretty=format:%ad --date=iso)"
+          engine_revision="$(cat "$RUNNER_TEMP/flutter_ohos/bin/internal/engine.version" 2>/dev/null || printf '%s' "$framework_revision")"
+          devtools_version="$(cat "$RUNNER_TEMP/flutter_ohos/bin/internal/devtools.version" 2>/dev/null || printf '0.0.0')"
+          mkdir -p "$RUNNER_TEMP/flutter_ohos/bin/cache"
+          cat > "$RUNNER_TEMP/flutter_ohos/bin/cache/flutter.version.json" <<EOF
+          {
+            "frameworkVersion": "$OHOS_FLUTTER_SDK_VERSION",
+            "channel": "stable",
+            "repositoryUrl": "$OHOS_FLUTTER_SDK_REPOSITORY",
+            "frameworkRevision": "$framework_revision",
+            "frameworkCommitDate": "$framework_commit_date",
+            "engineRevision": "$engine_revision",
+            "engineCommitDate": null,
+            "dartSdkVersion": "unknown",
+            "devToolsVersion": "$devtools_version",
+            "flutterVersion": "$OHOS_FLUTTER_SDK_VERSION"
+          }
+          EOF
           echo "$RUNNER_TEMP/flutter_ohos/bin" >> "$GITHUB_PATH"
           echo "PUB_HOSTED_URL=https://pub.flutter-io.cn" >> "$GITHUB_ENV"
           echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> "$GITHUB_ENV"
