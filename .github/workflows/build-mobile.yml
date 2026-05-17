@@ -197,22 +197,58 @@ jobs:
 
           unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$RUNNER_TEMP/deveco"
 
-          TOOL_HOME="$(find "$RUNNER_TEMP/deveco" -type d \( -name command-line-tools -o -name 'DevEco Studio' \) | head -n 1)"
+          echo "Extracted DevEco command-line tools:"
+          find "$RUNNER_TEMP/deveco" -maxdepth 5 -type f \( -name ohpm -o -name hvigor -o -name node \) -print || true
+          find "$RUNNER_TEMP/deveco" -maxdepth 5 -type f \( -name ohpm.sh -o -name hvigor.sh \) -print || true
 
-          if [ -z "$TOOL_HOME" ]; then
-            echo "Could not locate DevEco command-line tools in downloaded archive."
+          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name ohpm -perm -111 | head -n 1)"
+          HVIGOR_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name hvigor -perm -111 | head -n 1)"
+          NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name node -perm -111 | head -n 1)"
+
+          if [ -z "$OHPM_BIN" ]; then
+            echo "Could not find executable ohpm in DevEco command-line tools."
+            echo "Archive content preview:"
+            find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f | head -n 200
             exit 1
           fi
+
+          if [ -z "$HVIGOR_BIN" ]; then
+            echo "Could not find executable hvigor in DevEco command-line tools."
+            echo "Archive content preview:"
+            find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f | head -n 200
+            exit 1
+          fi
+
+          if [ -z "$NODE_BIN" ]; then
+            echo "Could not find executable node in DevEco command-line tools."
+            echo "Archive content preview:"
+            find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f | head -n 200
+            exit 1
+          fi
+
+          OHPM_HOME="$(dirname "$OHPM_BIN")"
+          HVIGOR_HOME="$(dirname "$HVIGOR_BIN")"
+          NODE_HOME="$(dirname "$NODE_BIN")"
+
+          echo "$OHPM_HOME" >> "$GITHUB_PATH"
+          echo "$HVIGOR_HOME" >> "$GITHUB_PATH"
+          echo "$NODE_HOME" >> "$GITHUB_PATH"
+
+          TOOL_HOME="$(dirname "$(dirname "$OHPM_HOME")")"
 
           echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
           echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
 
-          echo "$TOOL_HOME/tools/ohpm/bin" >> "$GITHUB_PATH"
-          echo "$TOOL_HOME/tools/hvigor/bin" >> "$GITHUB_PATH"
-          echo "$TOOL_HOME/tools/node/bin" >> "$GITHUB_PATH"
-
           echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
+
+          echo "OHPM_HOME=$OHPM_HOME"
+          echo "HVIGOR_HOME=$HVIGOR_HOME"
+          echo "NODE_HOME=$NODE_HOME"
+
+          "$OHPM_BIN" --version || true
+          "$HVIGOR_BIN" --version || true
+          "$NODE_BIN" --version || true
 
       - name: Install dependencies
         if: steps.ohos-tools.outputs.enabled == 'true'
@@ -238,6 +274,19 @@ jobs:
         run: |
           TEST_FILES=$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)
           flutter test $TEST_FILES
+          
+      - name: Verify OpenHarmony build tools
+        if: steps.ohos-tools.outputs.enabled == 'true'
+        run: |
+          echo "PATH=$PATH"
+
+          command -v ohpm
+          command -v hvigor
+          command -v node
+
+          ohpm --version || true
+          hvigor --version || true
+          node --version
 
       - name: Build HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
