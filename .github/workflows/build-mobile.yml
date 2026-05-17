@@ -182,7 +182,7 @@ jobs:
             echo "Use a newer OpenHarmony Flutter SDK branch."
             exit 1
           fi
-
+    
       - name: Set up OpenHarmony command-line tools
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
@@ -197,32 +197,31 @@ jobs:
 
           unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$RUNNER_TEMP/deveco"
 
-          echo "Extracted DevEco command-line tools:"
-          find "$RUNNER_TEMP/deveco" -maxdepth 5 -type f \( -name ohpm -o -name hvigor -o -name node \) -print || true
-          find "$RUNNER_TEMP/deveco" -maxdepth 5 -type f \( -name ohpm.sh -o -name hvigor.sh \) -print || true
+          echo "Extracted DevEco command-line tools preview:"
+          find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f -print | sed -n '1,200p' || true
 
-          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name ohpm -perm -111 | head -n 1)"
-          HVIGOR_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name hvigor -perm -111 | head -n 1)"
-          NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name node -perm -111 | head -n 1)"
+          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name ohpm -perm -111 -print -quit || true)"
+          HVIGOR_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name hvigor -perm -111 -print -quit || true)"
+          NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name node -perm -111 -print -quit || true)"
 
           if [ -z "$OHPM_BIN" ]; then
             echo "Could not find executable ohpm in DevEco command-line tools."
             echo "Archive content preview:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f | head -n 200
+            find "$RUNNER_TEMP/deveco" -maxdepth 8 -type f -print | sed -n '1,300p' || true
             exit 1
           fi
 
           if [ -z "$HVIGOR_BIN" ]; then
             echo "Could not find executable hvigor in DevEco command-line tools."
             echo "Archive content preview:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f | head -n 200
+            find "$RUNNER_TEMP/deveco" -maxdepth 8 -type f -print | sed -n '1,300p' || true
             exit 1
           fi
 
           if [ -z "$NODE_BIN" ]; then
             echo "Could not find executable node in DevEco command-line tools."
             echo "Archive content preview:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f | head -n 200
+            find "$RUNNER_TEMP/deveco" -maxdepth 8 -type f -print | sed -n '1,300p' || true
             exit 1
           fi
 
@@ -234,41 +233,27 @@ jobs:
           echo "$HVIGOR_HOME" >> "$GITHUB_PATH"
           echo "$NODE_HOME" >> "$GITHUB_PATH"
 
-          TOOL_HOME="$(dirname "$(dirname "$OHPM_HOME")")"
+          echo "OHPM_HOME=$OHPM_HOME" >> "$GITHUB_ENV"
+          echo "HVIGOR_HOME=$HVIGOR_HOME" >> "$GITHUB_ENV"
+          echo "NODE_HOME=$NODE_HOME" >> "$GITHUB_ENV"
 
+          TOOL_HOME="$RUNNER_TEMP/deveco"
           echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
-          echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
+
+          SDK_HOME="$(find "$RUNNER_TEMP/deveco" -type d -name sdk -print -quit || true)"
+          if [ -n "$SDK_HOME" ]; then
+            echo "DEVECO_SDK_HOME=$SDK_HOME" >> "$GITHUB_ENV"
+          else
+            echo "DEVECO_SDK_HOME=$RUNNER_TEMP/deveco/sdk" >> "$GITHUB_ENV"
+          fi
 
           echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
 
-          echo "OHPM_HOME=$OHPM_HOME"
-          echo "HVIGOR_HOME=$HVIGOR_HOME"
-          echo "NODE_HOME=$NODE_HOME"
-
           "$OHPM_BIN" --version || true
           "$HVIGOR_BIN" --version || true
           "$NODE_BIN" --version || true
-
-      - name: Install dependencies
-        if: steps.ohos-tools.outputs.enabled == 'true'
-        env:
-          GIT_LFS_SKIP_SMUDGE: "1"
-        run: |
-          cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
-
-          git lfs install --skip-smudge || true
-          git config --global filter.lfs.smudge "git-lfs smudge --skip -- %f" || true
-          git config --global filter.lfs.process "git-lfs filter-process --skip" || true
-
-          rm -rf ~/.pub-cache/git/flutter_inappwebview-* || true
-          rm -rf ~/.pub-cache/git/cache/flutter_inappwebview-* || true
-
-          flutter --version
-          dart --version
-
-          flutter pub get
-
+        
       - name: Test
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
