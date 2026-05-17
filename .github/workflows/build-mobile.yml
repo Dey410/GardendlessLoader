@@ -147,18 +147,14 @@ jobs:
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           rm -rf "$RUNNER_TEMP/flutter_ohos"
-
           git clone --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$RUNNER_TEMP/flutter_ohos"
-
           cd "$RUNNER_TEMP/flutter_ohos"
           git fetch --tags --force
           git config --global --add safe.directory "$RUNNER_TEMP/flutter_ohos"
-
           echo "$RUNNER_TEMP/flutter_ohos/bin" >> "$GITHUB_PATH"
           echo "FLUTTER_ROOT=$RUNNER_TEMP/flutter_ohos" >> "$GITHUB_ENV"
           echo "PUB_HOSTED_URL=https://pub.flutter-io.cn" >> "$GITHUB_ENV"
           echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> "$GITHUB_ENV"
-
           "$RUNNER_TEMP/flutter_ohos/bin/flutter" --version
           "$RUNNER_TEMP/flutter_ohos/bin/dart" --version
 
@@ -167,16 +163,12 @@ jobs:
         run: |
           flutter --version
           dart --version
-
           dart_version="$(dart --version 2>&1 | sed -E 's/.*Dart SDK version: ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
-
           if [ -z "$dart_version" ]; then
             echo "Could not determine Dart version from OpenHarmony Flutter SDK."
             exit 1
           fi
-
           echo "Detected Dart SDK version: $dart_version"
-
           if [ "$(printf '%s\n%s\n' "$OHOS_MIN_DART_VERSION" "$dart_version" | sort -V | head -n 1)" != "$OHOS_MIN_DART_VERSION" ]; then
             echo "OpenHarmony Flutter SDK Dart $dart_version is too old; GardendlessLoader requires Dart >=$OHOS_MIN_DART_VERSION."
             echo "Use a newer OpenHarmony Flutter SDK branch."
@@ -187,155 +179,67 @@ jobs:
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/deveco"
-
-          curl -fL "$OHOS_COMMANDLINE_TOOLS_URL" -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
-
+          curl -L "$OHOS_COMMANDLINE_TOOLS_URL" -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
           if [ ! -s "$RUNNER_TEMP/deveco-commandline-tools.zip" ]; then
             echo "Downloaded OpenHarmony command-line tools archive is empty."
             exit 1
           fi
-
           unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$RUNNER_TEMP/deveco"
 
-          echo "=== Extracted directory structure (depth 5) ==="
-          find "$RUNNER_TEMP/deveco" -maxdepth 5 -print | head -120
+          echo "=== Extracted layout (2 levels) ==="
+          find "$RUNNER_TEMP/deveco" -maxdepth 2 | sort
 
-          # ── 查找 ohpm ────────────────────────────────────────────────────────
-          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f \( -name 'ohpm' -o -name 'ohpm.sh' \) -path '*/bin/*' -print -quit || true)"
+          # ── Locate binaries directly instead of guessing directory names ──
+          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name "ohpm" | head -n 1)"
+          HVIGOR_BIN="$(find "$RUNNER_TEMP/deveco" -type f \( -name "hvigorw" -o -name "hvigor" \) | head -n 1)"
+          NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name "node" | head -n 1)"
+
           if [ -z "$OHPM_BIN" ]; then
-            echo "ERROR: Could not find ohpm binary. Listing all files:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 8 -name 'ohpm*' -print || true
+            echo "Could not locate ohpm binary in the downloaded archive."
             exit 1
           fi
 
-          # ── 查找 hvigorw ─────────────────────────────────────────────────────
-          HVIGORW_BIN="$(find "$RUNNER_TEMP/deveco" -type f \( -name 'hvigorw' -o -name 'hvigorw.sh' \) -path '*/bin/*' -print -quit || true)"
-          if [ -z "$HVIGORW_BIN" ]; then
-            echo "ERROR: Could not find hvigorw binary. Listing all files:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 8 -name 'hvigor*' -print || true
-            exit 1
-          fi
-
+          OHPM_DIR="$(dirname "$OHPM_BIN")"
+          echo "ohpm  → $OHPM_DIR"
+          echo "$OHPM_DIR" >> "$GITHUB_PATH"
           chmod +x "$OHPM_BIN"
-          chmod +x "$HVIGORW_BIN"
 
-          OHPM_HOME="$(dirname "$OHPM_BIN")"
-          HVIGORW_HOME="$(dirname "$HVIGORW_BIN")"
-          echo "$OHPM_HOME"    >> "$GITHUB_PATH"
-          echo "$HVIGORW_HOME" >> "$GITHUB_PATH"
+          if [ -n "$HVIGOR_BIN" ]; then
+            HVIGOR_DIR="$(dirname "$HVIGOR_BIN")"
+            echo "hvigor → $HVIGOR_DIR"
+            echo "$HVIGOR_DIR" >> "$GITHUB_PATH"
+            chmod +x "$HVIGOR_BIN"
+          fi
 
-          # ── 查找 Node.js ─────────────────────────────────────────────────────
-          NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name 'node' -not -path '*/include/*' -print -quit || true)"
           if [ -n "$NODE_BIN" ]; then
-            chmod +x "$NODE_BIN"
-            NODE_HOME="$(dirname "$NODE_BIN")"
-            echo "$NODE_HOME" >> "$GITHUB_PATH"
-            echo "NODE_HOME=$NODE_HOME" >> "$GITHUB_ENV"
+            NODE_DIR="$(dirname "$NODE_BIN")"
+            echo "node  → $NODE_DIR"
+            echo "$NODE_DIR" >> "$GITHUB_PATH"
           fi
 
-          # ── 定位 HOS_SDK_HOME ────────────────────────────────────────────────
-          #
-          # flutter_ohos 要求 HOS_SDK_HOME 指向一个目录，其直接子目录为纯数字的
-          # API level（如 10、11、12），且每个 API level 目录下含有 toolchains/。
-          #
-          # DevEco CLI zip 包的几种常见结构：
-          #   A) sdk/default/openharmony/12/toolchains/
-          #   B) sdk/HarmonyOS-NEXT-xxx/openharmony/12/toolchains/
-          #   C) sdk/openharmony/12/toolchains/
-          #   D) sdk/12/toolchains/
-          #
-          # 策略：找到含有 toolchains 的数字目录，取其父目录。
-
-          HOS_SDK=""
-
-          # 方法 1：toolchains 路径推导
-          while IFS= read -r tc_dir; do
-            api_dir="$(dirname "$tc_dir")"
-            api_name="$(basename "$api_dir")"
-            if echo "$api_name" | grep -qE '^[0-9]+$'; then
-              HOS_SDK="$(dirname "$api_dir")"
-              break
-            fi
-          done < <(find "$RUNNER_TEMP/deveco" -type d -name 'toolchains' 2>/dev/null)
-
-          # 方法 2：找名为 openharmony 的目录
-          if [ -z "$HOS_SDK" ]; then
-            HOS_SDK="$(find "$RUNNER_TEMP/deveco" -type d -name 'openharmony' -print -quit || true)"
-          fi
-
-          # 方法 3：找名为 sdk 的目录（保底）
-          if [ -z "$HOS_SDK" ]; then
-            HOS_SDK="$(find "$RUNNER_TEMP/deveco" -type d -name 'sdk' -print -quit || true)"
-          fi
-
-          if [ -z "$HOS_SDK" ] || [ ! -d "$HOS_SDK" ]; then
-            echo "ERROR: Could not locate OpenHarmony SDK directory."
-            echo "Full directory tree:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 10 -print
-            exit 1
-          fi
-
-          echo "=== Resolved HOS_SDK_HOME ==="
-          echo "$HOS_SDK"
-          ls "$HOS_SDK"
-
-          echo "HOS_SDK_HOME=$HOS_SDK"    >> "$GITHUB_ENV"
-          echo "DEVECO_SDK_HOME=$HOS_SDK" >> "$GITHUB_ENV"
-
-          TOOL_HOME="$(dirname "$OHPM_HOME")"
+          # ── Set SDK env vars by climbing up from ohpm ──
+          # Typical layout: <root>/tools/ohpm/bin/ohpm → TOOL_HOME = <root>
+          TOOL_HOME="$(dirname "$(dirname "$OHPM_DIR")")"
           echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
+          echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
 
-          # npm 镜像
-          {
-            echo "registry=https://repo.huaweicloud.com/repository/npm/"
-            echo "@ohos:registry=https://repo.harmonyos.com/npm/"
-          } > ~/.npmrc
+          echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
+          echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
 
-          echo "=== Tool versions ==="
-          "$OHPM_BIN"    --version || true
-          "$HVIGORW_BIN" --version || true
-
-      - name: Verify OpenHarmony build environment
+      - name: Install dependencies
         if: steps.ohos-tools.outputs.enabled == 'true'
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
         run: |
-          echo "=== Environment variables ==="
-          echo "HOS_SDK_HOME    = $HOS_SDK_HOME"
-          echo "DEVECO_SDK_HOME = $DEVECO_SDK_HOME"
-          echo "FLUTTER_ROOT    = $FLUTTER_ROOT"
-
-          echo "=== Required binaries ==="
-          command -v ohpm    || { echo "ERROR: ohpm not in PATH"; exit 1; }
-          command -v hvigorw || command -v hvigorw.sh || true
-          command -v node    || true
-          ohpm    --version  || true
-          node    --version  || true
-
-          echo "=== SDK directory contents ==="
-          if [ ! -d "$HOS_SDK_HOME" ]; then
-            echo "ERROR: HOS_SDK_HOME does not exist: $HOS_SDK_HOME"
-            exit 1
-          fi
-          ls -la "$HOS_SDK_HOME"
-
-          echo "=== Flutter ==="
+          cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
+          git lfs install --skip-smudge || true
+          git config --global filter.lfs.smudge "git-lfs smudge --skip -- %f" || true
+          git config --global filter.lfs.process "git-lfs filter-process --skip" || true
+          rm -rf ~/.pub-cache/git/flutter_inappwebview-* || true
+          rm -rf ~/.pub-cache/git/cache/flutter_inappwebview-* || true
           flutter --version
-
-      - name: Configure Flutter for OpenHarmony SDK
-        if: steps.ohos-tools.outputs.enabled == 'true'
-        run: |
-          # flutter_ohos 分支支持 --ohos-sdk 配置项
-          flutter config --ohos-sdk="$HOS_SDK_HOME" 2>/dev/null || true
-
-      - name: Install Flutter dependencies
-        if: steps.ohos-tools.outputs.enabled == 'true'
-        run: |
-          rm -f pubspec_overrides.yaml
+          dart --version
           flutter pub get
-
-      - name: Install ohpm dependencies
-        if: steps.ohos-tools.outputs.enabled == 'true'
-        working-directory: ohos
-        run: ohpm install
 
       - name: Test
         if: steps.ohos-tools.outputs.enabled == 'true'
@@ -347,30 +251,10 @@ jobs:
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: flutter build hap --release --target-platform ohos-arm64
 
-      - name: Locate and stage HAP artifact
-        if: steps.ohos-tools.outputs.enabled == 'true'
-        run: |
-          echo "=== Built .hap files ==="
-          find ohos -name '*.hap' -print
-
-          # 优先找签名包，其次找任意 .hap
-          HAP_PATH="$(find ohos -name 'entry-default-signed.hap' -print -quit || true)"
-          if [ -z "$HAP_PATH" ]; then
-            HAP_PATH="$(find ohos -name '*.hap' -print -quit || true)"
-          fi
-
-          if [ -z "$HAP_PATH" ]; then
-            echo "ERROR: No .hap file found after build."
-            exit 1
-          fi
-
-          echo "Staging: $HAP_PATH"
-          cp "$HAP_PATH" "$RUNNER_TEMP/GardendlessLoader.hap"
-
       - name: Upload HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gardendless-loader-hap
-          path: ${{ runner.temp }}/GardendlessLoader.hap
+          path: ohos/entry/build/default/outputs/default/entry-default-signed.hap
           if-no-files-found: error
