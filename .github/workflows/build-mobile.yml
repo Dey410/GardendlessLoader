@@ -262,10 +262,6 @@ jobs:
 
           export PATH="$RUNNER_TEMP/ohos-bin:$OHPM_DIR:$HVIGOR_DIR:$NODE_DIR:$PATH"
 
-          echo "ohpm path: $OHPM_BIN"
-          echo "hvigor path: $HVIGOR_BIN"
-          echo "node path: $NODE_BIN"
-
           echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
 
@@ -302,25 +298,27 @@ jobs:
 
       - name: Build unsigned HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
-        working-directory: ohos
         run: |
-          ohpm install --all
+          set +e
+          flutter build hap --release --target-platform ohos-arm64 2>&1 | tee "$RUNNER_TEMP/flutter-build-hap.log"
+          FLUTTER_BUILD_STATUS="${PIPESTATUS[0]}"
+          set -e
 
-          hvigorw assembleHap --mode module -p product=default --no-daemon
+          echo "flutter build hap exit code: $FLUTTER_BUILD_STATUS"
 
-          UNSIGNED_HAP="$(find entry/build -type f -name '*unsigned*.hap' -print -quit || true)"
+          UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*.hap' ! -name '*signed*.hap' -print -quit || true)"
 
           if [ -z "$UNSIGNED_HAP" ]; then
             echo "Unsigned HAP was not generated."
             echo "Available HAP outputs:"
-            find entry/build -type f -name '*.hap' -print || true
+            find ohos/entry/build -type f -name '*.hap' -print || true
             exit 1
           fi
 
-          mkdir -p ../build/ohos/unsigned
-          cp "$UNSIGNED_HAP" ../build/ohos/unsigned/GardendlessLoader-unsigned.hap
+          mkdir -p build/ohos/unsigned
+          cp "$UNSIGNED_HAP" build/ohos/unsigned/GardendlessLoader-unsigned.hap
 
-          echo "Unsigned HAP: ohos/$UNSIGNED_HAP"
+          echo "Unsigned HAP: $UNSIGNED_HAP"
 
       - name: Upload unsigned HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
