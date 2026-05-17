@@ -30,13 +30,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          rm -f pubspec_overrides.yaml
+          if [ -f pubspec_overrides.yaml ]; then
+            mv pubspec_overrides.yaml "$RUNNER_TEMP/pubspec_overrides.yaml.disabled"
+          fi
           flutter pub get
 
       - name: Test
         run: |
-          TEST_FILES=$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)
-          flutter test $TEST_FILES
+          TEST_FILES="$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)"
+          if [ -n "$TEST_FILES" ]; then
+            flutter test $TEST_FILES
+          else
+            echo "No Flutter tests found."
+          fi
 
       - name: Configure Android signing
         env:
@@ -83,7 +89,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          rm -f pubspec_overrides.yaml
+          if [ -f pubspec_overrides.yaml ]; then
+            mv pubspec_overrides.yaml "$RUNNER_TEMP/pubspec_overrides.yaml.disabled"
+          fi
           flutter pub get
 
       - name: Install CocoaPods dependencies
@@ -92,8 +100,12 @@ jobs:
 
       - name: Test
         run: |
-          TEST_FILES=$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)
-          flutter test $TEST_FILES
+          TEST_FILES="$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)"
+          if [ -n "$TEST_FILES" ]; then
+            flutter test $TEST_FILES
+          else
+            echo "No Flutter tests found."
+          fi
 
       - name: Build unsigned iOS app
         run: flutter build ios --release --no-codesign
@@ -146,29 +158,38 @@ jobs:
       - name: Set up OpenHarmony Flutter SDK
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
-          rm -rf "$RUNNER_TEMP/flutter_ohos"
-          git clone --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$RUNNER_TEMP/flutter_ohos"
-          cd "$RUNNER_TEMP/flutter_ohos"
+          FLUTTER_OHOS_DIR="$RUNNER_TEMP/flutter_ohos_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+
+          git clone --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$FLUTTER_OHOS_DIR"
+          cd "$FLUTTER_OHOS_DIR"
+
           git fetch --tags --force
-          git config --global --add safe.directory "$RUNNER_TEMP/flutter_ohos"
-          echo "$RUNNER_TEMP/flutter_ohos/bin" >> "$GITHUB_PATH"
-          echo "FLUTTER_ROOT=$RUNNER_TEMP/flutter_ohos" >> "$GITHUB_ENV"
+          git config --global --add safe.directory "$FLUTTER_OHOS_DIR"
+
+          echo "$FLUTTER_OHOS_DIR/bin" >> "$GITHUB_PATH"
+          echo "FLUTTER_ROOT=$FLUTTER_OHOS_DIR" >> "$GITHUB_ENV"
           echo "PUB_HOSTED_URL=https://pub.flutter-io.cn" >> "$GITHUB_ENV"
           echo "FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn" >> "$GITHUB_ENV"
-          "$RUNNER_TEMP/flutter_ohos/bin/flutter" --version
-          "$RUNNER_TEMP/flutter_ohos/bin/dart" --version
+          echo "PUB_CACHE=$RUNNER_TEMP/pub-cache" >> "$GITHUB_ENV"
+
+          "$FLUTTER_OHOS_DIR/bin/flutter" --version
+          "$FLUTTER_OHOS_DIR/bin/dart" --version
 
       - name: Verify OpenHarmony Dart SDK compatibility
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           flutter --version
           dart --version
+
           dart_version="$(dart --version 2>&1 | sed -E 's/.*Dart SDK version: ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+
           if [ -z "$dart_version" ]; then
             echo "Could not determine Dart version from OpenHarmony Flutter SDK."
             exit 1
           fi
+
           echo "Detected Dart SDK version: $dart_version"
+
           if [ "$(printf '%s\n%s\n' "$OHOS_MIN_DART_VERSION" "$dart_version" | sort -V | head -n 1)" != "$OHOS_MIN_DART_VERSION" ]; then
             echo "OpenHarmony Flutter SDK Dart $dart_version is too old; GardendlessLoader requires Dart >=$OHOS_MIN_DART_VERSION."
             echo "Use a newer OpenHarmony Flutter SDK branch."
@@ -178,71 +199,84 @@ jobs:
       - name: Set up OpenHarmony command-line tools
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
-          mkdir -p "$RUNNER_TEMP/deveco"
+          DEVECO_DIR="$RUNNER_TEMP/deveco_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+
+          mkdir -p "$DEVECO_DIR"
           curl -L "$OHOS_COMMANDLINE_TOOLS_URL" -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
+
           if [ ! -s "$RUNNER_TEMP/deveco-commandline-tools.zip" ]; then
             echo "Downloaded OpenHarmony command-line tools archive is empty."
             exit 1
           fi
-          unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$RUNNER_TEMP/deveco"
 
-          echo "=== Extracted layout (3 levels) ==="
-          find "$RUNNER_TEMP/deveco" -maxdepth 3 | sort
+          unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$DEVECO_DIR"
 
-          # ── Locate binaries directly instead of guessing directory names ──
-          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name "ohpm" | head -n 1)"
-          HVIGOR_BIN="$(find "$RUNNER_TEMP/deveco" -type f \( -name "hvigorw" -o -name "hvigor" \) | head -n 1)"
-          NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name "node" | head -n 1)"
+          OHPM_BIN="$(find "$DEVECO_DIR" -type f -name ohpm -print -quit)"
+          HVIGOR_BIN="$(find "$DEVECO_DIR" -type f -name hvigor -print -quit)"
+          NODE_BIN="$(find "$DEVECO_DIR" -type f -name node -print -quit)"
+          SDK_DIR="$(find "$DEVECO_DIR" -type d -name sdk -print -quit)"
 
           if [ -z "$OHPM_BIN" ]; then
-            echo "Could not locate ohpm binary in the downloaded archive."
+            echo "Could not locate ohpm in downloaded archive."
+            find "$DEVECO_DIR" -maxdepth 6 -type f | sort
+            exit 1
+          fi
+
+          if [ -z "$HVIGOR_BIN" ]; then
+            echo "Could not locate hvigor in downloaded archive."
+            find "$DEVECO_DIR" -maxdepth 6 -type f | sort
+            exit 1
+          fi
+
+          if [ -z "$NODE_BIN" ]; then
+            echo "Could not locate node in downloaded archive."
+            find "$DEVECO_DIR" -maxdepth 6 -type f | sort
             exit 1
           fi
 
           OHPM_DIR="$(dirname "$OHPM_BIN")"
-          echo "ohpm  → $OHPM_DIR"
+          HVIGOR_DIR="$(dirname "$HVIGOR_BIN")"
+          NODE_DIR="$(dirname "$NODE_BIN")"
+
+          chmod +x "$OHPM_BIN" "$HVIGOR_BIN" "$NODE_BIN" || true
+
           echo "$OHPM_DIR" >> "$GITHUB_PATH"
-          chmod +x "$OHPM_BIN"
+          echo "$HVIGOR_DIR" >> "$GITHUB_PATH"
+          echo "$NODE_DIR" >> "$GITHUB_PATH"
 
-          if [ -n "$HVIGOR_BIN" ]; then
-            HVIGOR_DIR="$(dirname "$HVIGOR_BIN")"
-            echo "hvigor → $HVIGOR_DIR"
-            echo "$HVIGOR_DIR" >> "$GITHUB_PATH"
-            chmod +x "$HVIGOR_BIN"
+          if [ -n "$SDK_DIR" ]; then
+            echo "DEVECO_SDK_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+            echo "OHOS_SDK_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          else
+            echo "::warning title=OpenHarmony SDK directory not found::The command-line tools archive did not contain a directory named sdk."
           fi
 
-          if [ -n "$NODE_BIN" ]; then
-            NODE_DIR="$(dirname "$NODE_BIN")"
-            echo "node  → $NODE_DIR"
-            echo "$NODE_DIR" >> "$GITHUB_PATH"
-          fi
+          export PATH="$OHPM_DIR:$HVIGOR_DIR:$NODE_DIR:$PATH"
 
-          # ── OHPM_DIR is .../tools/ohpm/bin → climb 3 levels to reach TOOL_HOME ──
-          TOOL_HOME="$(dirname "$(dirname "$(dirname "$OHPM_DIR")")")"
-          echo "TOOL_HOME → $TOOL_HOME"
-
-          echo "=== SDK directory contents ==="
-          ls "$TOOL_HOME/sdk" 2>/dev/null || echo "(sdk dir not found at $TOOL_HOME/sdk)"
-
-          echo "TOOL_HOME=$TOOL_HOME"            >> "$GITHUB_ENV"
-          # DEVECO_SDK_HOME for hvigor, HOS_SDK_HOME for Flutter OHOS
-          echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk"  >> "$GITHUB_ENV"
-          echo "HOS_SDK_HOME=$TOOL_HOME/sdk"     >> "$GITHUB_ENV"
+          echo "ohpm path: $OHPM_BIN"
+          echo "hvigor path: $HVIGOR_BIN"
+          echo "node path: $NODE_BIN"
 
           echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
-          echo "@ohos:registry=https://repo.harmonyos.com/npm/"       >> ~/.npmrc
+          echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
+
+          ohpm --version
+          hvigor --version
+          node --version
 
       - name: Install dependencies
         if: steps.ohos-tools.outputs.enabled == 'true'
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
         run: |
+          mkdir -p "$PUB_CACHE"
+
           cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
+
           git lfs install --skip-smudge || true
           git config --global filter.lfs.smudge "git-lfs smudge --skip -- %f" || true
           git config --global filter.lfs.process "git-lfs filter-process --skip" || true
-          rm -rf ~/.pub-cache/git/flutter_inappwebview-* || true
-          rm -rf ~/.pub-cache/git/cache/flutter_inappwebview-* || true
+
           flutter --version
           dart --version
           flutter pub get
@@ -250,8 +284,12 @@ jobs:
       - name: Test
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
-          TEST_FILES=$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)
-          flutter test $TEST_FILES
+          TEST_FILES="$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)"
+          if [ -n "$TEST_FILES" ]; then
+            flutter test $TEST_FILES
+          else
+            echo "No Flutter tests found."
+          fi
 
       - name: Build HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
