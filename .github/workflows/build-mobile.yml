@@ -216,8 +216,17 @@ jobs:
 
       - name: Install dependencies
         if: steps.ohos-tools.outputs.enabled == 'true'
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
         run: |
           cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
+
+          git lfs install --skip-smudge || true
+          git config --global filter.lfs.smudge "git-lfs smudge --skip -- %f" || true
+          git config --global filter.lfs.process "git-lfs filter-process --skip" || true
+
+          rm -rf ~/.pub-cache/git/flutter_inappwebview-* || true
+          rm -rf ~/.pub-cache/git/cache/flutter_inappwebview-* || true
 
           flutter --version
           dart --version
