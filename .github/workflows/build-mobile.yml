@@ -182,7 +182,7 @@ jobs:
             echo "Use a newer OpenHarmony Flutter SDK branch."
             exit 1
           fi
-    
+          
       - name: Set up OpenHarmony command-line tools
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
@@ -197,62 +197,60 @@ jobs:
 
           unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$RUNNER_TEMP/deveco"
 
-          echo "Extracted DevEco command-line tools preview:"
-          find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f -print | sed -n '1,200p' || true
+          echo "Looking for OpenHarmony tools..."
 
-          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name ohpm -perm -111 -print -quit || true)"
-          HVIGOR_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name hvigor -perm -111 -print -quit || true)"
-          NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name node -perm -111 -print -quit || true)"
+          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f -path '*/bin/ohpm' -print -quit || true)"
+          HVIGORW_BIN="$(find "$RUNNER_TEMP/deveco" -type f -path '*/bin/hvigorw' -print -quit || true)"
+          NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name node -print -quit || true)"
 
           if [ -z "$OHPM_BIN" ]; then
-            echo "Could not find executable ohpm in DevEco command-line tools."
-            echo "Archive content preview:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 8 -type f -print | sed -n '1,300p' || true
+            echo "Could not find ohpm."
+            find "$RUNNER_TEMP/deveco" -maxdepth 5 -type f -name 'ohpm*' -print || true
             exit 1
           fi
 
-          if [ -z "$HVIGOR_BIN" ]; then
-            echo "Could not find executable hvigor in DevEco command-line tools."
-            echo "Archive content preview:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 8 -type f -print | sed -n '1,300p' || true
+          if [ -z "$HVIGORW_BIN" ]; then
+            echo "Could not find hvigorw."
+            find "$RUNNER_TEMP/deveco" -maxdepth 5 -type f -name 'hvigor*' -print || true
             exit 1
           fi
 
-          if [ -z "$NODE_BIN" ]; then
-            echo "Could not find executable node in DevEco command-line tools."
-            echo "Archive content preview:"
-            find "$RUNNER_TEMP/deveco" -maxdepth 8 -type f -print | sed -n '1,300p' || true
-            exit 1
-          fi
+          chmod +x "$OHPM_BIN" || true
+          chmod +x "$HVIGORW_BIN" || true
 
           OHPM_HOME="$(dirname "$OHPM_BIN")"
-          HVIGOR_HOME="$(dirname "$HVIGOR_BIN")"
-          NODE_HOME="$(dirname "$NODE_BIN")"
+          HVIGORW_HOME="$(dirname "$HVIGORW_BIN")"
 
           echo "$OHPM_HOME" >> "$GITHUB_PATH"
-          echo "$HVIGOR_HOME" >> "$GITHUB_PATH"
-          echo "$NODE_HOME" >> "$GITHUB_PATH"
+          echo "$HVIGORW_HOME" >> "$GITHUB_PATH"
 
-          echo "OHPM_HOME=$OHPM_HOME" >> "$GITHUB_ENV"
-          echo "HVIGOR_HOME=$HVIGOR_HOME" >> "$GITHUB_ENV"
-          echo "NODE_HOME=$NODE_HOME" >> "$GITHUB_ENV"
+          if [ -n "$NODE_BIN" ]; then
+            chmod +x "$NODE_BIN" || true
+            NODE_HOME="$(dirname "$NODE_BIN")"
+            echo "$NODE_HOME" >> "$GITHUB_PATH"
+            echo "NODE_HOME=$NODE_HOME" >> "$GITHUB_ENV"
+          fi
 
-          TOOL_HOME="$RUNNER_TEMP/deveco"
+          TOOL_HOME="$(dirname "$OHPM_HOME")"
           echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
 
           SDK_HOME="$(find "$RUNNER_TEMP/deveco" -type d -name sdk -print -quit || true)"
           if [ -n "$SDK_HOME" ]; then
             echo "DEVECO_SDK_HOME=$SDK_HOME" >> "$GITHUB_ENV"
           else
-            echo "DEVECO_SDK_HOME=$RUNNER_TEMP/deveco/sdk" >> "$GITHUB_ENV"
+            echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
           fi
+
+          echo "OHPM_BIN=$OHPM_BIN"
+          echo "HVIGORW_BIN=$HVIGORW_BIN"
+          echo "OHPM_HOME=$OHPM_HOME"
+          echo "HVIGORW_HOME=$HVIGORW_HOME"
 
           echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
 
           "$OHPM_BIN" --version || true
-          "$HVIGOR_BIN" --version || true
-          "$NODE_BIN" --version || true
+          "$HVIGORW_BIN" --version || true
         
       - name: Test
         if: steps.ohos-tools.outputs.enabled == 'true'
@@ -266,12 +264,12 @@ jobs:
           echo "PATH=$PATH"
 
           command -v ohpm
-          command -v hvigor
-          command -v node
+          command -v hvigorw || true
+          command -v node || true
 
           ohpm --version || true
-          hvigor --version || true
-          node --version
+          hvigorw --version || true
+          node --version || true
 
       - name: Build HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
