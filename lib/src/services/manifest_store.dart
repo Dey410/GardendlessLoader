@@ -14,7 +14,8 @@ class ManifestStore {
     }
 
     try {
-      final json = jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
+      final json =
+          jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
       return ResourceManifest(
         schemaVersion: json['schemaVersion'] as int? ?? 1,
         lastImportAt: _parseDate(json['lastImportAt']),
@@ -28,6 +29,10 @@ class ManifestStore {
         transactionState: _parseTransactionState(
           (json['transaction'] as Map?)?['state'],
         ),
+        dismissedAnnouncementId:
+            (json['announcement'] as Map?)?['dismissedId'] as String?,
+        dismissedAnnouncementLocalDate:
+            (json['announcement'] as Map?)?['dismissedLocalDate'] as String?,
       );
     } catch (_) {
       return ResourceManifest.initial().copyWith(

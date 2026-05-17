@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import 'constants.dart';
 import 'models.dart';
+import 'services/announcement_service.dart';
 import 'services/app_paths_service.dart';
 import 'services/diagnostics_service.dart';
 import 'services/import_service.dart';
@@ -19,10 +20,14 @@ class AppController extends ChangeNotifier {
     LocalGameServer? server,
     ImportService? importService,
     DiagnosticsService? diagnosticsService,
+    AnnouncementService? announcementService,
+    DateTime Function()? now,
   })  : _pathsService = pathsService ?? AppPathsService(),
         _validator = validator ?? ResourceValidator(),
         _server = server ?? LocalGameServer(),
-        _diagnosticsService = diagnosticsService ?? DiagnosticsService() {
+        _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
+        _announcementService = announcementService ?? AnnouncementService(),
+        _now = now ?? DateTime.now {
     _importService = importService ??
         ImportService(
           validator: _validator,
@@ -34,6 +39,8 @@ class AppController extends ChangeNotifier {
   final ResourceValidator _validator;
   final LocalGameServer _server;
   final DiagnosticsService _diagnosticsService;
+  final AnnouncementService _announcementService;
+  final DateTime Function() _now;
   late final ImportService _importService;
 
   AppPaths? _paths;
@@ -44,6 +51,7 @@ class AppController extends ChangeNotifier {
   ResourceValidationResult _importValidation =
       ResourceValidationResult.missing('尚未检查 import/docs');
   ImportProgress _importProgress = ImportProgress.idle;
+  Announcement? _pendingAnnouncement;
   bool _initialized = false;
   bool _busy = false;
   String? _message;
@@ -56,8 +64,10 @@ class AppController extends ChangeNotifier {
   ResourceValidationResult get currentValidation => _currentValidation;
   ResourceValidationResult get importValidation => _importValidation;
   ImportProgress get importProgress => _importProgress;
+  Announcement? get pendingAnnouncement => _pendingAnnouncement;
   ServerStatus get serverStatus => _server.status;
-  bool get isImporting => _importProgress.phase != ImportPhase.idle &&
+  bool get isImporting =>
+      _importProgress.phase != ImportPhase.idle &&
       _importProgress.phase != ImportPhase.completed &&
       _importProgress.phase != ImportPhase.failed;
   bool get hasCurrentResource => _currentValidation.isValid;
@@ -102,7 +112,8 @@ class AppController extends ChangeNotifier {
     _currentValidation = await _validator.validate(paths.currentDir);
     _importValidation = await _validator.validate(paths.importDocsDir);
 
-    if (_currentValidation.isValid && _manifest.resourceStatus == ResourceStatus.ready) {
+    if (_currentValidation.isValid &&
+        _manifest.resourceStatus == ResourceStatus.ready) {
       _currentValidation = _currentValidation.asReady();
     }
 
@@ -124,6 +135,34 @@ class AppController extends ChangeNotifier {
       _busy = false;
       notifyListeners();
     }
+  }
+
+  Future<void> refreshAnnouncement() async {
+    final manifestStore = _requireManifestStore();
+    final announcement = await _announcementService.fetchCurrentAnnouncement();
+    _manifest = await manifestStore.read();
+
+    if (announcement == null || _isAnnouncementDismissedToday(announcement)) {
+      _pendingAnnouncement = null;
+    } else {
+      _pendingAnnouncement = announcement;
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> dismissAnnouncement(Announcement announcement) async {
+    final manifestStore = _requireManifestStore();
+    _manifest = await manifestStore.read();
+    _manifest = _manifest.copyWith(
+      dismissedAnnouncementId: announcement.id,
+      dismissedAnnouncementLocalDate: _todayLocalDate(),
+    );
+    await manifestStore.write(_manifest);
+    if (_pendingAnnouncement?.id == announcement.id) {
+      _pendingAnnouncement = null;
+    }
+    notifyListeners();
   }
 
   Future<void> importResources() async {
@@ -197,6 +236,18 @@ class AppController extends ChangeNotifier {
   void clearMessage() {
     _message = null;
     notifyListeners();
+  }
+
+  bool _isAnnouncementDismissedToday(Announcement announcement) {
+    return _manifest.dismissedAnnouncementId == announcement.id &&
+        _manifest.dismissedAnnouncementLocalDate == _todayLocalDate();
+  }
+
+  String _todayLocalDate() {
+    final now = _now();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$month-$day';
   }
 
   AppPaths _requirePaths() {

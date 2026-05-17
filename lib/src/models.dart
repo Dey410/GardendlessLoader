@@ -75,7 +75,8 @@ class ResourceValidationResult {
   final String? errorMessage;
   final String? detectedTitle;
 
-  bool get isValid => status == ResourceStatus.valid || status == ResourceStatus.ready;
+  bool get isValid =>
+      status == ResourceStatus.valid || status == ResourceStatus.ready;
 
   ResourceValidationResult asReady() {
     return ResourceValidationResult(
@@ -97,6 +98,85 @@ class ResourceStats {
   final int fileCount;
   final int totalBytes;
   final String? detectedTitle;
+}
+
+class AnnouncementLink {
+  const AnnouncementLink({
+    required this.label,
+    required this.url,
+  });
+
+  factory AnnouncementLink.fromJson(Object? value) {
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('announcement link must be an object');
+    }
+
+    final label = value['label'];
+    final url = value['url'];
+    if (label is! String || label.trim().isEmpty) {
+      throw const FormatException('announcement link label is missing');
+    }
+    if (url is! String || !_isAllowedHttpsUrl(url)) {
+      throw const FormatException('announcement link url must be https');
+    }
+
+    return AnnouncementLink(label: label.trim(), url: url.trim());
+  }
+
+  final String label;
+  final String url;
+
+  static bool _isAllowedHttpsUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+  }
+}
+
+class Announcement {
+  const Announcement({
+    required this.id,
+    required this.title,
+    required this.message,
+    this.links = const [],
+  });
+
+  factory Announcement.fromJson(Object? value) {
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('announcement must be an object');
+    }
+
+    final id = value['id'];
+    final title = value['title'];
+    final message = value['message'];
+    if (id is! String || id.trim().isEmpty) {
+      throw const FormatException('announcement id is missing');
+    }
+    if (title is! String || title.trim().isEmpty) {
+      throw const FormatException('announcement title is missing');
+    }
+    if (message is! String || message.trim().isEmpty) {
+      throw const FormatException('announcement message is missing');
+    }
+
+    final rawLinks = value['links'];
+    final links = rawLinks == null
+        ? const <AnnouncementLink>[]
+        : (rawLinks as List)
+            .map<AnnouncementLink>(AnnouncementLink.fromJson)
+            .toList(growable: false);
+
+    return Announcement(
+      id: id.trim(),
+      title: title.trim(),
+      message: message.trim(),
+      links: links,
+    );
+  }
+
+  final String id;
+  final String title;
+  final String message;
+  final List<AnnouncementLink> links;
 }
 
 class ImportProgress {
@@ -149,6 +229,8 @@ class ResourceManifest {
     required this.lastErrorCode,
     required this.lastErrorMessage,
     required this.transactionState,
+    this.dismissedAnnouncementId,
+    this.dismissedAnnouncementLocalDate,
   });
 
   factory ResourceManifest.initial() {
@@ -176,6 +258,8 @@ class ResourceManifest {
   final String? lastErrorCode;
   final String? lastErrorMessage;
   final TransactionState transactionState;
+  final String? dismissedAnnouncementId;
+  final String? dismissedAnnouncementLocalDate;
 
   ResourceManifest copyWith({
     DateTime? lastImportAt,
@@ -187,6 +271,8 @@ class ResourceManifest {
     String? lastErrorCode,
     String? lastErrorMessage,
     TransactionState? transactionState,
+    String? dismissedAnnouncementId,
+    String? dismissedAnnouncementLocalDate,
     bool clearError = false,
   }) {
     return ResourceManifest(
@@ -198,8 +284,13 @@ class ResourceManifest {
       resourceStatus: resourceStatus ?? this.resourceStatus,
       lastSelfCheckAt: lastSelfCheckAt ?? this.lastSelfCheckAt,
       lastErrorCode: clearError ? null : lastErrorCode ?? this.lastErrorCode,
-      lastErrorMessage: clearError ? null : lastErrorMessage ?? this.lastErrorMessage,
+      lastErrorMessage:
+          clearError ? null : lastErrorMessage ?? this.lastErrorMessage,
       transactionState: transactionState ?? this.transactionState,
+      dismissedAnnouncementId:
+          dismissedAnnouncementId ?? this.dismissedAnnouncementId,
+      dismissedAnnouncementLocalDate:
+          dismissedAnnouncementLocalDate ?? this.dismissedAnnouncementLocalDate,
     );
   }
 
@@ -216,6 +307,10 @@ class ResourceManifest {
       'lastErrorMessage': lastErrorMessage,
       'transaction': {
         'state': transactionState.name,
+      },
+      'announcement': {
+        'dismissedId': dismissedAnnouncementId,
+        'dismissedLocalDate': dismissedAnnouncementLocalDate,
       },
     };
   }

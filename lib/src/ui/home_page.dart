@@ -18,6 +18,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String? _lastMessage;
+  String? _activeAnnouncementId;
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +26,7 @@ class _HomePageState extends State<HomePage> {
       animation: widget.controller,
       builder: (context, _) {
         _showMessageIfNeeded();
+        _showAnnouncementIfNeeded();
 
         final controller = widget.controller;
         if (!controller.initialized && controller.busy) {
@@ -105,6 +107,59 @@ class _HomePageState extends State<HomePage> {
   Future<void> _openGitHub() async {
     final browser = ChromeSafariBrowser();
     await browser.open(url: WebUri(githubUrl));
+  }
+
+  Future<void> _openAnnouncementLink(AnnouncementLink link) async {
+    final browser = ChromeSafariBrowser();
+    await browser.open(url: WebUri(link.url));
+  }
+
+  void _showAnnouncementIfNeeded() {
+    final announcement = widget.controller.pendingAnnouncement;
+    if (announcement == null || announcement.id == _activeAnnouncementId) {
+      return;
+    }
+
+    _activeAnnouncementId = announcement.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted ||
+          widget.controller.pendingAnnouncement?.id != announcement.id) {
+        _activeAnnouncementId = null;
+        return;
+      }
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text(announcement.title),
+          content: SingleChildScrollView(
+            child: Text(announcement.message),
+          ),
+          actions: [
+            for (final link in announcement.links)
+              TextButton.icon(
+                onPressed: () => _openAnnouncementLink(link),
+                icon: const Icon(Icons.open_in_new),
+                label: Text(link.label),
+              ),
+            TextButton(
+              onPressed: () async {
+                await widget.controller.dismissAnnouncement(announcement);
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+
+      if (mounted && _activeAnnouncementId == announcement.id) {
+        _activeAnnouncementId = null;
+      }
+    });
   }
 
   Future<void> _startGame() async {
@@ -202,7 +257,9 @@ class _StatusPanel extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(hasCurrent ? Icons.check_circle_outline : Icons.folder_open_outlined),
+                Icon(hasCurrent
+                    ? Icons.check_circle_outline
+                    : Icons.folder_open_outlined),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(

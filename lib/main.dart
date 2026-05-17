@@ -22,7 +22,11 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp> {
   void initState() {
     super.initState();
     _controller = AppController();
-    _controller.initialize();
+    _controller.initialize().then((_) {
+      if (mounted && _controller.initialized) {
+        _controller.refreshAnnouncement();
+      }
+    });
   }
 
   @override

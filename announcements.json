@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "announcement": {
+    "id": "2026-05-17-welcome",
+    "title": "公告",
+    "message": "欢迎使用 GardendlessLoader。你可以通过 GitHub 查看项目更新，也可以前往 B站主页关注后续动态。",
+    "links": [
+      {
+        "label": "GitHub",
+        "url": "https://github.com/Dey410/GardendlessLoader"
+      },
+      {
+        "label": "B站主页",
+        "url": "https://space.bilibili.com/523667580?spm_id_from=333.1007.0.0"
+      }
+    ]
+  }
+}
