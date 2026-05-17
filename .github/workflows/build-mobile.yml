@@ -300,9 +300,43 @@ jobs:
             echo "No Flutter tests found."
           fi
 
-      - name: Build HAP
+      - name: Build unsigned HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
-        run: flutter build hap --release --target-platform ohos-arm64
+        run: |
+          set +e
+          flutter build hap --release --target-platform ohos-arm64 2>&1 | tee "$RUNNER_TEMP/flutter-build-hap.log"
+          BUILD_STATUS="${PIPESTATUS[0]}"
+          set -e
+
+          UNSIGNED_HAP="$(find ohos/entry/build/default/outputs -type f -name '*unsigned*.hap' -print -quit)"
+
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            if grep -q "entry-default-signed.hap" "$RUNNER_TEMP/flutter-build-hap.log" && [ -n "$UNSIGNED_HAP" ]; then
+              echo "::notice title=Unsigned HAP built::Flutter failed only because signed HAP was not generated. Continuing with unsigned HAP."
+            else
+              echo "flutter build hap failed before producing an unsigned HAP."
+              exit "$BUILD_STATUS"
+            fi
+          fi
+
+          if [ -z "$UNSIGNED_HAP" ]; then
+            echo "Could not find unsigned HAP."
+            find ohos/entry/build/default/outputs -type f | sort || true
+            exit 1
+          fi
+
+          mkdir -p build/ohos/unsigned
+          cp "$UNSIGNED_HAP" build/ohos/unsigned/GardendlessLoader-unsigned.hap
+
+          echo "Unsigned HAP: $UNSIGNED_HAP"
+
+      - name: Upload unsigned HAP
+        if: steps.ohos-tools.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gardendless-loader-unsigned-hap
+          path: build/ohos/unsigned/GardendlessLoader-unsigned.hap
+          if-no-files-found: error
 
       - name: Upload HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
