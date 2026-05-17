@@ -302,33 +302,23 @@ jobs:
 
       - name: Build unsigned HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
+        working-directory: ohos
         run: |
-          set +e
-          flutter build hap --release --target-platform ohos-arm64 2>&1 | tee "$RUNNER_TEMP/flutter-build-hap.log"
-          BUILD_STATUS="${PIPESTATUS[0]}"
-          set -e
+          hvigorw assembleHap --mode module -p product=default
 
-          UNSIGNED_HAP="$(find ohos/entry/build/default/outputs -type f -name '*unsigned*.hap' -print -quit)"
-
-          if [ "$BUILD_STATUS" -ne 0 ]; then
-            if grep -q "entry-default-signed.hap" "$RUNNER_TEMP/flutter-build-hap.log" && [ -n "$UNSIGNED_HAP" ]; then
-              echo "::notice title=Unsigned HAP built::Flutter failed only because signed HAP was not generated. Continuing with unsigned HAP."
-            else
-              echo "flutter build hap failed before producing an unsigned HAP."
-              exit "$BUILD_STATUS"
-            fi
-          fi
+          UNSIGNED_HAP="$(find entry/build/default/outputs -type f -name '*unsigned*.hap' -print -quit || true)"
 
           if [ -z "$UNSIGNED_HAP" ]; then
-            echo "Could not find unsigned HAP."
-            find ohos/entry/build/default/outputs -type f | sort || true
+            echo "Unsigned HAP was not generated."
+            echo "Available HAP outputs:"
+            find entry/build/default/outputs -type f -name '*.hap' -print || true
             exit 1
           fi
 
-          mkdir -p build/ohos/unsigned
-          cp "$UNSIGNED_HAP" build/ohos/unsigned/GardendlessLoader-unsigned.hap
+          mkdir -p ../build/ohos/unsigned
+          cp "$UNSIGNED_HAP" ../build/ohos/unsigned/GardendlessLoader-unsigned.hap
 
-          echo "Unsigned HAP: $UNSIGNED_HAP"
+          echo "Unsigned HAP: ohos/$UNSIGNED_HAP"
 
       - name: Upload unsigned HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
