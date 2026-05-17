@@ -125,7 +125,7 @@ jobs:
           if-no-files-found: error
 
   harmonyos:
-    name: Build HarmonyOS HAP
+    name: Build unsigned HarmonyOS HAP
     runs-on: ubuntu-latest
 
     env:
@@ -304,14 +304,16 @@ jobs:
         if: steps.ohos-tools.outputs.enabled == 'true'
         working-directory: ohos
         run: |
-          hvigorw assembleHap --mode module -p product=default
+          ohpm install --all
 
-          UNSIGNED_HAP="$(find entry/build/default/outputs -type f -name '*unsigned*.hap' -print -quit || true)"
+          hvigorw assembleHap --mode module -p product=default --no-daemon
+
+          UNSIGNED_HAP="$(find entry/build -type f -name '*unsigned*.hap' -print -quit || true)"
 
           if [ -z "$UNSIGNED_HAP" ]; then
             echo "Unsigned HAP was not generated."
             echo "Available HAP outputs:"
-            find entry/build/default/outputs -type f -name '*.hap' -print || true
+            find entry/build -type f -name '*.hap' -print || true
             exit 1
           fi
 
@@ -326,12 +328,4 @@ jobs:
         with:
           name: gardendless-loader-unsigned-hap
           path: build/ohos/unsigned/GardendlessLoader-unsigned.hap
-          if-no-files-found: error
-
-      - name: Upload HAP
-        if: steps.ohos-tools.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: gardendless-loader-hap
-          path: ohos/entry/build/default/outputs/default/entry-default-signed.hap
           if-no-files-found: error
