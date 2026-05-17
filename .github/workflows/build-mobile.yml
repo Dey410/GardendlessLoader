@@ -211,26 +211,31 @@ jobs:
 
           unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$DEVECO_DIR"
 
-          OHPM_BIN="$(find "$DEVECO_DIR" -type f -name ohpm -print -quit)"
-          HVIGOR_BIN="$(find "$DEVECO_DIR" -type f -name hvigor -print -quit)"
-          NODE_BIN="$(find "$DEVECO_DIR" -type f -name node -print -quit)"
-          SDK_DIR="$(find "$DEVECO_DIR" -type d -name sdk -print -quit)"
+          TOOL_HOME="$(find "$DEVECO_DIR" -type d -name command-line-tools -print -quit)"
+          if [ -z "$TOOL_HOME" ]; then
+            echo "Could not locate command-line-tools in downloaded archive."
+            find "$DEVECO_DIR" -maxdepth 4 -type d | sort
+            exit 1
+          fi
+
+          OHPM_BIN="$(find "$TOOL_HOME" -type f -name ohpm -print -quit)"
+          HVIGOR_BIN="$(find "$TOOL_HOME" -type f \( -name hvigor -o -name hvigorw \) -print -quit)"
+          NODE_BIN="$(command -v node || true)"
 
           if [ -z "$OHPM_BIN" ]; then
             echo "Could not locate ohpm in downloaded archive."
-            find "$DEVECO_DIR" -maxdepth 6 -type f | sort
+            find "$TOOL_HOME" -maxdepth 4 -type f | sort
             exit 1
           fi
 
           if [ -z "$HVIGOR_BIN" ]; then
-            echo "Could not locate hvigor in downloaded archive."
-            find "$DEVECO_DIR" -maxdepth 6 -type f | sort
+            echo "Could not locate hvigor or hvigorw in downloaded archive."
+            find "$TOOL_HOME" -maxdepth 4 -type f | sort
             exit 1
           fi
 
           if [ -z "$NODE_BIN" ]; then
-            echo "Could not locate node in downloaded archive."
-            find "$DEVECO_DIR" -maxdepth 6 -type f | sort
+            echo "Could not locate node on runner."
             exit 1
           fi
 
@@ -238,20 +243,24 @@ jobs:
           HVIGOR_DIR="$(dirname "$HVIGOR_BIN")"
           NODE_DIR="$(dirname "$NODE_BIN")"
 
-          chmod +x "$OHPM_BIN" "$HVIGOR_BIN" "$NODE_BIN" || true
+          chmod +x "$OHPM_BIN" "$HVIGOR_BIN" || true
 
+          mkdir -p "$RUNNER_TEMP/ohos-bin"
+
+          if [ "$(basename "$HVIGOR_BIN")" = "hvigorw" ]; then
+            ln -sf "$HVIGOR_BIN" "$RUNNER_TEMP/ohos-bin/hvigor"
+          fi
+
+          echo "$RUNNER_TEMP/ohos-bin" >> "$GITHUB_PATH"
           echo "$OHPM_DIR" >> "$GITHUB_PATH"
           echo "$HVIGOR_DIR" >> "$GITHUB_PATH"
           echo "$NODE_DIR" >> "$GITHUB_PATH"
 
-          if [ -n "$SDK_DIR" ]; then
-            echo "DEVECO_SDK_HOME=$SDK_DIR" >> "$GITHUB_ENV"
-            echo "OHOS_SDK_HOME=$SDK_DIR" >> "$GITHUB_ENV"
-          else
-            echo "::warning title=OpenHarmony SDK directory not found::The command-line tools archive did not contain a directory named sdk."
-          fi
+          echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
+          echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
+          echo "OHOS_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
 
-          export PATH="$OHPM_DIR:$HVIGOR_DIR:$NODE_DIR:$PATH"
+          export PATH="$RUNNER_TEMP/ohos-bin:$OHPM_DIR:$HVIGOR_DIR:$NODE_DIR:$PATH"
 
           echo "ohpm path: $OHPM_BIN"
           echo "hvigor path: $HVIGOR_BIN"
@@ -261,7 +270,7 @@ jobs:
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
 
           ohpm --version
-          hvigor --version
+          hvigor --version || hvigorw --version
           node --version
 
       - name: Install dependencies
