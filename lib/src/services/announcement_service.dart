@@ -42,7 +42,8 @@ class AnnouncementService {
 
   Future<Announcement?> fetchCurrentAnnouncement() async {
     try {
-      final response = await _loader(_remoteUri, _timeout, _maxBytes).timeout(_timeout);
+      final response =
+          await _loader(_remoteUri, _timeout, _maxBytes).timeout(_timeout);
       if (response.statusCode != HttpStatus.ok) {
         return _fallbackAnnouncement;
       }
@@ -108,7 +109,8 @@ class AnnouncementService {
 const localFallbackAnnouncement = Announcement(
   id: 'local-default',
   title: '公告',
-  message: '欢迎使用 GardendlessLoader。如果无法获取远程公告，当前显示的是本地公告。',
+  message:
+      '欢迎使用 GardendlessLoader。如果你喜欢这个项目，请给它一个⭐️！也可以前往GitHub仓库查看源代码，或者在小朱的B站主页上关注小朱，获取更多更新和教程！。',
   links: [
     AnnouncementLink(label: 'GitHub', url: appGithubUrl),
     AnnouncementLink(label: 'B站主页', url: bilibiliHomeUrl),

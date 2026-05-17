@@ -37,7 +37,7 @@ class _HomePageState extends State<HomePage> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text(appDisplayName),
+            title: Text('$appDisplayName | B站xiaozhu_410免费分享，严禁售卖'),
             actions: [
               IconButton(
                 tooltip: '诊断信息',
@@ -60,17 +60,21 @@ class _HomePageState extends State<HomePage> {
                 if (controller.hasValidImportSource)
                   _Notice(
                     title: '发现可导入资源',
-                    message: controller.importValidation.detectedTitle ?? 'import/docs 校验通过',
+                    message: controller.importValidation.detectedTitle ??
+                        'import/docs 校验通过',
                     icon: Icons.download_done_outlined,
                   )
                 else if (controller.hasCurrentResource &&
-                    controller.importValidation.status == ResourceStatus.invalid)
+                    controller.importValidation.status ==
+                        ResourceStatus.invalid)
                   _Notice(
                     title: '导入源无效',
-                    message: controller.importValidation.errorMessage ?? 'import/docs 校验失败',
+                    message: controller.importValidation.errorMessage ??
+                        'import/docs 校验失败',
                     icon: Icons.warning_amber_outlined,
                   )
-                else if (!controller.hasCurrentResource && controller.hasValidImportSource)
+                else if (!controller.hasCurrentResource &&
+                    controller.hasValidImportSource)
                   const _Notice(
                     title: '需要手动导入',
                     message: 'current 无有效资源，请点击导入资源。',
@@ -100,7 +104,8 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     });
   }
 

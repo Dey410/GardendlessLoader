@@ -5,7 +5,7 @@ typedef PressCollectKey = FutureOr<void> Function();
 class AutoSunCollector {
   AutoSunCollector({
     required PressCollectKey onPressCollectKey,
-    this.interval = const Duration(milliseconds: 1500),
+    this.interval = const Duration(milliseconds: 1500), //收集阳光定时器,默认1.5秒一次
   }) : _onPressCollectKey = onPressCollectKey;
 
   final PressCollectKey _onPressCollectKey;

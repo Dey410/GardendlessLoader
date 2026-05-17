@@ -13,6 +13,7 @@ import 'services/local_game_server.dart';
 import 'services/manifest_store.dart';
 import 'services/resource_validator.dart';
 
+//AppController 是整个应用的核心控制器，负责管理应用的状态、处理业务逻辑，并与 UI 进行交互。它使用 ChangeNotifier 来通知 UI 更新。
 class AppController extends ChangeNotifier {
   AppController({
     AppPathsService? pathsService,
@@ -75,7 +76,7 @@ class AppController extends ChangeNotifier {
   bool get canStartGame => hasCurrentResource;
   String get detectedTitle =>
       _currentValidation.detectedTitle ?? _manifest.detectedTitle ?? '未检测到标题';
-
+//返回一个适合在 UI 中显示的资源根目录名称。如果路径信息不可用，则返回一个默认的资源文件夹名称。
   String get userVisibleRoot {
     final root = _paths?.root;
     if (root == null) {
@@ -84,6 +85,7 @@ class AppController extends ChangeNotifier {
     return '${root.parent.path}${Platform.pathSeparator}${p.basename(root.path)}';
   }
 
+//initialize 方法负责初始化应用的核心状态，包括加载路径信息、读取资源清单、恢复未完成的导入事务，并刷新公告信息。它会在整个过程中更新 busy 状态和 message，以便 UI 可以显示加载状态和错误信息。
   Future<void> initialize() async {
     _busy = true;
     notifyListeners();
@@ -105,6 +107,7 @@ class AppController extends ChangeNotifier {
     }
   }
 
+//refresh 方法负责刷新应用的状态，主要是重新验证资源目录的有效性，并更新公告信息。它会更新 currentValidation 和 importValidation 的结果，以便 UI 可以显示当前资源和导入资源的状态。
   Future<void> refresh() async {
     final paths = _requirePaths();
     final manifestStore = _requireManifestStore();
@@ -181,7 +184,7 @@ class AppController extends ChangeNotifier {
           notifyListeners();
         },
       );
-      _message = '导入成功，可自行删除 import/docs 节省空间';
+      _message = '导入成功，可删除 import/docs 节省空间';
       await refresh();
     } on ImportFailure catch (failure) {
       _message = failure.message;

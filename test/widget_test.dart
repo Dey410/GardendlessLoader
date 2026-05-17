@@ -84,6 +84,38 @@ void main() {
     expect(size.height, 768);
   });
 
+  testWidgets('game viewport overlays watermark in content bottom-left',
+      (tester) async {
+    const childKey = Key('game-child');
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1024, 768);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: GameViewportFrame(
+          child: ColoredBox(
+            key: childKey,
+            color: Colors.green,
+          ),
+        ),
+      ),
+    );
+
+    final childRect = tester.getRect(find.byKey(childKey));
+    final watermarkRect = tester.getRect(find.text(gameWatermarkText));
+
+    expect(watermarkRect.left, greaterThanOrEqualTo(childRect.left + 10));
+    expect(watermarkRect.bottom, lessThanOrEqualTo(childRect.bottom - 8));
+    expect(find.byType(GameWatermark), findsOneWidget);
+    final ignorePointer = tester.widget<IgnorePointer>(
+      find.byKey(const ValueKey('game-watermark-ignore-pointer')),
+    );
+
+    expect(ignorePointer.ignoring, isTrue);
+  });
+
   testWidgets('game menu exposes auto sunlight collection switch',
       (tester) async {
     bool? requestedValue;

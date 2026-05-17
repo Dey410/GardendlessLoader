@@ -3,7 +3,7 @@
   "announcement": {
     "id": "2026-05-17-welcome",
     "title": "公告",
-    "message": "欢迎使用 GardendlessLoader。你可以通过 GitHub 查看项目更新，也可以前往 B站主页关注后续动态。",
+    "message": "欢迎使用 GardendlessLoader。如果你喜欢这个项目，请给它一个⭐️！也可以前往GitHub仓库查看源代码，或者在小朱的B站主页上关注小朱，获取更多更新和教程！",
     "links": [
       {
         "label": "GitHub",

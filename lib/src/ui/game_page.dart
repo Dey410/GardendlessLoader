@@ -14,6 +14,8 @@ import '../constants.dart';
 import '../services/auto_sun_collector.dart';
 import '../web/touch_patch.dart';
 
+const gameWatermarkText = '本加载器B站xiaozhu_410免费分享，仅供学习，严禁售卖';
+
 const _collectSunlightKeyPressScript = r'''
 (function () {
   const eventInit = {
@@ -463,11 +465,55 @@ class GameViewportFrame extends StatelessWidget {
             child: SizedBox(
               width: width,
               height: height,
-              child: ClipRect(child: child),
+              child: ClipRect(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    child,
+                    const Positioned(
+                      left: 10,
+                      bottom: 8,
+                      child: GameWatermark(),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class GameWatermark extends StatelessWidget {
+  const GameWatermark({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      key: const ValueKey('game-watermark-ignore-pointer'),
+      ignoring: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.32),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          child: Text(
+            gameWatermarkText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Color(0xcfffffff),
+              fontSize: 11,
+              height: 1.1,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
