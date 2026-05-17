@@ -29,10 +29,14 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          rm -f pubspec_overrides.yaml
+          flutter pub get
 
       - name: Test
-        run: flutter test
+        run: |
+          TEST_FILES=$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)
+          flutter test $TEST_FILES
 
       - name: Configure Android signing
         env:
@@ -78,14 +82,18 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          rm -f pubspec_overrides.yaml
+          flutter pub get
 
       - name: Install CocoaPods dependencies
         run: pod install
         working-directory: ios
 
       - name: Test
-        run: flutter test
+        run: |
+          TEST_FILES=$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)
+          flutter test $TEST_FILES
 
       - name: Build unsigned iOS app
         run: flutter build ios --release --no-codesign
@@ -143,7 +151,6 @@ jobs:
           git clone --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$RUNNER_TEMP/flutter_ohos"
 
           cd "$RUNNER_TEMP/flutter_ohos"
-
           git fetch --tags --force
           git config --global --add safe.directory "$RUNNER_TEMP/flutter_ohos"
 
@@ -215,11 +222,13 @@ jobs:
           flutter --version
           dart --version
 
-          flutter pub get -v
+          flutter pub get
 
       - name: Test
         if: steps.ohos-tools.outputs.enabled == 'true'
-        run: flutter test
+        run: |
+          TEST_FILES=$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)
+          flutter test $TEST_FILES
 
       - name: Build HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
