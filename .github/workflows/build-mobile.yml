@@ -182,7 +182,7 @@ jobs:
             echo "Use a newer OpenHarmony Flutter SDK branch."
             exit 1
           fi
-          
+
       - name: Set up OpenHarmony command-line tools
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
@@ -199,24 +199,26 @@ jobs:
 
           echo "Looking for OpenHarmony tools..."
 
-          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f -path '*/bin/ohpm' -print -quit || true)"
-          HVIGORW_BIN="$(find "$RUNNER_TEMP/deveco" -type f -path '*/bin/hvigorw' -print -quit || true)"
+          # 兼容 ohpm / ohpm.sh 两种命名
+          OHPM_BIN="$(find "$RUNNER_TEMP/deveco" -type f \( -name 'ohpm' -o -name 'ohpm.sh' \) -path '*/bin/*' -print -quit || true)"
+          # 兼容 hvigorw / hvigorw.sh 两种命名
+          HVIGORW_BIN="$(find "$RUNNER_TEMP/deveco" -type f \( -name 'hvigorw' -o -name 'hvigorw.sh' \) -path '*/bin/*' -print -quit || true)"
           NODE_BIN="$(find "$RUNNER_TEMP/deveco" -type f -name node -print -quit || true)"
 
           if [ -z "$OHPM_BIN" ]; then
-            echo "Could not find ohpm."
-            find "$RUNNER_TEMP/deveco" -maxdepth 5 -type f -name 'ohpm*' -print || true
+            echo "Could not find ohpm. Directory listing:"
+            find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f -name 'ohpm*' -print || true
             exit 1
           fi
 
           if [ -z "$HVIGORW_BIN" ]; then
-            echo "Could not find hvigorw."
-            find "$RUNNER_TEMP/deveco" -maxdepth 5 -type f -name 'hvigor*' -print || true
+            echo "Could not find hvigorw. Directory listing:"
+            find "$RUNNER_TEMP/deveco" -maxdepth 6 -type f -name 'hvigor*' -print || true
             exit 1
           fi
 
-          chmod +x "$OHPM_BIN" || true
-          chmod +x "$HVIGORW_BIN" || true
+          chmod +x "$OHPM_BIN"
+          chmod +x "$HVIGORW_BIN"
 
           OHPM_HOME="$(dirname "$OHPM_BIN")"
           HVIGORW_HOME="$(dirname "$HVIGORW_BIN")"
@@ -225,7 +227,7 @@ jobs:
           echo "$HVIGORW_HOME" >> "$GITHUB_PATH"
 
           if [ -n "$NODE_BIN" ]; then
-            chmod +x "$NODE_BIN" || true
+            chmod +x "$NODE_BIN"
             NODE_HOME="$(dirname "$NODE_BIN")"
             echo "$NODE_HOME" >> "$GITHUB_PATH"
             echo "NODE_HOME=$NODE_HOME" >> "$GITHUB_ENV"
@@ -234,51 +236,98 @@ jobs:
           TOOL_HOME="$(dirname "$OHPM_HOME")"
           echo "TOOL_HOME=$TOOL_HOME" >> "$GITHUB_ENV"
 
+          # 查找 SDK 目录（含版本子目录，例如 sdk/HarmonyOS-NEXT-xxx/ 或 sdk/10/）
           SDK_HOME="$(find "$RUNNER_TEMP/deveco" -type d -name sdk -print -quit || true)"
           if [ -n "$SDK_HOME" ]; then
-            echo "DEVECO_SDK_HOME=$SDK_HOME" >> "$GITHUB_ENV"
+            RESOLVED_SDK="$SDK_HOME"
           else
-            echo "DEVECO_SDK_HOME=$TOOL_HOME/sdk" >> "$GITHUB_ENV"
+            RESOLVED_SDK="$TOOL_HOME/sdk"
           fi
+
+          echo "DEVECO_SDK_HOME=$RESOLVED_SDK" >> "$GITHUB_ENV"
+          # HOS_SDK_HOME 是 flutter_ohos 工具链查找 SDK 的实际变量名
+          echo "HOS_SDK_HOME=$RESOLVED_SDK" >> "$GITHUB_ENV"
 
           echo "OHPM_BIN=$OHPM_BIN"
           echo "HVIGORW_BIN=$HVIGORW_BIN"
           echo "OHPM_HOME=$OHPM_HOME"
           echo "HVIGORW_HOME=$HVIGORW_HOME"
+          echo "HOS_SDK_HOME=$RESOLVED_SDK"
 
           echo "registry=https://repo.huaweicloud.com/repository/npm/" > ~/.npmrc
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
 
           "$OHPM_BIN" --version || true
           "$HVIGORW_BIN" --version || true
-        
+
       - name: Test
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           TEST_FILES=$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)
           flutter test $TEST_FILES
-          
+
       - name: Verify OpenHarmony build tools
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           echo "PATH=$PATH"
+          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
+          echo "DEVECO_SDK_HOME=$DEVECO_SDK_HOME"
 
-          command -v ohpm
-          command -v hvigorw || true
+          command -v ohpm || command -v ohpm.sh
+          command -v hvigorw || command -v hvigorw.sh || true
           command -v node || true
 
-          ohpm --version || true
-          hvigorw --version || true
+          ohpm --version || ohpm.sh --version || true
+          hvigorw --version || hvigorw.sh --version || true
           node --version || true
+
+          # 确认 SDK 目录存在且非空
+          if [ ! -d "$HOS_SDK_HOME" ]; then
+            echo "ERROR: HOS_SDK_HOME directory does not exist: $HOS_SDK_HOME"
+            exit 1
+          fi
+          echo "SDK contents:"
+          ls "$HOS_SDK_HOME"
+
+      - name: Install dependencies
+        if: steps.ohos-tools.outputs.enabled == 'true'
+        run: |
+          rm -f pubspec_overrides.yaml
+          flutter pub get
+
+      - name: Install ohpm dependencies
+        if: steps.ohos-tools.outputs.enabled == 'true'
+        working-directory: ohos
+        run: ohpm install || ohpm.sh install
 
       - name: Build HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: flutter build hap --release --target-platform ohos-arm64
+
+      - name: Find and upload HAP
+        if: steps.ohos-tools.outputs.enabled == 'true'
+        run: |
+          echo "Searching for built HAP files..."
+          find ohos -name '*.hap' -print
+
+          # 优先找签名包，其次找任意 HAP
+          HAP_PATH="$(find ohos -name 'entry-default-signed.hap' -print -quit || true)"
+          if [ -z "$HAP_PATH" ]; then
+            HAP_PATH="$(find ohos -name '*.hap' -print -quit || true)"
+          fi
+
+          if [ -z "$HAP_PATH" ]; then
+            echo "ERROR: No .hap file found after build."
+            exit 1
+          fi
+
+          echo "Found HAP: $HAP_PATH"
+          cp "$HAP_PATH" "$RUNNER_TEMP/GardendlessLoader.hap"
 
       - name: Upload HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gardendless-loader-hap
-          path: ohos/entry/build/default/outputs/default/entry-default-signed.hap
+          path: ${{ runner.temp }}/GardendlessLoader.hap
           if-no-files-found: error
