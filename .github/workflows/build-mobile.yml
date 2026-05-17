@@ -300,13 +300,13 @@ jobs:
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           set +e
-          flutter build hap --release --target-platform ohos-arm64 2>&1 | tee "$RUNNER_TEMP/flutter-build-hap.log"
-          FLUTTER_BUILD_STATUS="${PIPESTATUS[0]}"
+          flutter build hap --release --target-platform ohos-arm64
+          FLUTTER_BUILD_STATUS="$?"
           set -e
 
           echo "flutter build hap exit code: $FLUTTER_BUILD_STATUS"
 
-          UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*.hap' ! -name '*signed*.hap' -print -quit || true)"
+          UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -print -quit || true)"
 
           if [ -z "$UNSIGNED_HAP" ]; then
             echo "Unsigned HAP was not generated."
