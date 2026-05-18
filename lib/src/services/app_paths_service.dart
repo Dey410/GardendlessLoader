@@ -8,6 +8,7 @@ import '../models.dart';
 
 typedef DirectoryProvider = Future<Directory> Function();
 typedef NullableDirectoryProvider = Future<Directory?> Function();
+typedef ExecutableDirectoryProvider = Directory Function();
 
 class AppPathsService {
   AppPathsService({
@@ -15,17 +16,21 @@ class AppPathsService {
     String? platformName,
     DirectoryProvider? documentsDirectoryProvider,
     NullableDirectoryProvider? externalStorageDirectoryProvider,
+    ExecutableDirectoryProvider? executableDirectoryProvider,
   })  : _rootOverride = rootOverride,
         _platformName = platformName ?? Platform.operatingSystem,
         _documentsDirectoryProvider =
             documentsDirectoryProvider ?? getApplicationDocumentsDirectory,
         _externalStorageDirectoryProvider =
-            externalStorageDirectoryProvider ?? getExternalStorageDirectory;
+            externalStorageDirectoryProvider ?? getExternalStorageDirectory,
+        _executableDirectoryProvider =
+            executableDirectoryProvider ?? _defaultExecutableDirectory;
 
   final Directory? _rootOverride;
   final String _platformName;
   final DirectoryProvider _documentsDirectoryProvider;
   final NullableDirectoryProvider _externalStorageDirectoryProvider;
+  final ExecutableDirectoryProvider _executableDirectoryProvider;
 
   Future<AppPaths> ensureInitialized() async {
     final root = _rootOverride ?? await _defaultRoot();
@@ -55,6 +60,11 @@ class AppPathsService {
       return Directory(p.join(documents.path, resourceFolderName));
     }
 
+    if (_platformName == 'windows') {
+      final executableDirectory = _executableDirectoryProvider();
+      return Directory(p.join(executableDirectory.path, resourceFolderName));
+    }
+
     if (_platformName == 'android' || _platformName == 'ohos') {
       final external = await _externalStorageDirectoryProvider();
       if (external != null) {
@@ -64,5 +74,9 @@ class AppPathsService {
 
     final documents = await _documentsDirectoryProvider();
     return Directory(p.join(documents.path, resourceFolderName));
+  }
+
+  static Directory _defaultExecutableDirectory() {
+    return File(Platform.resolvedExecutable).parent;
   }
 }

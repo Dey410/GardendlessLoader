@@ -53,7 +53,8 @@ void main() {
     expect(await paths.importDocsDir.exists(), isTrue);
   });
 
-  test('windows creates the final import docs directory', () async {
+  test('windows creates the final import docs directory next to the exe',
+      () async {
     final temp = await Directory.systemTemp.createTemp('gardendless_paths_');
     addTearDown(() async {
       if (await temp.exists()) {
@@ -62,16 +63,19 @@ void main() {
     });
 
     final documents = Directory(p.join(temp.path, 'documents'));
+    final executableDirectory = Directory(p.join(temp.path, 'release'));
 
     final paths = await AppPathsService(
       platformName: 'windows',
       documentsDirectoryProvider: () async => documents,
       externalStorageDirectoryProvider: () async => null,
+      executableDirectoryProvider: () => executableDirectory,
     ).ensureInitialized();
 
-    expect(paths.root.path, p.join(documents.path, resourceFolderName));
+    expect(
+        paths.root.path, p.join(executableDirectory.path, resourceFolderName));
     expect(await paths.importDocsDir.exists(), isTrue);
     expect(paths.importDocsDir.path,
-        p.join(documents.path, resourceFolderName, 'import', 'docs'));
+        p.join(executableDirectory.path, resourceFolderName, 'import', 'docs'));
   });
 }
