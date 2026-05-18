@@ -296,34 +296,42 @@ jobs:
             echo "No Flutter tests found."
           fi
 
-      - name: Build unsigned HAP
+      - name: Build unsigned HAPs
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
-          set +e
-          flutter build hap --release --target-platform ohos-arm64
-          FLUTTER_BUILD_STATUS="$?"
-          set -e
-
-          echo "flutter build hap exit code: $FLUTTER_BUILD_STATUS"
-
-          UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -print -quit || true)"
-
-          if [ -z "$UNSIGNED_HAP" ]; then
-            echo "Unsigned HAP was not generated."
-            echo "Available HAP outputs:"
-            find ohos/entry/build -type f -name '*.hap' -print || true
-            exit 1
-          fi
-
           mkdir -p build/ohos/unsigned
-          cp "$UNSIGNED_HAP" build/ohos/unsigned/GardendlessLoader-unsigned.hap
 
-          echo "Unsigned HAP: $UNSIGNED_HAP"
+          for TARGET_PLATFORM in ohos-arm64 ohos-x64; do
+            echo "Building unsigned HAP for $TARGET_PLATFORM"
 
-      - name: Upload unsigned HAP
+            set +e
+            flutter build hap --release --target-platform "$TARGET_PLATFORM"
+            FLUTTER_BUILD_STATUS="$?"
+            set -e
+
+            echo "flutter build hap ($TARGET_PLATFORM) exit code: $FLUTTER_BUILD_STATUS"
+
+            if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
+              exit "$FLUTTER_BUILD_STATUS"
+            fi
+
+            UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
+
+            if [ -z "$UNSIGNED_HAP" ]; then
+              echo "Unsigned HAP was not generated for $TARGET_PLATFORM."
+              echo "Available HAP outputs:"
+              find ohos/entry/build -type f -name '*.hap' -print || true
+              exit 1
+            fi
+
+            cp "$UNSIGNED_HAP" "build/ohos/unsigned/GardendlessLoader-unsigned-$TARGET_PLATFORM.hap"
+            echo "Unsigned HAP ($TARGET_PLATFORM): $UNSIGNED_HAP"
+          done
+
+      - name: Upload unsigned HAPs
         if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: gardendless-loader-unsigned-hap
-          path: build/ohos/unsigned/GardendlessLoader-unsigned.hap
+          name: gardendless-loader-unsigned-haps
+          path: build/ohos/unsigned/*.hap
           if-no-files-found: error

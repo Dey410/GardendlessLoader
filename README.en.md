@@ -141,6 +141,7 @@ flutter doctor -v
 flutter pub get
 flutter test
 flutter build hap --release --target-platform ohos-arm64
+flutter build hap --release --target-platform ohos-x64
 ```
 
 Expected signed HAP output from the OpenHarmony build layout:
