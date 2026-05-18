@@ -278,7 +278,12 @@ class _StatusPanel extends StatelessWidget {
             Text(subtitle),
             const SizedBox(height: 12),
             Text(
-              '目录：${controller.userVisibleRoot}',
+              '导入目录：${controller.userVisibleImportDocs}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '资源根目录：${controller.userVisibleRoot}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],

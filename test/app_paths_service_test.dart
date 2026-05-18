@@ -6,8 +6,7 @@ import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
-  test('ohos stores resources under the application documents directory',
-      () async {
+  test('ohos stores resources under external storage when available', () async {
     final temp = await Directory.systemTemp.createTemp('gardendless_paths_');
     addTearDown(() async {
       if (await temp.exists()) {
@@ -24,12 +23,55 @@ void main() {
       externalStorageDirectoryProvider: () async => external,
     ).ensureInitialized();
 
-    expect(paths.root.path, p.join(documents.path, resourceFolderName));
+    expect(paths.root.path, p.join(external.path, resourceFolderName));
     expect(await paths.importDir.exists(), isTrue);
-    expect(await paths.importDocsDir.exists(), isFalse);
+    expect(await paths.importDocsDir.exists(), isTrue);
     expect(await paths.currentDir.exists(), isTrue);
     expect(await paths.previousDir.exists(), isTrue);
     expect(await paths.stagingDir.exists(), isTrue);
     expect(paths.manifestFile.path, p.join(paths.root.path, 'manifest.json'));
+  });
+
+  test('ohos falls back to documents when external storage is unavailable',
+      () async {
+    final temp = await Directory.systemTemp.createTemp('gardendless_paths_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final documents = Directory(p.join(temp.path, 'documents'));
+
+    final paths = await AppPathsService(
+      platformName: 'ohos',
+      documentsDirectoryProvider: () async => documents,
+      externalStorageDirectoryProvider: () async => null,
+    ).ensureInitialized();
+
+    expect(paths.root.path, p.join(documents.path, resourceFolderName));
+    expect(await paths.importDocsDir.exists(), isTrue);
+  });
+
+  test('windows creates the final import docs directory', () async {
+    final temp = await Directory.systemTemp.createTemp('gardendless_paths_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final documents = Directory(p.join(temp.path, 'documents'));
+
+    final paths = await AppPathsService(
+      platformName: 'windows',
+      documentsDirectoryProvider: () async => documents,
+      externalStorageDirectoryProvider: () async => null,
+    ).ensureInitialized();
+
+    expect(paths.root.path, p.join(documents.path, resourceFolderName));
+    expect(await paths.importDocsDir.exists(), isTrue);
+    expect(paths.importDocsDir.path,
+        p.join(documents.path, resourceFolderName, 'import', 'docs'));
   });
 }

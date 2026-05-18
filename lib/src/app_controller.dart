@@ -85,6 +85,14 @@ class AppController extends ChangeNotifier {
     return '${root.parent.path}${Platform.pathSeparator}${p.basename(root.path)}';
   }
 
+  String get userVisibleImportDocs {
+    final importDocsDir = _paths?.importDocsDir;
+    if (importDocsDir == null) {
+      return '$resourceFolderName${Platform.pathSeparator}import${Platform.pathSeparator}docs';
+    }
+    return importDocsDir.path;
+  }
+
 //initialize 方法负责初始化应用的核心状态，包括加载路径信息、读取资源清单、恢复未完成的导入事务，并刷新公告信息。它会在整个过程中更新 busy 状态和 message，以便 UI 可以显示加载状态和错误信息。
   Future<void> initialize() async {
     _busy = true;

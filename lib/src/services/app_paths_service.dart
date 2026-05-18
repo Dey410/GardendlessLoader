@@ -41,6 +41,7 @@ class AppPathsService {
 
     await paths.root.create(recursive: true);
     await paths.importDir.create(recursive: true);
+    await paths.importDocsDir.create(recursive: true);
     await paths.currentDir.create(recursive: true);
     await paths.previousDir.create(recursive: true);
     await paths.stagingDir.create(recursive: true);
@@ -49,12 +50,12 @@ class AppPathsService {
   }
 
   Future<Directory> _defaultRoot() async {
-    if (_platformName == 'ios' || _platformName == 'ohos') {
+    if (_platformName == 'ios') {
       final documents = await _documentsDirectoryProvider();
       return Directory(p.join(documents.path, resourceFolderName));
     }
 
-    if (_platformName == 'android') {
+    if (_platformName == 'android' || _platformName == 'ohos') {
       final external = await _externalStorageDirectoryProvider();
       if (external != null) {
         return Directory(p.join(external.path, resourceFolderName));
