@@ -27,23 +27,22 @@ void main() {
     final workflow =
         File('.github/workflows/build-mobile.yml').readAsStringSync();
 
-    expect(workflow, contains('Build HarmonyOS HAP'));
+    expect(workflow, contains('Build unsigned HarmonyOS HAP'));
     expect(workflow, contains('openharmony-tpc/flutter_flutter.git'));
     expect(workflow, contains('oh-3.35.7-release'));
-    expect(workflow, contains('OHOS_FLUTTER_SDK_VERSION: 3.35.7'));
-    expect(workflow, contains('flutter.version.json'));
-    expect(workflow, contains(r'"frameworkVersion": "$OHOS_FLUTTER_SDK_VERSION"'));
     expect(workflow, contains('OHOS_MIN_DART_VERSION: 3.5.0'));
     expect(workflow, contains('Verify OpenHarmony Dart SDK compatibility'));
     expect(workflow, contains('HarmonyOS HAP skipped'));
     expect(workflow, contains('enabled=false'));
     expect(workflow, isNot(contains('OHOS_COMMANDLINE_TOOLS_URL secret is required')));
     expect(workflow, contains('cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml'));
-    expect(workflow, contains('flutter build hap --release --target-platform ohos-arm64'));
-    expect(workflow, contains('gardendless-loader-hap'));
+    expect(workflow, contains('for TARGET_PLATFORM in ohos-arm64 ohos-x64'));
     expect(
       workflow,
-      contains('ohos/entry/build/default/outputs/default/entry-default-signed.hap'),
+      contains('flutter build hap --release --target-platform "\$TARGET_PLATFORM"'),
     );
+    expect(workflow, contains("find ohos/entry/build -type f -name '*unsigned*.hap'"));
+    expect(workflow, contains('gardendless-loader-unsigned-haps'));
+    expect(workflow, contains('build/ohos/unsigned/*.hap'));
   });
 }
