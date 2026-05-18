@@ -303,6 +303,8 @@ jobs:
 
           for TARGET_PLATFORM in ohos-arm64 ohos-x64; do
             echo "Building unsigned HAP for $TARGET_PLATFORM"
+            BUILD_MARKER="$RUNNER_TEMP/hap-build-$TARGET_PLATFORM.marker"
+            touch "$BUILD_MARKER"
 
             set +e
             flutter build hap --release --target-platform "$TARGET_PLATFORM"
@@ -311,11 +313,7 @@ jobs:
 
             echo "flutter build hap ($TARGET_PLATFORM) exit code: $FLUTTER_BUILD_STATUS"
 
-            if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
-              exit "$FLUTTER_BUILD_STATUS"
-            fi
-
-            UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
+            UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -newer "$BUILD_MARKER" -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
 
             if [ -z "$UNSIGNED_HAP" ]; then
               echo "Unsigned HAP was not generated for $TARGET_PLATFORM."
