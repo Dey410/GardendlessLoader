@@ -20,7 +20,18 @@ void main() {
     expect(File('ohos/oh-package.json5').existsSync(), isTrue);
     expect(File('ohos/entry/build-profile.json5').existsSync(), isTrue);
     expect(File('ohos/entry/src/main/module.json5').existsSync(), isTrue);
-    expect(File('ohos/entry/src/main/ets/MainAbility/MainAbility.ets').existsSync(), isTrue);
+    expect(
+        File('ohos/entry/src/main/ets/MainAbility/MainAbility.ets')
+            .existsSync(),
+        isTrue);
+  });
+
+  test('OpenHarmony requests user storage permissions for public import folder',
+      () {
+    final module = File('ohos/entry/src/main/module.json5').readAsStringSync();
+
+    expect(module, contains('ohos.permission.READ_USER_STORAGE'));
+    expect(module, contains('ohos.permission.WRITE_USER_STORAGE'));
   });
 
   test('GitHub Actions exports a HAP artifact', () {
@@ -34,14 +45,18 @@ void main() {
     expect(workflow, contains('Verify OpenHarmony Dart SDK compatibility'));
     expect(workflow, contains('HarmonyOS HAP skipped'));
     expect(workflow, contains('enabled=false'));
-    expect(workflow, isNot(contains('OHOS_COMMANDLINE_TOOLS_URL secret is required')));
-    expect(workflow, contains('cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml'));
+    expect(workflow,
+        isNot(contains('OHOS_COMMANDLINE_TOOLS_URL secret is required')));
+    expect(workflow,
+        contains('cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml'));
     expect(workflow, contains('for TARGET_PLATFORM in ohos-arm64 ohos-x64'));
     expect(
       workflow,
-      contains('flutter build hap --release --target-platform "\$TARGET_PLATFORM"'),
+      contains(
+          'flutter build hap --release --target-platform "\$TARGET_PLATFORM"'),
     );
-    expect(workflow, contains("find ohos/entry/build -type f -name '*unsigned*.hap'"));
+    expect(workflow,
+        contains("find ohos/entry/build -type f -name '*unsigned*.hap'"));
     expect(workflow, contains('gardendless-loader-unsigned-haps'));
     expect(workflow, contains('build/ohos/unsigned/*.hap'));
   });

@@ -17,6 +17,7 @@ class AppPathsService {
     DirectoryProvider? documentsDirectoryProvider,
     NullableDirectoryProvider? externalStorageDirectoryProvider,
     ExecutableDirectoryProvider? executableDirectoryProvider,
+    DirectoryProvider? ohosPublicDocumentsDirectoryProvider,
   })  : _rootOverride = rootOverride,
         _platformName = platformName ?? Platform.operatingSystem,
         _documentsDirectoryProvider =
@@ -24,17 +25,41 @@ class AppPathsService {
         _externalStorageDirectoryProvider =
             externalStorageDirectoryProvider ?? getExternalStorageDirectory,
         _executableDirectoryProvider =
-            executableDirectoryProvider ?? _defaultExecutableDirectory;
+            executableDirectoryProvider ?? _defaultExecutableDirectory,
+        _ohosPublicDocumentsDirectoryProvider =
+            ohosPublicDocumentsDirectoryProvider ??
+                _defaultOhosPublicDocumentsDirectory;
 
   final Directory? _rootOverride;
   final String _platformName;
   final DirectoryProvider _documentsDirectoryProvider;
   final NullableDirectoryProvider _externalStorageDirectoryProvider;
   final ExecutableDirectoryProvider _executableDirectoryProvider;
+  final DirectoryProvider _ohosPublicDocumentsDirectoryProvider;
 
   Future<AppPaths> ensureInitialized() async {
-    final root = _rootOverride ?? await _defaultRoot();
-    final paths = AppPaths(
+    if (_rootOverride != null) {
+      final paths = _buildPaths(_rootOverride);
+      await _createPaths(paths);
+      return paths;
+    }
+
+    Object? lastError;
+    for (final root in await _defaultRoots()) {
+      final paths = _buildPaths(root);
+      try {
+        await _createPaths(paths);
+        return paths;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw StateError('Unable to initialize app directories: $lastError');
+  }
+
+  AppPaths _buildPaths(Directory root) {
+    return AppPaths(
       root: root,
       manifestFile: File(p.join(root.path, 'manifest.json')),
       importDir: Directory(p.join(root.path, 'import')),
@@ -43,40 +68,57 @@ class AppPathsService {
       previousDir: Directory(p.join(root.path, 'previous')),
       stagingDir: Directory(p.join(root.path, 'staging')),
     );
+  }
 
+  Future<void> _createPaths(AppPaths paths) async {
     await paths.root.create(recursive: true);
     await paths.importDir.create(recursive: true);
     await paths.importDocsDir.create(recursive: true);
     await paths.currentDir.create(recursive: true);
     await paths.previousDir.create(recursive: true);
     await paths.stagingDir.create(recursive: true);
-
-    return paths;
   }
 
-  Future<Directory> _defaultRoot() async {
+  Future<List<Directory>> _defaultRoots() async {
     if (_platformName == 'ios') {
       final documents = await _documentsDirectoryProvider();
-      return Directory(p.join(documents.path, resourceFolderName));
+      return [Directory(p.join(documents.path, resourceFolderName))];
     }
 
     if (_platformName == 'windows') {
       final executableDirectory = _executableDirectoryProvider();
-      return Directory(p.join(executableDirectory.path, resourceFolderName));
+      return [Directory(p.join(executableDirectory.path, resourceFolderName))];
     }
 
-    if (_platformName == 'android' || _platformName == 'ohos') {
+    if (_platformName == 'ohos') {
+      final publicDocuments = await _ohosPublicDocumentsDirectoryProvider();
+      final external = await _externalStorageDirectoryProvider();
+      final documents = await _documentsDirectoryProvider();
+
+      return [
+        Directory(p.join(publicDocuments.path, resourceFolderName)),
+        if (external != null)
+          Directory(p.join(external.path, resourceFolderName)),
+        Directory(p.join(documents.path, resourceFolderName)),
+      ];
+    }
+
+    if (_platformName == 'android') {
       final external = await _externalStorageDirectoryProvider();
       if (external != null) {
-        return Directory(p.join(external.path, resourceFolderName));
+        return [Directory(p.join(external.path, resourceFolderName))];
       }
     }
 
     final documents = await _documentsDirectoryProvider();
-    return Directory(p.join(documents.path, resourceFolderName));
+    return [Directory(p.join(documents.path, resourceFolderName))];
   }
 
   static Directory _defaultExecutableDirectory() {
     return File(Platform.resolvedExecutable).parent;
+  }
+
+  static Future<Directory> _defaultOhosPublicDocumentsDirectory() async {
+    return Directory('/storage/Users/currentUser/Documents');
   }
 }
