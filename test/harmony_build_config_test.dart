@@ -50,6 +50,8 @@ void main() {
     expect(ability, contains('addPlugin'));
     expect(
         picker, contains('io.github.dey410.gardendlessloader/document_picker'));
+    expect(picker, contains('import AbilityPluginBinding, { AbilityAware }'));
+    expect(picker, contains('binding.getAbilityContext()'));
     expect(picker, contains('pickDocsDirectory'));
     expect(picker, contains('DocumentViewPicker'));
     expect(picker, contains('DocumentSelectMode.FOLDER'));
