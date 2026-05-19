@@ -12,6 +12,7 @@ import 'services/import_service.dart';
 import 'services/local_game_server.dart';
 import 'services/manifest_store.dart';
 import 'services/resource_validator.dart';
+import 'services/resource_picker_service.dart';
 
 //AppController 是整个应用的核心控制器，负责管理应用的状态、处理业务逻辑，并与 UI 进行交互。它使用 ChangeNotifier 来通知 UI 更新。
 class AppController extends ChangeNotifier {
@@ -22,12 +23,15 @@ class AppController extends ChangeNotifier {
     ImportService? importService,
     DiagnosticsService? diagnosticsService,
     AnnouncementService? announcementService,
+    ResourcePickerService? resourcePickerService,
     DateTime Function()? now,
   })  : _pathsService = pathsService ?? AppPathsService(),
         _validator = validator ?? ResourceValidator(),
         _server = server ?? LocalGameServer(),
         _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
         _announcementService = announcementService ?? AnnouncementService(),
+        _resourcePickerService =
+            resourcePickerService ?? ResourcePickerService(),
         _now = now ?? DateTime.now {
     _importService = importService ??
         ImportService(
@@ -41,6 +45,7 @@ class AppController extends ChangeNotifier {
   final LocalGameServer _server;
   final DiagnosticsService _diagnosticsService;
   final AnnouncementService _announcementService;
+  final ResourcePickerService _resourcePickerService;
   final DateTime Function() _now;
   late final ImportService _importService;
 
@@ -50,8 +55,9 @@ class AppController extends ChangeNotifier {
   ResourceValidationResult _currentValidation =
       ResourceValidationResult.missing('尚未检查 current');
   ResourceValidationResult _importValidation =
-      ResourceValidationResult.missing('尚未检查 import/docs');
+      ResourceValidationResult.missing('尚未选择 docs');
   ImportProgress _importProgress = ImportProgress.idle;
+  Directory? _selectedImportSource;
   Announcement? _pendingAnnouncement;
   bool _initialized = false;
   bool _busy = false;
@@ -65,6 +71,7 @@ class AppController extends ChangeNotifier {
   ResourceValidationResult get currentValidation => _currentValidation;
   ResourceValidationResult get importValidation => _importValidation;
   ImportProgress get importProgress => _importProgress;
+  Directory? get selectedImportSource => _selectedImportSource;
   Announcement? get pendingAnnouncement => _pendingAnnouncement;
   ServerStatus get serverStatus => _server.status;
   bool get isImporting =>
@@ -86,11 +93,11 @@ class AppController extends ChangeNotifier {
   }
 
   String get userVisibleImportDocs {
-    final importDocsDir = _paths?.importDocsDir;
-    if (importDocsDir == null) {
-      return '$resourceFolderName${Platform.pathSeparator}import${Platform.pathSeparator}docs';
+    final selected = _selectedImportSource;
+    if (selected != null) {
+      return selected.path;
     }
-    return importDocsDir.path;
+    return '尚未选择 docs';
   }
 
 //initialize 方法负责初始化应用的核心状态，包括加载路径信息、读取资源清单、恢复未完成的导入事务，并刷新公告信息。它会在整个过程中更新 busy 状态和 message，以便 UI 可以显示加载状态和错误信息。
@@ -121,7 +128,10 @@ class AppController extends ChangeNotifier {
     final manifestStore = _requireManifestStore();
     _manifest = await manifestStore.read();
     _currentValidation = await _validator.validate(paths.currentDir);
-    _importValidation = await _validator.validate(paths.importDocsDir);
+    final selectedImportSource = _selectedImportSource;
+    _importValidation = selectedImportSource == null
+        ? ResourceValidationResult.missing('尚未选择 docs')
+        : await _validator.validate(selectedImportSource);
 
     if (_currentValidation.isValid &&
         _manifest.resourceStatus == ResourceStatus.ready) {
@@ -137,11 +147,9 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     try {
       await refresh();
-      if (_importValidation.isValid) {
-        _message = '发现可导入资源：${_importValidation.detectedTitle}';
-      } else {
-        _message = _importValidation.errorMessage ?? 'import/docs 无效';
-      }
+      _message = _importValidation.isValid
+          ? '发现可导入资源：${_importValidation.detectedTitle}'
+          : _importValidation.errorMessage ?? 'docs 无效';
     } finally {
       _busy = false;
       notifyListeners();
@@ -180,26 +188,45 @@ class AppController extends ChangeNotifier {
     final paths = _requirePaths();
     final manifestStore = _requireManifestStore();
     _message = null;
-    _importProgress = const ImportProgress(phase: ImportPhase.validating);
+    _busy = true;
     notifyListeners();
 
     try {
+      final selectedSource = await _resourcePickerService.pickDocsDirectory(
+        initialDirectory: paths.importDir,
+      );
+      if (selectedSource == null) {
+        _message = '已取消选择 docs';
+        return;
+      }
+
+      _selectedImportSource = selectedSource;
+      _importValidation = ResourceValidationResult.missing('正在校验 docs');
+      _importProgress = const ImportProgress(phase: ImportPhase.validating);
+      notifyListeners();
+
       _manifest = await _importService.importResources(
         paths: paths,
         manifestStore: manifestStore,
+        sourceDocsDir: selectedSource,
         onProgress: (progress) {
           _importProgress = progress;
           notifyListeners();
         },
       );
-      _message = '导入成功，可删除 import/docs 节省空间';
+      _message = '导入成功';
       await refresh();
+    } on ResourcePickerFailure catch (failure) {
+      _message = failure.message;
     } on ImportFailure catch (failure) {
       _message = failure.message;
       await refresh();
     } catch (error) {
       _message = '导入失败：$error';
       await refresh();
+    } finally {
+      _busy = false;
+      notifyListeners();
     }
   }
 

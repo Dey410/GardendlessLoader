@@ -24,14 +24,35 @@ void main() {
         File('ohos/entry/src/main/ets/MainAbility/MainAbility.ets')
             .existsSync(),
         isTrue);
+    expect(
+        File('ohos/entry/src/main/ets/plugins/DocumentPickerPlugin.ets')
+            .existsSync(),
+        isTrue);
   });
 
-  test('OpenHarmony requests user storage permissions for public import folder',
+  test('OpenHarmony module does not request legacy user storage permissions',
       () {
     final module = File('ohos/entry/src/main/module.json5').readAsStringSync();
 
-    expect(module, contains('ohos.permission.READ_USER_STORAGE'));
-    expect(module, contains('ohos.permission.WRITE_USER_STORAGE'));
+    expect(module, isNot(contains('ohos.permission.READ_USER_STORAGE')));
+    expect(module, isNot(contains('ohos.permission.WRITE_USER_STORAGE')));
+  });
+
+  test('OpenHarmony document picker channel is registered', () {
+    final ability =
+        File('ohos/entry/src/main/ets/entryability/EntryAbility.ets')
+            .readAsStringSync();
+    final picker =
+        File('ohos/entry/src/main/ets/plugins/DocumentPickerPlugin.ets')
+            .readAsStringSync();
+
+    expect(ability, contains('DocumentPickerPlugin'));
+    expect(ability, contains('addPlugin'));
+    expect(
+        picker, contains('io.github.dey410.gardendlessloader/document_picker'));
+    expect(picker, contains('pickDocsDirectory'));
+    expect(picker, contains('DocumentViewPicker'));
+    expect(picker, contains('DocumentSelectMode.FOLDER'));
   });
 
   test('GitHub Actions exports a HAP artifact', () {

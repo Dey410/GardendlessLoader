@@ -23,6 +23,7 @@ class ImportService {
   Future<ResourceManifest> importResources({
     required AppPaths paths,
     required ManifestStore manifestStore,
+    required Directory sourceDocsDir,
     ImportProgressCallback? onProgress,
   }) async {
     var manifest = await manifestStore.read();
@@ -36,10 +37,11 @@ class ImportService {
         clearError: true,
       );
       await manifestStore.write(manifest);
-      report(const ImportProgress(phase: ImportPhase.validating, message: '正在校验 import/docs'));
+      report(const ImportProgress(
+          phase: ImportPhase.validating, message: '正在校验 docs'));
 
       await _resetDirectory(paths.stagingDir);
-      final validation = await _validator.validate(paths.importDocsDir);
+      final validation = await _validator.validate(sourceDocsDir);
       if (!validation.isValid) {
         throw ImportFailure(
           validation.errorCode ?? 'validation_failed',
@@ -47,9 +49,10 @@ class ImportService {
         );
       }
 
-      report(const ImportProgress(phase: ImportPhase.scanning, message: '正在统计资源'));
+      report(
+          const ImportProgress(phase: ImportPhase.scanning, message: '正在统计资源'));
       final stats = await _validator.scanStats(
-        paths.importDocsDir,
+        sourceDocsDir,
         detectedTitle: validation.detectedTitle,
       );
 
@@ -60,14 +63,15 @@ class ImportService {
         message: '正在复制到 staging',
       ));
       await _copyDirectory(
-        paths.importDocsDir,
+        sourceDocsDir,
         paths.stagingDir,
         totalFiles: stats.fileCount,
         totalBytes: stats.totalBytes,
         onProgress: report,
       );
 
-      manifest = manifest.copyWith(transactionState: TransactionState.switching);
+      manifest =
+          manifest.copyWith(transactionState: TransactionState.switching);
       await manifestStore.write(manifest);
       report(ImportProgress(
         phase: ImportPhase.switching,
@@ -87,7 +91,8 @@ class ImportService {
       await paths.stagingDir.rename(paths.currentDir.path);
       await paths.stagingDir.create(recursive: true);
 
-      manifest = manifest.copyWith(transactionState: TransactionState.selfChecking);
+      manifest =
+          manifest.copyWith(transactionState: TransactionState.selfChecking);
       await manifestStore.write(manifest);
       report(ImportProgress(
         phase: ImportPhase.selfChecking,
@@ -118,7 +123,7 @@ class ImportService {
         totalBytes: stats.totalBytes,
         copiedFiles: stats.fileCount,
         copiedBytes: stats.totalBytes,
-        message: '导入成功，可自行删除 import/docs 节省空间',
+        message: '导入成功',
       ));
       return manifest;
     } catch (error) {
@@ -220,7 +225,8 @@ class ImportService {
     var copiedBytes = 0;
     await target.create(recursive: true);
 
-    await for (final entity in source.list(recursive: true, followLinks: false)) {
+    await for (final entity
+        in source.list(recursive: true, followLinks: false)) {
       final relative = p.relative(entity.path, from: source.path);
       final targetPath = p.join(target.path, relative);
       if (entity is Directory) {

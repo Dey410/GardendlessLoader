@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 void main() {
   late Directory temp;
   late AppPaths paths;
+  late Directory sourceDocsDir;
   late LocalGameServer server;
   late ImportService importService;
   late ManifestStore manifestStore;
@@ -26,6 +27,7 @@ void main() {
       previousDir: Directory(p.join(temp.path, 'previous')),
       stagingDir: Directory(p.join(temp.path, 'staging')),
     );
+    sourceDocsDir = Directory(p.join(temp.path, 'selected', 'docs'));
     for (final directory in [
       paths.importDir,
       paths.currentDir,
@@ -48,17 +50,20 @@ void main() {
   });
 
   test('imports valid docs into current and writes ready manifest', () async {
-    await _writeValidResource(paths.importDocsDir);
+    await _writeValidResource(sourceDocsDir);
 
     final manifest = await importService.importResources(
       paths: paths,
       manifestStore: manifestStore,
+      sourceDocsDir: sourceDocsDir,
     );
 
     expect(await File(p.join(paths.currentDir.path, 'index.html')).exists(),
         isTrue);
+    expect(
+        await File(p.join(sourceDocsDir.path, 'index.html')).exists(), isTrue);
     expect(await File(p.join(paths.importDocsDir.path, 'index.html')).exists(),
-        isTrue);
+        isFalse);
     expect(manifest.resourceStatus, ResourceStatus.ready);
     expect(manifest.transactionState, TransactionState.idle);
     expect(manifest.fileCount, greaterThan(0));
@@ -71,10 +76,14 @@ void main() {
 
     await _writeValidResource(paths.currentDir,
         title: 'PvZ2 Gardendless Previous');
-    await _writeValidResource(paths.importDocsDir);
+    await _writeValidResource(sourceDocsDir);
 
     await expectLater(
-      importService.importResources(paths: paths, manifestStore: manifestStore),
+      importService.importResources(
+        paths: paths,
+        manifestStore: manifestStore,
+        sourceDocsDir: sourceDocsDir,
+      ),
       throwsA(isA<ImportFailure>()),
     );
 

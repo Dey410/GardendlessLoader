@@ -57,27 +57,19 @@ class _HomePageState extends State<HomePage> {
               children: [
                 _StatusPanel(controller: controller),
                 const SizedBox(height: 20),
-                if (controller.hasValidImportSource)
-                  _Notice(
-                    title: '发现可导入资源',
-                    message: controller.importValidation.detectedTitle ??
-                        'import/docs 校验通过',
-                    icon: Icons.download_done_outlined,
-                  )
-                else if (controller.hasCurrentResource &&
+                if (controller.hasCurrentResource &&
                     controller.importValidation.status ==
                         ResourceStatus.invalid)
                   _Notice(
-                    title: '导入源无效',
-                    message: controller.importValidation.errorMessage ??
-                        'import/docs 校验失败',
+                    title: '上次选择的 docs 无效',
+                    message:
+                        controller.importValidation.errorMessage ?? 'docs 校验失败',
                     icon: Icons.warning_amber_outlined,
                   )
-                else if (!controller.hasCurrentResource &&
-                    controller.hasValidImportSource)
+                else if (!controller.hasCurrentResource)
                   const _Notice(
-                    title: '需要手动导入',
-                    message: 'current 无有效资源，请点击导入资源。',
+                    title: '需要导入资源',
+                    message: '请选择解压后的 docs 文件夹导入。',
                     icon: Icons.file_upload_outlined,
                   ),
                 if (controller.importProgress.phase != ImportPhase.idle)
@@ -248,7 +240,7 @@ class _StatusPanel extends StatelessWidget {
     final title = hasCurrent ? '资源已导入' : '尚未导入资源';
     final subtitle = hasCurrent
         ? controller.detectedTitle
-        : '请把解压后的 docs 文件夹复制到 GardendlessLoader/import/。';
+        : '请选择解压后的 docs 文件夹，App 会自动校验并导入。';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -278,7 +270,7 @@ class _StatusPanel extends StatelessWidget {
             Text(subtitle),
             const SizedBox(height: 12),
             Text(
-              '导入目录：${controller.userVisibleImportDocs}',
+              '已选 docs：${controller.userVisibleImportDocs}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 4),
@@ -315,14 +307,12 @@ class _Actions extends StatelessWidget {
           label: const Text('开始游戏'),
         ),
         FilledButton.tonalIcon(
-          onPressed: controller.isImporting ? null : controller.importResources,
+          onPressed: controller.busy || controller.isImporting
+              ? null
+              : controller.importResources,
           icon: const Icon(Icons.file_upload_outlined),
-          label: Text(controller.hasCurrentResource ? '导入/更新资源' : '导入资源'),
-        ),
-        OutlinedButton.icon(
-          onPressed: controller.busy ? null : controller.checkImportDirectory,
-          icon: const Icon(Icons.fact_check_outlined),
-          label: const Text('检查导入目录'),
+          label:
+              Text(controller.hasCurrentResource ? '选择 docs 更新' : '选择 docs 导入'),
         ),
         OutlinedButton.icon(
           onPressed: onOpenGitHub,
@@ -345,9 +335,9 @@ class _InstructionBlock extends StatelessWidget {
         Text('导入指引', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         const Text('1. 打开 GitHub 下载 ZIP。'),
-        const Text('2. 解压后把 docs 文件夹复制到 GardendlessLoader/import/。'),
-        const Text('3. 最终路径应为 GardendlessLoader/import/docs/index.html。'),
-        const Text('4. 回到 App 点击检查导入目录，再点击导入资源。'),
+        const Text('2. 解压 ZIP，找到里面的 docs 文件夹。'),
+        const Text('3. 点击选择 docs 导入，并选择这个 docs 文件夹。'),
+        const Text('4. docs 内应直接包含 index.html、assets、cocos-js、src。'),
       ],
     );
   }
