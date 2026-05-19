@@ -154,12 +154,17 @@ jobs:
       - name: Package unsigned DMG
         run: |
           mkdir -p build/macos/dmg
+          DMG_STAGING="$RUNNER_TEMP/gardendless-loader-dmg-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          DMG_TEMP="$RUNNER_TEMP/GardendlessLoader-unsigned-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.dmg"
+          mkdir -p "$DMG_STAGING"
+          ditto build/macos/Build/Products/Release/gardendless_loader.app "$DMG_STAGING/GardendlessLoader.app"
           hdiutil create \
             -volname GardendlessLoader \
-            -srcfolder build/macos/Build/Products/Release/gardendless_loader.app \
+            -srcfolder "$DMG_STAGING" \
             -ov \
             -format UDZO \
-            build/macos/dmg/GardendlessLoader-unsigned.dmg
+            "$DMG_TEMP"
+          cp "$DMG_TEMP" build/macos/dmg/GardendlessLoader-unsigned.dmg
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4

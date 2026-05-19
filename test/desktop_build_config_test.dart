@@ -10,6 +10,16 @@ void main() {
     expect(workflow, contains('Build macOS DMG'));
     expect(workflow, contains('flutter build macos --release'));
     expect(workflow, contains('hdiutil create'));
+    expect(
+      workflow,
+      contains(
+          'DMG_STAGING="\$RUNNER_TEMP/gardendless-loader-dmg-\${GITHUB_RUN_ID}-\${GITHUB_RUN_ATTEMPT}"'),
+    );
+    expect(
+      workflow,
+      contains(
+          'ditto build/macos/Build/Products/Release/gardendless_loader.app "\$DMG_STAGING/GardendlessLoader.app"'),
+    );
     expect(workflow, contains('GardendlessLoader-unsigned.dmg'));
     expect(workflow, contains('gardendless-loader-mac-dmg'));
 

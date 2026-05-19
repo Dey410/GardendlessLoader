@@ -50,10 +50,16 @@ void main() {
     expect(ability, contains('addPlugin'));
     expect(
         picker, contains('io.github.dey410.gardendlessloader/document_picker'));
-    expect(picker, contains('import AbilityAware, { AbilityPluginBinding }'));
-    expect(picker,
-        isNot(contains('import AbilityPluginBinding, { AbilityAware }')));
-    expect(picker, contains('binding.getAbilityContext()'));
+    expect(picker, contains("} from '@ohos/flutter_ohos';"));
+    expect(
+      picker,
+      isNot(contains(
+          '@ohos/flutter_ohos/src/main/ets/embedding/engine/plugins/ability/AbilityAware')),
+    );
+    expect(picker, contains('AbilityAware'));
+    expect(picker, contains('AbilityPluginBinding'));
+    expect(picker, contains('binding.getAbility().context'));
+    expect(picker, isNot(contains('binding.getAbilityContext()')));
     expect(picker, contains('pickDocsDirectory'));
     expect(picker, contains('DocumentViewPicker'));
     expect(picker, contains('DocumentSelectMode.FOLDER'));

@@ -1,10 +1,16 @@
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileUri, picker } from '@kit.CoreFileKit';
-import AbilityAware, { AbilityPluginBinding } from '@ohos/flutter_ohos/src/main/ets/embedding/engine/plugins/ability/AbilityAware';
-import { FlutterPlugin, FlutterPluginBinding } from '@ohos/flutter_ohos/src/main/ets/embedding/engine/plugins/FlutterPlugin';
-import MethodCall from '@ohos/flutter_ohos/src/main/ets/plugin/common/MethodCall';
-import MethodChannel, { MethodCallHandler, MethodResult } from '@ohos/flutter_ohos/src/main/ets/plugin/common/MethodChannel';
+import {
+  AbilityAware,
+  AbilityPluginBinding,
+  FlutterPlugin,
+  FlutterPluginBinding,
+  MethodCall,
+  MethodCallHandler,
+  MethodChannel,
+  MethodResult,
+} from '@ohos/flutter_ohos';
 
 const CHANNEL_NAME = 'io.github.dey410.gardendlessloader/document_picker';
 
@@ -27,7 +33,7 @@ export class DocumentPickerPlugin implements FlutterPlugin, MethodCallHandler, A
   }
 
   onAttachedToAbility(binding: AbilityPluginBinding): void {
-    this.abilityContext = binding.getAbilityContext();
+    this.abilityContext = binding.getAbility().context;
   }
 
   onDetachedFromAbility(): void {
