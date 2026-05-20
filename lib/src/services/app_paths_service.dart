@@ -17,7 +17,6 @@ class AppPathsService {
     DirectoryProvider? documentsDirectoryProvider,
     NullableDirectoryProvider? externalStorageDirectoryProvider,
     ExecutableDirectoryProvider? executableDirectoryProvider,
-    DirectoryProvider? ohosPublicDocumentsDirectoryProvider,
   })  : _rootOverride = rootOverride,
         _platformName = platformName ?? Platform.operatingSystem,
         _documentsDirectoryProvider =
@@ -25,17 +24,13 @@ class AppPathsService {
         _externalStorageDirectoryProvider =
             externalStorageDirectoryProvider ?? getExternalStorageDirectory,
         _executableDirectoryProvider =
-            executableDirectoryProvider ?? _defaultExecutableDirectory,
-        _ohosPublicDocumentsDirectoryProvider =
-            ohosPublicDocumentsDirectoryProvider ??
-                _defaultOhosPublicDocumentsDirectory;
+            executableDirectoryProvider ?? _defaultExecutableDirectory;
 
   final Directory? _rootOverride;
   final String _platformName;
   final DirectoryProvider _documentsDirectoryProvider;
   final NullableDirectoryProvider _externalStorageDirectoryProvider;
   final ExecutableDirectoryProvider _executableDirectoryProvider;
-  final DirectoryProvider _ohosPublicDocumentsDirectoryProvider;
 
   Future<AppPaths> ensureInitialized() async {
     if (_rootOverride != null) {
@@ -91,16 +86,8 @@ class AppPathsService {
     }
 
     if (_platformName == 'ohos') {
-      final publicDocuments = await _ohosPublicDocumentsDirectoryProvider();
-      final external = await _externalStorageDirectoryProvider();
       final documents = await _documentsDirectoryProvider();
-
-      return [
-        Directory(p.join(publicDocuments.path, resourceFolderName)),
-        if (external != null)
-          Directory(p.join(external.path, resourceFolderName)),
-        Directory(p.join(documents.path, resourceFolderName)),
-      ];
+      return [Directory(p.join(documents.path, resourceFolderName))];
     }
 
     if (_platformName == 'android') {
@@ -116,9 +103,5 @@ class AppPathsService {
 
   static Directory _defaultExecutableDirectory() {
     return File(Platform.resolvedExecutable).parent;
-  }
-
-  static Future<Directory> _defaultOhosPublicDocumentsDirectory() async {
-    return Directory('/storage/Users/currentUser/Documents');
   }
 }

@@ -69,6 +69,15 @@ void main() {
     expect(manifest.fileCount, greaterThan(0));
   });
 
+  test('does not use directory rename while switching imported resources',
+      () async {
+    final source = await File(
+      p.join('lib', 'src', 'services', 'import_service.dart'),
+    ).readAsString();
+
+    expect(source, isNot(contains('.rename(')));
+  });
+
   test('rolls back to previous current when selfCheck fails', () async {
     server = _FailingSelfCheckServer();
     importService =
@@ -90,6 +99,26 @@ void main() {
     final index =
         await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
     expect(index, contains('PvZ2 Gardendless Previous'));
+  });
+
+  test('keeps existing current when selected docs fail validation', () async {
+    await _writeValidResource(paths.currentDir,
+        title: 'PvZ2 Gardendless Existing');
+    await sourceDocsDir.create(recursive: true);
+    await File(p.join(sourceDocsDir.path, 'broken.txt')).writeAsString('bad');
+
+    await expectLater(
+      importService.importResources(
+        paths: paths,
+        manifestStore: manifestStore,
+        sourceDocsDir: sourceDocsDir,
+      ),
+      throwsA(isA<ImportFailure>()),
+    );
+
+    final index =
+        await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
+    expect(index, contains('PvZ2 Gardendless Existing'));
   });
 
   test(

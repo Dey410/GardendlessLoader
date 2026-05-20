@@ -27,6 +27,7 @@ class ImportService {
     ImportProgressCallback? onProgress,
   }) async {
     var manifest = await manifestStore.read();
+    var currentReplaced = false;
 
     void report(ImportProgress progress) => onProgress?.call(progress);
 
@@ -84,12 +85,12 @@ class ImportService {
 
       await _deleteDirectory(paths.previousDir);
       if (await _hasEntries(paths.currentDir)) {
-        await paths.currentDir.rename(paths.previousDir.path);
-      } else {
-        await _deleteDirectory(paths.currentDir);
+        await _copyDirectoryContents(paths.currentDir, paths.previousDir);
       }
-      await paths.stagingDir.rename(paths.currentDir.path);
-      await paths.stagingDir.create(recursive: true);
+      await _resetDirectory(paths.currentDir);
+      currentReplaced = true;
+      await _copyDirectoryContents(paths.stagingDir, paths.currentDir);
+      await _resetDirectory(paths.stagingDir);
 
       manifest =
           manifest.copyWith(transactionState: TransactionState.selfChecking);
@@ -127,7 +128,11 @@ class ImportService {
       ));
       return manifest;
     } catch (error) {
-      await _rollback(paths);
+      if (currentReplaced) {
+        await _rollback(paths);
+      } else {
+        await _server.stop();
+      }
       final failure = error is ImportFailure
           ? error
           : ImportFailure('import_failed', error.toString());
@@ -176,9 +181,9 @@ class ImportService {
 
       final previousValidation = await _validator.validate(paths.previousDir);
       if (previousValidation.isValid) {
-        await _deleteDirectory(paths.currentDir);
-        await paths.previousDir.rename(paths.currentDir.path);
-        await paths.previousDir.create(recursive: true);
+        await _resetDirectory(paths.currentDir);
+        await _copyDirectoryContents(paths.previousDir, paths.currentDir);
+        await _resetDirectory(paths.previousDir);
         manifest = manifest.copyWith(
           resourceStatus: ResourceStatus.ready,
           detectedTitle: previousValidation.detectedTitle,
@@ -205,12 +210,10 @@ class ImportService {
 
   Future<void> _rollback(AppPaths paths) async {
     await _server.stop();
-    await _deleteDirectory(paths.currentDir);
+    await _resetDirectory(paths.currentDir);
     if (await _hasEntries(paths.previousDir)) {
-      await paths.previousDir.rename(paths.currentDir.path);
-      await paths.previousDir.create(recursive: true);
-    } else {
-      await paths.currentDir.create(recursive: true);
+      await _copyDirectoryContents(paths.previousDir, paths.currentDir);
+      await _resetDirectory(paths.previousDir);
     }
   }
 
@@ -223,8 +226,31 @@ class ImportService {
   }) async {
     var copiedFiles = 0;
     var copiedBytes = 0;
-    await target.create(recursive: true);
 
+    await _copyDirectoryContents(
+      source,
+      target,
+      onFileCopied: (bytes) {
+        copiedFiles++;
+        copiedBytes += bytes;
+        onProgress(ImportProgress(
+          phase: ImportPhase.copying,
+          copiedFiles: copiedFiles,
+          copiedBytes: copiedBytes,
+          totalFiles: totalFiles,
+          totalBytes: totalBytes,
+          message: '正在复制资源',
+        ));
+      },
+    );
+  }
+
+  Future<void> _copyDirectoryContents(
+    Directory source,
+    Directory target, {
+    void Function(int bytes)? onFileCopied,
+  }) async {
+    await target.create(recursive: true);
     await for (final entity
         in source.list(recursive: true, followLinks: false)) {
       final relative = p.relative(entity.path, from: source.path);
@@ -234,16 +260,7 @@ class ImportService {
       } else if (entity is File) {
         await File(targetPath).parent.create(recursive: true);
         await entity.copy(targetPath);
-        copiedFiles++;
-        copiedBytes += await entity.length();
-        onProgress(ImportProgress(
-          phase: ImportPhase.copying,
-          copiedFiles: copiedFiles,
-          copiedBytes: copiedBytes,
-          totalFiles: totalFiles,
-          totalBytes: totalBytes,
-          message: '正在复制资源',
-        ));
+        onFileCopied?.call(await entity.length());
       }
     }
   }
