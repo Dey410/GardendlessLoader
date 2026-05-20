@@ -65,6 +65,42 @@ void main() {
     expect((await picker.pickDocsDirectory())?.path, docs.path);
   });
 
+  test('android returns the local imported docs directory', () async {
+    final temp = await Directory.systemTemp.createTemp('gl_picker_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+    final localImportDocs = Directory(p.join(temp.path, 'import', 'docs'));
+
+    final picker = ResourcePickerService(
+      platformName: 'android',
+      directoryPathPicker: ({
+        bool? canCreateDirectories,
+        String? confirmButtonText,
+        String? initialDirectory,
+      }) async {
+        throw StateError('Android must not return a public filesystem path');
+      },
+      androidDirectoryImporter: ({required Directory targetDirectory}) async {
+        expect(targetDirectory.path, localImportDocs.path);
+        await targetDirectory.create(recursive: true);
+        await File(p.join(targetDirectory.path, 'index.html'))
+            .writeAsString('ok');
+        return targetDirectory.path;
+      },
+    );
+
+    final picked = await picker.pickDocsDirectory(
+      localImportDocsDir: localImportDocs,
+    );
+
+    expect(picked?.path, localImportDocs.path);
+    expect(await File(p.join(localImportDocs.path, 'index.html')).exists(),
+        isTrue);
+  });
+
   test('ohos uses the document picker channel callback', () async {
     final temp = await Directory.systemTemp.createTemp('gl_picker_');
     addTearDown(() async {

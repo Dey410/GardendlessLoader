@@ -11,32 +11,58 @@ typedef DirectoryPathPicker = Future<String?> Function({
 });
 
 typedef OhosDirectoryPathPicker = Future<String?> Function();
+typedef AndroidDirectoryImporter = Future<String?> Function({
+  required Directory targetDirectory,
+});
 
 class ResourcePickerService {
   ResourcePickerService({
     DirectoryPathPicker? directoryPathPicker,
     OhosDirectoryPathPicker? ohosDirectoryPathPicker,
+    AndroidDirectoryImporter? androidDirectoryImporter,
     String? platformName,
   })  : _directoryPathPicker =
             directoryPathPicker ?? file_selector.getDirectoryPath,
         _ohosDirectoryPathPicker =
             ohosDirectoryPathPicker ?? _pickOhosDirectory,
+        _androidDirectoryImporter =
+            androidDirectoryImporter ?? _pickAndCopyAndroidDirectory,
         _platformName = platformName ?? Platform.operatingSystem;
 
-  static const MethodChannel _ohosChannel = MethodChannel(
+  static const MethodChannel _documentPickerChannel = MethodChannel(
     'io.github.dey410.gardendlessloader/document_picker',
   );
 
   final DirectoryPathPicker _directoryPathPicker;
   final OhosDirectoryPathPicker _ohosDirectoryPathPicker;
+  final AndroidDirectoryImporter _androidDirectoryImporter;
   final String _platformName;
 
-  Future<Directory?> pickDocsDirectory({Directory? initialDirectory}) async {
+  Future<Directory?> pickDocsDirectory({
+    Directory? initialDirectory,
+    Directory? localImportDocsDir,
+  }) async {
+    if (_platformName == 'android') {
+      final targetDirectory = localImportDocsDir;
+      if (targetDirectory == null) {
+        throw ResourcePickerFailure(
+          'Android import requires an app-private target directory',
+        );
+      }
+      final copiedPath = await _androidDirectoryImporter(
+        targetDirectory: targetDirectory,
+      );
+      if (copiedPath == null || copiedPath.trim().isEmpty) {
+        return null;
+      }
+      return Directory(copiedPath.trim());
+    }
+
     final selectedPath = _platformName == 'ohos'
         ? await _ohosDirectoryPathPicker()
         : await _directoryPathPicker(
             initialDirectory: initialDirectory?.path,
-            confirmButtonText: '选择 docs',
+            confirmButtonText: '\u9009\u62e9 docs',
             canCreateDirectories: false,
           );
 
@@ -66,10 +92,28 @@ class ResourcePickerService {
 
   static Future<String?> _pickOhosDirectory() async {
     try {
-      return _ohosChannel.invokeMethod<String>('pickDocsDirectory');
+      return _documentPickerChannel.invokeMethod<String>('pickDocsDirectory');
     } on MissingPluginException catch (error) {
       throw ResourcePickerFailure(
-        '当前鸿蒙构建缺少文档选择器实现：${error.message ?? error.toString()}',
+        'Current OHOS build does not implement the document picker: '
+        '${error.message ?? error.toString()}',
+      );
+    } on PlatformException catch (error) {
+      throw ResourcePickerFailure(error.message ?? error.code);
+    }
+  }
+
+  static Future<String?> _pickAndCopyAndroidDirectory({
+    required Directory targetDirectory,
+  }) async {
+    try {
+      return _documentPickerChannel.invokeMethod<String>('pickDocsDirectory', {
+        'targetDirectory': targetDirectory.path,
+      });
+    } on MissingPluginException catch (error) {
+      throw ResourcePickerFailure(
+        'Current Android build does not implement the document picker: '
+        '${error.message ?? error.toString()}',
       );
     } on PlatformException catch (error) {
       throw ResourcePickerFailure(error.message ?? error.code);

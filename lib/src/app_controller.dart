@@ -194,6 +194,7 @@ class AppController extends ChangeNotifier {
     try {
       final selectedSource = await _resourcePickerService.pickDocsDirectory(
         initialDirectory: paths.importDir,
+        localImportDocsDir: paths.importDocsDir,
       );
       if (selectedSource == null) {
         _message = '已取消选择 docs';
