@@ -13,6 +13,7 @@ import 'services/local_game_server.dart';
 import 'services/manifest_store.dart';
 import 'services/resource_validator.dart';
 import 'services/resource_picker_service.dart';
+import 'services/update_check_service.dart';
 
 //AppController 是整个应用的核心控制器，负责管理应用的状态、处理业务逻辑，并与 UI 进行交互。它使用 ChangeNotifier 来通知 UI 更新。
 class AppController extends ChangeNotifier {
@@ -23,6 +24,7 @@ class AppController extends ChangeNotifier {
     ImportService? importService,
     DiagnosticsService? diagnosticsService,
     AnnouncementService? announcementService,
+    UpdateCheckService? updateCheckService,
     ResourcePickerService? resourcePickerService,
     DateTime Function()? now,
   })  : _pathsService = pathsService ?? AppPathsService(),
@@ -30,6 +32,7 @@ class AppController extends ChangeNotifier {
         _server = server ?? LocalGameServer(),
         _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
         _announcementService = announcementService ?? AnnouncementService(),
+        _updateCheckService = updateCheckService ?? UpdateCheckService(),
         _resourcePickerService =
             resourcePickerService ?? ResourcePickerService(),
         _now = now ?? DateTime.now {
@@ -45,6 +48,7 @@ class AppController extends ChangeNotifier {
   final LocalGameServer _server;
   final DiagnosticsService _diagnosticsService;
   final AnnouncementService _announcementService;
+  final UpdateCheckService _updateCheckService;
   final ResourcePickerService _resourcePickerService;
   final DateTime Function() _now;
   late final ImportService _importService;
@@ -59,6 +63,9 @@ class AppController extends ChangeNotifier {
   ImportProgress _importProgress = ImportProgress.idle;
   Directory? _selectedImportSource;
   Announcement? _pendingAnnouncement;
+  UpdateInfo? _availableUpdate;
+  String? _deferredUpdateTagName;
+  bool _updateCheckInProgress = false;
   bool _initialized = false;
   bool _busy = false;
   String? _message;
@@ -73,6 +80,8 @@ class AppController extends ChangeNotifier {
   ImportProgress get importProgress => _importProgress;
   Directory? get selectedImportSource => _selectedImportSource;
   Announcement? get pendingAnnouncement => _pendingAnnouncement;
+  UpdateInfo? get availableUpdate => _availableUpdate;
+  bool get updateCheckInProgress => _updateCheckInProgress;
   ServerStatus get serverStatus => _server.status;
   bool get isImporting =>
       _importProgress.phase != ImportPhase.idle &&
@@ -180,6 +189,39 @@ class AppController extends ChangeNotifier {
     await manifestStore.write(_manifest);
     if (_pendingAnnouncement?.id == announcement.id) {
       _pendingAnnouncement = null;
+    }
+    notifyListeners();
+  }
+
+  Future<void> checkForUpdates({bool silent = false}) async {
+    _updateCheckInProgress = true;
+    if (!silent) {
+      _message = null;
+    }
+    notifyListeners();
+
+    try {
+      final update = await _updateCheckService.checkForUpdate();
+      _availableUpdate =
+          update?.tagName == _deferredUpdateTagName ? null : update;
+      if (!silent && update == null) {
+        _message = '当前已是最新版本';
+      }
+    } catch (_) {
+      _availableUpdate = null;
+      if (!silent) {
+        _message = '检查更新失败，请稍后重试';
+      }
+    } finally {
+      _updateCheckInProgress = false;
+      notifyListeners();
+    }
+  }
+
+  void deferUpdate(UpdateInfo update) {
+    _deferredUpdateTagName = update.tagName;
+    if (_availableUpdate?.tagName == update.tagName) {
+      _availableUpdate = null;
     }
     notifyListeners();
   }

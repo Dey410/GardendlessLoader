@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../app_controller.dart';
 import '../constants.dart';
 import '../models.dart';
+import '../services/update_check_service.dart';
 import 'game_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -19,6 +22,12 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String? _lastMessage;
   String? _activeAnnouncementId;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(widget.controller.checkForUpdates(silent: true));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +66,14 @@ class _HomePageState extends State<HomePage> {
               children: [
                 _StatusPanel(controller: controller),
                 const SizedBox(height: 20),
+                if (controller.availableUpdate != null) ...[
+                  _UpdateNotice(
+                    update: controller.availableUpdate!,
+                    onOpenRelease: _openRelease,
+                    onDefer: widget.controller.deferUpdate,
+                  ),
+                  const SizedBox(height: 20),
+                ],
                 if (controller.hasCurrentResource &&
                     controller.importValidation.status ==
                         ResourceStatus.invalid)
@@ -75,7 +92,11 @@ class _HomePageState extends State<HomePage> {
                 if (controller.importProgress.phase != ImportPhase.idle)
                   _ImportProgressView(progress: controller.importProgress),
                 const SizedBox(height: 20),
-                _Actions(controller: controller, onOpenGitHub: _openGitHub),
+                _Actions(
+                  controller: controller,
+                  onOpenGitHub: _openGitHub,
+                  onCheckUpdates: widget.controller.checkForUpdates,
+                ),
                 const SizedBox(height: 24),
                 const _InstructionBlock(),
               ],
@@ -104,6 +125,11 @@ class _HomePageState extends State<HomePage> {
   Future<void> _openGitHub() async {
     final browser = ChromeSafariBrowser();
     await browser.open(url: WebUri(githubUrl));
+  }
+
+  Future<void> _openRelease(UpdateInfo update) async {
+    final browser = ChromeSafariBrowser();
+    await browser.open(url: WebUri(update.releaseUrl));
   }
 
   Future<void> _openAnnouncementLink(AnnouncementLink link) async {
@@ -289,10 +315,12 @@ class _Actions extends StatelessWidget {
   const _Actions({
     required this.controller,
     required this.onOpenGitHub,
+    required this.onCheckUpdates,
   });
 
   final AppController controller;
   final Future<void> Function() onOpenGitHub;
+  final Future<void> Function() onCheckUpdates;
 
   @override
   Widget build(BuildContext context) {
@@ -319,7 +347,72 @@ class _Actions extends StatelessWidget {
           icon: const Icon(Icons.open_in_new),
           label: const Text('打开 GitHub'),
         ),
+        OutlinedButton.icon(
+          onPressed: controller.updateCheckInProgress ? null : onCheckUpdates,
+          icon: const Icon(Icons.system_update_alt),
+          label: Text(controller.updateCheckInProgress ? '检查中...' : '检查更新'),
+        ),
       ],
+    );
+  }
+}
+
+class _UpdateNotice extends StatelessWidget {
+  const _UpdateNotice({
+    required this.update,
+    required this.onOpenRelease,
+    required this.onDefer,
+  });
+
+  final UpdateInfo update;
+  final Future<void> Function(UpdateInfo update) onOpenRelease;
+  final void Function(UpdateInfo update) onDefer;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.system_update_alt),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '发现新版本 v${update.latestVersion}',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('当前版本 ${update.currentVersion}'),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: () => onOpenRelease(update),
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('查看 GitHub Release'),
+                ),
+                TextButton(
+                  onPressed: () => onDefer(update),
+                  child: const Text('稍后提醒'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
