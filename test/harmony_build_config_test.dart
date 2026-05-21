@@ -25,10 +25,6 @@ void main() {
         File('ohos/entry/src/main/ets/MainAbility/MainAbility.ets')
             .existsSync(),
         isTrue);
-    expect(
-        File('ohos/entry/src/main/ets/plugins/DocumentPickerPlugin.ets')
-            .existsSync(),
-        isTrue);
   });
 
   test('OpenHarmony module does not request legacy user storage permissions',
@@ -39,7 +35,7 @@ void main() {
     expect(module, isNot(contains('ohos.permission.WRITE_USER_STORAGE')));
   });
 
-  test('OpenHarmony document picker channel is registered', () {
+  test('OpenHarmony does not register the legacy folder picker', () {
     final ability =
         File('ohos/entry/src/main/ets/entryability/EntryAbility.ets')
             .readAsStringSync();
@@ -47,8 +43,8 @@ void main() {
         File('ohos/entry/src/main/ets/plugins/DocumentPickerPlugin.ets')
             .readAsStringSync();
 
-    expect(ability, contains('DocumentPickerPlugin'));
-    expect(ability, contains('addPlugin'));
+    expect(ability, isNot(contains('DocumentPickerPlugin')));
+    expect(ability, isNot(contains('addPlugin(new DocumentPickerPlugin())')));
     expect(
         picker, contains('io.github.dey410.gardendlessloader/document_picker'));
     expect(picker, contains("} from '@ohos/flutter_ohos';"));
@@ -57,13 +53,13 @@ void main() {
       isNot(contains(
           '@ohos/flutter_ohos/src/main/ets/embedding/engine/plugins/ability/AbilityAware')),
     );
-    expect(picker, contains('AbilityAware'));
-    expect(picker, contains('AbilityPluginBinding'));
-    expect(picker, contains('binding.getAbility().context'));
+    expect(picker, isNot(contains('AbilityAware')));
+    expect(picker, isNot(contains('AbilityPluginBinding')));
+    expect(picker, isNot(contains('binding.getAbility().context')));
     expect(picker, isNot(contains('binding.getAbilityContext()')));
-    expect(picker, contains('pickDocsDirectory'));
-    expect(picker, contains('DocumentViewPicker'));
-    expect(picker, contains('DocumentSelectMode.FOLDER'));
+    expect(picker, isNot(contains('pickDocsDirectory')));
+    expect(picker, isNot(contains('DocumentViewPicker')));
+    expect(picker, isNot(contains('DocumentSelectMode.FOLDER')));
   });
 
   test('GitHub Actions exports a HAP artifact', () {

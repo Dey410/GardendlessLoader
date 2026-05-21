@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:archive/archive.dart' as archive;
+import 'package:file_selector/file_selector.dart' as file_selector;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
@@ -21,10 +23,10 @@ void main() {
 
     await controller.initialize();
 
-    expect(controller.userVisibleImportDocs, '尚未选择 docs');
+    expect(controller.userVisibleImportDocs, '尚未选择 ZIP');
   });
 
-  test('imports the docs directory selected by the picker', () async {
+  test('imports the docs directory extracted from the selected zip', () async {
     final root = await Directory.systemTemp.createTemp('gl_controller_paths_');
     addTearDown(() async {
       if (await root.exists()) {
@@ -32,26 +34,27 @@ void main() {
       }
     });
 
-    final selectedDocs = Directory(p.join(root.path, 'downloads', 'docs'));
-    await _writeValidResource(selectedDocs);
+    final selectedZip = File(p.join(root.path, 'downloads', 'resource.zip'));
+    await selectedZip.parent.create(recursive: true);
+    await selectedZip.writeAsBytes(_buildResourceZip('release/docs'));
 
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       resourcePickerService: ResourcePickerService(
-        platformName: 'test',
-        directoryPathPicker: ({
-          bool? canCreateDirectories,
+        filePicker: ({
+          required List<file_selector.XTypeGroup> acceptedTypeGroups,
           String? confirmButtonText,
           String? initialDirectory,
         }) async =>
-            selectedDocs.path,
+            file_selector.XFile(selectedZip.path),
       ),
     );
 
     await controller.initialize();
     await controller.importResources();
 
-    expect(controller.userVisibleImportDocs, selectedDocs.path);
+    expect(
+        controller.userVisibleImportDocs, p.join(root.path, 'import', 'docs'));
     expect(controller.hasCurrentResource, isTrue);
     expect(
       await File(p.join(root.path, 'current', 'index.html')).exists(),
@@ -60,15 +63,24 @@ void main() {
   });
 }
 
-Future<void> _writeValidResource(Directory root) async {
-  await Directory(p.join(root.path, 'assets')).create(recursive: true);
-  await Directory(p.join(root.path, 'cocos-js')).create(recursive: true);
-  await Directory(p.join(root.path, 'src')).create(recursive: true);
-  await File(p.join(root.path, 'index.html')).writeAsString(
+List<int> _buildResourceZip(String docsPrefix) {
+  final zip = archive.Archive();
+
+  void addTextFile(String relativePath, String content) {
+    zip.addFile(
+      archive.ArchiveFile.string(
+          p.posix.join(docsPrefix, relativePath), content),
+    );
+  }
+
+  addTextFile(
+    'index.html',
     '<html><head><title>PvZ2 Gardendless</title></head><body>play.pvzge.com</body></html>',
   );
-  await File(p.join(root.path, 'src', 'settings.json'))
-      .writeAsString('{"platform":"web-mobile"}');
-  await File(p.join(root.path, 'src', 'import-map.json')).writeAsString('{}');
-  await File(p.join(root.path, 'cocos-js', 'cc.js')).writeAsString('cc');
+  addTextFile('src/settings.json', '{"platform":"web-mobile"}');
+  addTextFile('src/import-map.json', '{}');
+  addTextFile('assets/asset.txt', 'asset');
+  addTextFile('cocos-js/cc.js', 'cc');
+
+  return archive.ZipEncoder().encode(zip)!;
 }

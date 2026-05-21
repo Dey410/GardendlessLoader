@@ -2,14 +2,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart' as archive;
 import 'package:file_selector/file_selector.dart' as file_selector;
-import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
-
-typedef DirectoryPathPicker = Future<String?> Function({
-  String? initialDirectory,
-  String? confirmButtonText,
-  bool? canCreateDirectories,
-});
 
 typedef ResourceFilePicker = Future<file_selector.XFile?> Function({
   required List<file_selector.XTypeGroup> acceptedTypeGroups,
@@ -17,89 +10,25 @@ typedef ResourceFilePicker = Future<file_selector.XFile?> Function({
   String? confirmButtonText,
 });
 
-typedef OhosDirectoryPathPicker = Future<String?> Function();
-typedef AndroidDirectoryImporter = Future<String?> Function({
-  required Directory targetDirectory,
-});
-
 class ResourcePickerService {
   ResourcePickerService({
-    DirectoryPathPicker? directoryPathPicker,
     ResourceFilePicker? filePicker,
-    OhosDirectoryPathPicker? ohosDirectoryPathPicker,
-    AndroidDirectoryImporter? androidDirectoryImporter,
     String? platformName,
-  })  : _directoryPathPicker =
-            directoryPathPicker ?? file_selector.getDirectoryPath,
-        _filePicker = filePicker ?? file_selector.openFile,
-        _ohosDirectoryPathPicker =
-            ohosDirectoryPathPicker ?? _pickOhosDirectory,
-        _androidDirectoryImporter =
-            androidDirectoryImporter ?? _pickAndCopyAndroidDirectory,
-        _platformName = platformName ?? Platform.operatingSystem;
+  }) : _filePicker = filePicker ?? file_selector.openFile;
 
-  static const MethodChannel _documentPickerChannel = MethodChannel(
-    'io.github.dey410.gardendlessloader/document_picker',
-  );
-
-  final DirectoryPathPicker _directoryPathPicker;
   final ResourceFilePicker _filePicker;
-  final OhosDirectoryPathPicker _ohosDirectoryPathPicker;
-  final AndroidDirectoryImporter _androidDirectoryImporter;
-  final String _platformName;
 
-  Future<Directory?> pickDocsDirectory({
+  Future<Directory?> pickAndExtractDocsZip({
     Directory? initialDirectory,
     Directory? localImportDocsDir,
   }) async {
-    if (_platformName == 'android') {
-      final targetDirectory = localImportDocsDir;
-      if (targetDirectory == null) {
-        throw ResourcePickerFailure(
-          'Android import requires an app-private target directory',
-        );
-      }
-      final copiedPath = await _androidDirectoryImporter(
-        targetDirectory: targetDirectory,
-      );
-      if (copiedPath == null || copiedPath.trim().isEmpty) {
-        return null;
-      }
-      return Directory(copiedPath.trim());
-    }
-
-    if (_platformName == 'ios') {
-      final targetDirectory = localImportDocsDir;
-      if (targetDirectory == null) {
-        throw ResourcePickerFailure(
-          'iOS import requires an app-private target directory',
-        );
-      }
-      return _pickAndExtractIosZip(
-        initialDirectory: initialDirectory,
-        targetDirectory: targetDirectory,
+    final targetDirectory = localImportDocsDir;
+    if (targetDirectory == null) {
+      throw ResourcePickerFailure(
+        'ZIP import requires an app-private target directory',
       );
     }
 
-    final selectedPath = _platformName == 'ohos'
-        ? await _ohosDirectoryPathPicker()
-        : await _directoryPathPicker(
-            initialDirectory: initialDirectory?.path,
-            confirmButtonText: '\u9009\u62e9 docs',
-            canCreateDirectories: false,
-          );
-
-    if (selectedPath == null || selectedPath.trim().isEmpty) {
-      return null;
-    }
-
-    return _resolveDocsDirectory(Directory(selectedPath.trim()));
-  }
-
-  Future<Directory?> _pickAndExtractIosZip({
-    Directory? initialDirectory,
-    required Directory targetDirectory,
-  }) async {
     final selectedZip = await _filePicker(
       acceptedTypeGroups: const [
         file_selector.XTypeGroup(
@@ -110,7 +39,7 @@ class ResourcePickerService {
         ),
       ],
       initialDirectory: initialDirectory?.path,
-      confirmButtonText: 'Choose ZIP',
+      confirmButtonText: '选择 ZIP',
     );
     if (selectedZip == null) {
       return null;
@@ -122,7 +51,7 @@ class ResourcePickerService {
       final docsPrefix = _findDocsPrefix(decoded);
       if (docsPrefix == null) {
         throw ResourcePickerFailure(
-          'Selected ZIP does not contain a valid docs directory',
+          '选择的 ZIP 中没有找到有效的 docs 资源目录',
         );
       }
 
@@ -136,7 +65,7 @@ class ResourcePickerService {
     } on ResourcePickerFailure {
       rethrow;
     } catch (error) {
-      throw ResourcePickerFailure('Unable to import selected ZIP: $error');
+      throw ResourcePickerFailure('无法导入选择的 ZIP：$error');
     }
   }
 
@@ -203,7 +132,7 @@ class ResourcePickerService {
     for (final file in decoded.files) {
       if (file.isSymbolicLink) {
         throw ResourcePickerFailure(
-          'Selected ZIP contains an unsupported symbolic link',
+          '选择的 ZIP 包含不支持的符号链接',
         );
       }
 
@@ -227,7 +156,7 @@ class ResourcePickerService {
       if (!p.equals(rootPath, normalizedDiskPath) &&
           !p.isWithin(rootPath, normalizedDiskPath)) {
         throw ResourcePickerFailure(
-          'Selected ZIP contains a file outside docs',
+          '选择的 ZIP 包含 docs 外部路径',
         );
       }
 
@@ -248,7 +177,7 @@ class ResourcePickerService {
         normalized == '..' ||
         normalized.startsWith('../') ||
         normalized.contains('/../')) {
-      throw ResourcePickerFailure('Selected ZIP contains an unsafe path');
+      throw ResourcePickerFailure('选择的 ZIP 包含不安全路径');
     }
     return normalized;
   }
@@ -265,53 +194,6 @@ class ResourcePickerService {
       await directory.delete(recursive: true);
     }
     await directory.create(recursive: true);
-  }
-
-  Future<Directory> _resolveDocsDirectory(Directory selected) async {
-    if (await _looksLikeDocsDirectory(selected)) {
-      return selected;
-    }
-
-    final nestedDocs = Directory(p.join(selected.path, 'docs'));
-    if (await _looksLikeDocsDirectory(nestedDocs)) {
-      return nestedDocs;
-    }
-
-    return selected;
-  }
-
-  Future<bool> _looksLikeDocsDirectory(Directory directory) async {
-    return File(p.join(directory.path, 'index.html')).exists();
-  }
-
-  static Future<String?> _pickOhosDirectory() async {
-    try {
-      return _documentPickerChannel.invokeMethod<String>('pickDocsDirectory');
-    } on MissingPluginException catch (error) {
-      throw ResourcePickerFailure(
-        'Current OHOS build does not implement the document picker: '
-        '${error.message ?? error.toString()}',
-      );
-    } on PlatformException catch (error) {
-      throw ResourcePickerFailure(error.message ?? error.code);
-    }
-  }
-
-  static Future<String?> _pickAndCopyAndroidDirectory({
-    required Directory targetDirectory,
-  }) async {
-    try {
-      return _documentPickerChannel.invokeMethod<String>('pickDocsDirectory', {
-        'targetDirectory': targetDirectory.path,
-      });
-    } on MissingPluginException catch (error) {
-      throw ResourcePickerFailure(
-        'Current Android build does not implement the document picker: '
-        '${error.message ?? error.toString()}',
-      );
-    } on PlatformException catch (error) {
-      throw ResourcePickerFailure(error.message ?? error.code);
-    }
   }
 }
 

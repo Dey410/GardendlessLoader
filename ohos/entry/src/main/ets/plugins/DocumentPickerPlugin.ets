@@ -1,9 +1,4 @@
-import { common } from '@kit.AbilityKit';
-import { BusinessError } from '@kit.BasicServicesKit';
-import { fileUri, picker } from '@kit.CoreFileKit';
 import {
-  AbilityAware,
-  AbilityPluginBinding,
   FlutterPlugin,
   FlutterPluginBinding,
   MethodCall,
@@ -14,9 +9,8 @@ import {
 
 const CHANNEL_NAME = 'io.github.dey410.gardendlessloader/document_picker';
 
-export class DocumentPickerPlugin implements FlutterPlugin, MethodCallHandler, AbilityAware {
+export class DocumentPickerPlugin implements FlutterPlugin, MethodCallHandler {
   private channel: MethodChannel | null = null;
-  private abilityContext: common.UIAbilityContext | null = null;
 
   getUniqueClassName(): string {
     return 'DocumentPickerPlugin';
@@ -32,57 +26,7 @@ export class DocumentPickerPlugin implements FlutterPlugin, MethodCallHandler, A
     this.channel = null;
   }
 
-  onAttachedToAbility(binding: AbilityPluginBinding): void {
-    this.abilityContext = binding.getAbility().context;
-  }
-
-  onDetachedFromAbility(): void {
-    this.abilityContext = null;
-  }
-
-  onReattachedToAbilityForConfigChanges(binding: AbilityPluginBinding): void {
-    this.onAttachedToAbility(binding);
-  }
-
-  onDetachedFromAbilityForConfigChanges(): void {
-    this.onDetachedFromAbility();
-  }
-
-  onMethodCall(call: MethodCall, result: MethodResult): void {
-    if (call.method === 'pickDocsDirectory') {
-      this.pickDocsDirectory(result);
-      return;
-    }
-
+  onMethodCall(_call: MethodCall, result: MethodResult): void {
     result.notImplemented();
-  }
-
-  private pickDocsDirectory(result: MethodResult): void {
-    const context = this.abilityContext;
-    if (context === null) {
-      result.error('NO_ABILITY', '无法打开鸿蒙文档选择器：Ability 不可用', null);
-      return;
-    }
-
-    const options = new picker.DocumentSelectOptions();
-    options.maxSelectNumber = 1;
-    options.selectMode = picker.DocumentSelectMode.FOLDER;
-
-    const documentPicker = new picker.DocumentViewPicker(context);
-    documentPicker.select(options).then((uris: Array<string>) => {
-      if (uris.length === 0) {
-        result.success(null);
-        return;
-      }
-
-      const selectedPath = new fileUri.FileUri(uris[0]).path;
-      result.success(selectedPath);
-    }).catch((error: BusinessError) => {
-      result.error(
-        'PICK_FAILED',
-        `鸿蒙文档选择器打开失败：${error.message}`,
-        error.code,
-      );
-    });
   }
 }

@@ -86,7 +86,7 @@ class _HomePageState extends State<HomePage> {
                 else if (!controller.hasCurrentResource)
                   const _Notice(
                     title: '需要导入资源',
-                    message: '请选择解压后的 docs 文件夹导入。',
+                    message: '请选择从 GitHub 下载的资源 ZIP 导入。',
                     icon: Icons.file_upload_outlined,
                   ),
                 if (controller.importProgress.phase != ImportPhase.idle)
@@ -266,7 +266,7 @@ class _StatusPanel extends StatelessWidget {
     final title = hasCurrent ? '资源已导入' : '尚未导入资源';
     final subtitle = hasCurrent
         ? controller.detectedTitle
-        : '请选择解压后的 docs 文件夹，App 会自动校验并导入。';
+        : '请选择从 GitHub 下载的资源 ZIP，App 会自动解压、校验并导入。';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -296,7 +296,7 @@ class _StatusPanel extends StatelessWidget {
             Text(subtitle),
             const SizedBox(height: 12),
             Text(
-              '已选 docs：${controller.userVisibleImportDocs}',
+              '导入来源：${controller.userVisibleImportDocs}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 4),
@@ -340,7 +340,7 @@ class _Actions extends StatelessWidget {
               : controller.importResources,
           icon: const Icon(Icons.file_upload_outlined),
           label:
-              Text(controller.hasCurrentResource ? '选择 docs 更新' : '选择 docs 导入'),
+              Text(controller.hasCurrentResource ? '选择 ZIP 更新' : '选择 ZIP 导入'),
         ),
         OutlinedButton.icon(
           onPressed: onOpenGitHub,
@@ -428,8 +428,8 @@ class _InstructionBlock extends StatelessWidget {
         Text('导入指引', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         const Text('1. 打开 GitHub 下载 ZIP。'),
-        const Text('2. 解压 ZIP，找到里面的 docs 文件夹。'),
-        const Text('3. 点击选择 docs 导入，并选择这个 docs 文件夹。'),
+        const Text('2. 点击选择 ZIP 导入，并选择下载的 ZIP 文件。'),
+        const Text('3. App 会自动解压并定位 ZIP 内的 docs 资源目录。'),
         const Text('4. docs 内应直接包含 index.html、assets、cocos-js、src。'),
       ],
     );

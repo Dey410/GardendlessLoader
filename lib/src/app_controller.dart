@@ -59,7 +59,7 @@ class AppController extends ChangeNotifier {
   ResourceValidationResult _currentValidation =
       ResourceValidationResult.missing('尚未检查 current');
   ResourceValidationResult _importValidation =
-      ResourceValidationResult.missing('尚未选择 docs');
+      ResourceValidationResult.missing('尚未选择 ZIP');
   ImportProgress _importProgress = ImportProgress.idle;
   Directory? _selectedImportSource;
   Announcement? _pendingAnnouncement;
@@ -106,7 +106,7 @@ class AppController extends ChangeNotifier {
     if (selected != null) {
       return selected.path;
     }
-    return '尚未选择 docs';
+    return '尚未选择 ZIP';
   }
 
 //initialize 方法负责初始化应用的核心状态，包括加载路径信息、读取资源清单、恢复未完成的导入事务，并刷新公告信息。它会在整个过程中更新 busy 状态和 message，以便 UI 可以显示加载状态和错误信息。
@@ -139,7 +139,7 @@ class AppController extends ChangeNotifier {
     _currentValidation = await _validator.validate(paths.currentDir);
     final selectedImportSource = _selectedImportSource;
     _importValidation = selectedImportSource == null
-        ? ResourceValidationResult.missing('尚未选择 docs')
+        ? ResourceValidationResult.missing('尚未选择 ZIP')
         : await _validator.validate(selectedImportSource);
 
     if (_currentValidation.isValid &&
@@ -234,12 +234,12 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final selectedSource = await _resourcePickerService.pickDocsDirectory(
+      final selectedSource = await _resourcePickerService.pickAndExtractDocsZip(
         initialDirectory: paths.importDir,
         localImportDocsDir: paths.importDocsDir,
       );
       if (selectedSource == null) {
-        _message = '已取消选择 docs';
+        _message = '已取消选择 ZIP';
         return;
       }
 
