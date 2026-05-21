@@ -13,6 +13,7 @@ void main() {
     expect(pubspec, contains('flutter_inappwebview'));
     expect(pubspec, contains('openharmony-sig/fluttertpc_wakelock_plus.git'));
     expect(pubspec, contains('wakelock_plus'));
+    expect(pubspec, contains('package_info_plus: ^4.2.0'));
   });
 
   test('OpenHarmony project files are present for HAP builds', () {

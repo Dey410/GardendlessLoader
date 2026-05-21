@@ -1,4 +1,5 @@
 dependency_overrides:
+  package_info_plus: ^4.2.0
   flutter_inappwebview:
     git:
       url: "https://gitcode.com/openharmony-sig/flutter_inappwebview.git"
