@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:archive/archive.dart' as archive;
+import 'package:file_selector/file_selector.dart' as file_selector;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/services/resource_picker_service.dart';
 import 'package:path/path.dart' as p;
@@ -101,6 +103,123 @@ void main() {
         isTrue);
   });
 
+  test('ios extracts the selected zip into the local imported docs directory',
+      () async {
+    final temp = await Directory.systemTemp.createTemp('gl_picker_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final selectedZip = File(p.join(temp.path, 'resource.zip'));
+    await selectedZip.writeAsBytes(_buildResourceZip('release/docs'));
+    final localImportDocs = Directory(p.join(temp.path, 'import', 'docs'));
+    await localImportDocs.create(recursive: true);
+    await File(p.join(localImportDocs.path, 'stale.txt')).writeAsString('old');
+
+    var zipPickerWasCalled = false;
+    final picker = ResourcePickerService(
+      platformName: 'ios',
+      directoryPathPicker: ({
+        bool? canCreateDirectories,
+        String? confirmButtonText,
+        String? initialDirectory,
+      }) async {
+        throw StateError('iOS must not call getDirectoryPath');
+      },
+      filePicker: ({
+        required List<file_selector.XTypeGroup> acceptedTypeGroups,
+        String? confirmButtonText,
+        String? initialDirectory,
+      }) async {
+        zipPickerWasCalled = true;
+        expect(acceptedTypeGroups.single.extensions, contains('zip'));
+        return file_selector.XFile(selectedZip.path);
+      },
+    );
+
+    final picked = await picker.pickDocsDirectory(
+      initialDirectory: Directory(p.join(temp.path, 'downloads')),
+      localImportDocsDir: localImportDocs,
+    );
+
+    expect(zipPickerWasCalled, isTrue);
+    expect(picked?.path, localImportDocs.path);
+    expect(await File(p.join(localImportDocs.path, 'index.html')).exists(),
+        isTrue);
+    expect(
+      await File(p.join(localImportDocs.path, 'src', 'settings.json')).exists(),
+      isTrue,
+    );
+    expect(await File(p.join(localImportDocs.path, 'stale.txt')).exists(),
+        isFalse);
+  });
+
+  test('ios returns null when the zip picker is cancelled', () async {
+    final temp = await Directory.systemTemp.createTemp('gl_picker_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final picker = ResourcePickerService(
+      platformName: 'ios',
+      directoryPathPicker: ({
+        bool? canCreateDirectories,
+        String? confirmButtonText,
+        String? initialDirectory,
+      }) async {
+        throw StateError('iOS must not call getDirectoryPath');
+      },
+      filePicker: ({
+        required List<file_selector.XTypeGroup> acceptedTypeGroups,
+        String? confirmButtonText,
+        String? initialDirectory,
+      }) async =>
+          null,
+    );
+
+    expect(
+      await picker.pickDocsDirectory(
+        localImportDocsDir: Directory(p.join(temp.path, 'import', 'docs')),
+      ),
+      isNull,
+    );
+  });
+
+  test('ios rejects zips without a docs resource root', () async {
+    final temp = await Directory.systemTemp.createTemp('gl_picker_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final selectedZip = File(p.join(temp.path, 'resource.zip'));
+    final zip = archive.Archive()
+      ..addFile(archive.ArchiveFile.string('readme.txt', 'not docs'));
+    await selectedZip.writeAsBytes(archive.ZipEncoder().encode(zip)!);
+
+    final picker = ResourcePickerService(
+      platformName: 'ios',
+      filePicker: ({
+        required List<file_selector.XTypeGroup> acceptedTypeGroups,
+        String? confirmButtonText,
+        String? initialDirectory,
+      }) async =>
+          file_selector.XFile(selectedZip.path),
+    );
+
+    await expectLater(
+      picker.pickDocsDirectory(
+        localImportDocsDir: Directory(p.join(temp.path, 'import', 'docs')),
+      ),
+      throwsA(isA<ResourcePickerFailure>()),
+    );
+  });
+
   test('ohos uses the document picker channel callback', () async {
     final temp = await Directory.systemTemp.createTemp('gl_picker_');
     addTearDown(() async {
@@ -117,4 +236,26 @@ void main() {
 
     expect((await picker.pickDocsDirectory())?.path, temp.path);
   });
+}
+
+List<int> _buildResourceZip(String docsPrefix) {
+  final zip = archive.Archive();
+
+  void addTextFile(String relativePath, String content) {
+    zip.addFile(
+      archive.ArchiveFile.string(
+          p.posix.join(docsPrefix, relativePath), content),
+    );
+  }
+
+  addTextFile(
+    'index.html',
+    '<html><head><title>PvZ2 Gardendless</title></head><body>play.pvzge.com</body></html>',
+  );
+  addTextFile('src/settings.json', '{"platform":"web-mobile"}');
+  addTextFile('src/import-map.json', '{}');
+  addTextFile('assets/asset.txt', 'asset');
+  addTextFile('cocos-js/cc.js', 'cc');
+
+  return archive.ZipEncoder().encode(zip)!;
 }
