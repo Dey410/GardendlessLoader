@@ -12,6 +12,7 @@ void main() {
     final controller = AppController(
       updateCheckService: UpdateCheckService(
         currentVersion: '0.1.0',
+        installedVersionLoader: () async => '0.1.0',
         loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
           statusCode: HttpStatus.ok,
           body: '''

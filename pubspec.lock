@@ -401,13 +401,21 @@ packages:
     source: hosted
     version: "2.2.0"
   package_info_plus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: package_info_plus
       sha256: "4bf625947f6c7713ee242296a682e23e44823c09cf9d79e4f1238923c92db852"
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "10.1.0"
+  package_info_plus_ohos:
+    dependency: "direct main"
+    description:
+      name: package_info_plus_ohos
+      sha256: "8a22a6e393630fbf0231e9d2a9e313160230a8ae71c977070a305ec5241cd77e"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.0.7"
   package_info_plus_platform_interface:
     dependency: transitive
     description:

@@ -59,6 +59,48 @@ void main() {
     expect(update, isNull);
   });
 
+  test('uses installed package version before fallback app version', () async {
+    final service = UpdateCheckService(
+      currentVersion: '0.1.0',
+      installedVersionLoader: () async => '0.2.0+2',
+      loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
+        statusCode: HttpStatus.ok,
+        body: '''
+{
+  "tag_name": "v0.2.0",
+  "html_url": "https://github.com/Dey410/GardendlessLoader/releases/tag/v0.2.0"
+}
+''',
+      ),
+    );
+
+    final update = await service.checkForUpdate();
+
+    expect(update, isNull);
+  });
+
+  test('falls back to app version when installed version is unavailable',
+      () async {
+    final service = UpdateCheckService(
+      currentVersion: '0.2.0',
+      installedVersionLoader: () async => throw const SocketException('no api'),
+      loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
+        statusCode: HttpStatus.ok,
+        body: '''
+{
+  "tag_name": "v0.2.1",
+  "html_url": "https://github.com/Dey410/GardendlessLoader/releases/tag/v0.2.1"
+}
+''',
+      ),
+    );
+
+    final update = await service.checkForUpdate();
+
+    expect(update?.currentVersion, '0.2.0');
+    expect(update?.latestVersion, '0.2.1');
+  });
+
   test('throws update check exception when GitHub request fails', () {
     final service = UpdateCheckService(
       loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(

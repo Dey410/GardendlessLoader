@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:package_info_plus/package_info_plus.dart';
+
 import '../constants.dart';
 
 const defaultLatestReleaseApiUrl =
@@ -14,6 +16,8 @@ typedef UpdateCheckHttpLoader = Future<UpdateCheckHttpResponse> Function(
   Duration timeout,
   int maxBytes,
 );
+
+typedef InstalledVersionLoader = Future<String?> Function();
 
 class UpdateCheckHttpResponse {
   const UpdateCheckHttpResponse({
@@ -52,17 +56,21 @@ class UpdateCheckService {
     Duration timeout = defaultUpdateCheckTimeout,
     int maxBytes = defaultUpdateCheckMaxBytes,
     UpdateCheckHttpLoader? loader,
+    InstalledVersionLoader? installedVersionLoader,
   })  : _latestReleaseUri = Uri.parse(latestReleaseApiUrl),
         _currentVersion = currentVersion,
         _timeout = timeout,
         _maxBytes = maxBytes,
-        _loader = loader ?? _loadWithHttpClient;
+        _loader = loader ?? _loadWithHttpClient,
+        _installedVersionLoader =
+            installedVersionLoader ?? _loadInstalledVersion;
 
   final Uri _latestReleaseUri;
   final String _currentVersion;
   final Duration _timeout;
   final int _maxBytes;
   final UpdateCheckHttpLoader _loader;
+  final InstalledVersionLoader _installedVersionLoader;
 
   Future<UpdateInfo?> checkForUpdate() async {
     final response =
@@ -84,14 +92,14 @@ class UpdateCheckService {
     final publishedAt = DateTime.tryParse(
       _optionalString(decoded['published_at']) ?? '',
     );
+    final currentVersion = await _loadCurrentVersion();
 
-    if (_compareVersions(latestVersion, _normalizeVersion(_currentVersion)) <=
-        0) {
+    if (_compareVersions(latestVersion, currentVersion) <= 0) {
       return null;
     }
 
     return UpdateInfo(
-      currentVersion: _normalizeVersion(_currentVersion),
+      currentVersion: currentVersion,
       latestVersion: latestVersion,
       tagName: tagName,
       releaseUrl: releaseUrl,
@@ -139,6 +147,24 @@ class UpdateCheckService {
     } finally {
       client.close(force: true);
     }
+  }
+
+  Future<String> _loadCurrentVersion() async {
+    try {
+      final installedVersion = await _installedVersionLoader();
+      if (installedVersion != null && installedVersion.trim().isNotEmpty) {
+        return _normalizeVersion(installedVersion);
+      }
+    } catch (_) {
+      // Fall back to the compile-time version when a platform cannot provide
+      // package metadata.
+    }
+    return _normalizeVersion(_currentVersion);
+  }
+
+  static Future<String?> _loadInstalledVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    return packageInfo.version;
   }
 
   static String _requiredString(Object? value) {
