@@ -6,69 +6,74 @@
 
 [中文](README.md)
 
-`GardendlessLoader` is a Flutter mobile loader for user-supplied
-[`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) web resources.
+`GardendlessLoader` is a Flutter local loader for user-supplied
+[`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) web resource
+packages on mobile and desktop platforms.
 
-It imports an extracted `docs` resource directory, serves it from a local HTTP
-server, and opens the game in an in-app WebView on Android, iOS, and
-HarmonyOS/OpenHarmony builds.
+The app lets users select a resource ZIP, extracts and locates the bundled
+`docs` web build, validates it, serves it from a local HTTP server, and opens
+the game in an in-app WebView.
 
 > [!IMPORTANT]
-> This app does not bundle, download, update, or redistribute `PvZ2 Gardendless`
-> game resources. Users provide their own extracted resources and import them
-> locally.
+> This project does not bundle, download, update, or redistribute
+> `PvZ2 Gardendless` game resources. Users must provide their own resource ZIP
+> and import it locally.
 
 ## Features
 
-- Local resource import from `GardendlessLoader/import/docs`.
-- Resource validation for the expected `PvZ2 Gardendless` Cocos web build shape.
-- Local static server at `http://127.0.0.1:26410`.
-- Landscape in-app WebView with external navigation blocked by default.
-- Import progress, rollback on failed import, and startup recovery.
-- Diagnostics copy panel for support/debugging.
-- Optional in-game helpers such as auto sunlight collection and stretch mode.
-- Remote announcement support through `announcements.json`.
+- Finds and extracts a valid `docs` resource directory from a selected ZIP.
+- Validates the expected `PvZ2 Gardendless` Cocos web build shape, title, and fingerprints.
+- Serves static files from `http://127.0.0.1:26410`.
+- Uses a landscape, immersive WebView and blocks non-local requests by default.
+- Shows import progress, rolls back failed imports, and recovers unfinished startup transactions.
+- Provides copyable diagnostics for resource, platform, WebView, and local server state.
+- Supports remote announcements, GitHub Release update checks, auto sunlight collection, and stretch mode.
+- Builds Android, iOS, HarmonyOS/OpenHarmony, macOS, Windows, and Linux artifacts in GitHub Actions.
 
-## How It Works
+## Usage
 
-On first launch, the app creates a resource root named `GardendlessLoader`.
-Users copy the extracted `docs` folder into:
+1. Get a `PvZ2 Gardendless` resource ZIP from the upstream project or another trusted source.
+2. Open `GardendlessLoader` and choose `Select ZIP to import`.
+3. The app searches the ZIP root and nested directories for a valid `docs`, extracts it, and imports it into `current`.
+4. After import succeeds, start the game. It loads from the local origin.
 
-```text
-GardendlessLoader/import/docs/index.html
-```
-
-The app validates the import source, stages it, switches it into:
+Imported resources are stored under an app-created `GardendlessLoader` directory:
 
 ```text
-GardendlessLoader/current
+GardendlessLoader/
+  import/docs/     # latest docs extracted from ZIP
+  current/         # active resources
+  previous/        # previous resources used for rollback
+  staging/         # temporary import transaction directory
+  manifest.json    # import state, resource stats, and announcement state
 ```
 
-Then it self-checks key files through:
-
-```text
-http://127.0.0.1:26410
-```
-
-The WebView only loads the local origin while gameplay is active.
+The exact resource root depends on the platform. The home screen shows the full
+path for the current device.
 
 ## Resource Requirements
 
-The imported `docs` directory must contain a valid `PvZ2 Gardendless` web build.
-At minimum, the validator expects:
+The selected ZIP must contain a valid `PvZ2 Gardendless` web build directory.
+It can be at the ZIP root or under a nested path such as `release/docs`.
+
+Minimum expected shape:
 
 ```text
 docs/
   index.html
   assets/
   cocos-js/
+    cc.js
   src/
     settings.json
     import-map.json
 ```
 
-`index.html` must include a `PvZ2 Gardendless` title/fingerprint, and
-`src/settings.json` must look like a Cocos configuration file.
+The validator also checks that:
+
+- `index.html` has a title containing `PvZ2 Gardendless`.
+- `index.html` contains a `pvzge` or `play.pvzge.com` fingerprint.
+- `src/settings.json` is valid JSON and looks like a Cocos configuration file.
 
 ## Development
 
@@ -84,12 +89,13 @@ Useful project files:
 
 | Path | Purpose |
 | --- | --- |
-| `lib/src/app_controller.dart` | App state, import flow, server lifecycle, diagnostics |
-| `lib/src/services/import_service.dart` | Staged import, rollback, startup recovery |
-| `lib/src/services/local_game_server.dart` | Local static HTTP server and MIME/self-checks |
-| `lib/src/services/resource_validator.dart` | Resource shape and fingerprint validation |
-| `lib/src/ui/home_page.dart` | Import/status UI |
-| `lib/src/ui/game_page.dart` | Landscape WebView game shell |
+| `lib/src/app_controller.dart` | App state, import flow, server lifecycle, announcements, and update checks |
+| `lib/src/services/resource_picker_service.dart` | ZIP picking, path safety, `docs` discovery, and extraction |
+| `lib/src/services/import_service.dart` | Staged import, current switching, rollback, and startup recovery |
+| `lib/src/services/local_game_server.dart` | Local HTTP server, MIME handling, and self-checks |
+| `lib/src/services/resource_validator.dart` | Resource shape, title, and Cocos config validation |
+| `lib/src/ui/home_page.dart` | Import, status, announcement, update, and diagnostics UI |
+| `lib/src/ui/game_page.dart` | Landscape WebView shell, menu, and helper toggles |
 | `announcements.json` | Remote announcement payload |
 
 ## Build
@@ -107,7 +113,7 @@ GitHub Actions can sign the release APK when these repository secrets are set:
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-Without signing secrets, CI falls back to debug signing.
+Without signing secrets, CI keeps building with debug signing.
 
 ### iOS
 
@@ -118,22 +124,22 @@ cd ..
 flutter build ios --release --no-codesign
 ```
 
-The CI workflow packages an unsigned IPA artifact for manual signing or later
-distribution work.
+CI packages an unsigned IPA artifact for manual signing or later distribution.
 
 ### HarmonyOS / OpenHarmony
 
 HAP builds require an OpenHarmony-compatible Flutter SDK plus DevEco Studio or
-command-line tools with `ohpm`, `hvigor`, `node`, and JDK 17 configured.
+command-line tools with `ohpm`, `hvigor`, `node`, and JDK 17 configured. The
+stock Flutter stable SDK does not provide `flutter build hap`.
 
-The stock Flutter stable SDK does not expose `flutter build hap`. CI uses:
+CI uses:
 
 ```text
 https://gitcode.com/openharmony-tpc/flutter_flutter.git
 ref: oh-3.35.7-release
 ```
 
-Before building locally, enable the OpenHarmony plugin overrides:
+Enable OpenHarmony dependency overrides before local builds:
 
 ```powershell
 Copy-Item pubspec_overrides.ohos.yaml pubspec_overrides.yaml
@@ -144,22 +150,32 @@ flutter build hap --release --target-platform ohos-arm64
 flutter build hap --release --target-platform ohos-x64
 ```
 
-Expected signed HAP output from the OpenHarmony build layout:
+### Desktop
 
-```text
-ohos/entry/build/default/outputs/default/entry-default-signed.hap
+```powershell
+flutter build windows --release
+flutter build macos --release
+flutter build linux --release
 ```
 
-In GitHub Actions, set `OHOS_COMMANDLINE_TOOLS_URL` to a DevEco/OpenHarmony
-command-line tools archive. If the secret is missing, the HarmonyOS job is
-skipped while Android and iOS artifacts continue to build.
+GitHub Actions also packages:
+
+| Platform | Artifact |
+| --- | --- |
+| macOS | unsigned DMG |
+| Windows | ZIP package |
+| Linux | DEB package |
 
 ## CI
 
-The workflow in `.github/workflows/build-mobile.yml` builds:
+`.github/workflows/build-mobile.yml` runs tests and builds:
 
 - Android release APK
 - unsigned iOS IPA
-- unsigned HarmonyOS HAP when OpenHarmony tools are configured
+- unsigned HarmonyOS HAPs when `OHOS_COMMANDLINE_TOOLS_URL` is configured
+- macOS DMG
+- Windows ZIP
+- Linux DEB
 
-It also runs Flutter tests before packaging mobile artifacts.
+When HarmonyOS tools are not configured, that job is skipped without blocking
+other platform artifacts.
