@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart' as archive;
 import 'package:file_selector/file_selector.dart' as file_selector;
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 typedef ResourceFilePicker = Future<file_selector.XFile?> Function({
@@ -10,13 +11,27 @@ typedef ResourceFilePicker = Future<file_selector.XFile?> Function({
   String? confirmButtonText,
 });
 
+typedef AndroidZipImporter = Future<String?> Function({
+  required String targetDirectory,
+});
+
 class ResourcePickerService {
   ResourcePickerService({
     ResourceFilePicker? filePicker,
     String? platformName,
-  }) : _filePicker = filePicker ?? file_selector.openFile;
+    AndroidZipImporter? androidZipImporter,
+  })  : _filePicker = filePicker ?? file_selector.openFile,
+        _platformName = platformName ?? Platform.operatingSystem,
+        _androidZipImporter =
+            androidZipImporter ?? _pickAndExtractAndroidDocsZip;
 
   final ResourceFilePicker _filePicker;
+  final String _platformName;
+  final AndroidZipImporter _androidZipImporter;
+
+  static const MethodChannel _androidZipImporterChannel = MethodChannel(
+    'io.github.dey410.gardendlessloader/resource_zip_importer',
+  );
 
   Future<Directory?> pickAndExtractDocsZip({
     Directory? initialDirectory,
@@ -27,6 +42,19 @@ class ResourcePickerService {
       throw ResourcePickerFailure(
         'ZIP import requires an app-private target directory',
       );
+    }
+
+    if (_platformName == 'android') {
+      try {
+        final extractedPath = await _androidZipImporter(
+          targetDirectory: targetDirectory.path,
+        );
+        return extractedPath == null ? null : Directory(extractedPath);
+      } on PlatformException catch (error) {
+        throw ResourcePickerFailure(
+          error.message ?? '无法导入选择的 ZIP',
+        );
+      }
     }
 
     final selectedZip = await _filePicker(
@@ -194,6 +222,17 @@ class ResourcePickerService {
       await directory.delete(recursive: true);
     }
     await directory.create(recursive: true);
+  }
+
+  static Future<String?> _pickAndExtractAndroidDocsZip({
+    required String targetDirectory,
+  }) {
+    return _androidZipImporterChannel.invokeMethod<String>(
+      'pickAndExtractDocsZip',
+      <String, Object?>{
+        'targetDirectory': targetDirectory,
+      },
+    );
   }
 }
 

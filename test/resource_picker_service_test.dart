@@ -2,11 +2,106 @@ import 'dart:io';
 
 import 'package:archive/archive.dart' as archive;
 import 'package:file_selector/file_selector.dart' as file_selector;
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/services/resource_picker_service.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test('uses Android streaming importer instead of reading the zip in Dart',
+      () async {
+    final temp = await Directory.systemTemp.createTemp('gl_picker_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final localImportDocs = Directory(p.join(temp.path, 'import', 'docs'));
+    var importerCalled = false;
+
+    final picker = ResourcePickerService(
+      platformName: 'android',
+      filePicker: ({
+        required List<file_selector.XTypeGroup> acceptedTypeGroups,
+        String? confirmButtonText,
+        String? initialDirectory,
+      }) async {
+        fail('Android imports should not use file_selector.readAsBytes path');
+      },
+      androidZipImporter: ({required String targetDirectory}) async {
+        importerCalled = true;
+        expect(targetDirectory, localImportDocs.path);
+        await localImportDocs.create(recursive: true);
+        await File(p.join(localImportDocs.path, 'index.html'))
+            .writeAsString('ok');
+        return targetDirectory;
+      },
+    );
+
+    final picked = await picker.pickAndExtractDocsZip(
+      localImportDocsDir: localImportDocs,
+    );
+
+    expect(importerCalled, isTrue);
+    expect(picked?.path, localImportDocs.path);
+    expect(await File(p.join(localImportDocs.path, 'index.html')).exists(),
+        isTrue);
+  });
+
+  test('returns null when Android streaming importer is cancelled', () async {
+    final temp = await Directory.systemTemp.createTemp('gl_picker_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final picker = ResourcePickerService(
+      platformName: 'android',
+      androidZipImporter: ({required String targetDirectory}) async => null,
+    );
+
+    expect(
+      await picker.pickAndExtractDocsZip(
+        localImportDocsDir: Directory(p.join(temp.path, 'import', 'docs')),
+      ),
+      isNull,
+    );
+  });
+
+  test('maps Android streaming importer failures to picker failures', () async {
+    final temp = await Directory.systemTemp.createTemp('gl_picker_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final picker = ResourcePickerService(
+      platformName: 'android',
+      androidZipImporter: ({required String targetDirectory}) async {
+        throw PlatformException(
+          code: 'zip_import_failed',
+          message: '无法导入选择的 ZIP：坏 ZIP',
+        );
+      },
+    );
+
+    await expectLater(
+      picker.pickAndExtractDocsZip(
+        localImportDocsDir: Directory(p.join(temp.path, 'import', 'docs')),
+      ),
+      throwsA(
+        isA<ResourcePickerFailure>().having(
+          (failure) => failure.message,
+          'message',
+          '无法导入选择的 ZIP：坏 ZIP',
+        ),
+      ),
+    );
+  });
+
   test('returns null when the zip picker is cancelled', () async {
     final temp = await Directory.systemTemp.createTemp('gl_picker_');
     addTearDown(() async {
