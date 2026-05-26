@@ -67,6 +67,25 @@ void main() {
     expect(picker, isNot(contains('DocumentSelectMode.FOLDER')));
   });
 
+  test('OpenHarmony registers a streaming zip importer', () {
+    final ability =
+        File('ohos/entry/src/main/ets/entryability/EntryAbility.ets')
+            .readAsStringSync();
+    final importer =
+        File('ohos/entry/src/main/ets/plugins/ResourceZipImporterPlugin.ets')
+            .readAsStringSync();
+
+    expect(ability, contains('ResourceZipImporterPlugin'));
+    expect(ability, contains('addPlugin(new ResourceZipImporterPlugin())'));
+    expect(importer,
+        contains('io.github.dey410.gardendlessloader/resource_zip_importer'));
+    expect(importer, contains('pickAndExtractDocsZip'));
+    expect(importer, contains('DocumentViewPicker'));
+    expect(importer, contains('decompressFile'));
+    expect(importer, contains('src/settings.json'));
+    expect(importer, contains('src/import-map.json'));
+  });
+
   test('GitHub Actions exports a HAP artifact', () {
     final workflow =
         File('.github/workflows/build-mobile.yml').readAsStringSync();

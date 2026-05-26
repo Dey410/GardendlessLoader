@@ -11,7 +11,7 @@ typedef ResourceFilePicker = Future<file_selector.XFile?> Function({
   String? confirmButtonText,
 });
 
-typedef AndroidZipImporter = Future<String?> Function({
+typedef MobileZipImporter = Future<String?> Function({
   required String targetDirectory,
 });
 
@@ -19,17 +19,16 @@ class ResourcePickerService {
   ResourcePickerService({
     ResourceFilePicker? filePicker,
     String? platformName,
-    AndroidZipImporter? androidZipImporter,
+    MobileZipImporter? mobileZipImporter,
   })  : _filePicker = filePicker ?? file_selector.openFile,
         _platformName = platformName ?? Platform.operatingSystem,
-        _androidZipImporter =
-            androidZipImporter ?? _pickAndExtractAndroidDocsZip;
+        _mobileZipImporter = mobileZipImporter ?? _pickAndExtractMobileDocsZip;
 
   final ResourceFilePicker _filePicker;
   final String _platformName;
-  final AndroidZipImporter _androidZipImporter;
+  final MobileZipImporter _mobileZipImporter;
 
-  static const MethodChannel _androidZipImporterChannel = MethodChannel(
+  static const MethodChannel _mobileZipImporterChannel = MethodChannel(
     'io.github.dey410.gardendlessloader/resource_zip_importer',
   );
 
@@ -44,9 +43,9 @@ class ResourcePickerService {
       );
     }
 
-    if (_platformName == 'android') {
+    if (_usesMobileZipImporter) {
       try {
-        final extractedPath = await _androidZipImporter(
+        final extractedPath = await _mobileZipImporter(
           targetDirectory: targetDirectory.path,
         );
         return extractedPath == null ? null : Directory(extractedPath);
@@ -217,6 +216,9 @@ class ResourcePickerService {
     return path == prefix || path.startsWith('$prefix/');
   }
 
+  bool get _usesMobileZipImporter =>
+      _platformName == 'android' || _platformName == 'ohos';
+
   Future<void> _resetDirectory(Directory directory) async {
     if (await directory.exists()) {
       await directory.delete(recursive: true);
@@ -224,10 +226,10 @@ class ResourcePickerService {
     await directory.create(recursive: true);
   }
 
-  static Future<String?> _pickAndExtractAndroidDocsZip({
+  static Future<String?> _pickAndExtractMobileDocsZip({
     required String targetDirectory,
   }) {
-    return _androidZipImporterChannel.invokeMethod<String>(
+    return _mobileZipImporterChannel.invokeMethod<String>(
       'pickAndExtractDocsZip',
       <String, Object?>{
         'targetDirectory': targetDirectory,
