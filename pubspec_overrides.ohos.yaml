@@ -1,4 +1,12 @@
 dependency_overrides:
+  file_selector:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
+      path: "packages/file_selector/file_selector"
+  file_selector_ohos:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
+      path: "packages/file_selector/file_selector_ohos"
   package_info_plus: ^4.2.0
   flutter_inappwebview:
     git:

@@ -6,6 +6,11 @@ void main() {
   test('OpenHarmony override uses compatible plugin forks', () {
     final pubspec = File('pubspec_overrides.ohos.yaml').readAsStringSync();
 
+    expect(pubspec, contains('file_selector'));
+    expect(pubspec, contains('file_selector_ohos'));
+    expect(pubspec, contains('packages/file_selector/file_selector'));
+    expect(pubspec, contains('packages/file_selector/file_selector_ohos'));
+    expect(pubspec, contains('openharmony-sig/flutter_packages.git'));
     expect(pubspec, contains('openharmony-tpc/flutter_packages.git'));
     expect(pubspec, contains('packages/path_provider/path_provider'));
     expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
