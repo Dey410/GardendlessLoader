@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:file_selector/file_selector.dart' as file_selector;
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -11,29 +13,55 @@ import '../constants.dart';
 
 typedef BlobDownloadResolver = Future<GameDownloadPayload> Function(String url);
 typedef DirectoryProvider = Future<Directory> Function();
-typedef FileSharer = Future<void> Function(
+typedef FileExporter = Future<void> Function(
   GameDownloadFile file,
-  Rect sharePositionOrigin,
+  Rect presentationOrigin,
 );
+typedef SaveLocationPicker = Future<file_selector.FileSaveLocation?> Function({
+  required List<file_selector.XTypeGroup> acceptedTypeGroups,
+  String? suggestedName,
+  String? confirmButtonText,
+});
+typedef FileSaver = Future<void> Function(GameDownloadFile file, String path);
 typedef HttpClientFactory = HttpClient Function();
+typedef WebHttpDownload = Future<GameDownloadPayload> Function(
+  GameDownloadRequest request,
+);
+typedef PlatformNameProvider = String Function();
 typedef UriPredicate = bool Function(Uri uri);
 
 class GameDownloadService {
   GameDownloadService({
     DirectoryProvider? temporaryDirectoryProvider,
-    FileSharer? fileSharer,
+    FileExporter? fileExporter,
+    SaveLocationPicker? saveLocationPicker,
+    FileSaver? fileSaver,
     HttpClientFactory? httpClientFactory,
+    WebHttpDownload? webHttpDownload,
+    PlatformNameProvider? platformNameProvider,
     UriPredicate? isAllowedHttpUri,
+    bool? isWeb,
   })  : _temporaryDirectoryProvider =
             temporaryDirectoryProvider ?? getTemporaryDirectory,
-        _fileSharer = fileSharer ?? _shareFile,
+        _platformNameProvider =
+            platformNameProvider ?? (() => Platform.operatingSystem),
+        _saveLocationPicker = saveLocationPicker ?? _pickSaveLocation,
+        _fileSaver = fileSaver ?? _saveFileToPath,
+        _fileExporter = fileExporter,
         _httpClientFactory = httpClientFactory ?? HttpClient.new,
-        _isAllowedHttpUri = isAllowedHttpUri ?? _isLocalHttpUri;
+        _webHttpDownload = webHttpDownload ?? _downloadWebHttp,
+        _isAllowedHttpUri = isAllowedHttpUri ?? _isLocalHttpUri,
+        _isWeb = isWeb ?? kIsWeb;
 
   final DirectoryProvider _temporaryDirectoryProvider;
-  final FileSharer _fileSharer;
+  final PlatformNameProvider _platformNameProvider;
+  final SaveLocationPicker _saveLocationPicker;
+  final FileSaver _fileSaver;
+  final FileExporter? _fileExporter;
   final HttpClientFactory _httpClientFactory;
+  final WebHttpDownload _webHttpDownload;
   final UriPredicate _isAllowedHttpUri;
+  final bool _isWeb;
 
   Future<GameDownloadFile> prepareDownload({
     required GameDownloadRequest request,
@@ -57,31 +85,72 @@ class GameDownloadService {
       preferJsonExtension: _isJsonMimeType(mimeType),
     );
 
+    if (_isWeb) {
+      return GameDownloadFile(
+        name: fileName,
+        mimeType: mimeType,
+        byteLength: payload.bytes.length,
+        bytes: payload.bytes,
+      );
+    }
+
     final directory = await _temporaryDirectoryProvider();
     final exportDirectory = Directory(p.join(directory.path, 'game_exports'));
     await exportDirectory.create(recursive: true);
     final file = File(p.join(exportDirectory.path, fileName));
     await file.writeAsBytes(payload.bytes, flush: true);
-
     return GameDownloadFile(
       path: file.path,
       name: fileName,
       mimeType: mimeType,
       byteLength: payload.bytes.length,
+      bytes: payload.bytes,
     );
   }
 
   Future<GameDownloadFile> exportDownload({
     required GameDownloadRequest request,
-    required Rect sharePositionOrigin,
+    required Rect presentationOrigin,
     BlobDownloadResolver? blobResolver,
   }) async {
     final file = await prepareDownload(
       request: request,
       blobResolver: blobResolver,
     );
-    await _fileSharer(file, sharePositionOrigin);
+    final exporter = _fileExporter ?? _defaultExportFile;
+    await exporter(file, presentationOrigin);
     return file;
+  }
+
+  Future<void> _defaultExportFile(
+    GameDownloadFile file,
+    Rect presentationOrigin,
+  ) async {
+    if (!_isWeb) {
+      final platformName = _platformNameProvider();
+      if (_usesNativeFileExporter(platformName)) {
+        await GameDownloadFileExporter.export(file, presentationOrigin);
+        return;
+      }
+    }
+
+    final location = await _saveLocationPicker(
+      acceptedTypeGroups: const [
+        file_selector.XTypeGroup(
+          label: 'JSON save file',
+          extensions: ['json'],
+          mimeTypes: ['application/json'],
+          uniformTypeIdentifiers: ['public.json'],
+          webWildCards: ['application/json'],
+        ),
+      ],
+      suggestedName: file.name,
+      confirmButtonText: '保存',
+    );
+    if (location == null) {
+      throw const GameDownloadFailure.cancelled();
+    }
+    await _fileSaver(file, location.path);
   }
 
   Future<GameDownloadPayload> _resolveBlob(
@@ -97,6 +166,9 @@ class GameDownloadService {
   Future<GameDownloadPayload> _downloadHttp(GameDownloadRequest request) async {
     if (!_isAllowedHttpUri(request.uri)) {
       throw GameDownloadFailure('已拦截非本地导出地址');
+    }
+    if (_isWeb) {
+      return _webHttpDownload(request);
     }
 
     final client = _httpClientFactory();
@@ -122,23 +194,41 @@ class GameDownloadService {
   }
 }
 
-class GameDownloadFileSharer {
+Future<GameDownloadPayload> _downloadWebHttp(
+    GameDownloadRequest request) async {
+  final response = await http.get(request.uri);
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw GameDownloadFailure('导出下载失败：HTTP ${response.statusCode}');
+  }
+  return GameDownloadPayload(
+    bytes: response.bodyBytes,
+    mimeType: response.headers['content-type']?.split(';').first.trim() ??
+        request.mimeType,
+  );
+}
+
+class GameDownloadFileExporter {
   static const MethodChannel _channel = MethodChannel(
     'io.github.dey410.gardendlessloader/game_file_exporter',
   );
 
-  static Future<void> share(
+  static Future<void> export(
     GameDownloadFile file,
-    Rect sharePositionOrigin,
+    Rect presentationOrigin,
   ) async {
-    await _channel.invokeMethod<void>('shareFile', {
-      'path': file.path,
+    final path = file.path;
+    if (path == null || path.isEmpty) {
+      throw const GameDownloadFailure('当前平台缺少导出临时文件路径');
+    }
+
+    await _channel.invokeMethod<void>('exportFile', {
+      'path': path,
       'name': file.name,
       'mimeType': file.mimeType,
-      'originX': sharePositionOrigin.left,
-      'originY': sharePositionOrigin.top,
-      'originWidth': sharePositionOrigin.width,
-      'originHeight': sharePositionOrigin.height,
+      'originX': presentationOrigin.left,
+      'originY': presentationOrigin.top,
+      'originWidth': presentationOrigin.width,
+      'originHeight': presentationOrigin.height,
     });
   }
 }
@@ -201,20 +291,23 @@ class GameDownloadPayload {
 
 class GameDownloadFile {
   const GameDownloadFile({
-    required this.path,
     required this.name,
     required this.byteLength,
+    required this.bytes,
+    this.path,
     this.mimeType,
   });
 
-  final String path;
+  final String? path;
   final String name;
   final String? mimeType;
   final int byteLength;
+  final Uint8List bytes;
 }
 
 class GameDownloadFailure implements Exception {
   const GameDownloadFailure(this.message);
+  const GameDownloadFailure.cancelled() : message = '已取消导出';
 
   final String message;
 
@@ -337,8 +430,11 @@ String _trimQuotes(String value) {
 }
 
 String _extensionForMimeType(String? mimeType) {
-  return switch (mimeType?.split(';').first.trim().toLowerCase()) {
-    'application/json' => '.json',
+  final normalized = mimeType?.split(';').first.trim().toLowerCase();
+  if (_isJsonMimeType(normalized)) {
+    return '.json';
+  }
+  return switch (normalized) {
     'text/plain' => '.txt',
     'text/csv' => '.csv',
     'application/zip' => '.zip',
@@ -352,9 +448,39 @@ bool _isLocalHttpUri(Uri uri) {
       uri.port == localServerPort;
 }
 
-Future<void> _shareFile(
+bool _usesNativeFileExporter(String platformName) {
+  return platformName == 'android' ||
+      platformName == 'ios' ||
+      platformName == 'ohos';
+}
+
+Future<file_selector.FileSaveLocation?> _pickSaveLocation({
+  required List<file_selector.XTypeGroup> acceptedTypeGroups,
+  String? suggestedName,
+  String? confirmButtonText,
+}) {
+  return file_selector.getSaveLocation(
+    acceptedTypeGroups: acceptedTypeGroups,
+    suggestedName: suggestedName,
+    confirmButtonText: confirmButtonText,
+  );
+}
+
+Future<void> _saveFileToPath(
   GameDownloadFile file,
-  Rect sharePositionOrigin,
+  String destinationPath,
 ) async {
-  await GameDownloadFileSharer.share(file, sharePositionOrigin);
+  final sourcePath = file.path;
+  final exportFile = sourcePath == null || sourcePath.isEmpty
+      ? file_selector.XFile.fromData(
+          file.bytes,
+          name: file.name,
+          mimeType: file.mimeType,
+        )
+      : file_selector.XFile(
+          sourcePath,
+          name: file.name,
+          mimeType: file.mimeType,
+        );
+  await exportFile.saveTo(destinationPath);
 }

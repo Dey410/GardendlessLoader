@@ -5,6 +5,7 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate {
   private let gameFileExporterChannelName =
     "io.github.dey410.gardendlessloader/game_file_exporter"
+  private var pendingExportResult: FlutterResult?
 
   override func application(
     _ application: UIApplication,
@@ -25,15 +26,15 @@ import UIKit
       binaryMessenger: controller.binaryMessenger
     )
     channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "shareFile" else {
+      guard call.method == "exportFile" else {
         result(FlutterMethodNotImplemented)
         return
       }
-      self?.shareExportedFile(call: call, result: result)
+      self?.exportFile(call: call, result: result)
     }
   }
 
-  private func shareExportedFile(call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func exportFile(call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard let args = call.arguments as? [String: Any],
           let path = args["path"] as? String else {
       result(FlutterError(
@@ -64,24 +65,52 @@ import UIKit
         return
       }
 
-      let activityController = UIActivityViewController(
-        activityItems: [fileUrl],
-        applicationActivities: nil
-      )
-      if let popover = activityController.popoverPresentationController {
+      if self?.pendingExportResult != nil {
+        result(FlutterError(
+          code: "export_in_progress",
+          message: "Another export is already in progress",
+          details: nil
+        ))
+        return
+      }
+
+      let documentPicker = self?.makeDocumentPicker(for: fileUrl)
+      guard let documentPicker else {
+        result(FlutterError(
+          code: "missing_document_picker",
+          message: "Unable to create export picker",
+          details: nil
+        ))
+        return
+      }
+      documentPicker.delegate = self
+      documentPicker.modalPresentationStyle = .formSheet
+      if let popover = documentPicker.popoverPresentationController {
         let fallbackRect = CGRect(x: 1, y: 1, width: 1, height: 1)
         popover.sourceView = rootController.view
-        popover.sourceRect = self?.shareSourceRect(from: args) ?? fallbackRect
+        popover.sourceRect = self?.sourceRect(from: args) ?? fallbackRect
         popover.permittedArrowDirections = []
       }
 
-      rootController.present(activityController, animated: true) {
-        result(nil)
-      }
+      self?.pendingExportResult = result
+      rootController.present(documentPicker, animated: true)
     }
   }
 
-  private func shareSourceRect(from args: [String: Any]) -> CGRect {
+  private func makeDocumentPicker(for fileUrl: URL) -> UIDocumentPickerViewController {
+    if #available(iOS 14.0, *) {
+      return UIDocumentPickerViewController(
+        forExporting: [fileUrl],
+        asCopy: true
+      )
+    }
+    return UIDocumentPickerViewController(
+      url: fileUrl,
+      in: .exportToService
+    )
+  }
+
+  private func sourceRect(from args: [String: Any]) -> CGRect {
     let x = args["originX"] as? Double ?? 1
     let y = args["originY"] as? Double ?? 1
     let width = max(args["originWidth"] as? Double ?? 1, 1)
@@ -95,5 +124,24 @@ import UIKit
       controller = presented
     }
     return controller
+  }
+}
+
+extension AppDelegate: UIDocumentPickerDelegate {
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    pendingExportResult?(FlutterError(
+      code: "export_cancelled",
+      message: "Export was cancelled",
+      details: nil
+    ))
+    pendingExportResult = nil
+  }
+
+  func documentPicker(
+    _ controller: UIDocumentPickerViewController,
+    didPickDocumentsAt urls: [URL]
+  ) {
+    pendingExportResult?(nil)
+    pendingExportResult = nil
   }
 }

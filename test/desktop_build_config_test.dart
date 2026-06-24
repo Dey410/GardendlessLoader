@@ -36,4 +36,14 @@ void main() {
     expect(workflow, contains('GardendlessLoader-linux.deb'));
     expect(workflow, contains('gardendless-loader-linux-deb'));
   });
+
+  test('GitHub Actions exports a web release artifact', () {
+    final workflow =
+        File('.github/workflows/build-mobile.yml').readAsStringSync();
+
+    expect(workflow, contains('Build Web Bundle'));
+    expect(workflow, contains('flutter build web --release'));
+    expect(workflow, contains('gardendless-loader-web'));
+    expect(workflow, contains('path: build/web'));
+  });
 }

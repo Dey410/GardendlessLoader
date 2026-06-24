@@ -86,6 +86,29 @@ void main() {
     expect(importer, contains('src/import-map.json'));
   });
 
+  test('OpenHarmony registers a game save exporter', () {
+    final ability =
+        File('ohos/entry/src/main/ets/entryability/EntryAbility.ets')
+            .readAsStringSync();
+    final exporter =
+        File('ohos/entry/src/main/ets/plugins/GameFileExporterPlugin.ets')
+            .readAsStringSync();
+
+    expect(ability, contains('GameFileExporterPlugin'));
+    expect(ability, contains('addPlugin(new GameFileExporterPlugin())'));
+    expect(exporter,
+        contains('io.github.dey410.gardendlessloader/game_file_exporter'));
+    expect(exporter, contains('exportFile'));
+    expect(exporter, contains('DocumentSaveOptions'));
+    expect(exporter, contains('DocumentViewPicker'));
+    expect(exporter, contains('documentViewPicker.save'));
+    expect(exporter, contains('copyFileSync'));
+    expect(exporter, contains('isCancelledError'));
+    expect(exporter, contains("result.error('export_cancelled'"));
+    expect(exporter, contains("message.toLowerCase().includes('cancel')"));
+    expect(exporter, contains("message.includes('取消')"));
+  });
+
   test('GitHub Actions exports a HAP artifact', () {
     final workflow =
         File('.github/workflows/build-mobile.yml').readAsStringSync();

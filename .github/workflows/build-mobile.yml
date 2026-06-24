@@ -73,6 +73,46 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
+  web:
+    name: Build Web Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.9"
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          if [ -f pubspec_overrides.yaml ]; then
+            mv pubspec_overrides.yaml "$RUNNER_TEMP/pubspec_overrides.yaml.disabled"
+          fi
+          flutter pub get
+
+      - name: Test
+        run: |
+          TEST_FILES="$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)"
+          if [ -n "$TEST_FILES" ]; then
+            flutter test $TEST_FILES
+          else
+            echo "No Flutter tests found."
+          fi
+
+      - name: Build Web bundle
+        run: flutter build web --release
+
+      - name: Upload Web bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: gardendless-loader-web
+          path: build/web
+          if-no-files-found: error
+
   ios:
     name: Build unsigned iOS IPA
     runs-on: macos-latest

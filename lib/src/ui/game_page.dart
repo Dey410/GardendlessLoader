@@ -339,25 +339,14 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   }
 
   Future<void> _handlePatchedDownload(Object? payload) async {
-    if (payload is! Map) {
-      await _showDownloadFailure('导出消息格式无效');
+    final parsed = gameDownloadRequestFromPatchedPayload(payload);
+    final failure = parsed.failure;
+    if (failure != null) {
+      await _showDownloadFailure(failure);
       return;
     }
 
-    final dataUrl = payload['dataUrl'] as String?;
-    final url = dataUrl ?? payload['url'] as String?;
-    if (url == null || url.isEmpty) {
-      await _showDownloadFailure('导出消息缺少文件地址');
-      return;
-    }
-
-    await _exportGameDownload(
-      GameDownloadRequest(
-        uri: Uri.parse(url),
-        suggestedFilename: payload['suggestedFilename'] as String?,
-        mimeType: payload['mimeType'] as String?,
-      ),
-    );
+    await _exportGameDownload(parsed.request!);
   }
 
   Future<void> _exportGameDownload(GameDownloadRequest request) async {
@@ -369,14 +358,33 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     try {
       final file = await _downloadService.exportDownload(
         request: request,
-        sharePositionOrigin: _sharePositionOrigin(),
+        presentationOrigin: _presentationOrigin(),
         blobResolver: _resolveBlobDownload,
       );
       if (!mounted) {
         return;
       }
       messenger.showSnackBar(
-        SnackBar(content: Text('已打开导出面板：${file.name}')),
+        SnackBar(content: Text('已打开保存位置选择：${file.name}')),
+      );
+    } on PlatformException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final message = error.code == 'export_cancelled'
+          ? '已取消导出'
+          : '导出失败：${error.message ?? error.code}';
+      messenger.showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } on GameDownloadFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final message =
+          error.message == '已取消导出' ? error.message : '导出失败：${error.message}';
+      messenger.showSnackBar(
+        SnackBar(content: Text(message)),
       );
     } catch (error) {
       if (!mounted) {
@@ -397,7 +405,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     );
   }
 
-  Rect _sharePositionOrigin() {
+  Rect _presentationOrigin() {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize || box.size.isEmpty) {
       return const Rect.fromLTWH(1, 1, 1, 1);
@@ -660,6 +668,47 @@ class GameWatermark extends StatelessWidget {
       ),
     );
   }
+}
+
+({GameDownloadRequest? request, String? failure})
+    gameDownloadRequestFromPatchedPayload(Object? payload) {
+  if (payload is! Map) {
+    return (request: null, failure: '导出消息格式无效');
+  }
+
+  final scriptError = payload['error'];
+  if (scriptError is String && scriptError.trim().isNotEmpty) {
+    return (request: null, failure: scriptError.trim());
+  }
+
+  final dataUrl = _payloadString(payload, 'dataUrl');
+  final url = dataUrl == null || dataUrl.isEmpty
+      ? _payloadString(payload, 'url')
+      : dataUrl;
+  if (url == null || url.isEmpty) {
+    return (request: null, failure: '导出消息缺少文件地址');
+  }
+
+  final Uri uri;
+  try {
+    uri = Uri.parse(url);
+  } on FormatException {
+    return (request: null, failure: '导出地址无效');
+  }
+
+  return (
+    request: GameDownloadRequest(
+      uri: uri,
+      suggestedFilename: _payloadString(payload, 'suggestedFilename'),
+      mimeType: _payloadString(payload, 'mimeType'),
+    ),
+    failure: null,
+  );
+}
+
+String? _payloadString(Map<dynamic, dynamic> payload, String key) {
+  final value = payload[key];
+  return value is String ? value : null;
 }
 
 enum GameViewportFit {
