@@ -8,7 +8,7 @@
 
 `GardendlessLoader` is a Flutter local loader for user-supplied
 [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) web resource
-packages on mobile and desktop platforms.
+packages on mobile and web platforms.
 
 The app lets users select a resource ZIP, extracts and locates the bundled
 `docs` web build, validates it, serves it from a local HTTP server, and opens
@@ -28,7 +28,7 @@ the game in an in-app WebView.
 - Shows import progress, rolls back failed imports, and recovers unfinished startup transactions.
 - Provides copyable diagnostics for resource, platform, WebView, and local server state.
 - Supports remote announcements, GitHub Release update checks, auto sunlight collection, and stretch mode.
-- Builds Android, iOS, HarmonyOS/OpenHarmony, macOS, Windows, and Linux artifacts in GitHub Actions.
+- Builds Android, iOS, HarmonyOS/OpenHarmony, and Web artifacts in GitHub Actions.
 
 ## Usage
 
@@ -150,32 +150,14 @@ flutter build hap --release --target-platform ohos-arm64
 flutter build hap --release --target-platform ohos-x64
 ```
 
-### Desktop
-
-```powershell
-flutter build windows --release
-flutter build macos --release
-flutter build linux --release
-```
-
-GitHub Actions also packages:
-
-| Platform | Artifact |
-| --- | --- |
-| macOS | unsigned DMG |
-| Windows | ZIP package |
-| Linux | DEB package |
-
 ## CI
 
 `.github/workflows/build-mobile.yml` runs tests and builds:
 
 - Android release APK
+- Web bundle
 - unsigned iOS IPA
 - unsigned HarmonyOS HAPs when `OHOS_COMMANDLINE_TOOLS_URL` is configured
-- macOS DMG
-- Windows ZIP
-- Linux DEB
 
 When HarmonyOS tools are not configured, that job is skipped without blocking
 other platform artifacts.

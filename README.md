@@ -6,7 +6,7 @@
 
 [English](README.en.md)
 
-`GardendlessLoader` 是一个 Flutter 本地加载器，用来在移动端和桌面端加载用户自行提供的
+`GardendlessLoader` 是一个 Flutter 本地加载器，用来在移动端和 Web 端加载用户自行提供的
 [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) 网页资源包。
 
 App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构建目录，完成结构校验后通过本地 HTTP
@@ -24,7 +24,7 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 - 导入过程带进度显示，失败时回滚到旧资源，启动时恢复未完成事务。
 - 提供可复制的诊断信息，方便排查资源、平台、WebView 和本地 server 状态。
 - 支持公告弹窗、GitHub Release 更新检查、自动收集阳光和强制拉伸画面开关。
-- GitHub Actions 可产出 Android、iOS、HarmonyOS/OpenHarmony、macOS、Windows 和 Linux 安装包。
+- GitHub Actions 可产出 Android、iOS、HarmonyOS/OpenHarmony 和 Web 产物。
 
 ## 使用方式
 
@@ -142,31 +142,13 @@ flutter build hap --release --target-platform ohos-arm64
 flutter build hap --release --target-platform ohos-x64
 ```
 
-### 桌面端
-
-```powershell
-flutter build windows --release
-flutter build macos --release
-flutter build linux --release
-```
-
-GitHub Actions 还会额外打包：
-
-| 平台 | 产物 |
-| --- | --- |
-| macOS | 未签名 DMG |
-| Windows | ZIP 包 |
-| Linux | DEB 包 |
-
 ## CI
 
 `.github/workflows/build-mobile.yml` 会运行测试并构建以下产物：
 
 - Android release APK
+- Web bundle
 - 未签名 iOS IPA
 - 未签名 HarmonyOS HAP（配置 `OHOS_COMMANDLINE_TOOLS_URL` 后启用）
-- macOS DMG
-- Windows ZIP
-- Linux DEB
 
 HarmonyOS 工具未配置时，该任务会跳过，不影响其他平台构建。

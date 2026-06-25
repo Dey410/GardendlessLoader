@@ -16,6 +16,8 @@ import java.util.zip.ZipInputStream
 class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var pendingTargetDirectory: String? = null
+    private var pendingExportResult: MethodChannel.Result? = null
+    private var pendingExportPath: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -63,9 +65,65 @@ class MainActivity : FlutterActivity() {
                 result.error("zip_picker_failed", error.message, null)
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "io.github.dey410.gardendlessloader/game_file_exporter",
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "exportFile") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+
+            if (pendingExportResult != null) {
+                result.error("export_in_progress", "已有导出正在进行", null)
+                return@setMethodCallHandler
+            }
+
+            val path = call.argument<String>("path")
+            if (path.isNullOrBlank()) {
+                result.error("invalid_arguments", "缺少导出文件路径", null)
+                return@setMethodCallHandler
+            }
+
+            val sourceFile = File(path)
+            if (!sourceFile.exists() || !sourceFile.isFile) {
+                result.error("file_not_found", "导出文件不存在", path)
+                return@setMethodCallHandler
+            }
+
+            val fileName = call.argument<String>("name")
+                ?.takeIf { it.isNotBlank() }
+                ?: sourceFile.name
+            val mimeType = call.argument<String>("mimeType")
+                ?.takeIf { it.isNotBlank() }
+                ?: "application/json"
+
+            pendingExportResult = result
+            pendingExportPath = sourceFile.path
+
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = mimeType
+                putExtra(Intent.EXTRA_TITLE, fileName)
+            }
+
+            try {
+                startActivityForResult(intent, exportFileRequestCode)
+            } catch (error: Exception) {
+                pendingExportResult = null
+                pendingExportPath = null
+                result.error("export_picker_failed", error.message, null)
+            }
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == exportFileRequestCode) {
+            handleExportFileResult(resultCode, data)
+            return
+        }
+
         if (requestCode != pickZipRequestCode) {
             super.onActivityResult(requestCode, resultCode, data)
             return
@@ -105,6 +163,51 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun handleExportFileResult(resultCode: Int, data: Intent?) {
+        val result = pendingExportResult
+        val sourcePath = pendingExportPath
+        pendingExportResult = null
+        pendingExportPath = null
+
+        if (result == null || sourcePath == null) {
+            return
+        }
+
+        if (resultCode != Activity.RESULT_OK) {
+            result.error("export_cancelled", "已取消导出", null)
+            return
+        }
+
+        val uri = data?.data
+        if (uri == null) {
+            result.error("export_cancelled", "已取消导出", null)
+            return
+        }
+
+        Thread {
+            try {
+                copyFileToUri(File(sourcePath), uri)
+                runOnUiThread { result.success(null) }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    result.error(
+                        "export_failed",
+                        "无法保存导出文件：${error.message ?: error.toString()}",
+                        null,
+                    )
+                }
+            }
+        }.start()
+    }
+
+    private fun copyFileToUri(sourceFile: File, uri: Uri) {
+        sourceFile.inputStream().use { input ->
+            contentResolver.openOutputStream(uri, "w")?.use { output ->
+                input.copyTo(output, zipCopyBufferSize)
+            } ?: throw IllegalArgumentException("无法打开保存位置")
+        }
     }
 
     private fun extractDocsZip(uri: Uri, targetDirectory: File) {
@@ -260,6 +363,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val pickZipRequestCode = 26410
+        private const val exportFileRequestCode = 26411
         private const val zipCopyBufferSize = 64 * 1024
     }
 }

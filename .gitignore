@@ -34,3 +34,6 @@ ios/Runner.xcworkspace/
 *.key
 .env
 .env.*
+
+.DS_Store
+**/.DS_Store

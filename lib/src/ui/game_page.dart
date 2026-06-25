@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:collection';
 
@@ -12,6 +13,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../app_controller.dart';
 import '../constants.dart';
 import '../services/auto_sun_collector.dart';
+import '../services/game_download_service.dart';
+import '../web/export_download_patch.dart';
 import '../web/touch_patch.dart';
 
 const gameWatermarkText = '本加载器B站xiaozhu_410免费分享，仅供学习，严禁售卖';
@@ -58,6 +61,7 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   InAppWebViewController? _webViewController;
   late final AutoSunCollector _autoSunCollector;
+  late final GameDownloadService _downloadService;
   bool _autoCollectSunlightEnabled = false;
   bool _stretchGameViewport = false;
   bool _resumeReloadNotified = false;
@@ -68,6 +72,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     _autoSunCollector = AutoSunCollector(
       onPressCollectKey: _pressCollectSunlightKey,
     );
+    _downloadService = GameDownloadService();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     SystemChrome.setPreferredOrientations([
@@ -120,13 +125,19 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                   },
                   initialUserScripts: UnmodifiableListView<UserScript>([
                     UserScript(
+                      source: gardendlessExportDownloadPatchSource,
+                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                      forMainFrameOnly: false,
+                    ),
+                    UserScript(
                       source: gardendlessTouchPatchSource,
                       injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
                       forMainFrameOnly: false,
                     ),
                   ]),
-                  initialUrlRequest:
-                      URLRequest(url: WebUri('$localOrigin/index.html')),
+                  initialUrlRequest: URLRequest(
+                    url: WebUri('$localOrigin/index.html'),
+                  ),
                   initialSettings: InAppWebViewSettings(
                     javaScriptEnabled: true,
                     javaScriptCanOpenWindowsAutomatically: false,
@@ -141,6 +152,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                     disableContextMenu: true,
                     useShouldOverrideUrlLoading: true,
                     useShouldInterceptRequest: true,
+                    useOnDownloadStart: true,
                     allowFileAccess: false,
                     allowContentAccess: false,
                     mixedContentMode:
@@ -148,11 +160,24 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                   ),
                   onWebViewCreated: (controller) {
                     _webViewController = controller;
+                    controller.addJavaScriptHandler(
+                      handlerName: gardendlessExportDownloadHandlerName,
+                      callback: (args) {
+                        if (args.isNotEmpty) {
+                          unawaited(_handlePatchedDownload(args.first));
+                        }
+                        return {'accepted': true};
+                      },
+                    );
                   },
                   shouldOverrideUrlLoading: (controller, action) async {
                     final url = action.request.url;
                     if (_isLocalUrl(url)) {
                       return NavigationActionPolicy.ALLOW;
+                    }
+                    if (_isInlineDownloadUrl(url)) {
+                      unawaited(_handleInlineDownloadUrl(url!));
+                      return NavigationActionPolicy.CANCEL;
                     }
                     if (_isGitHubUrl(url)) {
                       final browser = ChromeSafariBrowser();
@@ -177,7 +202,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                       action: PermissionResponseAction.DENY,
                     );
                   },
-                  onDownloadStartRequest: (controller, request) async {},
+                  onDownloadStartRequest: _handleDownloadStart,
                 ),
               ),
             ),
@@ -225,6 +250,10 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   bool _isGitHubUrl(WebUri? url) {
     return url != null &&
         (url.host == 'github.com' || url.host.endsWith('.github.com'));
+  }
+
+  bool _isInlineDownloadUrl(WebUri? url) {
+    return url != null && (url.scheme == 'blob' || url.scheme == 'data');
   }
 
   Future<void> _showMenu() async {
@@ -285,6 +314,129 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   Future<void> _pressCollectSunlightKey() async {
     await _webViewController?.evaluateJavascript(
       source: _collectSunlightKeyPressScript,
+    );
+  }
+
+  Future<void> _handleDownloadStart(
+    InAppWebViewController controller,
+    DownloadStartRequest request,
+  ) async {
+    await _exportGameDownload(
+      GameDownloadRequest(
+        uri: Uri.parse(request.url.toString()),
+        suggestedFilename: request.suggestedFilename,
+        contentDisposition: request.contentDisposition,
+        mimeType: request.mimeType,
+        userAgent: request.userAgent,
+      ),
+    );
+  }
+
+  Future<void> _handleInlineDownloadUrl(WebUri url) async {
+    await _exportGameDownload(
+      GameDownloadRequest(uri: Uri.parse(url.toString())),
+    );
+  }
+
+  Future<void> _handlePatchedDownload(Object? payload) async {
+    final parsed = gameDownloadRequestFromPatchedPayload(payload);
+    final failure = parsed.failure;
+    if (failure != null) {
+      await _showDownloadFailure(failure);
+      return;
+    }
+
+    await _exportGameDownload(parsed.request!);
+  }
+
+  Future<void> _exportGameDownload(GameDownloadRequest request) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('正在准备导出文件...')),
+    );
+
+    try {
+      final file = await _downloadService.exportDownload(
+        request: request,
+        presentationOrigin: _presentationOrigin(),
+        blobResolver: _resolveBlobDownload,
+      );
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('已打开保存位置选择：${file.name}')),
+      );
+    } on PlatformException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final message = error.code == 'export_cancelled'
+          ? '已取消导出'
+          : '导出失败：${error.message ?? error.code}';
+      messenger.showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } on GameDownloadFailure catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final message =
+          error.message == '已取消导出' ? error.message : '导出失败：${error.message}';
+      messenger.showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('导出失败：$error')),
+      );
+    }
+  }
+
+  Future<void> _showDownloadFailure(String message) async {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('导出失败：$message')),
+    );
+  }
+
+  Rect _presentationOrigin() {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || box.size.isEmpty) {
+      return const Rect.fromLTWH(1, 1, 1, 1);
+    }
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  Future<GameDownloadPayload> _resolveBlobDownload(String blobUrl) async {
+    final result = await _webViewController?.evaluateJavascript(
+      source: '''
+(async function () {
+  const response = await fetch(${jsonEncode(blobUrl)});
+  const blob = await response.blob();
+  const dataUrl = await new Promise(function (resolve, reject) {
+    const reader = new FileReader();
+    reader.onloadend = function () { resolve(reader.result); };
+    reader.onerror = function () { reject(reader.error); };
+    reader.readAsDataURL(blob);
+  });
+  return JSON.stringify({ dataUrl: dataUrl, mimeType: blob.type || null });
+})()
+''',
+    );
+    final jsonText = result is String ? result : result?.toString();
+    if (jsonText == null || jsonText.isEmpty) {
+      throw const GameDownloadFailure('无法读取 Blob 导出内容');
+    }
+    final decoded = jsonDecode(jsonText) as Map<String, dynamic>;
+    return GameDownloadPayload.fromDataUri(
+      decoded['dataUrl'] as String,
+      mimeTypeOverride: decoded['mimeType'] as String?,
     );
   }
 
@@ -516,6 +668,47 @@ class GameWatermark extends StatelessWidget {
       ),
     );
   }
+}
+
+({GameDownloadRequest? request, String? failure})
+    gameDownloadRequestFromPatchedPayload(Object? payload) {
+  if (payload is! Map) {
+    return (request: null, failure: '导出消息格式无效');
+  }
+
+  final scriptError = payload['error'];
+  if (scriptError is String && scriptError.trim().isNotEmpty) {
+    return (request: null, failure: scriptError.trim());
+  }
+
+  final dataUrl = _payloadString(payload, 'dataUrl');
+  final url = dataUrl == null || dataUrl.isEmpty
+      ? _payloadString(payload, 'url')
+      : dataUrl;
+  if (url == null || url.isEmpty) {
+    return (request: null, failure: '导出消息缺少文件地址');
+  }
+
+  final Uri uri;
+  try {
+    uri = Uri.parse(url);
+  } on FormatException {
+    return (request: null, failure: '导出地址无效');
+  }
+
+  return (
+    request: GameDownloadRequest(
+      uri: uri,
+      suggestedFilename: _payloadString(payload, 'suggestedFilename'),
+      mimeType: _payloadString(payload, 'mimeType'),
+    ),
+    failure: null,
+  );
+}
+
+String? _payloadString(Map<dynamic, dynamic> payload, String key) {
+  final value = payload[key];
+  return value is String ? value : null;
 }
 
 enum GameViewportFit {
