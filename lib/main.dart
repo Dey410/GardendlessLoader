@@ -6,6 +6,7 @@ import 'src/ui/home_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
@@ -44,6 +45,7 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GardendlessLoader',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff0a84ff)),
         useMaterial3: true,

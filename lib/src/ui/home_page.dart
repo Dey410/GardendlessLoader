@@ -27,6 +27,11 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     unawaited(widget.controller.checkForUpdates(silent: true));
   }
 
@@ -256,7 +261,7 @@ class _LauncherHome extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = math.max(constraints.maxWidth, 980.0);
-        final height = math.max(constraints.maxHeight, 620.0);
+        final height = math.max(constraints.maxHeight, 660.0);
 
         return SingleChildScrollView(
           child: SingleChildScrollView(
@@ -264,54 +269,90 @@ class _LauncherHome extends StatelessWidget {
             child: SizedBox(
               width: width,
               height: height,
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _LauncherNavigation(
-                          onCheckUpdates: onCheckUpdates,
-                          onShowDiagnostics: onShowDiagnostics,
-                          onShowDisclaimer: onShowDisclaimer,
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: _LauncherWorkbench(
+                  child: Stack(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _LauncherNavigation(
+                              onCheckUpdates: onCheckUpdates,
+                              onShowDiagnostics: onShowDiagnostics,
+                              onShowDisclaimer: onShowDisclaimer,
+                            ),
+                            const SizedBox(width: 18),
+                            Expanded(
+                              child: _LauncherMainColumn(
+                                controller: controller,
+                                onImportResources: onImportResources,
+                                onOpenGitHub: onOpenGitHub,
+                                onCopyResourceRoot: onCopyResourceRoot,
+                              ),
+                            ),
+                            const SizedBox(width: 18),
+                            SizedBox(
+                              width: 318,
+                              child: _LauncherSideColumn(
+                                controller: controller,
+                                onOpenRelease: onOpenRelease,
+                                onDeferUpdate: onDeferUpdate,
+                                onShowDisclaimer: onShowDisclaimer,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: _LauncherMainColumn(
-                            controller: controller,
-                            onImportResources: onImportResources,
-                            onOpenGitHub: onOpenGitHub,
-                            onCopyResourceRoot: onCopyResourceRoot,
-                          ),
+                      ),
+                      Positioned(
+                        right: 22,
+                        bottom: 22,
+                        child: _StartGameButton(
+                          enabled: controller.canStartGame && !controller.busy,
+                          onPressed: onStartGame,
                         ),
-                        const SizedBox(width: 20),
-                        SizedBox(
-                          width: 340,
-                          child: _LauncherSideColumn(
-                            controller: controller,
-                            onOpenRelease: onOpenRelease,
-                            onDeferUpdate: onDeferUpdate,
-                            onShowDisclaimer: onShowDisclaimer,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  Positioned(
-                    right: 28,
-                    bottom: 26,
-                    child: _StartGameButton(
-                      enabled: controller.canStartGame && !controller.busy,
-                      onPressed: onStartGame,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _LauncherWorkbench extends StatelessWidget {
+  const _LauncherWorkbench({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: _LauncherColors.workbenchBackground(context),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: _LauncherColors.separator(context).withValues(alpha: 0.45),
+        ),
+        boxShadow: [
+          if (Theme.of(context).brightness == Brightness.light)
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 42,
+              offset: const Offset(0, 24),
+            ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: child,
+      ),
     );
   }
 }
@@ -639,33 +680,24 @@ class _AppIconMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return Container(
+      width: 104,
+      height: 104,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xffd7f8df),
-            Color(0xff65d16f),
-            Color(0xff1a9d4a),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xff34c759).withValues(alpha: 0.22),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
+            color: const Color(0xff34c759).withValues(alpha: 0.24),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
-      child: const SizedBox(
-        width: 92,
-        height: 92,
-        child: Icon(
-          Icons.local_florist_outlined,
-          size: 44,
-          color: Colors.white,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Image.asset(
+          'tool/generated_icons/app_icon_master.png',
+          fit: BoxFit.cover,
         ),
       ),
     );
@@ -1004,12 +1036,12 @@ class _StartGameButton extends StatelessWidget {
       icon: const Icon(Icons.play_arrow_rounded, size: 34),
       label: const Text('开始游戏'),
       style: FilledButton.styleFrom(
-        minimumSize: const Size(224, 72),
-        padding: const EdgeInsets.symmetric(horizontal: 30),
+        minimumSize: const Size(244, 78),
+        padding: const EdgeInsets.symmetric(horizontal: 34),
         backgroundColor: const Color(0xff0a84ff),
         disabledBackgroundColor:
             _LauncherColors.separator(context).withValues(alpha: 0.7),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         textStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
               letterSpacing: 0,
@@ -1265,14 +1297,14 @@ class _LauncherPanel extends StatelessWidget {
     final panel = DecoratedBox(
       decoration: BoxDecoration(
         color: _LauncherColors.panelBackground(context),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: borderColor),
         boxShadow: [
           if (Theme.of(context).brightness == Brightness.light)
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 32,
-              offset: const Offset(0, 18),
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 28,
+              offset: const Offset(0, 14),
             ),
         ],
       ),
@@ -1297,6 +1329,10 @@ class _LauncherColors {
 
   static Color pageBackground(BuildContext context) =>
       _isDark(context) ? const Color(0xff101114) : const Color(0xfff5f5f7);
+
+  static Color workbenchBackground(BuildContext context) => _isDark(context)
+      ? const Color(0xff16171a).withValues(alpha: 0.92)
+      : Colors.white.withValues(alpha: 0.34);
 
   static Color panelBackground(BuildContext context) => _isDark(context)
       ? const Color(0xff1c1c1e).withValues(alpha: 0.86)
