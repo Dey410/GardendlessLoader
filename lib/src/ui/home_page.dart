@@ -370,36 +370,39 @@ class _LauncherNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _LauncherPanel(
-      width: 108,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-      child: Column(
-        children: [
-          _NavItem(
-            icon: Icons.inventory_2_outlined,
-            label: '资源',
-            selected: true,
-            onTap: () {},
-          ),
-          const SizedBox(height: 8),
-          _NavItem(
-            icon: Icons.system_update_alt,
-            label: '更新',
-            onTap: onCheckUpdates,
-          ),
-          const SizedBox(height: 8),
-          _NavItem(
-            icon: Icons.monitor_heart_outlined,
-            label: '诊断',
-            onTap: onShowDiagnostics,
-          ),
-          const SizedBox(height: 8),
-          _NavItem(
-            icon: Icons.info_outline,
-            label: '关于',
-            onTap: onShowDisclaimer,
-          ),
-        ],
+    return KeyedSubtree(
+      key: const ValueKey('launcher-navigation-rail'),
+      child: _LauncherPanel(
+        width: 156,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 18),
+        child: Column(
+          children: [
+            _NavItem(
+              icon: Icons.view_in_ar_outlined,
+              label: '资源',
+              selected: true,
+              onTap: () {},
+            ),
+            const SizedBox(height: 10),
+            _NavItem(
+              icon: Icons.system_update_alt,
+              label: '更新',
+              onTap: onCheckUpdates,
+            ),
+            const SizedBox(height: 10),
+            _NavItem(
+              icon: Icons.monitor_heart_outlined,
+              label: '诊断',
+              onTap: onShowDiagnostics,
+            ),
+            const SizedBox(height: 10),
+            _NavItem(
+              icon: Icons.info_outline,
+              label: '关于',
+              onTap: onShowDisclaimer,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -436,23 +439,27 @@ class _NavItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: SizedBox(
-            height: 68,
+            height: 66,
             width: double.infinity,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Row(
               children: [
-                Icon(icon, color: foreground, size: 24),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: foreground,
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w500,
-                      ),
+                const SizedBox(width: 14),
+                Icon(icon, color: foreground, size: 26),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: foreground,
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w600,
+                          letterSpacing: 0,
+                        ),
+                  ),
                 ),
+                const SizedBox(width: 12),
               ],
             ),
           ),
@@ -783,27 +790,20 @@ class _QuickActionsCard extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _ActionButton(
-                  icon: Icons.file_upload_outlined,
-                  label:
-                      controller.hasCurrentResource ? '选择 ZIP 更新' : '选择 ZIP 导入',
-                  onPressed: controller.busy || controller.isImporting
-                      ? null
-                      : onImportResources,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _ActionButton(
-                  icon: Icons.open_in_new,
-                  label: '打开 GitHub',
-                  onPressed: onOpenGitHub,
-                ),
-              ),
-            ],
+          _ActionRow(
+            icon: Icons.file_upload_outlined,
+            label: controller.hasCurrentResource ? '选择 ZIP 更新' : '选择 ZIP 导入',
+            onPressed: controller.busy || controller.isImporting
+                ? null
+                : onImportResources,
+            trailingIcon: Icons.chevron_right_rounded,
+          ),
+          Divider(height: 1, color: _LauncherColors.separator(context)),
+          _ActionRow(
+            icon: Icons.open_in_new,
+            label: '打开 GitHub',
+            onPressed: onOpenGitHub,
+            trailingIcon: Icons.open_in_new,
           ),
         ],
       ),
@@ -811,32 +811,55 @@ class _QuickActionsCard extends StatelessWidget {
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({
     required this.icon,
     required this.label,
     required this.onPressed,
+    required this.trailingIcon,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
+  final IconData trailingIcon;
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon),
-      label: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      style: OutlinedButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        minimumSize: const Size.fromHeight(52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        side: BorderSide(color: _LauncherColors.separator(context)),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onPressed,
+        child: SizedBox(
+          height: 58,
+          child: Row(
+            children: [
+              const SizedBox(width: 12),
+              Icon(icon, color: _LauncherColors.secondaryText(context)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: onPressed == null
+                            ? _LauncherColors.secondaryText(context)
+                            : _LauncherColors.primaryText(context),
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+              Icon(
+                trailingIcon,
+                size: 18,
+                color: _LauncherColors.secondaryText(context),
+              ),
+              const SizedBox(width: 12),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -927,7 +950,7 @@ class _StartupHealthPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '启动健康',
+            '诊断摘要',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: _LauncherColors.primaryText(context),
                   fontWeight: FontWeight.w700,

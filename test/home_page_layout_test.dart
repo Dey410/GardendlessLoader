@@ -35,10 +35,16 @@ void main() {
       expect(find.text('复制'), findsOneWidget);
       expect(find.text('资源校验'), findsOneWidget);
       expect(find.text('本地服务'), findsOneWidget);
-      expect(find.text('启动健康'), findsOneWidget);
+      expect(find.text('诊断摘要'), findsOneWidget);
       expect(find.text('上次自检'), findsOneWidget);
       expect(find.text('最近错误'), findsOneWidget);
       expect(find.text('开始游戏'), findsOneWidget);
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('launcher-navigation-rail')))
+            .width,
+        greaterThanOrEqualTo(150),
+      );
 
       expect(find.text('导入来源'), findsNothing);
       expect(find.text('检查更新'), findsNothing);
