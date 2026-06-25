@@ -16,6 +16,7 @@ void main() {
     expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
     expect(pubspec, contains('br_v6.1.5_ohos'));
     expect(pubspec, contains('flutter_inappwebview'));
+    expect(pubspec, contains('flutter_inappwebview_platform_interface'));
     expect(pubspec, contains('openharmony-sig/fluttertpc_wakelock_plus.git'));
     expect(pubspec, contains('wakelock_plus'));
     expect(pubspec, contains('package_info_plus: ^4.2.0'));

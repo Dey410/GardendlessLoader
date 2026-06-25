@@ -13,6 +13,11 @@ dependency_overrides:
       url: "https://gitcode.com/openharmony-sig/flutter_inappwebview.git"
       ref: "br_v6.1.5_ohos"
       path: "flutter_inappwebview"
+  flutter_inappwebview_platform_interface:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_inappwebview.git"
+      ref: "br_v6.1.5_ohos"
+      path: "flutter_inappwebview_platform_interface"
   path_provider:
     git:
       url: "https://gitcode.com/openharmony-tpc/flutter_packages.git"
