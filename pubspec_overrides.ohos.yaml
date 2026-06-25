@@ -26,3 +26,4 @@ dependency_overrides:
     git:
       url: "https://gitcode.com/openharmony-sig/fluttertpc_wakelock_plus.git"
       path: "wakelock_plus"
+  wakelock_plus_platform_interface: 1.3.0
