@@ -81,7 +81,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.widgetWithText(TextButton, '复制'));
+      await tester.tap(find.byKey(const ValueKey('copy-resource-root-button')));
       await tester.pump();
 
       expect(copiedText, controller.userVisibleRoot);

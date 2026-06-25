@@ -737,6 +737,7 @@ class _ResourceDetailsCard extends StatelessWidget {
           label: '资源根目录',
           value: controller.userVisibleRoot,
           trailing: TextButton.icon(
+            key: const ValueKey('copy-resource-root-button'),
             onPressed: onCopyResourceRoot,
             icon: const Icon(Icons.copy_rounded, size: 18),
             label: const Text('复制'),
