@@ -132,7 +132,15 @@ void main() {
     );
     expect(workflow,
         contains("find ohos/entry/build -type f -name '*unsigned*.hap'"));
-    expect(workflow, contains('gardendless-loader-unsigned-haps'));
-    expect(workflow, contains('build/ohos/unsigned/*.hap'));
+    expect(workflow, contains('Upload unsigned HarmonyOS arm64 HAP'));
+    expect(workflow, contains('Upload unsigned HarmonyOS x64 HAP'));
+    expect(
+        workflow,
+        contains(
+            'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap'));
+    expect(
+        workflow,
+        contains(
+            'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-x64.hap'));
   });
 }

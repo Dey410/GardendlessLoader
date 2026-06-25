@@ -14,7 +14,7 @@
 - The exported `.json` save file can be imported back by the game.
 - iPad/iOS export uses the document picker instead of a share sheet.
 - Android and HarmonyOS export use a document save picker instead of silently doing nothing.
-- macOS, Windows, Linux, and Web export use the platform save dialog or browser download flow.
+- Web export uses the browser download flow.
 - Background/foreground does not reload while server is alive.
 - If server died while backgrounded, app restarts server, reloads once, and shows one notice.
 - Returning home asks for confirmation, then stops server and destroys WebView.
