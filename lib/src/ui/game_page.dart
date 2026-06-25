@@ -16,6 +16,7 @@ import '../services/auto_sun_collector.dart';
 import '../services/game_download_service.dart';
 import '../web/export_download_patch.dart';
 import '../web/touch_patch.dart';
+import '../web/viewport_stretch_patch.dart';
 
 const gameWatermarkText = '本加载器B站xiaozhu_410免费分享，仅供学习，严禁售卖';
 
@@ -91,7 +92,10 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: const [SystemUiOverlay.top],
+    );
     super.dispose();
   }
 
@@ -134,6 +138,11 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                     ),
                     UserScript(
                       source: gardendlessTouchPatchSource,
+                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                      forMainFrameOnly: false,
+                    ),
+                    UserScript(
+                      source: gardendlessViewportStretchPatchSource,
                       injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
                       forMainFrameOnly: false,
                     ),
@@ -204,6 +213,9 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                       resources: request.resources,
                       action: PermissionResponseAction.DENY,
                     );
+                  },
+                  onLoadStop: (_, __) {
+                    unawaited(_applyGameViewportStretch());
                   },
                   onDownloadStartRequest: _handleDownloadStart,
                 ),
@@ -312,6 +324,22 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     setState(() {
       _stretchGameViewport = enabled;
     });
+    unawaited(_applyGameViewportStretch());
+  }
+
+  Future<void> _applyGameViewportStretch() async {
+    final controller = _webViewController;
+    if (controller == null) {
+      return;
+    }
+
+    try {
+      await controller.evaluateJavascript(
+        source: gardendlessViewportStretchToggleScript(
+          enabled: _stretchGameViewport,
+        ),
+      );
+    } catch (_) {}
   }
 
   Future<void> _pressCollectSunlightKey() async {

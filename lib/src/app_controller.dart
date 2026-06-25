@@ -26,7 +26,6 @@ class AppController extends ChangeNotifier {
     AnnouncementService? announcementService,
     UpdateCheckService? updateCheckService,
     ResourcePickerService? resourcePickerService,
-    DateTime Function()? now,
   })  : _pathsService = pathsService ?? AppPathsService(),
         _validator = validator ?? ResourceValidator(),
         _server = server ?? LocalGameServer(),
@@ -34,8 +33,7 @@ class AppController extends ChangeNotifier {
         _announcementService = announcementService ?? AnnouncementService(),
         _updateCheckService = updateCheckService ?? UpdateCheckService(),
         _resourcePickerService =
-            resourcePickerService ?? ResourcePickerService(),
-        _now = now ?? DateTime.now {
+            resourcePickerService ?? ResourcePickerService() {
     _importService = importService ??
         ImportService(
           validator: _validator,
@@ -50,7 +48,6 @@ class AppController extends ChangeNotifier {
   final AnnouncementService _announcementService;
   final UpdateCheckService _updateCheckService;
   final ResourcePickerService _resourcePickerService;
-  final DateTime Function() _now;
   late final ImportService _importService;
 
   AppPaths? _paths;
@@ -62,7 +59,7 @@ class AppController extends ChangeNotifier {
       ResourceValidationResult.missing('尚未选择 ZIP');
   ImportProgress _importProgress = ImportProgress.idle;
   Directory? _selectedImportSource;
-  Announcement? _pendingAnnouncement;
+  Announcement? _announcement;
   UpdateInfo? _availableUpdate;
   String? _deferredUpdateTagName;
   bool _updateCheckInProgress = false;
@@ -79,7 +76,7 @@ class AppController extends ChangeNotifier {
   ResourceValidationResult get importValidation => _importValidation;
   ImportProgress get importProgress => _importProgress;
   Directory? get selectedImportSource => _selectedImportSource;
-  Announcement? get pendingAnnouncement => _pendingAnnouncement;
+  Announcement? get announcement => _announcement;
   UpdateInfo? get availableUpdate => _availableUpdate;
   bool get updateCheckInProgress => _updateCheckInProgress;
   ServerStatus get serverStatus => _server.status;
@@ -121,6 +118,7 @@ class AppController extends ChangeNotifier {
         paths: _paths!,
         manifestStore: _manifestStore!,
       );
+      await _diagnosticsService.initialize();
       await refresh();
       _initialized = true;
     } catch (error) {
@@ -166,30 +164,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refreshAnnouncement() async {
-    final manifestStore = _requireManifestStore();
-    final announcement = await _announcementService.fetchCurrentAnnouncement();
-    _manifest = await manifestStore.read();
-
-    if (announcement == null || _isAnnouncementDismissedToday(announcement)) {
-      _pendingAnnouncement = null;
-    } else {
-      _pendingAnnouncement = announcement;
-    }
-
-    notifyListeners();
-  }
-
-  Future<void> dismissAnnouncement(Announcement announcement) async {
-    final manifestStore = _requireManifestStore();
-    _manifest = await manifestStore.read();
-    _manifest = _manifest.copyWith(
-      dismissedAnnouncementId: announcement.id,
-      dismissedAnnouncementLocalDate: _todayLocalDate(),
-    );
-    await manifestStore.write(_manifest);
-    if (_pendingAnnouncement?.id == announcement.id) {
-      _pendingAnnouncement = null;
-    }
+    _announcement = await _announcementService.fetchCurrentAnnouncement();
     notifyListeners();
   }
 
@@ -317,18 +292,6 @@ class AppController extends ChangeNotifier {
   void clearMessage() {
     _message = null;
     notifyListeners();
-  }
-
-  bool _isAnnouncementDismissedToday(Announcement announcement) {
-    return _manifest.dismissedAnnouncementId == announcement.id &&
-        _manifest.dismissedAnnouncementLocalDate == _todayLocalDate();
-  }
-
-  String _todayLocalDate() {
-    final now = _now();
-    final month = now.month.toString().padLeft(2, '0');
-    final day = now.day.toString().padLeft(2, '0');
-    return '${now.year}-$month-$day';
   }
 
   AppPaths _requirePaths() {
