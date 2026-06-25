@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'src/app_controller.dart';
 import 'src/ui/home_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   runApp(const GardendlessLoaderApp());
 }
 
@@ -40,7 +45,14 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp> {
     return MaterialApp(
       title: 'GardendlessLoader',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff2c6f4f)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff0a84ff)),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xff0a84ff),
+          brightness: Brightness.dark,
+        ),
         useMaterial3: true,
       ),
       home: HomePage(controller: _controller),
