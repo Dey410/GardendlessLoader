@@ -208,80 +208,93 @@ class _LauncherHome extends StatelessWidget {
   final Future<void> Function() onCopyResourceRoot;
   final Future<void> Function() onCopyDiagnostics;
 
+  static const double _minSurfaceWidth = 980;
+  static const double _minSurfaceHeight = 680;
+  static const double _outerPadding = 12;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = math.max(constraints.maxWidth, 980.0);
-        final height = math.max(constraints.maxHeight, 680.0);
+        final availableWidth =
+            math.max(1.0, constraints.maxWidth - _outerPadding * 2);
+        final availableHeight =
+            math.max(1.0, constraints.maxHeight - _outerPadding * 2);
+        final scale = math.min(
+          1.0,
+          math.min(
+            availableWidth / _minSurfaceWidth,
+            availableHeight / _minSurfaceHeight,
+          ),
+        );
+        final width = math.max(_minSurfaceWidth, availableWidth / scale);
+        final height = math.max(_minSurfaceHeight, availableHeight / scale);
 
-        return SingleChildScrollView(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+        return Padding(
+          padding: const EdgeInsets.all(_outerPadding),
+          child: FittedBox(
+            fit: BoxFit.contain,
             child: SizedBox(
               width: width,
               height: height,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: _LauncherWorkbench(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _LauncherNavigation(
-                        selectedSection: selectedSection,
-                        onCheckUpdates: onCheckUpdates,
-                        onShowResources: onShowResources,
-                        onShowDiagnostics: onShowDiagnostics,
+              child: _LauncherWorkbench(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _LauncherNavigation(
+                      selectedSection: selectedSection,
+                      onCheckUpdates: onCheckUpdates,
+                      onShowResources: onShowResources,
+                      onShowDiagnostics: onShowDiagnostics,
+                    ),
+                    if (selectedSection == _LauncherSection.resources) ...[
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(26, 24, 24, 24),
+                          child: _LauncherMainColumn(
+                            controller: controller,
+                            onImportResources: onImportResources,
+                            onOpenGitHub: onOpenGitHub,
+                            onCopyResourceRoot: onCopyResourceRoot,
+                          ),
+                        ),
                       ),
-                      if (selectedSection == _LauncherSection.resources) ...[
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(26, 24, 24, 24),
-                            child: _LauncherMainColumn(
-                              controller: controller,
-                              onImportResources: onImportResources,
-                              onOpenGitHub: onOpenGitHub,
-                              onCopyResourceRoot: onCopyResourceRoot,
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 348,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(0, 24, 24, 24),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Expanded(
-                                  child: _LauncherSideColumn(
-                                    controller: controller,
-                                    onOpenRelease: onOpenRelease,
-                                    onDeferUpdate: onDeferUpdate,
-                                    onOpenExternalUrl: onOpenExternalUrl,
-                                  ),
+                      SizedBox(
+                        width: 348,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(0, 24, 24, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: _LauncherSideColumn(
+                                  controller: controller,
+                                  onOpenRelease: onOpenRelease,
+                                  onDeferUpdate: onDeferUpdate,
+                                  onOpenExternalUrl: onOpenExternalUrl,
                                 ),
-                                const SizedBox(height: 20),
-                                _StartGameButton(
-                                  enabled: controller.canStartGame &&
-                                      !controller.busy,
-                                  onPressed: onStartGame,
-                                ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(height: 20),
+                              _StartGameButton(
+                                enabled:
+                                    controller.canStartGame && !controller.busy,
+                                onPressed: onStartGame,
+                              ),
+                            ],
                           ),
                         ),
-                      ] else
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(26, 24, 24, 24),
-                            child: _DiagnosticsLogView(
-                              controller: controller,
-                              onCopyDiagnostics: onCopyDiagnostics,
-                            ),
+                      ),
+                    ] else
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(26, 24, 24, 24),
+                          child: _DiagnosticsLogView(
+                            controller: controller,
+                            onCopyDiagnostics: onCopyDiagnostics,
                           ),
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
               ),
             ),

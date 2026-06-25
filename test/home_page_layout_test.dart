@@ -96,6 +96,47 @@ void main() {
   );
 
   testWidgets(
+    'home page fits an Android landscape viewport without scrolling',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(915, 412);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = await _readyController(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+
+      final viewport = tester.view.physicalSize / tester.view.devicePixelRatio;
+      final visibleControls = <String, Finder>{
+        'navigation rail':
+            find.byKey(const ValueKey('launcher-navigation-rail')),
+        'title': find.text('PvZ2 Gardendless'),
+        'resource information': find.text('资源信息'),
+        'quick actions': find.text('快捷操作'),
+        'diagnostics summary': find.text('诊断摘要'),
+        'announcement': find.text('公告'),
+        'start game button': find.byKey(
+          const ValueKey('home-start-game-button'),
+        ),
+      };
+      for (final entry in visibleControls.entries) {
+        final rect = tester.getRect(entry.value);
+        expect(rect.left, greaterThanOrEqualTo(0), reason: entry.key);
+        expect(rect.top, greaterThanOrEqualTo(0), reason: entry.key);
+        expect(rect.right, lessThanOrEqualTo(viewport.width),
+            reason: entry.key);
+        expect(rect.bottom, lessThanOrEqualTo(viewport.height),
+            reason: entry.key);
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
+
+  testWidgets(
     'home page renders announcements inline without disclaimer controls',
     (tester) async {
       tester.view.devicePixelRatio = 1;
