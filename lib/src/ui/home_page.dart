@@ -60,6 +60,8 @@ class _HomePageState extends State<HomePage> {
               gradient: _LauncherColors.pageGradient(context),
             ),
             child: SafeArea(
+              left: false,
+              right: false,
               child: _LauncherHome(
                 controller: controller,
                 selectedSection: _selectedSection,

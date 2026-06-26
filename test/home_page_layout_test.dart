@@ -98,6 +98,32 @@ void main() {
   );
 
   testWidgets(
+    'home page does not reserve horizontal camera safe area padding',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1180, 720);
+      tester.view.viewPadding = const FakeViewPadding(left: 80);
+      tester.view.padding = const FakeViewPadding(left: 80);
+      addTearDown(tester.view.reset);
+
+      final controller = await _emptyController(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+
+      expect(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('launcher-navigation-rail')))
+            .dx,
+        closeTo(12, 0.1),
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
+
+  testWidgets(
     'home page opens the about dialog from the lower-left navigation',
     (tester) async {
       tester.view.devicePixelRatio = 1;

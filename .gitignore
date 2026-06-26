@@ -7,6 +7,7 @@
 pubspec_overrides.yaml
 build/
 coverage/
+.codex/
 .codex-flutter/
 .idea/
 .vscode/
@@ -34,6 +35,5 @@ ios/Runner.xcworkspace/
 *.key
 .env
 .env.*
-
 .DS_Store
 **/.DS_Store
