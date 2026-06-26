@@ -31,10 +31,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    unawaited(SystemChrome.setEnabledSystemUIMode(
-      SystemUiMode.manual,
-      overlays: const [SystemUiOverlay.top],
-    ));
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -74,6 +71,7 @@ class _HomePageState extends State<HomePage> {
                 onCheckUpdates: widget.controller.checkForUpdates,
                 onShowResources: _showResources,
                 onShowDiagnostics: _showDiagnostics,
+                onShowAbout: _showAbout,
                 onOpenExternalUrl: _openExternalUrl,
                 onCopyResourceRoot: _copyResourceRoot,
                 onCopyDiagnostics: _copyDiagnostics,
@@ -153,6 +151,22 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _showAbout() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('关于 GardendlessLoader'),
+        content: Text(widget.controller.aboutContent.content),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _copyDiagnostics() async {
     final text = widget.controller.diagnostics().toCopyText();
     await Clipboard.setData(ClipboardData(text: text));
@@ -189,6 +203,7 @@ class _LauncherHome extends StatelessWidget {
     required this.onCheckUpdates,
     required this.onShowResources,
     required this.onShowDiagnostics,
+    required this.onShowAbout,
     required this.onOpenExternalUrl,
     required this.onCopyResourceRoot,
     required this.onCopyDiagnostics,
@@ -204,6 +219,7 @@ class _LauncherHome extends StatelessWidget {
   final Future<void> Function() onCheckUpdates;
   final VoidCallback onShowResources;
   final Future<void> Function() onShowDiagnostics;
+  final Future<void> Function() onShowAbout;
   final Future<void> Function(String url) onOpenExternalUrl;
   final Future<void> Function() onCopyResourceRoot;
   final Future<void> Function() onCopyDiagnostics;
@@ -243,9 +259,9 @@ class _LauncherHome extends StatelessWidget {
                   children: [
                     _LauncherNavigation(
                       selectedSection: selectedSection,
-                      onCheckUpdates: onCheckUpdates,
                       onShowResources: onShowResources,
                       onShowDiagnostics: onShowDiagnostics,
+                      onShowAbout: onShowAbout,
                     ),
                     if (selectedSection == _LauncherSection.resources) ...[
                       Expanded(
@@ -255,6 +271,7 @@ class _LauncherHome extends StatelessWidget {
                             controller: controller,
                             onImportResources: onImportResources,
                             onOpenGitHub: onOpenGitHub,
+                            onCheckUpdates: onCheckUpdates,
                             onCopyResourceRoot: onCopyResourceRoot,
                           ),
                         ),
@@ -344,15 +361,15 @@ class _LauncherWorkbench extends StatelessWidget {
 class _LauncherNavigation extends StatelessWidget {
   const _LauncherNavigation({
     required this.selectedSection,
-    required this.onCheckUpdates,
     required this.onShowResources,
     required this.onShowDiagnostics,
+    required this.onShowAbout,
   });
 
   final _LauncherSection selectedSection;
-  final Future<void> Function() onCheckUpdates;
   final VoidCallback onShowResources;
   final Future<void> Function() onShowDiagnostics;
+  final Future<void> Function() onShowAbout;
 
   @override
   Widget build(BuildContext context) {
@@ -379,18 +396,17 @@ class _LauncherNavigation extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 _NavItem(
-                  icon: Icons.download_for_offline_rounded,
-                  label: '更新',
-                  onTap: onCheckUpdates,
-                ),
-                const SizedBox(height: 8),
-                _NavItem(
                   icon: Icons.terminal_rounded,
                   label: '日志',
                   selected: selectedSection == _LauncherSection.diagnostics,
                   onTap: onShowDiagnostics,
                 ),
                 const Spacer(),
+                _NavItem(
+                  icon: Icons.info_outline_rounded,
+                  label: '关于',
+                  onTap: onShowAbout,
+                ),
               ],
             ),
           ),
@@ -467,12 +483,14 @@ class _LauncherMainColumn extends StatelessWidget {
     required this.controller,
     required this.onImportResources,
     required this.onOpenGitHub,
+    required this.onCheckUpdates,
     required this.onCopyResourceRoot,
   });
 
   final AppController controller;
   final Future<void> Function() onImportResources;
   final Future<void> Function() onOpenGitHub;
+  final Future<void> Function() onCheckUpdates;
   final Future<void> Function() onCopyResourceRoot;
 
   @override
@@ -483,7 +501,10 @@ class _LauncherMainColumn extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _LauncherTitle(controller: controller),
+            _LauncherTitle(
+              controller: controller,
+              onCheckUpdates: onCheckUpdates,
+            ),
             const SizedBox(height: 20),
             _ResourceHeroCard(controller: controller),
             const SizedBox(height: 16),
@@ -612,9 +633,13 @@ class _DiagnosticsLogBox extends StatelessWidget {
 }
 
 class _LauncherTitle extends StatelessWidget {
-  const _LauncherTitle({required this.controller});
+  const _LauncherTitle({
+    required this.controller,
+    required this.onCheckUpdates,
+  });
 
   final AppController controller;
+  final Future<void> Function() onCheckUpdates;
 
   @override
   Widget build(BuildContext context) {
@@ -640,6 +665,13 @@ class _LauncherTitle extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
+            _VersionPill(
+              version: controller.currentAppVersion,
+              hasUpdate: controller.availableUpdate != null,
+              checking: controller.updateCheckInProgress,
+              onTap: onCheckUpdates,
+            ),
+            const SizedBox(width: 8),
             _StatusPill(
               label: canStart ? '可启动' : '需导入',
               color:
@@ -656,6 +688,88 @@ class _LauncherTitle extends StatelessWidget {
                 letterSpacing: 0,
               ),
         ),
+      ],
+    );
+  }
+}
+
+class _VersionPill extends StatelessWidget {
+  const _VersionPill({
+    required this.version,
+    required this.hasUpdate,
+    required this.checking,
+    required this.onTap,
+  });
+
+  final String version;
+  final bool hasUpdate;
+  final bool checking;
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _LauncherColors.accentBlue;
+    final foreground = checking
+        ? color.withValues(alpha: 0.72)
+        : _LauncherColors.primaryText(context);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          key: const ValueKey('app-version-pill'),
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: checking ? null : onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'v$version',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: foreground,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0,
+                        ),
+                  ),
+                  if (checking) ...[
+                    const SizedBox(width: 7),
+                    SizedBox(
+                      key: const ValueKey('app-update-spinner'),
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: color.withValues(alpha: 0.78),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (hasUpdate)
+          Positioned(
+            key: const ValueKey('app-update-dot'),
+            top: -2,
+            right: -2,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: _LauncherColors.danger,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _LauncherColors.panelBackground(context),
+                  width: 2,
+                ),
+              ),
+              child: const SizedBox(width: 11, height: 11),
+            ),
+          ),
       ],
     );
   }

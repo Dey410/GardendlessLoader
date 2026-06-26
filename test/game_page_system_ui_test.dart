@@ -8,7 +8,7 @@ import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interfac
 
 void main() {
   testWidgets(
-    'game page hides the status bar while active and restores it on exit',
+    'game page keeps immersive system UI while active and after exit',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1180, 720);
@@ -55,13 +55,17 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
       await tester.pump();
 
+      final allHideCalls = platformCalls
+          .where((call) => call.method == 'SystemChrome.setEnabledSystemUIMode')
+          .toList();
       final overlayCalls = platformCalls
           .where((call) =>
               call.method == 'SystemChrome.setEnabledSystemUIOverlays')
           .toList();
 
-      expect(overlayCalls, isNotEmpty);
-      expect(overlayCalls.last.arguments, contains('SystemUiOverlay.top'));
+      expect(allHideCalls.length, greaterThanOrEqualTo(2));
+      expect(allHideCalls.last.arguments, 'SystemUiMode.immersiveSticky');
+      expect(overlayCalls, isEmpty);
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );

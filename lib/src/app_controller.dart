@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import 'constants.dart';
 import 'models.dart';
+import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
 import 'services/app_paths_service.dart';
 import 'services/diagnostics_service.dart';
@@ -24,6 +25,7 @@ class AppController extends ChangeNotifier {
     ImportService? importService,
     DiagnosticsService? diagnosticsService,
     AnnouncementService? announcementService,
+    AboutContentService? aboutContentService,
     UpdateCheckService? updateCheckService,
     ResourcePickerService? resourcePickerService,
   })  : _pathsService = pathsService ?? AppPathsService(),
@@ -31,6 +33,7 @@ class AppController extends ChangeNotifier {
         _server = server ?? LocalGameServer(),
         _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
         _announcementService = announcementService ?? AnnouncementService(),
+        _aboutContentService = aboutContentService ?? AboutContentService(),
         _updateCheckService = updateCheckService ?? UpdateCheckService(),
         _resourcePickerService =
             resourcePickerService ?? ResourcePickerService() {
@@ -46,6 +49,7 @@ class AppController extends ChangeNotifier {
   final LocalGameServer _server;
   final DiagnosticsService _diagnosticsService;
   final AnnouncementService _announcementService;
+  final AboutContentService _aboutContentService;
   final UpdateCheckService _updateCheckService;
   final ResourcePickerService _resourcePickerService;
   late final ImportService _importService;
@@ -60,8 +64,10 @@ class AppController extends ChangeNotifier {
   ImportProgress _importProgress = ImportProgress.idle;
   Directory? _selectedImportSource;
   Announcement? _announcement;
+  AboutContent _aboutContent = localFallbackAboutContent;
   UpdateInfo? _availableUpdate;
   String? _deferredUpdateTagName;
+  String _currentAppVersion = appVersion;
   bool _updateCheckInProgress = false;
   bool _initialized = false;
   bool _busy = false;
@@ -77,7 +83,9 @@ class AppController extends ChangeNotifier {
   ImportProgress get importProgress => _importProgress;
   Directory? get selectedImportSource => _selectedImportSource;
   Announcement? get announcement => _announcement;
+  AboutContent get aboutContent => _aboutContent;
   UpdateInfo? get availableUpdate => _availableUpdate;
+  String get currentAppVersion => _currentAppVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
   ServerStatus get serverStatus => _server.status;
   bool get isImporting =>
@@ -119,6 +127,7 @@ class AppController extends ChangeNotifier {
         manifestStore: _manifestStore!,
       );
       await _diagnosticsService.initialize();
+      await _loadCurrentAppVersion();
       await refresh();
       _initialized = true;
     } catch (error) {
@@ -168,6 +177,14 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshAboutContent() async {
+    final paths = _requirePaths();
+    _aboutContent = await _aboutContentService.refreshContent(
+      cacheFile: File(p.join(paths.root.path, 'about_content.json')),
+    );
+    notifyListeners();
+  }
+
   Future<void> checkForUpdates({bool silent = false}) async {
     _updateCheckInProgress = true;
     if (!silent) {
@@ -176,11 +193,16 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await _loadCurrentAppVersion();
+      notifyListeners();
       final update = await _updateCheckService.checkForUpdate();
+      if (update != null) {
+        _currentAppVersion = update.currentVersion;
+      }
       _availableUpdate =
           update?.tagName == _deferredUpdateTagName ? null : update;
       if (!silent && update == null) {
-        _message = '当前已是最新版本';
+        _message = 'v$_currentAppVersion';
       }
     } catch (_) {
       _availableUpdate = null;
@@ -191,6 +213,10 @@ class AppController extends ChangeNotifier {
       _updateCheckInProgress = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _loadCurrentAppVersion() async {
+    _currentAppVersion = await _updateCheckService.loadCurrentVersion();
   }
 
   void deferUpdate(UpdateInfo update) {

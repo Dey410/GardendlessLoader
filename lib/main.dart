@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,10 +8,7 @@ import 'src/ui/home_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode.manual,
-    overlays: const [SystemUiOverlay.top],
-  );
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
@@ -31,11 +30,12 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp> {
   void initState() {
     super.initState();
     _controller = AppController();
-    _controller.initialize().then((_) {
+    unawaited(_controller.initialize().then((_) {
       if (mounted && _controller.initialized) {
-        _controller.refreshAnnouncement();
+        unawaited(_controller.refreshAboutContent());
+        unawaited(_controller.refreshAnnouncement());
       }
-    });
+    }));
   }
 
   @override

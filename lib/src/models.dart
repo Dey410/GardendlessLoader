@@ -179,6 +179,48 @@ class Announcement {
   final List<AnnouncementLink> links;
 }
 
+class AboutContent {
+  const AboutContent({
+    required this.contentVersion,
+    required this.content,
+  });
+
+  factory AboutContent.fromJson(Object? value) {
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('about content must be an object');
+    }
+
+    final schemaVersion = value['schemaVersion'];
+    final contentVersion = value['contentVersion'];
+    final content = value['content'];
+    if (schemaVersion != 1) {
+      throw const FormatException('about content schema is unsupported');
+    }
+    if (contentVersion is! int || contentVersion < 1) {
+      throw const FormatException('about content version is invalid');
+    }
+    if (content is! String || content.trim().isEmpty) {
+      throw const FormatException('about content is missing');
+    }
+
+    return AboutContent(
+      contentVersion: contentVersion,
+      content: content,
+    );
+  }
+
+  final int contentVersion;
+  final String content;
+
+  Map<String, Object> toJson() {
+    return {
+      'schemaVersion': 1,
+      'contentVersion': contentVersion,
+      'content': content,
+    };
+  }
+}
+
 class ImportProgress {
   const ImportProgress({
     required this.phase,

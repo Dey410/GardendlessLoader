@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/constants.dart';
+import 'package:gardendless_loader/src/services/about_content_service.dart';
 import 'package:gardendless_loader/src/services/announcement_service.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/diagnostics_service.dart';
@@ -15,7 +16,7 @@ import 'package:path/path.dart' as p;
 
 void main() {
   testWidgets(
-    'home page keeps the system status bar visible',
+    'home page enters immersive system UI',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1180, 720);
@@ -40,13 +41,12 @@ void main() {
       );
       await tester.pump();
 
-      final overlayCalls = platformCalls
-          .where((call) =>
-              call.method == 'SystemChrome.setEnabledSystemUIOverlays')
+      final systemUiModeCalls = platformCalls
+          .where((call) => call.method == 'SystemChrome.setEnabledSystemUIMode')
           .toList();
 
-      expect(overlayCalls, isNotEmpty);
-      expect(overlayCalls.last.arguments, contains('SystemUiOverlay.top'));
+      expect(systemUiModeCalls, isNotEmpty);
+      expect(systemUiModeCalls.last.arguments, 'SystemUiMode.immersiveSticky');
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );
@@ -68,10 +68,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('资源'), findsOneWidget);
-      expect(find.text('更新'), findsOneWidget);
+      expect(find.text('更新app'), findsNothing);
       expect(find.text('日志'), findsOneWidget);
-      expect(find.text('关于'), findsNothing);
+      expect(find.text('关于'), findsOneWidget);
       expect(find.text('PvZ2 Gardendless'), findsOneWidget);
+      expect(find.text('v0.1.0'), findsOneWidget);
+      expect(find.byKey(const ValueKey('app-version-pill')), findsOneWidget);
       expect(find.text('资源根目录'), findsOneWidget);
       expect(find.text('复制'), findsOneWidget);
       expect(find.text('资源校验'), findsOneWidget);
@@ -91,6 +93,35 @@ void main() {
       expect(find.text('导入来源'), findsNothing);
       expect(find.text('检查更新'), findsNothing);
       expect(find.text('本地服务器'), findsNothing);
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
+
+  testWidgets(
+    'home page opens the about dialog from the lower-left navigation',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1180, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = await _readyController(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+
+      await tester.runAsync(controller.refreshAboutContent);
+      await tester.pump();
+
+      await tester.tap(find.text('关于'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('关于 GardendlessLoader'), findsOneWidget);
+      expect(find.text('远端 JSON 关于内容'), findsOneWidget);
+      expect(find.text('免责声明'), findsNothing);
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );
@@ -416,6 +447,10 @@ void main() {
       expect(find.text('需导入'), findsOneWidget);
       expect(find.text('需要导入资源'), findsOneWidget);
       expect(find.text('请先导入资源'), findsOneWidget);
+      expect(
+        tester.getRect(find.byKey(const ValueKey('app-version-pill'))).right,
+        lessThan(tester.getRect(find.text('需导入')).left),
+      );
       expect(startButton.onPressed, isNull);
     },
     timeout: const Timeout(Duration(seconds: 5)),
@@ -425,6 +460,7 @@ void main() {
 Future<AppController> _readyController(
   WidgetTester tester, {
   AnnouncementService? announcementService,
+  AboutContentService? aboutContentService,
   DiagnosticsService? diagnosticsService,
 }) async {
   return (await tester.runAsync(() async {
@@ -434,6 +470,7 @@ Future<AppController> _readyController(
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       announcementService: announcementService,
+      aboutContentService: aboutContentService ?? _aboutContentService(),
       diagnosticsService: diagnosticsService,
       updateCheckService: _noUpdateService(),
     );
@@ -475,6 +512,28 @@ AnnouncementService _announcementService(String body) {
     loader: (uri, timeout, maxBytes) async => AnnouncementHttpResponse(
       statusCode: HttpStatus.ok,
       body: body,
+    ),
+  );
+}
+
+AboutContentService _aboutContentService() {
+  return AboutContentService(
+    bundledJsonLoader: () async => '''
+{
+  "schemaVersion": 1,
+  "contentVersion": 1,
+  "content": "本地 JSON 关于内容"
+}
+''',
+    loader: (uri, timeout, maxBytes) async => const AboutContentHttpResponse(
+      statusCode: HttpStatus.ok,
+      body: '''
+{
+  "schemaVersion": 1,
+  "contentVersion": 2,
+  "content": "远端 JSON 关于内容"
+}
+''',
     ),
   );
 }

@@ -72,6 +72,8 @@ class UpdateCheckService {
   final UpdateCheckHttpLoader _loader;
   final InstalledVersionLoader _installedVersionLoader;
 
+  Future<String> loadCurrentVersion() => _loadCurrentVersion();
+
   Future<UpdateInfo?> checkForUpdate() async {
     final response =
         await _loader(_latestReleaseUri, _timeout, _maxBytes).timeout(_timeout);
