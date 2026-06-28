@@ -1,25 +1,29 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
-  test('persists announcement dismissal fields', () async {
+  test('does not persist legacy announcement dismissal fields', () async {
     final temp = await Directory.systemTemp.createTemp('gl_manifest_');
-    final store = ManifestStore(File(p.join(temp.path, 'manifest.json')));
+    final manifestFile = File(p.join(temp.path, 'manifest.json'));
+    final store = ManifestStore(manifestFile);
 
-    await store.write(
-      ResourceManifest.initial().copyWith(
-        dismissedAnnouncementId: 'notice-1',
-        dismissedAnnouncementLocalDate: '2026-05-17',
-      ),
-    );
+    await manifestFile.writeAsString('''
+{
+  "schemaVersion": 1,
+  "announcement": {
+    "dismissedId": "notice-1",
+    "dismissedLocalDate": "2026-05-17"
+  }
+}
+''');
 
     final manifest = await store.read();
+    await store.write(manifest);
 
-    expect(manifest.dismissedAnnouncementId, 'notice-1');
-    expect(manifest.dismissedAnnouncementLocalDate, '2026-05-17');
+    expect(await manifestFile.readAsString(), isNot(contains('announcement')));
+    expect(await manifestFile.readAsString(), isNot(contains('dismissedId')));
   });
 }

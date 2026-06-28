@@ -56,7 +56,7 @@ void main() {
     await controller.checkForUpdates();
 
     expect(controller.availableUpdate, isNull);
-    expect(controller.message, '当前已是最新版本');
+    expect(controller.message, 'v0.2.0');
   });
 
   test('silent update check failure does not set user message', () async {

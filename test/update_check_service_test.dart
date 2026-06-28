@@ -1,9 +1,19 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gardendless_loader/src/constants.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
 
 void main() {
+  test('fallback app version matches the pubspec package version', () {
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    final match =
+        RegExp(r'^version:\s*([^\s+]+)', multiLine: true).firstMatch(pubspec);
+
+    expect(match, isNotNull);
+    expect(appVersion, match!.group(1)!.split('+').first);
+  });
+
   test('returns update info when latest GitHub release is newer', () async {
     final service = UpdateCheckService(
       currentVersion: '0.1.0',

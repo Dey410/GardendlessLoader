@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import 'constants.dart';
 import 'models.dart';
+import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
 import 'services/app_paths_service.dart';
 import 'services/diagnostics_service.dart';
@@ -24,18 +25,18 @@ class AppController extends ChangeNotifier {
     ImportService? importService,
     DiagnosticsService? diagnosticsService,
     AnnouncementService? announcementService,
+    AboutContentService? aboutContentService,
     UpdateCheckService? updateCheckService,
     ResourcePickerService? resourcePickerService,
-    DateTime Function()? now,
   })  : _pathsService = pathsService ?? AppPathsService(),
         _validator = validator ?? ResourceValidator(),
         _server = server ?? LocalGameServer(),
         _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
         _announcementService = announcementService ?? AnnouncementService(),
+        _aboutContentService = aboutContentService ?? AboutContentService(),
         _updateCheckService = updateCheckService ?? UpdateCheckService(),
         _resourcePickerService =
-            resourcePickerService ?? ResourcePickerService(),
-        _now = now ?? DateTime.now {
+            resourcePickerService ?? ResourcePickerService() {
     _importService = importService ??
         ImportService(
           validator: _validator,
@@ -48,9 +49,9 @@ class AppController extends ChangeNotifier {
   final LocalGameServer _server;
   final DiagnosticsService _diagnosticsService;
   final AnnouncementService _announcementService;
+  final AboutContentService _aboutContentService;
   final UpdateCheckService _updateCheckService;
   final ResourcePickerService _resourcePickerService;
-  final DateTime Function() _now;
   late final ImportService _importService;
 
   AppPaths? _paths;
@@ -62,9 +63,11 @@ class AppController extends ChangeNotifier {
       ResourceValidationResult.missing('尚未选择 ZIP');
   ImportProgress _importProgress = ImportProgress.idle;
   Directory? _selectedImportSource;
-  Announcement? _pendingAnnouncement;
+  Announcement? _announcement;
+  AboutContent _aboutContent = localFallbackAboutContent;
   UpdateInfo? _availableUpdate;
   String? _deferredUpdateTagName;
+  String _currentAppVersion = appVersion;
   bool _updateCheckInProgress = false;
   bool _initialized = false;
   bool _busy = false;
@@ -79,8 +82,10 @@ class AppController extends ChangeNotifier {
   ResourceValidationResult get importValidation => _importValidation;
   ImportProgress get importProgress => _importProgress;
   Directory? get selectedImportSource => _selectedImportSource;
-  Announcement? get pendingAnnouncement => _pendingAnnouncement;
+  Announcement? get announcement => _announcement;
+  AboutContent get aboutContent => _aboutContent;
   UpdateInfo? get availableUpdate => _availableUpdate;
+  String get currentAppVersion => _currentAppVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
   ServerStatus get serverStatus => _server.status;
   bool get isImporting =>
@@ -121,6 +126,8 @@ class AppController extends ChangeNotifier {
         paths: _paths!,
         manifestStore: _manifestStore!,
       );
+      await _diagnosticsService.initialize();
+      await _loadCurrentAppVersion();
       await refresh();
       _initialized = true;
     } catch (error) {
@@ -166,30 +173,15 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refreshAnnouncement() async {
-    final manifestStore = _requireManifestStore();
-    final announcement = await _announcementService.fetchCurrentAnnouncement();
-    _manifest = await manifestStore.read();
-
-    if (announcement == null || _isAnnouncementDismissedToday(announcement)) {
-      _pendingAnnouncement = null;
-    } else {
-      _pendingAnnouncement = announcement;
-    }
-
+    _announcement = await _announcementService.fetchCurrentAnnouncement();
     notifyListeners();
   }
 
-  Future<void> dismissAnnouncement(Announcement announcement) async {
-    final manifestStore = _requireManifestStore();
-    _manifest = await manifestStore.read();
-    _manifest = _manifest.copyWith(
-      dismissedAnnouncementId: announcement.id,
-      dismissedAnnouncementLocalDate: _todayLocalDate(),
+  Future<void> refreshAboutContent() async {
+    final paths = _requirePaths();
+    _aboutContent = await _aboutContentService.refreshContent(
+      cacheFile: File(p.join(paths.root.path, 'about_content.json')),
     );
-    await manifestStore.write(_manifest);
-    if (_pendingAnnouncement?.id == announcement.id) {
-      _pendingAnnouncement = null;
-    }
     notifyListeners();
   }
 
@@ -201,11 +193,16 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await _loadCurrentAppVersion();
+      notifyListeners();
       final update = await _updateCheckService.checkForUpdate();
+      if (update != null) {
+        _currentAppVersion = update.currentVersion;
+      }
       _availableUpdate =
           update?.tagName == _deferredUpdateTagName ? null : update;
       if (!silent && update == null) {
-        _message = '当前已是最新版本';
+        _message = 'v$_currentAppVersion';
       }
     } catch (_) {
       _availableUpdate = null;
@@ -216,6 +213,10 @@ class AppController extends ChangeNotifier {
       _updateCheckInProgress = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _loadCurrentAppVersion() async {
+    _currentAppVersion = await _updateCheckService.loadCurrentVersion();
   }
 
   void deferUpdate(UpdateInfo update) {
@@ -317,18 +318,6 @@ class AppController extends ChangeNotifier {
   void clearMessage() {
     _message = null;
     notifyListeners();
-  }
-
-  bool _isAnnouncementDismissedToday(Announcement announcement) {
-    return _manifest.dismissedAnnouncementId == announcement.id &&
-        _manifest.dismissedAnnouncementLocalDate == _todayLocalDate();
-  }
-
-  String _todayLocalDate() {
-    final now = _now();
-    final month = now.month.toString().padLeft(2, '0');
-    final day = now.day.toString().padLeft(2, '0');
-    return '${now.year}-$month-$day';
   }
 
   AppPaths _requirePaths() {

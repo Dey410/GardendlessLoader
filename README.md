@@ -23,7 +23,7 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 - 游戏页固定横屏、沉浸式显示，并默认拦截非本地请求。
 - 导入过程带进度显示，失败时回滚到旧资源，启动时恢复未完成事务。
 - 提供可复制的诊断信息，方便排查资源、平台、WebView 和本地 server 状态。
-- 支持公告弹窗、GitHub Release 更新检查、自动收集阳光和强制拉伸画面开关。
+- 支持首页公告、GitHub Release 更新检查、自动收集阳光和强制拉伸画面开关。
 - GitHub Actions 可产出 Android、iOS、HarmonyOS/OpenHarmony 和 Web 产物。
 
 ## 使用方式

@@ -27,7 +27,7 @@ the game in an in-app WebView.
 - Uses a landscape, immersive WebView and blocks non-local requests by default.
 - Shows import progress, rolls back failed imports, and recovers unfinished startup transactions.
 - Provides copyable diagnostics for resource, platform, WebView, and local server state.
-- Supports remote announcements, GitHub Release update checks, auto sunlight collection, and stretch mode.
+- Supports inline home-page announcements, GitHub Release update checks, auto sunlight collection, and stretch mode.
 - Builds Android, iOS, HarmonyOS/OpenHarmony, and Web artifacts in GitHub Actions.
 
 ## Usage

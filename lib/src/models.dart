@@ -179,6 +179,48 @@ class Announcement {
   final List<AnnouncementLink> links;
 }
 
+class AboutContent {
+  const AboutContent({
+    required this.contentVersion,
+    required this.content,
+  });
+
+  factory AboutContent.fromJson(Object? value) {
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('about content must be an object');
+    }
+
+    final schemaVersion = value['schemaVersion'];
+    final contentVersion = value['contentVersion'];
+    final content = value['content'];
+    if (schemaVersion != 1) {
+      throw const FormatException('about content schema is unsupported');
+    }
+    if (contentVersion is! int || contentVersion < 1) {
+      throw const FormatException('about content version is invalid');
+    }
+    if (content is! String || content.trim().isEmpty) {
+      throw const FormatException('about content is missing');
+    }
+
+    return AboutContent(
+      contentVersion: contentVersion,
+      content: content,
+    );
+  }
+
+  final int contentVersion;
+  final String content;
+
+  Map<String, Object> toJson() {
+    return {
+      'schemaVersion': 1,
+      'contentVersion': contentVersion,
+      'content': content,
+    };
+  }
+}
+
 class ImportProgress {
   const ImportProgress({
     required this.phase,
@@ -229,8 +271,6 @@ class ResourceManifest {
     required this.lastErrorCode,
     required this.lastErrorMessage,
     required this.transactionState,
-    this.dismissedAnnouncementId,
-    this.dismissedAnnouncementLocalDate,
   });
 
   factory ResourceManifest.initial() {
@@ -258,8 +298,6 @@ class ResourceManifest {
   final String? lastErrorCode;
   final String? lastErrorMessage;
   final TransactionState transactionState;
-  final String? dismissedAnnouncementId;
-  final String? dismissedAnnouncementLocalDate;
 
   ResourceManifest copyWith({
     DateTime? lastImportAt,
@@ -271,8 +309,6 @@ class ResourceManifest {
     String? lastErrorCode,
     String? lastErrorMessage,
     TransactionState? transactionState,
-    String? dismissedAnnouncementId,
-    String? dismissedAnnouncementLocalDate,
     bool clearError = false,
   }) {
     return ResourceManifest(
@@ -287,10 +323,6 @@ class ResourceManifest {
       lastErrorMessage:
           clearError ? null : lastErrorMessage ?? this.lastErrorMessage,
       transactionState: transactionState ?? this.transactionState,
-      dismissedAnnouncementId:
-          dismissedAnnouncementId ?? this.dismissedAnnouncementId,
-      dismissedAnnouncementLocalDate:
-          dismissedAnnouncementLocalDate ?? this.dismissedAnnouncementLocalDate,
     );
   }
 
@@ -307,10 +339,6 @@ class ResourceManifest {
       'lastErrorMessage': lastErrorMessage,
       'transaction': {
         'state': transactionState.name,
-      },
-      'announcement': {
-        'dismissedId': dismissedAnnouncementId,
-        'dismissedLocalDate': dismissedAnnouncementLocalDate,
       },
     };
   }
@@ -380,5 +408,107 @@ class DiagnosticSnapshot {
       'lastErrorMessage: $lastErrorMessage',
       'transaction.state: ${transactionState.name}',
     ].join('\n');
+  }
+
+  String toLogText() {
+    return [
+      _logLine(
+        'INFO',
+        'app',
+        'version="${_logValue(appVersion)}" '
+            'platform="${_logValue(platform)}" '
+            'os="${_logValue(osVersion)}" '
+            'webview="${_logValue(webViewEngineVersion)}"',
+      ),
+      _logLine(
+        'INFO',
+        'resource.root',
+        'path="${_logValue(resourceRoot)}"',
+      ),
+      _validationLogLine('current.validation', currentValidation),
+      _validationLogLine('import.docs.validation', importValidation),
+      _logLine(
+        'INFO',
+        'manifest',
+        'lastImportAt=${_iso(lastImportAt)} '
+            'fileCount=$fileCount '
+            'totalBytes=$totalBytes '
+            'detectedTitle="${_logValue(detectedTitle)}"',
+      ),
+      _logLine(
+        _serverLogLevel(),
+        'server',
+        'status=${serverStatus.name} host=$serverHost port=$serverPort',
+      ),
+      _logLine(
+        currentValidation.isValid && lastSelfCheckAt == null ? 'WARN' : 'INFO',
+        'self.check',
+        'lastAt=${_iso(lastSelfCheckAt)}',
+      ),
+      _logLine(
+        transactionState == TransactionState.idle ? 'INFO' : 'WARN',
+        'transaction',
+        'state=${transactionState.name}',
+      ),
+      if (lastErrorMessage == null)
+        _logLine('INFO', 'last.error', 'none')
+      else
+        _logLine(
+          'ERROR',
+          'last.error',
+          'code="${_logValue(lastErrorCode)}" '
+              'message="${_logValue(lastErrorMessage)}"',
+        ),
+    ].join('\n');
+  }
+
+  String _validationLogLine(
+    String target,
+    ResourceValidationResult validation,
+  ) {
+    final fields = [
+      'status=${validation.status.name}',
+      if (validation.errorCode != null)
+        'code="${_logValue(validation.errorCode)}"',
+      if (validation.errorMessage != null)
+        'message="${_logValue(validation.errorMessage)}"',
+      if (validation.detectedTitle != null)
+        'detectedTitle="${_logValue(validation.detectedTitle)}"',
+    ];
+    return _logLine(_validationLogLevel(validation), target, fields.join(' '));
+  }
+
+  String _validationLogLevel(ResourceValidationResult validation) {
+    return switch (validation.status) {
+      ResourceStatus.invalid => 'ERROR',
+      ResourceStatus.missing => 'WARN',
+      ResourceStatus.valid || ResourceStatus.ready => 'INFO',
+    };
+  }
+
+  String _serverLogLevel() {
+    return switch (serverStatus) {
+      ServerStatus.failed => 'ERROR',
+      ServerStatus.starting => 'WARN',
+      ServerStatus.running || ServerStatus.stopped => 'INFO',
+    };
+  }
+
+  String _logLine(String level, String target, String message) {
+    return '[$level] $target $message';
+  }
+
+  String _iso(DateTime? value) => value?.toIso8601String() ?? '-';
+
+  String _logValue(Object? value) {
+    final text = value?.toString();
+    if (text == null || text.trim().isEmpty) {
+      return '-';
+    }
+    return text
+        .replaceAll(r'\', r'\\')
+        .replaceAll('\r', r'\r')
+        .replaceAll('\n', r'\n')
+        .replaceAll('"', r'\"');
   }
 }

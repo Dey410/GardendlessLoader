@@ -29,10 +29,6 @@ class ManifestStore {
         transactionState: _parseTransactionState(
           (json['transaction'] as Map?)?['state'],
         ),
-        dismissedAnnouncementId:
-            (json['announcement'] as Map?)?['dismissedId'] as String?,
-        dismissedAnnouncementLocalDate:
-            (json['announcement'] as Map?)?['dismissedLocalDate'] as String?,
       );
     } catch (_) {
       return ResourceManifest.initial().copyWith(

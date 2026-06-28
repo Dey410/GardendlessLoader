@@ -16,9 +16,19 @@ void main() {
     expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
     expect(pubspec, contains('br_v6.1.5_ohos'));
     expect(pubspec, contains('flutter_inappwebview'));
+    expect(pubspec, contains('flutter_inappwebview_platform_interface'));
     expect(pubspec, contains('openharmony-sig/fluttertpc_wakelock_plus.git'));
     expect(pubspec, contains('wakelock_plus'));
+    expect(pubspec, contains('wakelock_plus_platform_interface: 1.3.0'));
     expect(pubspec, contains('package_info_plus: ^4.2.0'));
+  });
+
+  test('OpenHarmony compatible test dependencies support Dart 3.9', () {
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+
+    expect(pubspec, contains('wakelock_plus_platform_interface: ^1.3.0'));
+    expect(pubspec, isNot(contains('wakelock_plus_platform_interface: ^1.4')));
+    expect(pubspec, isNot(contains('wakelock_plus_platform_interface: ^1.5')));
   });
 
   test('OpenHarmony project files are present for HAP builds', () {
