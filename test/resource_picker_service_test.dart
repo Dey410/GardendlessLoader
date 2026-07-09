@@ -49,6 +49,47 @@ void main() {
         isTrue);
   });
 
+  test('uses iOS streaming importer instead of reading the zip in Dart',
+      () async {
+    final temp = await Directory.systemTemp.createTemp('gl_picker_');
+    addTearDown(() async {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    });
+
+    final localImportDocs = Directory(p.join(temp.path, 'import', 'docs'));
+    var importerCalled = false;
+
+    final picker = ResourcePickerService(
+      platformName: 'ios',
+      filePicker: ({
+        required List<file_selector.XTypeGroup> acceptedTypeGroups,
+        String? confirmButtonText,
+        String? initialDirectory,
+      }) async {
+        fail('iOS imports should not read the selected zip in Dart');
+      },
+      mobileZipImporter: ({required String targetDirectory}) async {
+        importerCalled = true;
+        expect(targetDirectory, localImportDocs.path);
+        await localImportDocs.create(recursive: true);
+        await File(p.join(localImportDocs.path, 'index.html'))
+            .writeAsString('ok');
+        return targetDirectory;
+      },
+    );
+
+    final picked = await picker.pickAndExtractDocsZip(
+      localImportDocsDir: localImportDocs,
+    );
+
+    expect(importerCalled, isTrue);
+    expect(picked?.path, localImportDocs.path);
+    expect(await File(p.join(localImportDocs.path, 'index.html')).exists(),
+        isTrue);
+  });
+
   test('uses OHOS streaming importer instead of reading the zip in Dart',
       () async {
     final temp = await Directory.systemTemp.createTemp('gl_picker_');

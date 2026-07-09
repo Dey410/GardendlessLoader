@@ -217,7 +217,9 @@ class ResourcePickerService {
   }
 
   bool get _usesMobileZipImporter =>
-      _platformName == 'android' || _platformName == 'ohos';
+      _platformName == 'android' ||
+      _platformName == 'ios' ||
+      _platformName == 'ohos';
 
   Future<void> _resetDirectory(Directory directory) async {
     if (await directory.exists()) {
