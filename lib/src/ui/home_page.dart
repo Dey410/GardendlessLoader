@@ -1132,6 +1132,8 @@ class _LauncherSideColumn extends StatelessWidget {
             const SizedBox(height: 16),
             _UpdateNotice(
               update: controller.availableUpdate!,
+              onOpenCloudDriveUpdate: () =>
+                  onOpenExternalUrl(appCloudDriveUpdateUrl),
               onOpenRelease: onOpenRelease,
               onDefer: onDeferUpdate,
             ),
@@ -1491,11 +1493,13 @@ class _StartGameButton extends StatelessWidget {
 class _UpdateNotice extends StatelessWidget {
   const _UpdateNotice({
     required this.update,
+    required this.onOpenCloudDriveUpdate,
     required this.onOpenRelease,
     required this.onDefer,
   });
 
   final UpdateInfo update;
+  final Future<void> Function() onOpenCloudDriveUpdate;
   final Future<void> Function(UpdateInfo update) onOpenRelease;
   final void Function(UpdateInfo update) onDefer;
 
@@ -1537,6 +1541,11 @@ class _UpdateNotice extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              FilledButton.icon(
+                onPressed: onOpenCloudDriveUpdate,
+                icon: const Icon(Icons.cloud_download_rounded),
+                label: const Text('网盘更新'),
+              ),
               FilledButton.tonalIcon(
                 onPressed: () => onOpenRelease(update),
                 icon: const Icon(Icons.open_in_new_rounded),

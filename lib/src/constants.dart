@@ -5,6 +5,8 @@ const githubUrl =
     'https://github.com/Gzh0821/pvzge_web'; // GitHub 仓库地址，指向 PvZ2 Gardendless 项目的源代码
 const appGithubUrl =
     'https://github.com/Dey410/GardendlessLoader'; // GardendlessLoader 的 GitHub 仓库地址
+const appCloudDriveUpdateUrl =
+    'https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU'; // App 网盘更新地址
 const bilibiliHomeUrl = 'https://space.bilibili.com/523667580'; // B站主页地址
 const remoteAnnouncementUrl =
     'https://raw.githubusercontent.com/Dey410/GardendlessLoader/main/announcements.json'; // 远程公告 URL

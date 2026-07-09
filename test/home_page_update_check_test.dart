@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
+import 'package:gardendless_loader/src/constants.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
 import 'package:gardendless_loader/src/ui/home_page.dart';
@@ -34,7 +35,16 @@ void main() {
 
     expect(find.text('发现新版本 v0.2.0'), findsOneWidget);
     expect(find.text('当前版本 0.1.0'), findsOneWidget);
+    expect(find.text('网盘更新'), findsOneWidget);
     expect(find.text('查看 GitHub Release'), findsOneWidget);
+    final cloudDrivePosition = tester.getTopLeft(find.text('网盘更新'));
+    final githubPosition = tester.getTopLeft(find.text('查看 GitHub Release'));
+    expect(
+      cloudDrivePosition.dy < githubPosition.dy ||
+          cloudDrivePosition.dy == githubPosition.dy &&
+              cloudDrivePosition.dx < githubPosition.dx,
+      isTrue,
+    );
     expect(find.byKey(const ValueKey('app-update-dot')), findsOneWidget);
 
     await tester.tap(find.text('稍后提醒'));
@@ -42,6 +52,13 @@ void main() {
 
     expect(find.text('发现新版本 v0.2.0'), findsNothing);
     expect(find.byKey(const ValueKey('app-update-dot')), findsNothing);
+  });
+
+  test('cloud drive update url points to the Quark share', () {
+    expect(
+      appCloudDriveUpdateUrl,
+      'https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU',
+    );
   });
 
   testWidgets(
