@@ -116,7 +116,7 @@ import zlib
     if #available(iOS 14.0, *) {
       return UIDocumentPickerViewController(
         forOpeningContentTypes: [UTType.zip],
-        asCopy: false
+        asCopy: true
       )
     }
     return UIDocumentPickerViewController(
@@ -125,7 +125,7 @@ import zlib
         "com.pkware.zip-archive",
         "public.archive",
       ],
-      in: .open
+      in: .import
     )
   }
 
