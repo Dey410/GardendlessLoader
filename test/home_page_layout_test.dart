@@ -28,14 +28,12 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       late Directory root;
       late AppController controller;
-      final releaseImporter = Completer<void>();
+      late Completer<void> importerStarted;
+      late Completer<void> releaseImporter;
       Future<void>? importFuture;
-      addTearDown(() {
-        if (!releaseImporter.isCompleted) {
-          releaseImporter.complete();
-        }
-      });
       await tester.runAsync(() async {
+        importerStarted = Completer<void>();
+        releaseImporter = Completer<void>();
         root = await Directory.systemTemp.createTemp('gl_home_progress_');
         controller = AppController(
           pathsService:
@@ -59,6 +57,9 @@ void main() {
                 totalFiles: 8,
                 message: '正在解压资源',
               ));
+              if (!importerStarted.isCompleted) {
+                importerStarted.complete();
+              }
               await releaseImporter.future;
               await _writeValidResource(Directory(targetDirectory));
               return targetDirectory;
@@ -66,6 +67,11 @@ void main() {
           ),
         );
         await controller.initialize();
+      });
+      addTearDown(() {
+        if (!releaseImporter.isCompleted) {
+          releaseImporter.complete();
+        }
       });
       await tester.pumpWidget(
         MaterialApp(home: HomePage(controller: controller)),
@@ -77,7 +83,7 @@ void main() {
 
       await tester.runAsync(() async {
         importFuture = controller.importResources();
-        await Future<void>.delayed(const Duration(milliseconds: 10));
+        await importerStarted.future;
       });
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -103,8 +109,12 @@ void main() {
             findsOneWidget);
         expect(find.text('25%'), findsOneWidget);
       } finally {
-        releaseImporter.complete();
-        await tester.runAsync(() => importFuture!);
+        await tester.runAsync(() async {
+          if (!releaseImporter.isCompleted) {
+            releaseImporter.complete();
+          }
+          await importFuture!;
+        });
         controller.dispose();
         await tester.runAsync(() async {
           if (await root.exists()) {
