@@ -21,7 +21,7 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 - 校验 `PvZ2 Gardendless` Cocos Web 构建结构、标题和指纹。
 - 使用 `http://127.0.0.1:26410` 提供本地静态资源服务。
 - 游戏页固定横屏、沉浸式显示，并默认拦截非本地请求。
-- 导入过程带进度显示，失败时回滚到旧资源，启动时恢复未完成事务。
+- 导入过程带进度显示；新资源直接写入空闲槽，失败时继续使用原激活槽，启动时恢复未完成事务。
 - 提供可复制的诊断信息，方便排查资源、平台、WebView 和本地 server 状态。
 - 游戏画面在 `16:10～17:9` 之间自适应屏幕，并支持首页公告、加载器与游戏资源双更新检查和自动收集阳光。
 - 从资源页面标题识别本地游戏版本，以 [`pvzg_site` 稳定版 tags](https://github.com/Gzh0821/pvzg_site/tags) 检查游戏更新；发现更新时提供游戏 GitHub 与共享网盘入口。
@@ -31,7 +31,7 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 
 1. 从上游项目或可信来源获取 `PvZ2 Gardendless` 资源 ZIP。
 2. 打开 `GardendlessLoader`，点击“选择 ZIP 导入”。
-3. App 会在 ZIP 根目录或嵌套目录中查找有效的 `docs`，解压到应用资源目录并导入到 `current`。
+3. App 会在 ZIP 根目录或嵌套目录中查找有效的 `docs`，并直接解压到空闲资源槽。
 4. 导入成功后点击“开始游戏”，游戏将从本地地址加载。
 
 ### 游戏内触摸操作
@@ -48,14 +48,12 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 
 ```text
 GardendlessLoader/
-  import/docs/     # 最近一次从 ZIP 解压出的 docs
-  current/         # 当前正在使用的资源
-  previous/        # 回滚用的上一版资源
-  staging/         # 导入事务临时目录
-  manifest.json    # 导入状态、资源统计和本地游戏版本
+  slot-a/          # 资源槽 A
+  slot-b/          # 资源槽 B
+  manifest.json    # 激活槽、事务状态、资源统计和本地游戏版本
 ```
 
-资源根目录位置会因平台不同而不同，App 首页会显示当前设备上的完整路径。
+常态下只有激活槽包含游戏文件，另一个槽为空；更新期间旧激活槽和新候选槽最多各保留一份资源。新槽通过校验和本地自检后，manifest 才会切换激活槽，随后清空旧槽。资源根目录位置会因平台不同而不同，App 首页和诊断日志会显示当前设备上的完整路径及激活槽。
 
 ## 资源要求
 
@@ -96,7 +94,7 @@ flutter run
 | --- | --- |
 | `lib/src/app_controller.dart` | App 状态、导入流程、server 生命周期、公告和更新检查编排 |
 | `lib/src/services/resource_picker_service.dart` | ZIP 选择、路径安全检查、`docs` 自动定位和解压 |
-| `lib/src/services/import_service.dart` | staging 导入、current 切换、失败回滚、启动恢复 |
+| `lib/src/services/import_service.dart` | 双槽导入、原子激活、旧结构迁移和启动恢复 |
 | `lib/src/services/local_game_server.dart` | 本地 HTTP server、MIME 处理和自检 |
 | `lib/src/services/resource_validator.dart` | 资源结构、标题和 Cocos 配置校验 |
 | `lib/src/services/game_update_check_service.dart` | 本地游戏版本识别、稳定 tag 选择和版本比较 |

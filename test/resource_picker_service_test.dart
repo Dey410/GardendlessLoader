@@ -17,7 +17,7 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     final temp = await Directory.systemTemp.createTemp('gl_native_progress_');
-    final target = Directory(p.join(temp.path, 'import', 'docs'));
+    final target = Directory(p.join(temp.path, 'slot-a'));
     addTearDown(() async {
       messenger.setMockMethodCallHandler(channel, null);
       if (await temp.exists()) {
@@ -42,7 +42,7 @@ void main() {
     final received = <ImportProgress>[];
 
     await ResourcePickerService(platformName: 'android').pickAndExtractDocsZip(
-      localImportDocsDir: target,
+      targetDirectory: target,
       onProgress: received.add,
     );
 
@@ -79,7 +79,7 @@ void main() {
     );
 
     await picker.pickAndExtractDocsZip(
-      localImportDocsDir: Directory(p.join(temp.path, 'import', 'docs')),
+      targetDirectory: Directory(p.join(temp.path, 'slot-a')),
       onProgress: received.add,
     );
 
@@ -98,7 +98,7 @@ void main() {
       }
     });
 
-    final localImportDocs = Directory(p.join(temp.path, 'import', 'docs'));
+    final localImportDocs = Directory(p.join(temp.path, 'slot-a'));
     var importerCalled = false;
 
     final picker = ResourcePickerService(
@@ -117,7 +117,7 @@ void main() {
     );
 
     final picked = await picker.pickAndExtractDocsZip(
-      localImportDocsDir: localImportDocs,
+      targetDirectory: localImportDocs,
     );
 
     expect(importerCalled, isTrue);
@@ -135,7 +135,7 @@ void main() {
       }
     });
 
-    final localImportDocs = Directory(p.join(temp.path, 'import', 'docs'));
+    final localImportDocs = Directory(p.join(temp.path, 'slot-a'));
     var importerCalled = false;
 
     final picker = ResourcePickerService(
@@ -154,7 +154,7 @@ void main() {
     );
 
     final picked = await picker.pickAndExtractDocsZip(
-      localImportDocsDir: localImportDocs,
+      targetDirectory: localImportDocs,
     );
 
     expect(importerCalled, isTrue);
@@ -172,7 +172,7 @@ void main() {
       }
     });
 
-    final localImportDocs = Directory(p.join(temp.path, 'import', 'docs'));
+    final localImportDocs = Directory(p.join(temp.path, 'slot-a'));
     var importerCalled = false;
 
     final picker = ResourcePickerService(
@@ -191,7 +191,7 @@ void main() {
     );
 
     final picked = await picker.pickAndExtractDocsZip(
-      localImportDocsDir: localImportDocs,
+      targetDirectory: localImportDocs,
     );
 
     expect(importerCalled, isTrue);
@@ -219,7 +219,7 @@ void main() {
 
     expect(
       await picker.pickAndExtractDocsZip(
-        localImportDocsDir: Directory(p.join(temp.path, 'import', 'docs')),
+        targetDirectory: Directory(p.join(temp.path, 'slot-a')),
       ),
       isNull,
     );
@@ -248,7 +248,7 @@ void main() {
 
     await expectLater(
       picker.pickAndExtractDocsZip(
-        localImportDocsDir: Directory(p.join(temp.path, 'import', 'docs')),
+        targetDirectory: Directory(p.join(temp.path, 'slot-a')),
       ),
       throwsA(
         isA<ResourcePickerFailure>().having(

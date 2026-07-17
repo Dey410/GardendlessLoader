@@ -39,7 +39,8 @@ void main() {
   });
 
   test('rejects missing pvzge fingerprint', () async {
-    await _writeValidResource(temp, indexBody: '<html><title>PvZ2 Gardendless</title></html>');
+    await _writeValidResource(temp,
+        indexBody: '<html><title>PvZ2 Gardendless</title></html>');
 
     final result = await validator.validate(temp);
 
@@ -60,7 +61,8 @@ void main() {
     await _writeValidResource(temp);
 
     final result = await validator.validate(temp);
-    final stats = await validator.scanStats(temp, detectedTitle: result.detectedTitle);
+    final stats =
+        await validator.scanStats(temp, detectedTitle: result.detectedTitle);
 
     expect(result.isValid, isTrue);
     expect(result.detectedTitle, 'PvZ2 Gardendless');
@@ -106,17 +108,21 @@ Future<void> _writeValidResource(
   bool writeIndex = true,
   String title = 'PvZ2 Gardendless',
   String? indexBody,
-  String settingsJson = '{"platform":"web-mobile","launchScene":"db://assets/start.scene"}',
+  String settingsJson =
+      '{"platform":"web-mobile","launchScene":"db://assets/start.scene"}',
 }) async {
   await Directory(p.join(root.path, 'assets')).create(recursive: true);
   await Directory(p.join(root.path, 'cocos-js')).create(recursive: true);
   await Directory(p.join(root.path, 'src')).create(recursive: true);
   if (writeIndex) {
     await File(p.join(root.path, 'index.html')).writeAsString(
-      indexBody ?? '<html><head><title>$title</title></head><body>pvzge</body></html>',
+      indexBody ??
+          '<html><head><title>$title</title></head><body>pvzge</body></html>',
     );
   }
-  await File(p.join(root.path, 'src', 'settings.json')).writeAsString(settingsJson);
+  await File(p.join(root.path, 'src', 'settings.json'))
+      .writeAsString(settingsJson);
   await File(p.join(root.path, 'src', 'import-map.json')).writeAsString('{}');
-  await File(p.join(root.path, 'cocos-js', 'cc.js')).writeAsString('console.log("cc");');
+  await File(p.join(root.path, 'cocos-js', 'cc.js'))
+      .writeAsString('console.log("cc");');
 }

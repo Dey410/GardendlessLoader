@@ -91,6 +91,16 @@ void main() {
     expect(importer, contains('src/import-map.json'));
   });
 
+  test('OpenHarmony extracts resources into the inactive slot without copying',
+      () {
+    final importer =
+        File('ohos/entry/src/main/ets/plugins/ResourceZipImporterPlugin.ets')
+            .readAsStringSync();
+
+    expect(importer, contains('decompressFile(zipPath, targetDirectory)'));
+    expect(importer, isNot(contains('copyDirectoryContents')));
+  });
+
   test('OpenHarmony streams ZIP import progress to Flutter', () {
     final importer =
         File('ohos/entry/src/main/ets/plugins/ResourceZipImporterPlugin.ets')

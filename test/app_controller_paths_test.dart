@@ -7,8 +7,10 @@ import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
+import 'package:gardendless_loader/src/services/local_game_server.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
 import 'package:gardendless_loader/src/services/resource_picker_service.dart';
+import 'package:gardendless_loader/src/services/resource_validator.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -25,15 +27,15 @@ void main() {
       rootOverride: root,
       platformName: 'test',
     ).ensureInitialized();
-    await _writeValidResource(paths.currentDir);
-    await File(p.join(paths.importDocsDir.path, 'partial.bin'))
+    await _writeValidResource(paths.slotADir);
+    await File(p.join(paths.slotBDir.path, 'partial.bin'))
         .writeAsString('incomplete');
-    await File(p.join(root.path, ImportService.importSessionMarkerName))
-        .writeAsString('active');
     await ManifestStore(paths.manifestFile).write(
       ResourceManifest.initial().copyWith(
+        activeSlot: ResourceSlot.slotA,
+        transactionSlot: ResourceSlot.slotB,
         resourceStatus: ResourceStatus.ready,
-        transactionState: TransactionState.staging,
+        transactionState: TransactionState.extracting,
       ),
     );
 
@@ -45,16 +47,56 @@ void main() {
     expect(controller.message, '上次导入意外中断，已清理未完成文件');
     expect(controller.hasCurrentResource, isTrue);
     expect(
-      await File(p.join(paths.currentDir.path, 'index.html')).exists(),
+      await File(p.join(paths.slotADir.path, 'index.html')).exists(),
       isTrue,
     );
-    expect(await paths.importDocsDir.list().isEmpty, isTrue);
-    expect(
-      await File(p.join(root.path, ImportService.importSessionMarkerName))
-          .exists(),
-      isFalse,
-    );
+    expect(await paths.slotBDir.list().isEmpty, isTrue);
     expect(controller.manifest.transactionState, TransactionState.idle);
+  });
+
+  test('starts with the active slot when old-slot cleanup must retry',
+      () async {
+    final root = await Directory.systemTemp.createTemp('gl_cleanup_retry_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+    final paths = await AppPathsService(
+      rootOverride: root,
+      platformName: 'test',
+    ).ensureInitialized();
+    await _writeValidResource(paths.slotADir);
+    await _writeValidResource(paths.slotBDir);
+    await ManifestStore(paths.manifestFile).write(
+      ResourceManifest.initial().copyWith(
+        activeSlot: ResourceSlot.slotB,
+        transactionSlot: ResourceSlot.slotA,
+        transactionState: TransactionState.cleaningOldSlot,
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+    final importServer = LocalGameServer();
+    addTearDown(importServer.stop);
+    final controller = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      importService: ImportService(
+        validator: ResourceValidator(),
+        server: importServer,
+        oldSlotCleaner: (_) async {
+          throw const FileSystemException('slot is busy');
+        },
+      ),
+    );
+
+    await controller.initialize();
+
+    expect(controller.initialized, isTrue);
+    expect(controller.hasCurrentResource, isTrue);
+    expect(controller.manifest.activeSlot, ResourceSlot.slotB);
+    expect(
+        controller.manifest.transactionState, TransactionState.cleaningOldSlot);
+    expect(controller.message, '游戏资源可用，旧槽清理将在下次启动重试');
   });
 
   test('publishes platform extraction progress before the picker completes',
@@ -253,6 +295,7 @@ void main() {
 
   test('imports the docs directory extracted from the selected zip', () async {
     final root = await Directory.systemTemp.createTemp('gl_controller_paths_');
+    String? extractionTarget;
     addTearDown(() async {
       if (await root.exists()) {
         await root.delete(recursive: true);
@@ -267,6 +310,7 @@ void main() {
           required targetDirectory,
           onProgress,
         }) async {
+          extractionTarget = targetDirectory;
           await _writeValidResource(Directory(targetDirectory));
           return targetDirectory;
         },
@@ -276,13 +320,20 @@ void main() {
     await controller.initialize();
     await controller.importResources();
 
-    expect(
-        controller.userVisibleImportDocs, p.join(root.path, 'import', 'docs'));
+    expect(extractionTarget, p.join(root.path, 'slot-a'));
+    expect(controller.userVisibleImportDocs, p.join(root.path, 'slot-a'));
     expect(controller.hasCurrentResource, isTrue);
+    expect(controller.manifest.activeSlot, ResourceSlot.slotA);
     expect(
-      await File(p.join(root.path, 'current', 'index.html')).exists(),
+      await File(p.join(root.path, 'slot-a', 'index.html')).exists(),
       isTrue,
     );
+    expect(await Directory(p.join(root.path, 'slot-b')).list().isEmpty, isTrue);
+    final diagnostics = controller.diagnostics().toCopyText();
+    expect(diagnostics, contains('activeSlot: slotA'));
+    expect(diagnostics,
+        contains('activeResourcePath: ${p.join(root.path, 'slot-a')}'));
+    expect(diagnostics, contains('active slot validation: ready'));
   });
 }
 

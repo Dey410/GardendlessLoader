@@ -25,7 +25,7 @@ the game in an in-app WebView.
 - Validates the expected `PvZ2 Gardendless` Cocos web build shape, title, and fingerprints.
 - Serves static files from `http://127.0.0.1:26410`.
 - Uses a landscape, immersive WebView and blocks non-local requests by default.
-- Shows import progress, rolls back failed imports, and recovers unfinished startup transactions.
+- Shows import progress, extracts directly into the inactive slot, keeps the active slot on failure, and recovers unfinished transactions at startup.
 - Provides copyable diagnostics for resource, platform, WebView, and local server state.
 - Adapts the game viewport between `16:10` and `17:9`, and supports inline home-page announcements, independent loader/game update checks, and auto sunlight collection.
 - Detects the imported game version from the page title and checks it against stable [`pvzg_site` tags](https://github.com/Gzh0821/pvzg_site/tags); available updates link to the game repository and the shared cloud drive.
@@ -35,7 +35,7 @@ the game in an in-app WebView.
 
 1. Get a `PvZ2 Gardendless` resource ZIP from the upstream project or another trusted source.
 2. Open `GardendlessLoader` and choose `Select ZIP to import`.
-3. The app searches the ZIP root and nested directories for a valid `docs`, extracts it, and imports it into `current`.
+3. The app searches the ZIP root and nested directories for a valid `docs` and extracts it directly into the inactive resource slot.
 4. After import succeeds, start the game. It loads from the local origin.
 
 ### In-game touch controls
@@ -52,15 +52,16 @@ Imported resources are stored under an app-created `GardendlessLoader` directory
 
 ```text
 GardendlessLoader/
-  import/docs/     # latest docs extracted from ZIP
-  current/         # active resources
-  previous/        # previous resources used for rollback
-  staging/         # temporary import transaction directory
-  manifest.json    # import state, resource stats, and local game version
+  slot-a/          # resource slot A
+  slot-b/          # resource slot B
+  manifest.json    # active slot, transaction state, stats, and game version
 ```
 
-The exact resource root depends on the platform. The home screen shows the full
-path for the current device.
+At rest, only the active slot contains game files and the other slot is empty.
+During an update, at most the old active resource and the new candidate coexist.
+The manifest switches only after validation and the local self-check succeed,
+then the old slot is cleared. The home screen and diagnostics show the resource
+root and active slot for the current device.
 
 ## Resource Requirements
 
@@ -103,7 +104,7 @@ Useful project files:
 | --- | --- |
 | `lib/src/app_controller.dart` | App state, import flow, server lifecycle, announcements, and update checks |
 | `lib/src/services/resource_picker_service.dart` | ZIP picking, path safety, `docs` discovery, and extraction |
-| `lib/src/services/import_service.dart` | Staged import, current switching, rollback, and startup recovery |
+| `lib/src/services/import_service.dart` | Two-slot import, atomic activation, legacy migration, and startup recovery |
 | `lib/src/services/local_game_server.dart` | Local HTTP server, MIME handling, and self-checks |
 | `lib/src/services/resource_validator.dart` | Resource shape, title, and Cocos config validation |
 | `lib/src/services/game_update_check_service.dart` | Local game version detection, stable tag selection, and version comparison |

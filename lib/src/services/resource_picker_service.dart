@@ -24,10 +24,9 @@ class ResourcePickerService {
   );
 
   Future<Directory?> pickAndExtractDocsZip({
-    Directory? localImportDocsDir,
+    Directory? targetDirectory,
     ImportProgressCallback? onProgress,
   }) async {
-    final targetDirectory = localImportDocsDir;
     if (targetDirectory == null) {
       throw ResourcePickerFailure(
         'ZIP import requires an app-private target directory',

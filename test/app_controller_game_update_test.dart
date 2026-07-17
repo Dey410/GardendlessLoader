@@ -65,7 +65,7 @@ void main() {
     await controller.initialize();
     await controller.checkForUpdates();
     expect(controller.availableGameUpdate, isNotNull);
-    await File(p.join(current.path, 'index.html')).writeAsString(
+    await File(p.join(root.path, 'slot-a', 'index.html')).writeAsString(
       '<title>PvZ2 Gardendless Online</title>play.pvzge.com',
     );
 
@@ -301,8 +301,6 @@ void main() {
       Directory(p.join(root.path, 'current')),
       version: '0.10.0',
     );
-    final importSource = Directory(p.join(root.path, 'selected', 'docs'));
-    await _writeValidResource(importSource, version: '0.11.0');
     final gameUpdateCheckService = GameUpdateCheckService(
       loader: (uri, timeout, maxBytes) async =>
           const GameUpdateCheckHttpResponse(
@@ -325,8 +323,13 @@ void main() {
       gameUpdateCheckService: gameUpdateCheckService,
       resourcePickerService: ResourcePickerService(
         platformName: 'android',
-        mobileZipImporter: ({required targetDirectory, onProgress}) async =>
-            importSource.path,
+        mobileZipImporter: ({required targetDirectory, onProgress}) async {
+          await _writeValidResource(
+            Directory(targetDirectory),
+            version: '0.11.0',
+          );
+          return targetDirectory;
+        },
       ),
     );
     await controller.initialize();

@@ -85,7 +85,7 @@ void main() {
       try {
         expect(find.byKey(const ValueKey('resource-progress-region')),
             findsOneWidget);
-        expect(find.text('步骤 2/6 · 正在解压资源'), findsOneWidget);
+        expect(find.text('步骤 2/4 · 正在解压资源'), findsOneWidget);
         expect(find.byKey(const ValueKey('resource-progress-details')),
             findsOneWidget);
 
@@ -430,7 +430,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('current.validation', findRichText: true),
+        find.textContaining('active.slot.validation', findRichText: true),
         findsOneWidget,
       );
       expect(find.text('资源信息'), findsNothing);
@@ -510,7 +510,7 @@ void main() {
       await tester.pump();
 
       expect(copiedText, contains('App version:'));
-      expect(copiedText, contains('current validation:'));
+      expect(copiedText, contains('active slot validation:'));
       expect(copiedText, contains('serverStatus:'));
       expect(find.text('日志信息已复制'), findsOneWidget);
     },

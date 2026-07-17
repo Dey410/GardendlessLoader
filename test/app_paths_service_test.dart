@@ -25,11 +25,16 @@ void main() {
     ).ensureInitialized();
 
     expect(paths.root.path, p.join(documents.path, resourceFolderName));
-    expect(await paths.importDir.exists(), isTrue);
-    expect(await paths.importDocsDir.exists(), isTrue);
-    expect(await paths.currentDir.exists(), isTrue);
-    expect(await paths.previousDir.exists(), isTrue);
-    expect(await paths.stagingDir.exists(), isTrue);
+    expect(await paths.slotADir.exists(), isTrue);
+    expect(await paths.slotBDir.exists(), isTrue);
+    expect(
+        await Directory(p.join(paths.root.path, 'current')).exists(), isFalse);
+    expect(
+        await Directory(p.join(paths.root.path, 'previous')).exists(), isFalse);
+    expect(
+        await Directory(p.join(paths.root.path, 'staging')).exists(), isFalse);
+    expect(
+        await Directory(p.join(paths.root.path, 'import')).exists(), isFalse);
     expect(paths.manifestFile.path, p.join(paths.root.path, 'manifest.json'));
   });
 
@@ -50,7 +55,8 @@ void main() {
     ).ensureInitialized();
 
     expect(paths.root.path, p.join(documents.path, resourceFolderName));
-    expect(await paths.importDocsDir.exists(), isTrue);
+    expect(await paths.slotADir.exists(), isTrue);
+    expect(await paths.slotBDir.exists(), isTrue);
   });
 
   test('ohos stores resources under documents when external is unavailable',
@@ -70,6 +76,7 @@ void main() {
     ).ensureInitialized();
 
     expect(paths.root.path, p.join(documents.path, resourceFolderName));
-    expect(await paths.importDocsDir.exists(), isTrue);
+    expect(await paths.slotADir.exists(), isTrue);
+    expect(await paths.slotBDir.exists(), isTrue);
   });
 }

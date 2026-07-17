@@ -12,7 +12,7 @@ void main() {
     const validating = ImportProgress(phase: ImportPhase.validating);
 
     expect(extracting.stepIndex, 2);
-    expect(extracting.stepCount, 6);
+    expect(extracting.stepCount, 4);
     expect(extracting.value, 0.5);
     expect(validating.stepIndex, 3);
     expect(validating.value, isNull);
@@ -23,19 +23,19 @@ void main() {
     final meter = ImportProgressMeter(clock: () => now);
 
     meter.measure(const ImportProgress(
-      phase: ImportPhase.copying,
+      phase: ImportPhase.extracting,
       copiedBytes: 100,
       totalBytes: 1000,
     ));
     now = now.add(const Duration(seconds: 1));
     final second = meter.measure(const ImportProgress(
-      phase: ImportPhase.copying,
+      phase: ImportPhase.extracting,
       copiedBytes: 300,
       totalBytes: 1000,
     ));
     now = now.add(const Duration(seconds: 1));
     final third = meter.measure(const ImportProgress(
-      phase: ImportPhase.copying,
+      phase: ImportPhase.extracting,
       copiedBytes: 700,
       totalBytes: 1000,
     ));

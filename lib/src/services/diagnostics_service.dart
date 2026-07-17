@@ -47,6 +47,10 @@ class DiagnosticsService {
       osVersion: Platform.operatingSystemVersion,
       webViewEngineVersion: webViewEngineVersion ?? 'unavailable',
       resourceRoot: paths.root.path,
+      activeSlot: manifest.activeSlot,
+      activeResourcePath: manifest.activeSlot == null
+          ? null
+          : paths.directoryFor(manifest.activeSlot!).path,
       currentValidation: currentValidation,
       importValidation: importValidation,
       lastImportAt: manifest.lastImportAt,

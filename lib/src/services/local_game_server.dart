@@ -51,9 +51,12 @@ class LocalGameServer {
 
     final checks = <_SelfCheckRequest>[
       const _SelfCheckRequest('/index.html', expectedMime: 'text/html'),
-      const _SelfCheckRequest('/src/settings.json', expectedMime: 'application/json'),
-      const _SelfCheckRequest('/src/import-map.json', expectedMime: 'application/json'),
-      const _SelfCheckRequest('/cocos-js/cc.js', expectedMime: 'application/javascript'),
+      const _SelfCheckRequest('/src/settings.json',
+          expectedMime: 'application/json'),
+      const _SelfCheckRequest('/src/import-map.json',
+          expectedMime: 'application/json'),
+      const _SelfCheckRequest('/cocos-js/cc.js',
+          expectedMime: 'application/javascript'),
     ];
 
     final wasm = await _firstWasm(root);
@@ -64,7 +67,8 @@ class LocalGameServer {
     final client = HttpClient();
     try {
       for (final check in checks) {
-        final request = await client.getUrl(Uri.parse('$localOrigin${check.path}'));
+        final request =
+            await client.getUrl(Uri.parse('$localOrigin${check.path}'));
         final response = await request.close();
         await response.drain<void>();
         if (response.statusCode != HttpStatus.ok) {
@@ -127,7 +131,8 @@ class LocalGameServer {
     }
 
     request.response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
-    request.response.headers.set(HttpHeaders.contentTypeHeader, _mimeFor(file.path));
+    request.response.headers
+        .set(HttpHeaders.contentTypeHeader, _mimeFor(file.path));
     request.response.contentLength = await file.length();
 
     if (request.method == 'HEAD') {
@@ -205,7 +210,8 @@ class LocalGameServer {
 
     await for (final entity in root.list(recursive: true, followLinks: false)) {
       if (entity is File && p.extension(entity.path).toLowerCase() == '.wasm') {
-        final relative = p.relative(entity.path, from: root.path).replaceAll('\\', '/');
+        final relative =
+            p.relative(entity.path, from: root.path).replaceAll('\\', '/');
         return '/$relative';
       }
     }

@@ -11,7 +11,6 @@ import 'package:path/path.dart' as p;
 void main() {
   late Directory temp;
   late AppPaths paths;
-  late Directory sourceDocsDir;
   late LocalGameServer server;
   late ImportService importService;
   late ManifestStore manifestStore;
@@ -21,18 +20,14 @@ void main() {
     paths = AppPaths(
       root: temp,
       manifestFile: File(p.join(temp.path, 'manifest.json')),
-      importDir: Directory(p.join(temp.path, 'import')),
-      importDocsDir: Directory(p.join(temp.path, 'import', 'docs')),
-      currentDir: Directory(p.join(temp.path, 'current')),
-      previousDir: Directory(p.join(temp.path, 'previous')),
-      stagingDir: Directory(p.join(temp.path, 'staging')),
     );
-    sourceDocsDir = Directory(p.join(temp.path, 'selected', 'docs'));
     for (final directory in [
-      paths.importDir,
-      paths.currentDir,
-      paths.previousDir,
-      paths.stagingDir,
+      paths.legacyImportDir,
+      paths.legacyCurrentDir,
+      paths.legacyPreviousDir,
+      paths.legacyStagingDir,
+      paths.slotADir,
+      paths.slotBDir,
     ]) {
       await directory.create(recursive: true);
     }
@@ -42,99 +37,92 @@ void main() {
     manifestStore = ManifestStore(paths.manifestFile);
   });
 
-  tearDown(() async {
-    await server.stop();
-    if (await temp.exists()) {
-      await temp.delete(recursive: true);
-    }
-  });
-
-  test('imports valid docs into current and writes ready manifest', () async {
-    await _writeValidResource(
-      sourceDocsDir,
-      title: 'PvZ2 Gardendless Online | 0.11.0',
-    );
-
-    final manifest = await importService.importResources(
+  test('first import activates the extracted slot in place', () async {
+    final target = await importService.beginImport(
       paths: paths,
       manifestStore: manifestStore,
-      sourceDocsDir: sourceDocsDir,
+    );
+    expect(target.slot, ResourceSlot.slotA);
+    expect(target.directory.path, paths.slotADir.path);
+
+    await _writeValidResource(
+      target.directory,
+      title: 'PvZ2 Gardendless Online | 0.12.0',
+    );
+    final manifest = await importService.completeImport(
+      paths: paths,
+      manifestStore: manifestStore,
+      target: target,
     );
 
-    expect(await File(p.join(paths.currentDir.path, 'index.html')).exists(),
-        isTrue);
-    expect(
-        await File(p.join(sourceDocsDir.path, 'index.html')).exists(), isTrue);
-    expect(await File(p.join(paths.importDocsDir.path, 'index.html')).exists(),
-        isFalse);
-    expect(manifest.resourceStatus, ResourceStatus.ready);
+    expect(manifest.activeSlot, ResourceSlot.slotA);
     expect(manifest.transactionState, TransactionState.idle);
-    expect(manifest.fileCount, greaterThan(0));
-    expect(manifest.gameVersion, '0.11.0');
+    expect(manifest.gameVersion, '0.12.0');
+    expect(
+      await File(p.join(paths.slotADir.path, 'index.html')).exists(),
+      isTrue,
+    );
+    expect(await paths.slotBDir.list().isEmpty, isTrue);
   });
 
-  test('does not use directory rename while switching imported resources',
+  test('successful update activates the inactive slot and clears the old slot',
       () async {
-    final source = await File(
-      p.join('lib', 'src', 'services', 'import_service.dart'),
-    ).readAsString();
-
-    expect(source, isNot(contains('.rename(')));
-  });
-
-  test('rolls back to previous current when selfCheck fails', () async {
-    server = _FailingSelfCheckServer();
-    importService =
-        ImportService(validator: ResourceValidator(), server: server);
-
-    await _writeValidResource(paths.currentDir,
-        title: 'PvZ2 Gardendless Previous');
-    await _writeValidResource(sourceDocsDir);
-
-    await expectLater(
-      importService.importResources(
-        paths: paths,
-        manifestStore: manifestStore,
-        sourceDocsDir: sourceDocsDir,
-      ),
-      throwsA(isA<ImportFailure>()),
+    var target = await importService.beginImport(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+    await _writeValidResource(
+      target.directory,
+      title: 'PvZ2 Gardendless Old | 0.11.0',
+    );
+    await importService.completeImport(
+      paths: paths,
+      manifestStore: manifestStore,
+      target: target,
     );
 
-    final index =
-        await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
-    expect(index, contains('PvZ2 Gardendless Previous'));
-  });
-
-  test('keeps existing current when selected docs fail validation', () async {
-    await _writeValidResource(paths.currentDir,
-        title: 'PvZ2 Gardendless Existing');
-    await sourceDocsDir.create(recursive: true);
-    await File(p.join(sourceDocsDir.path, 'broken.txt')).writeAsString('bad');
-
-    await expectLater(
-      importService.importResources(
-        paths: paths,
-        manifestStore: manifestStore,
-        sourceDocsDir: sourceDocsDir,
-      ),
-      throwsA(isA<ImportFailure>()),
+    target = await importService.beginImport(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+    expect(target.slot, ResourceSlot.slotB);
+    await _writeValidResource(
+      target.directory,
+      title: 'PvZ2 Gardendless New | 0.12.0',
+    );
+    final manifest = await importService.completeImport(
+      paths: paths,
+      manifestStore: manifestStore,
+      target: target,
     );
 
-    final index =
-        await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
-    expect(index, contains('PvZ2 Gardendless Existing'));
+    expect(manifest.activeSlot, ResourceSlot.slotB);
+    expect(manifest.gameVersion, '0.12.0');
+    expect(manifest.transactionState, TransactionState.idle);
+    expect(await paths.slotADir.list().isEmpty, isTrue);
+    expect(
+      await File(p.join(paths.slotBDir.path, 'index.html')).exists(),
+      isTrue,
+    );
   });
 
   test(
-      'recovers switching transaction by promoting valid previous if current is bad',
+      'startup keeps the active slot when candidate extraction was interrupted',
       () async {
-    await _writeValidResource(paths.previousDir,
-        title: 'PvZ2 Gardendless Previous');
-    await File(p.join(paths.currentDir.path, 'broken.txt'))
-        .writeAsString('bad');
+    await _writeValidResource(
+      paths.slotADir,
+      title: 'PvZ2 Gardendless Active',
+    );
+    await File(p.join(paths.slotBDir.path, 'partial.bin'))
+        .writeAsString('incomplete');
     await manifestStore.write(
-      ResourceManifest.initial()
-          .copyWith(transactionState: TransactionState.switching),
+      ResourceManifest.initial().copyWith(
+        generation: 3,
+        activeSlot: ResourceSlot.slotA,
+        transactionSlot: ResourceSlot.slotB,
+        transactionState: TransactionState.extracting,
+        resourceStatus: ResourceStatus.ready,
+      ),
     );
 
     final manifest = await importService.recoverStartupTransaction(
@@ -142,11 +130,398 @@ void main() {
       manifestStore: manifestStore,
     );
 
-    final index =
-        await File(p.join(paths.currentDir.path, 'index.html')).readAsString();
-    expect(index, contains('PvZ2 Gardendless Previous'));
+    expect(manifest.activeSlot, ResourceSlot.slotA);
     expect(manifest.transactionState, TransactionState.idle);
-    expect(manifest.resourceStatus, ResourceStatus.ready);
+    expect(
+      await File(p.join(paths.slotADir.path, 'index.html')).exists(),
+      isTrue,
+    );
+    expect(await paths.slotBDir.list().isEmpty, isTrue);
+  });
+
+  test('startup activates a candidate that already passed self-check',
+      () async {
+    await _writeValidResource(
+      paths.slotADir,
+      title: 'PvZ2 Gardendless Active | 0.11.0',
+    );
+    await _writeValidResource(
+      paths.slotBDir,
+      title: 'PvZ2 Gardendless Candidate | 0.12.0',
+    );
+    await manifestStore.write(
+      ResourceManifest.initial().copyWith(
+        generation: 8,
+        activeSlot: ResourceSlot.slotA,
+        transactionSlot: ResourceSlot.slotB,
+        transactionState: TransactionState.readyToActivate,
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+
+    final manifest = await importService.recoverStartupTransaction(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+
+    expect(manifest.activeSlot, ResourceSlot.slotB);
+    expect(manifest.gameVersion, '0.12.0');
+    expect(manifest.transactionState, TransactionState.idle);
+    expect(await paths.slotADir.list().isEmpty, isTrue);
+    expect(
+      await File(p.join(paths.slotBDir.path, 'index.html')).exists(),
+      isTrue,
+    );
+  });
+
+  test('startup keeps the activated slot and finishes deferred cleanup',
+      () async {
+    await _writeValidResource(
+      paths.slotADir,
+      title: 'PvZ2 Gardendless Old | 0.11.0',
+    );
+    await _writeValidResource(
+      paths.slotBDir,
+      title: 'PvZ2 Gardendless Active | 0.12.0',
+    );
+    await manifestStore.write(
+      ResourceManifest.initial().copyWith(
+        generation: 12,
+        activeSlot: ResourceSlot.slotB,
+        transactionSlot: ResourceSlot.slotA,
+        transactionState: TransactionState.cleaningOldSlot,
+        gameVersion: '0.12.0',
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+
+    final manifest = await importService.recoverStartupTransaction(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+
+    expect(manifest.activeSlot, ResourceSlot.slotB);
+    expect(manifest.transactionState, TransactionState.idle);
+    expect(await paths.slotADir.list().isEmpty, isTrue);
+    expect(
+      await File(p.join(paths.slotBDir.path, 'index.html')).exists(),
+      isTrue,
+    );
+  });
+
+  test('successful activation survives an old-slot cleanup failure', () async {
+    await _writeValidResource(
+      paths.slotADir,
+      title: 'PvZ2 Gardendless Old | 0.11.0',
+    );
+    await manifestStore.write(
+      ResourceManifest.initial().copyWith(
+        generation: 1,
+        activeSlot: ResourceSlot.slotA,
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+    importService = ImportService(
+      validator: ResourceValidator(),
+      server: server,
+      oldSlotCleaner: (_) async {
+        throw const FileSystemException('slot is busy');
+      },
+    );
+    final target = await importService.beginImport(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+    await _writeValidResource(
+      target.directory,
+      title: 'PvZ2 Gardendless New | 0.12.0',
+    );
+
+    final manifest = await importService.completeImport(
+      paths: paths,
+      manifestStore: manifestStore,
+      target: target,
+    );
+
+    expect(manifest.activeSlot, ResourceSlot.slotB);
+    expect(manifest.transactionState, TransactionState.cleaningOldSlot);
+    expect(manifest.gameVersion, '0.12.0');
+    expect(
+      await File(p.join(paths.slotADir.path, 'index.html')).exists(),
+      isTrue,
+    );
+    expect(
+      await File(p.join(paths.slotBDir.path, 'index.html')).exists(),
+      isTrue,
+    );
+  });
+
+  test('startup migrates only the valid legacy current resource', () async {
+    await _writeValidResource(
+      paths.legacyCurrentDir,
+      title: 'PvZ2 Gardendless Current | 0.12.0',
+    );
+    await _writeValidResource(
+      paths.legacyPreviousDir,
+      title: 'PvZ2 Gardendless Previous | 0.11.0',
+    );
+    await manifestStore.write(
+      ResourceManifest.initial().copyWith(
+        gameVersion: '0.12.0',
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+
+    final manifest = await importService.recoverStartupTransaction(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+
+    expect(manifest.activeSlot, ResourceSlot.slotA);
+    expect(manifest.gameVersion, '0.12.0');
+    expect(manifest.transactionState, TransactionState.idle);
+    expect(
+      await File(p.join(paths.slotADir.path, 'index.html')).readAsString(),
+      contains('Current'),
+    );
+    expect(await paths.slotBDir.list().isEmpty, isTrue);
+    expect(await paths.legacyCurrentDir.exists(), isFalse);
+    expect(await paths.legacyPreviousDir.exists(), isFalse);
+  });
+
+  test('failed candidate self-check keeps the active slot', () async {
+    await _writeValidResource(
+      paths.slotADir,
+      title: 'PvZ2 Gardendless Active | 0.11.0',
+    );
+    await manifestStore.write(
+      ResourceManifest.initial().copyWith(
+        generation: 1,
+        activeSlot: ResourceSlot.slotA,
+        gameVersion: '0.11.0',
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+    server = _FailingSelfCheckServer();
+    importService = ImportService(
+      validator: ResourceValidator(),
+      server: server,
+    );
+    final target = await importService.beginImport(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+    await _writeValidResource(
+      target.directory,
+      title: 'PvZ2 Gardendless Candidate | 0.12.0',
+    );
+
+    await expectLater(
+      importService.completeImport(
+        paths: paths,
+        manifestStore: manifestStore,
+        target: target,
+      ),
+      throwsA(isA<ImportFailure>()),
+    );
+
+    final manifest = await manifestStore.read();
+    expect(manifest.activeSlot, ResourceSlot.slotA);
+    expect(manifest.gameVersion, '0.11.0');
+    expect(manifest.transactionState, TransactionState.idle);
+    expect(
+      await File(p.join(paths.slotADir.path, 'index.html')).exists(),
+      isTrue,
+    );
+    expect(await paths.slotBDir.list().isEmpty, isTrue);
+  });
+
+  test('legacy interrupted switch migrates the valid previous resource',
+      () async {
+    await File(p.join(paths.legacyCurrentDir.path, 'broken.bin'))
+        .writeAsString('broken');
+    await _writeValidResource(
+      paths.legacyPreviousDir,
+      title: 'PvZ2 Gardendless Recovered | 0.11.0',
+    );
+    await manifestStore.write(
+      ResourceManifest.initial().copyWith(
+        transactionState: TransactionState.selfChecking,
+      ),
+    );
+
+    final manifest = await importService.recoverStartupTransaction(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+
+    expect(manifest.activeSlot, ResourceSlot.slotA);
+    expect(manifest.gameVersion, '0.11.0');
+    expect(manifest.transactionState, TransactionState.idle);
+    expect(
+      await File(p.join(paths.slotADir.path, 'index.html')).readAsString(),
+      contains('Recovered'),
+    );
+  });
+
+  test('startup remains usable when deferred cleanup still fails', () async {
+    await _writeValidResource(paths.slotADir, title: 'PvZ2 Gardendless Old');
+    await _writeValidResource(
+      paths.slotBDir,
+      title: 'PvZ2 Gardendless Active | 0.12.0',
+    );
+    await manifestStore.write(
+      ResourceManifest.initial().copyWith(
+        generation: 15,
+        activeSlot: ResourceSlot.slotB,
+        transactionSlot: ResourceSlot.slotA,
+        transactionState: TransactionState.cleaningOldSlot,
+        gameVersion: '0.12.0',
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+    importService = ImportService(
+      validator: ResourceValidator(),
+      server: server,
+      oldSlotCleaner: (_) async {
+        throw const FileSystemException('slot is still busy');
+      },
+    );
+
+    final manifest = await importService.recoverStartupTransaction(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+
+    expect(manifest.activeSlot, ResourceSlot.slotB);
+    expect(manifest.transactionState, TransactionState.cleaningOldSlot);
+    expect(manifest.lastErrorCode, 'old_slot_cleanup_failed');
+    expect(
+      await File(p.join(paths.slotBDir.path, 'index.html')).exists(),
+      isTrue,
+    );
+  });
+
+  test('startup rebuilds a corrupt manifest from the last activated slot',
+      () async {
+    var target = await importService.beginImport(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+    await _writeValidResource(
+      target.directory,
+      title: 'PvZ2 Gardendless Older | 9.0.0',
+    );
+    await importService.completeImport(
+      paths: paths,
+      manifestStore: manifestStore,
+      target: target,
+    );
+
+    importService = ImportService(
+      validator: ResourceValidator(),
+      server: server,
+      oldSlotCleaner: (_) async {
+        throw const FileSystemException('keep both slots for recovery');
+      },
+    );
+    target = await importService.beginImport(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+    await _writeValidResource(
+      target.directory,
+      title: 'PvZ2 Gardendless Last Activated | 1.0.0',
+    );
+    await importService.completeImport(
+      paths: paths,
+      manifestStore: manifestStore,
+      target: target,
+    );
+    await paths.manifestFile.writeAsString('{broken', flush: true);
+
+    importService = ImportService(
+      validator: ResourceValidator(),
+      server: server,
+    );
+    final recovered = await importService.recoverStartupTransaction(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+
+    expect(recovered.activeSlot, ResourceSlot.slotB);
+    expect(recovered.gameVersion, '1.0.0');
+    expect(recovered.transactionState, TransactionState.idle);
+    expect(await paths.slotADir.list().isEmpty, isTrue);
+    expect(
+      await File(p.join(paths.slotBDir.path, 'index.html')).readAsString(),
+      contains('Last Activated'),
+    );
+  });
+
+  test('startup removes invalid legacy resource remnants', () async {
+    await File(p.join(paths.legacyCurrentDir.path, 'partial.bin'))
+        .writeAsString('x');
+    await File(p.join(paths.legacyPreviousDir.path, 'partial.bin'))
+        .writeAsString('x');
+    final importRemnant =
+        File(p.join(paths.legacyImportDocsDir.path, 'partial.bin'));
+    await importRemnant.create(recursive: true);
+    await importRemnant.writeAsString('x');
+    await File(p.join(paths.legacyStagingDir.path, 'partial.bin'))
+        .writeAsString('x');
+
+    final manifest = await importService.recoverStartupTransaction(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+
+    expect(manifest.activeSlot, isNull);
+    expect(manifest.resourceStatus, ResourceStatus.missing);
+    expect(await paths.legacyCurrentDir.exists(), isFalse);
+    expect(await paths.legacyPreviousDir.exists(), isFalse);
+    expect(await paths.legacyImportDir.exists(), isFalse);
+    expect(await paths.legacyStagingDir.exists(), isFalse);
+  });
+
+  test('startup finishes legacy cleanup after migration activation', () async {
+    await _writeValidResource(
+      paths.slotADir,
+      title: 'PvZ2 Gardendless Migrated | 0.12.0',
+    );
+    await _writeValidResource(
+      paths.legacyCurrentDir,
+      title: 'PvZ2 Gardendless Legacy | 0.12.0',
+    );
+    await manifestStore.write(
+      ResourceManifest.initial().copyWith(
+        generation: 20,
+        activeSlot: ResourceSlot.slotA,
+        transactionState: TransactionState.migrating,
+        gameVersion: '0.12.0',
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+
+    final manifest = await importService.recoverStartupTransaction(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+
+    expect(manifest.activeSlot, ResourceSlot.slotA);
+    expect(manifest.transactionState, TransactionState.idle);
+    expect(await paths.legacyCurrentDir.exists(), isFalse);
+    expect(
+      await File(p.join(paths.slotADir.path, 'index.html')).exists(),
+      isTrue,
+    );
+  });
+
+  tearDown(() async {
+    await server.stop();
+    if (await temp.exists()) {
+      await temp.delete(recursive: true);
+    }
   });
 }
 

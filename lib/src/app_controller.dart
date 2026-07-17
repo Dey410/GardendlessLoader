@@ -88,7 +88,7 @@ class AppController extends ChangeNotifier {
   ManifestStore? _manifestStore;
   ResourceManifest _manifest = ResourceManifest.initial();
   ResourceValidationResult _currentValidation =
-      ResourceValidationResult.missing('尚未检查 current');
+      ResourceValidationResult.missing('尚未检查激活槽');
   ResourceValidationResult _importValidation =
       ResourceValidationResult.missing('尚未选择 ZIP');
   ImportProgress _importProgress = ImportProgress.idle;
@@ -162,8 +162,6 @@ class AppController extends ChangeNotifier {
       _paths = await _pathsService.ensureInitialized();
       _manifestStore = ManifestStore(_paths!.manifestFile);
       _manifest = await _manifestStore!.read();
-      final interruptedImport =
-          await _importService.recoverInterruptedImport(_paths!);
       final interruptedTransaction =
           _manifest.transactionState != TransactionState.idle;
       _manifest = await _importService.recoverStartupTransaction(
@@ -173,7 +171,9 @@ class AppController extends ChangeNotifier {
       await _diagnosticsService.initialize();
       await _loadCurrentAppVersion();
       await refresh();
-      if (interruptedImport || interruptedTransaction) {
+      if (_manifest.transactionState == TransactionState.cleaningOldSlot) {
+        _message = '游戏资源可用，旧槽清理将在下次启动重试';
+      } else if (interruptedTransaction) {
         _message = '上次导入意外中断，已清理未完成文件';
       }
       _initialized = true;
@@ -185,12 +185,15 @@ class AppController extends ChangeNotifier {
     }
   }
 
-//refresh 方法负责刷新应用的状态，主要是重新验证资源目录的有效性，并更新公告信息。它会更新 currentValidation 和 importValidation 的结果，以便 UI 可以显示当前资源和导入资源的状态。
+  // 统一从 manifest 指向的激活槽刷新资源状态和游戏版本。
   Future<void> refresh() async {
     final paths = _requirePaths();
     final manifestStore = _requireManifestStore();
     _manifest = await manifestStore.read();
-    _currentValidation = await _validator.validate(paths.currentDir);
+    final activeDirectory = _importService.activeDirectory(paths, _manifest);
+    _currentValidation = activeDirectory == null
+        ? ResourceValidationResult.missing('尚未导入游戏资源')
+        : await _validator.validate(activeDirectory);
     final selectedImportSource = _selectedImportSource;
     _importValidation = selectedImportSource == null
         ? ResourceValidationResult.missing('尚未选择 ZIP')
@@ -202,7 +205,7 @@ class AppController extends ChangeNotifier {
     }
 
     _currentGameVersion = _currentValidation.isValid
-        ? await _gameUpdateCheckService.loadCurrentVersion(paths.currentDir)
+        ? await _gameUpdateCheckService.loadCurrentVersion(activeDirectory!)
         : null;
     if (_currentGameVersion == null) {
       _availableGameUpdate = null;
@@ -368,16 +371,23 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     var restoreAwakeModeAfterImport = false;
-    var importMarkerActive = false;
+    ImportTarget? importTarget;
     try {
       restoreAwakeModeAfterImport = await _keepScreenAwakeForImport();
-      await _importService.markImportStarted(paths);
-      importMarkerActive = true;
+      importTarget = await _importService.beginImport(
+        paths: paths,
+        manifestStore: manifestStore,
+      );
       final selectedSource = await _resourcePickerService.pickAndExtractDocsZip(
-        localImportDocsDir: paths.importDocsDir,
+        targetDirectory: importTarget.directory,
         onProgress: _updateImportProgress,
       );
       if (selectedSource == null) {
+        _manifest = await _importService.abortImport(
+          paths: paths,
+          manifestStore: manifestStore,
+        );
+        importTarget = null;
         _message = '已取消选择 ZIP';
         return;
       }
@@ -391,15 +401,16 @@ class AppController extends ChangeNotifier {
         ),
       );
 
-      _manifest = await _importService.importResources(
+      _manifest = await _importService.completeImport(
         paths: paths,
         manifestStore: manifestStore,
-        sourceDocsDir: selectedSource,
+        target: importTarget,
         onProgress: _updateImportProgress,
       );
-      _message = '导入成功';
-      await _importService.clearImportMarker(paths);
-      importMarkerActive = false;
+      importTarget = null;
+      _message = _manifest.transactionState == TransactionState.cleaningOldSlot
+          ? '导入成功，旧槽清理将在下次启动重试'
+          : '导入成功';
       _importProgressTickTimer?.cancel();
       _scheduleCompletedProgressReset();
       if (restoreAwakeModeAfterImport) {
@@ -409,6 +420,13 @@ class AppController extends ChangeNotifier {
       await refresh();
       await _checkGameForUpdate(reuseLatestVersion: true);
     } on ResourcePickerFailure catch (failure) {
+      if (importTarget != null) {
+        _manifest = await _importService.abortImport(
+          paths: paths,
+          manifestStore: manifestStore,
+        );
+        importTarget = null;
+      }
       _message = failure.message;
       _updateImportProgress(ImportProgress(
         phase: ImportPhase.failed,
@@ -418,6 +436,13 @@ class AppController extends ChangeNotifier {
       _message = failure.message;
       await refresh();
     } catch (error) {
+      if (importTarget != null) {
+        _manifest = await _importService.abortImport(
+          paths: paths,
+          manifestStore: manifestStore,
+        );
+        importTarget = null;
+      }
       _message = '导入失败：$error';
       _updateImportProgress(ImportProgress(
         phase: ImportPhase.failed,
@@ -426,9 +451,6 @@ class AppController extends ChangeNotifier {
       await refresh();
     } finally {
       _importProgressTickTimer?.cancel();
-      if (importMarkerActive) {
-        await _importService.clearImportMarker(paths);
-      }
       if (restoreAwakeModeAfterImport) {
         await _setImportAwakeMode(false);
       }
@@ -512,13 +534,16 @@ class AppController extends ChangeNotifier {
   Future<void> startGame() async {
     final paths = _requirePaths();
     _message = null;
-    _currentValidation = await _validator.validate(paths.currentDir);
+    final activeDirectory = _importService.activeDirectory(paths, _manifest);
+    _currentValidation = activeDirectory == null
+        ? ResourceValidationResult.missing('尚未导入游戏资源')
+        : await _validator.validate(activeDirectory);
     if (!_currentValidation.isValid) {
-      _message = _currentValidation.errorMessage ?? 'current 资源无效';
+      _message = _currentValidation.errorMessage ?? '激活槽资源无效';
       notifyListeners();
       throw StateError(_message!);
     }
-    await _server.start(root: paths.currentDir);
+    await _server.start(root: activeDirectory!);
     notifyListeners();
   }
 
@@ -534,7 +559,12 @@ class AppController extends ChangeNotifier {
     if (!canStartGame) {
       return false;
     }
-    await _server.start(root: _requirePaths().currentDir);
+    final paths = _requirePaths();
+    final activeDirectory = _importService.activeDirectory(paths, _manifest);
+    if (activeDirectory == null) {
+      return false;
+    }
+    await _server.start(root: activeDirectory);
     notifyListeners();
     return true;
   }
