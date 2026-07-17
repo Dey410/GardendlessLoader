@@ -13,6 +13,7 @@ import '../models.dart';
 import '../services/game_update_check_service.dart';
 import '../services/update_check_service.dart';
 import 'game_page.dart';
+import 'launcher_visuals.dart';
 
 enum _LauncherSection { resources, diagnostics }
 
@@ -58,10 +59,10 @@ class _HomePageState extends State<HomePage> {
         }
 
         return Scaffold(
-          backgroundColor: _LauncherColors.pageBackground(context),
+          backgroundColor: LauncherVisuals.pageBackground(context),
           body: DecoratedBox(
             decoration: BoxDecoration(
-              gradient: _LauncherColors.pageGradient(context),
+              gradient: LauncherVisuals.pageGradient(context),
             ),
             child: SafeArea(
               left: false,
@@ -380,10 +381,10 @@ class _LauncherWorkbench extends StatelessWidget {
         filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: _LauncherColors.workbenchGradient(context),
+            gradient: LauncherVisuals.workbenchGradient(context),
             borderRadius: radius,
             border: Border.all(
-              color: _LauncherColors.glassBorder(context),
+              color: LauncherVisuals.glassBorder(context),
             ),
             boxShadow: [
               if (Theme.of(context).brightness == Brightness.light)
@@ -424,9 +425,9 @@ class _LauncherNavigation extends StatelessWidget {
         width: 164,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: _LauncherColors.navigationBackground(context),
+            color: LauncherVisuals.navigationBackground(context),
             border: Border(
-              right: BorderSide(color: _LauncherColors.sidebarBorder(context)),
+              right: BorderSide(color: LauncherVisuals.sidebarBorder(context)),
             ),
           ),
           child: Padding(
@@ -478,7 +479,7 @@ class _ImportNavigationStatus extends StatelessWidget {
         key: ValueKey('resource-nav-progress'),
         Icons.check_circle_rounded,
         size: 18,
-        color: _LauncherColors.success,
+        color: LauncherVisuals.success,
       );
     }
     if (phase == ImportPhase.failed) {
@@ -537,9 +538,9 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final foreground =
-        selected ? colors.primary : _LauncherColors.secondaryText(context);
+        selected ? colors.primary : LauncherVisuals.secondaryText(context);
     final background = selected
-        ? _LauncherColors.selectedNavigationBackground(context)
+        ? LauncherVisuals.selectedNavigationBackground(context)
         : Colors.transparent;
 
     return Semantics(
@@ -666,7 +667,7 @@ class _DiagnosticsLogView extends StatelessWidget {
               children: [
                 _PanelTitle(
                   icon: Icons.terminal_rounded,
-                  iconColor: _LauncherColors.service,
+                  iconColor: LauncherVisuals.service,
                   label: '日志信息',
                 ),
                 const SizedBox(height: 14),
@@ -688,7 +689,7 @@ class _DiagnosticsLogView extends StatelessWidget {
             style: FilledButton.styleFrom(
               minimumSize: const Size(178, 52),
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              backgroundColor: _LauncherColors.accentBlue,
+              backgroundColor: LauncherVisuals.accentBlue,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
@@ -720,7 +721,7 @@ class _DiagnosticsLogBox extends StatelessWidget {
             : const Color(0xfff8fafc).withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: _LauncherColors.separator(context).withValues(alpha: 0.62),
+          color: LauncherVisuals.separator(context).withValues(alpha: 0.62),
         ),
       ),
       child: ClipRRect(
@@ -732,7 +733,7 @@ class _DiagnosticsLogBox extends StatelessWidget {
             child: SelectableText(
               text,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: _LauncherColors.primaryText(context),
+                    color: LauncherVisuals.primaryText(context),
                     fontFamily: 'monospace',
                     height: 1.45,
                     letterSpacing: 0,
@@ -767,7 +768,7 @@ class _LauncherTitle extends StatelessWidget {
           style: Theme.of(context).textTheme.displaySmall?.copyWith(
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0,
-                color: _LauncherColors.primaryText(context),
+                color: LauncherVisuals.primaryText(context),
                 height: 1.04,
               ),
         ),
@@ -801,7 +802,7 @@ class _LauncherTitle extends StatelessWidget {
             _StatusPill(
               label: canStart ? '可启动' : '需导入',
               color:
-                  canStart ? _LauncherColors.success : _LauncherColors.warning,
+                  canStart ? LauncherVisuals.success : LauncherVisuals.warning,
             ),
           ],
         ),
@@ -809,7 +810,7 @@ class _LauncherTitle extends StatelessWidget {
         Text(
           'Gardendless 游戏资源启动器',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: _LauncherColors.secondaryText(context),
+                color: LauncherVisuals.secondaryText(context),
                 fontWeight: FontWeight.w500,
                 letterSpacing: 0,
               ),
@@ -842,10 +843,10 @@ class _VersionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _LauncherColors.accentBlue;
+    final color = LauncherVisuals.accentBlue;
     final foreground = checking
         ? color.withValues(alpha: 0.72)
-        : _LauncherColors.primaryText(context);
+        : LauncherVisuals.primaryText(context);
 
     return Stack(
       clipBehavior: Clip.none,
@@ -894,10 +895,10 @@ class _VersionPill extends StatelessWidget {
             right: -2,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: _LauncherColors.danger,
+                color: LauncherVisuals.danger,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: _LauncherColors.panelBackground(context),
+                  color: LauncherVisuals.panelBackground(context),
                   width: 2,
                 ),
               ),
@@ -973,7 +974,7 @@ class _ResourceHeroCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: _LauncherColors.primaryText(context),
+                        color: LauncherVisuals.primaryText(context),
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0,
                       ),
@@ -982,7 +983,7 @@ class _ResourceHeroCard extends StatelessWidget {
                 Text(
                   statusLabel,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: _LauncherColors.secondaryText(context),
+                        color: LauncherVisuals.secondaryText(context),
                         fontWeight: FontWeight.w500,
                       ),
                 ),
@@ -1034,7 +1035,7 @@ class _ImportProgressRegion extends StatelessWidget {
     final color = isFailed
         ? Theme.of(context).colorScheme.error
         : isCompleted
-            ? _LauncherColors.success
+            ? LauncherVisuals.success
             : Theme.of(context).colorScheme.primary;
     final value = isFailed || isCompleted ? 1.0 : progress.value;
     final message = progress.message ?? _importPhaseMessage(progress.phase);
@@ -1076,7 +1077,7 @@ class _ImportProgressRegion extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: _LauncherColors.primaryText(context),
+                        color: LauncherVisuals.primaryText(context),
                         fontWeight: FontWeight.w700,
                       ),
                 ),
@@ -1120,7 +1121,7 @@ class _ImportProgressRegion extends StatelessWidget {
               minHeight: 7,
               value: value,
               backgroundColor:
-                  _LauncherColors.separator(context).withValues(alpha: 0.65),
+                  LauncherVisuals.separator(context).withValues(alpha: 0.65),
               valueColor: AlwaysStoppedAnimation<Color>(color),
             ),
           ),
@@ -1181,7 +1182,7 @@ class _ImportProgressDetails extends StatelessWidget {
         Text(
           items.join(' · '),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: _LauncherColors.secondaryText(context),
+                color: LauncherVisuals.secondaryText(context),
                 fontWeight: FontWeight.w600,
               ),
         ),
@@ -1189,7 +1190,7 @@ class _ImportProgressDetails extends StatelessWidget {
         Text(
           hint,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: _LauncherColors.secondaryText(context),
+                color: LauncherVisuals.secondaryText(context),
               ),
         ),
       ],
@@ -1246,7 +1247,7 @@ class _AppIconMark extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: _LauncherColors.success.withValues(alpha: 0.22),
+            color: LauncherVisuals.success.withValues(alpha: 0.22),
             blurRadius: 26,
             offset: const Offset(0, 12),
           ),
@@ -1282,20 +1283,20 @@ class _ResourceDetailsCard extends StatelessWidget {
       ServerStatus.stopped => controller.hasCurrentResource ? '待启动' : '未启动',
     };
     final validationColor = controller.hasCurrentResource
-        ? _LauncherColors.success
-        : _LauncherColors.warning;
+        ? LauncherVisuals.success
+        : LauncherVisuals.warning;
     final serverColor = controller.serverStatus == ServerStatus.failed
-        ? _LauncherColors.danger
-        : _LauncherColors.service;
+        ? LauncherVisuals.danger
+        : LauncherVisuals.service;
 
     return _GroupedPanel(
       title: '资源信息',
       icon: Icons.inventory_2_rounded,
-      iconColor: _LauncherColors.accentBlue,
+      iconColor: LauncherVisuals.accentBlue,
       children: [
         _InfoRow(
           icon: Icons.folder_rounded,
-          iconColor: _LauncherColors.accentBlue,
+          iconColor: LauncherVisuals.accentBlue,
           label: '资源根目录',
           value: controller.userVisibleRoot,
           trailing: TextButton.icon(
@@ -1304,7 +1305,7 @@ class _ResourceDetailsCard extends StatelessWidget {
             icon: const Icon(Icons.copy_rounded, size: 18),
             label: const Text('复制'),
             style: TextButton.styleFrom(
-              foregroundColor: _LauncherColors.accentBlue,
+              foregroundColor: LauncherVisuals.accentBlue,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1352,7 +1353,7 @@ class _QuickActionsCard extends StatelessWidget {
         children: [
           _PanelTitle(
             icon: Icons.bolt_rounded,
-            iconColor: _LauncherColors.warning,
+            iconColor: LauncherVisuals.warning,
             label: '快捷操作',
           ),
           const SizedBox(height: 14),
@@ -1360,7 +1361,7 @@ class _QuickActionsCard extends StatelessWidget {
             children: [
               _ActionRow(
                 icon: Icons.upload_rounded,
-                iconColor: _LauncherColors.warning,
+                iconColor: LauncherVisuals.warning,
                 label:
                     controller.hasCurrentResource ? '选择 ZIP 更新' : '选择 ZIP 导入',
                 onPressed: controller.busy || controller.isImporting
@@ -1370,7 +1371,7 @@ class _QuickActionsCard extends StatelessWidget {
               ),
               _ActionRow(
                 icon: Icons.open_in_new_rounded,
-                iconColor: _LauncherColors.secondaryText(context),
+                iconColor: LauncherVisuals.secondaryText(context),
                 label: '打开 GitHub',
                 onPressed: onOpenGitHub,
                 trailingIcon: Icons.open_in_new_rounded,
@@ -1419,8 +1420,8 @@ class _ActionRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: onPressed == null
-                            ? _LauncherColors.secondaryText(context)
-                            : _LauncherColors.primaryText(context),
+                            ? LauncherVisuals.secondaryText(context)
+                            : LauncherVisuals.primaryText(context),
                         fontWeight: FontWeight.w600,
                       ),
                 ),
@@ -1428,7 +1429,7 @@ class _ActionRow extends StatelessWidget {
               Icon(
                 trailingIcon,
                 size: 19,
-                color: _LauncherColors.secondaryText(context),
+                color: LauncherVisuals.secondaryText(context),
               ),
               const SizedBox(width: 14),
             ],
@@ -1505,7 +1506,7 @@ class _AnnouncementPanel extends StatelessWidget {
         children: [
           _PanelTitle(
             icon: Icons.campaign_rounded,
-            iconColor: _LauncherColors.accentBlue,
+            iconColor: LauncherVisuals.accentBlue,
             label: '公告',
           ),
           const SizedBox(height: 14),
@@ -1544,10 +1545,10 @@ class _AnnouncementContentBox extends StatelessWidget {
     return DecoratedBox(
       key: const ValueKey('announcement-content-box'),
       decoration: BoxDecoration(
-        color: _LauncherColors.innerPanelBackground(context),
+        color: LauncherVisuals.innerPanelBackground(context),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: _LauncherColors.separator(context).withValues(alpha: 0.72),
+          color: LauncherVisuals.separator(context).withValues(alpha: 0.72),
         ),
       ),
       child: Padding(
@@ -1555,7 +1556,7 @@ class _AnnouncementContentBox extends StatelessWidget {
         child: Text(
           message,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: _LauncherColors.secondaryText(context),
+                color: LauncherVisuals.secondaryText(context),
                 height: 1.45,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 0,
@@ -1588,7 +1589,7 @@ class _AnnouncementIconLink extends StatelessWidget {
         style: IconButton.styleFrom(
           fixedSize: const Size.square(48),
           foregroundColor: color,
-          backgroundColor: _LauncherColors.innerPanelBackground(context),
+          backgroundColor: LauncherVisuals.innerPanelBackground(context),
           hoverColor: color.withValues(alpha: 0.08),
           highlightColor: color.withValues(alpha: 0.12),
           shape: RoundedRectangleBorder(
@@ -1630,9 +1631,9 @@ Color _announcementLinkColor(BuildContext context, AnnouncementLink link) {
   if (link.url == appGithubUrl ||
       host == 'github.com' ||
       host.endsWith('.github.com')) {
-    return _LauncherColors.primaryText(context);
+    return LauncherVisuals.primaryText(context);
   }
-  return _LauncherColors.accentBlue;
+  return LauncherVisuals.accentBlue;
 }
 
 class _StartupHealthPanel extends StatelessWidget {
@@ -1648,13 +1649,13 @@ class _StartupHealthPanel extends StatelessWidget {
         : '已通过';
     final lastError = controller.manifest.lastErrorMessage ?? '无';
     final resourceColor =
-        hasResource ? _LauncherColors.success : _LauncherColors.warning;
+        hasResource ? LauncherVisuals.success : LauncherVisuals.warning;
     final selfCheckColor = controller.manifest.lastSelfCheckAt == null
-        ? _LauncherColors.secondaryText(context)
-        : _LauncherColors.success;
+        ? LauncherVisuals.secondaryText(context)
+        : LauncherVisuals.success;
     final errorColor = controller.manifest.lastErrorMessage == null
-        ? _LauncherColors.secondaryText(context)
-        : _LauncherColors.danger;
+        ? LauncherVisuals.secondaryText(context)
+        : LauncherVisuals.danger;
 
     return _LauncherPanel(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -1663,7 +1664,7 @@ class _StartupHealthPanel extends StatelessWidget {
         children: [
           _PanelTitle(
             icon: Icons.monitor_heart_rounded,
-            iconColor: _LauncherColors.service,
+            iconColor: LauncherVisuals.service,
             label: '诊断摘要',
           ),
           const SizedBox(height: 14),
@@ -1729,7 +1730,7 @@ class _HealthRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: _LauncherColors.primaryText(context),
+                    color: LauncherVisuals.primaryText(context),
                     fontWeight: FontWeight.w600,
                   ),
             ),
@@ -1742,7 +1743,7 @@ class _HealthRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.end,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: _LauncherColors.secondaryText(context),
+                    color: LauncherVisuals.secondaryText(context),
                     fontWeight: FontWeight.w500,
                   ),
             ),
@@ -1778,11 +1779,11 @@ class _StartGameButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         minimumSize: const Size(272, 72),
         padding: const EdgeInsets.symmetric(horizontal: 30),
-        backgroundColor: _LauncherColors.accentBlue,
+        backgroundColor: LauncherVisuals.accentBlue,
         foregroundColor: Colors.white,
         disabledBackgroundColor:
-            _LauncherColors.separator(context).withValues(alpha: 0.78),
-        disabledForegroundColor: _LauncherColors.secondaryText(context),
+            LauncherVisuals.separator(context).withValues(alpha: 0.78),
+        disabledForegroundColor: LauncherVisuals.secondaryText(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         textStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
@@ -1798,7 +1799,7 @@ class _StartGameButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: _LauncherColors.accentBlue.withValues(alpha: 0.28),
+              color: LauncherVisuals.accentBlue.withValues(alpha: 0.28),
               blurRadius: 26,
               offset: const Offset(0, 14),
             ),
@@ -1815,7 +1816,7 @@ class _StartGameButton extends StatelessWidget {
         Text(
           '请先导入资源',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: _LauncherColors.secondaryText(context),
+                color: LauncherVisuals.secondaryText(context),
                 fontWeight: FontWeight.w600,
               ),
         ),
@@ -1856,7 +1857,7 @@ class _UpdateCenter extends StatelessWidget {
             children: [
               const Icon(
                 Icons.system_update_alt_rounded,
-                color: _LauncherColors.warning,
+                color: LauncherVisuals.warning,
                 size: 23,
               ),
               const SizedBox(width: 10),
@@ -1864,7 +1865,7 @@ class _UpdateCenter extends StatelessWidget {
                 child: Text(
                   '更新中心',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: _LauncherColors.primaryText(context),
+                        color: LauncherVisuals.primaryText(context),
                         fontWeight: FontWeight.w700,
                       ),
                 ),
@@ -1935,7 +1936,7 @@ class _UpdateEntry extends StatelessWidget {
         Text(
           title,
           style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: _LauncherColors.primaryText(context),
+                color: LauncherVisuals.primaryText(context),
                 fontWeight: FontWeight.w700,
               ),
         ),
@@ -1943,7 +1944,7 @@ class _UpdateEntry extends StatelessWidget {
         Text(
           '$currentVersion → $latestVersion',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: _LauncherColors.secondaryText(context),
+                color: LauncherVisuals.secondaryText(context),
               ),
         ),
         const SizedBox(height: 10),
@@ -2027,7 +2028,7 @@ class _PanelTitle extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: _LauncherColors.primaryText(context),
+                  color: LauncherVisuals.primaryText(context),
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0,
                 ),
@@ -2048,10 +2049,10 @@ class _InsetListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: _LauncherColors.innerPanelBackground(context),
+        color: LauncherVisuals.innerPanelBackground(context),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: _LauncherColors.separator(context).withValues(alpha: 0.62),
+          color: LauncherVisuals.separator(context).withValues(alpha: 0.62),
         ),
       ),
       child: ClipRRect(
@@ -2064,7 +2065,7 @@ class _InsetListCard extends StatelessWidget {
                 Divider(
                   height: 1,
                   indent: dividerIndent,
-                  color: _LauncherColors.separator(context).withValues(
+                  color: LauncherVisuals.separator(context).withValues(
                     alpha: 0.72,
                   ),
                 ),
@@ -2112,7 +2113,7 @@ class _InfoRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: _LauncherColors.primaryText(context),
+                      color: LauncherVisuals.primaryText(context),
                       fontWeight: FontWeight.w700,
                     ),
               ),
@@ -2126,7 +2127,7 @@ class _InfoRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.end,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: _LauncherColors.secondaryText(context),
+                      color: LauncherVisuals.secondaryText(context),
                       fontWeight: FontWeight.w500,
                     ),
               ),
@@ -2138,7 +2139,7 @@ class _InfoRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: _LauncherColors.secondaryText(context),
+                      color: LauncherVisuals.secondaryText(context),
                       fontWeight: FontWeight.w500,
                     ),
               ),
@@ -2146,7 +2147,7 @@ class _InfoRow extends StatelessWidget {
             if (statusColor != null) ...[
               const SizedBox(width: 10),
               Icon(
-                statusColor == _LauncherColors.warning
+                statusColor == LauncherVisuals.warning
                     ? Icons.error_outline_rounded
                     : Icons.check_circle_rounded,
                 size: 20,
@@ -2178,7 +2179,7 @@ class _LauncherPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(24);
-    final borderColor = _LauncherColors.separator(context).withValues(
+    final borderColor = LauncherVisuals.separator(context).withValues(
       alpha: Theme.of(context).brightness == Brightness.dark ? 0.48 : 0.70,
     );
     final panel = ClipRRect(
@@ -2187,7 +2188,7 @@ class _LauncherPanel extends StatelessWidget {
         filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: _LauncherColors.panelBackground(context),
+            color: LauncherVisuals.panelBackground(context),
             borderRadius: radius,
             border: Border.all(color: borderColor),
             boxShadow: [
@@ -2215,7 +2216,7 @@ class _LauncherPanel extends StatelessWidget {
         boxShadow: [
           if (Theme.of(context).brightness == Brightness.light)
             BoxShadow(
-              color: _LauncherColors.accentBlue.withValues(
+              color: LauncherVisuals.accentBlue.withValues(
                 alpha: emphasized ? 0.04 : 0,
               ),
               blurRadius: emphasized ? 34 : 0,
@@ -2228,87 +2229,4 @@ class _LauncherPanel extends StatelessWidget {
 
     return decoratedPanel;
   }
-}
-
-class _LauncherColors {
-  const _LauncherColors._();
-
-  static const Color accentBlue = Color(0xff0a84ff);
-  static const Color success = Color(0xff34c759);
-  static const Color warning = Color(0xffff9f0a);
-  static const Color danger = Color(0xffff453a);
-  static const Color service = Color(0xff7c5cff);
-
-  static bool _isDark(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark;
-
-  static Color pageBackground(BuildContext context) =>
-      _isDark(context) ? const Color(0xff101114) : const Color(0xffeef1f6);
-
-  static Gradient pageGradient(BuildContext context) => _isDark(context)
-      ? const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xff121316), Color(0xff1b1c20)],
-        )
-      : const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xfff8fafc), Color(0xffeef2f7), Color(0xfff7f8fb)],
-          stops: [0, 0.55, 1],
-        );
-
-  static Gradient workbenchGradient(BuildContext context) => _isDark(context)
-      ? LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xff1c1d21).withValues(alpha: 0.94),
-            const Color(0xff15161a).withValues(alpha: 0.90),
-          ],
-        )
-      : LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.76),
-            Colors.white.withValues(alpha: 0.52),
-            const Color(0xfff5f7fb).withValues(alpha: 0.68),
-          ],
-          stops: const [0, 0.52, 1],
-        );
-
-  static Color panelBackground(BuildContext context) => _isDark(context)
-      ? const Color(0xff1c1c1e).withValues(alpha: 0.86)
-      : Colors.white.withValues(alpha: 0.72);
-
-  static Color innerPanelBackground(BuildContext context) => _isDark(context)
-      ? const Color(0xff242529).withValues(alpha: 0.72)
-      : Colors.white.withValues(alpha: 0.54);
-
-  static Color navigationBackground(BuildContext context) => _isDark(context)
-      ? const Color(0xff17181c).withValues(alpha: 0.76)
-      : const Color(0xfff6f8fc).withValues(alpha: 0.56);
-
-  static Color selectedNavigationBackground(BuildContext context) =>
-      _isDark(context)
-          ? accentBlue.withValues(alpha: 0.20)
-          : accentBlue.withValues(alpha: 0.12);
-
-  static Color sidebarBorder(BuildContext context) => _isDark(context)
-      ? const Color(0xff34353a).withValues(alpha: 0.62)
-      : const Color(0xffd7dce6).withValues(alpha: 0.72);
-
-  static Color glassBorder(BuildContext context) => _isDark(context)
-      ? Colors.white.withValues(alpha: 0.08)
-      : Colors.white.withValues(alpha: 0.74);
-
-  static Color primaryText(BuildContext context) =>
-      _isDark(context) ? const Color(0xfff5f5f7) : const Color(0xff1d1d1f);
-
-  static Color secondaryText(BuildContext context) =>
-      _isDark(context) ? const Color(0xffa1a1aa) : const Color(0xff6b7280);
-
-  static Color separator(BuildContext context) =>
-      _isDark(context) ? const Color(0xff38383a) : const Color(0xffd8dfe8);
 }

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -16,6 +18,7 @@ import '../services/game_download_service.dart';
 import '../web/collect_sunlight_key_press.dart';
 import '../web/export_download_patch.dart';
 import '../web/touch_patch.dart';
+import 'launcher_visuals.dart';
 
 const gameWatermarkText = '本加载器B站xiaozhu_410免费分享，仅供学习，严禁售卖';
 
@@ -86,6 +89,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
           children: [
             Positioned.fill(
               child: GameViewportFrame(
+                showWatermark: widget.controller.watermarkEnabled,
                 child: InAppWebView(
                   gestureRecognizers: {
                     Factory<OneSequenceGestureRecognizer>(
@@ -179,10 +183,32 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
               top: 12,
               right: 12,
               child: SafeArea(
-                child: IconButton.filledTonal(
-                  tooltip: '菜单',
-                  onPressed: _showMenu,
-                  icon: const Icon(Icons.menu),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LauncherVisuals.workbenchGradient(context),
+                        border: Border.all(
+                          color: LauncherVisuals.glassBorder(context),
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: IconButton(
+                          key: const ValueKey('game-menu-button'),
+                          tooltip: '游戏菜单',
+                          onPressed: _showMenu,
+                          icon: Icon(
+                            Icons.tune_rounded,
+                            color: LauncherVisuals.primaryText(context),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -226,29 +252,49 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   }
 
   Future<void> _showMenu() async {
-    await showDialog<void>(
+    await showGeneralDialog<void>(
       context: context,
+      barrierColor: Colors.transparent,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => GameMenuDialog(
-          autoCollectSunlightEnabled: _autoCollectSunlightEnabled,
-          onAutoCollectSunlightChanged: (enabled) {
-            _setAutoCollectSunlightEnabled(enabled);
-            setDialogState(() {});
-          },
-          onContinue: () => Navigator.of(context).pop(),
-          onReturnHome: () {
-            Navigator.of(context).pop();
-            unawaited(_confirmReturnHome());
-          },
-          onReload: () {
-            Navigator.of(context).pop();
-            unawaited(_confirmReload());
-          },
-          onDiagnostics: () {
-            Navigator.of(context).pop();
-            unawaited(_showDiagnostics());
-          },
+      barrierLabel: '游戏菜单',
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, _, __) => StatefulBuilder(
+        builder: (context, setDialogState) => GameMenuOverlay(
+          onContinue: () => Navigator.of(dialogContext).pop(),
+          child: GameMenuDialog(
+            autoCollectSunlightEnabled: _autoCollectSunlightEnabled,
+            onAutoCollectSunlightChanged: (enabled) {
+              _setAutoCollectSunlightEnabled(enabled);
+              setDialogState(() {});
+            },
+            watermarkEnabled: widget.controller.watermarkEnabled,
+            onWatermarkChanged: (enabled) {
+              unawaited(_setWatermarkEnabled(enabled));
+              setDialogState(() {});
+            },
+            onContinue: () => Navigator.of(dialogContext).pop(),
+            onReturnHome: () {
+              Navigator.of(dialogContext).pop();
+              unawaited(_confirmReturnHome());
+            },
+            onReload: () {
+              Navigator.of(dialogContext).pop();
+              unawaited(_confirmReload());
+            },
+            onDiagnostics: () {
+              Navigator.of(dialogContext).pop();
+              unawaited(_showDiagnostics());
+            },
+          ),
+        ),
+      ),
+      transitionBuilder: (context, animation, _, child) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.97, end: 1).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
+          child: child,
         ),
       ),
     );
@@ -263,6 +309,23 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       _autoCollectSunlightEnabled = enabled;
     });
     _autoSunCollector.setEnabled(enabled);
+  }
+
+  Future<void> _setWatermarkEnabled(bool enabled) async {
+    final persistence = widget.controller.setWatermarkEnabled(enabled);
+    if (mounted) {
+      setState(() {});
+    }
+    try {
+      await persistence;
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存水印设置失败：$error')),
+      );
+    }
   }
 
   Future<void> _pressCollectSunlightKey() async {
@@ -468,11 +531,52 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   }
 }
 
+class GameMenuOverlay extends StatelessWidget {
+  const GameMenuOverlay({
+    super.key,
+    required this.onContinue,
+    required this.child,
+  });
+
+  final VoidCallback onContinue;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRect(
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: GestureDetector(
+                key: const ValueKey('game-menu-backdrop'),
+                behavior: HitTestBehavior.opaque,
+                onDoubleTap: onContinue,
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: isDark ? 0.52 : 0.34),
+                ),
+              ),
+            ),
+          ),
+          Center(child: child),
+        ],
+      ),
+    );
+  }
+}
+
 class GameMenuDialog extends StatelessWidget {
   const GameMenuDialog({
     super.key,
     required this.autoCollectSunlightEnabled,
     required this.onAutoCollectSunlightChanged,
+    required this.watermarkEnabled,
+    required this.onWatermarkChanged,
     required this.onContinue,
     required this.onReturnHome,
     required this.onReload,
@@ -481,6 +585,8 @@ class GameMenuDialog extends StatelessWidget {
 
   final bool autoCollectSunlightEnabled;
   final ValueChanged<bool> onAutoCollectSunlightChanged;
+  final bool watermarkEnabled;
+  final ValueChanged<bool> onWatermarkChanged;
   final VoidCallback onContinue;
   final VoidCallback onReturnHome;
   final VoidCallback onReload;
@@ -488,33 +594,190 @@ class GameMenuDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SimpleDialog(
-      title: const Text('游戏菜单'),
-      children: [
-        SwitchListTile(
-          title: const Text('自动收集阳光'),
-          subtitle: const Text('每 1.5 秒自动按下 A 键'),
-          value: autoCollectSunlightEnabled,
-          onChanged: onAutoCollectSunlightChanged,
+    final screenSize = MediaQuery.sizeOf(context);
+    final panelWidth = math.min(480.0, screenSize.width * 0.9);
+    final panelHeight = screenSize.height * 0.9;
+    final radius = BorderRadius.circular(28);
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: panelHeight),
+        child: SizedBox(
+          key: const ValueKey('game-menu-panel'),
+          width: panelWidth,
+          child: ClipRRect(
+            borderRadius: radius,
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: DecoratedBox(
+                key: const ValueKey('game-menu-glass-surface'),
+                decoration: BoxDecoration(
+                  gradient: LauncherVisuals.workbenchGradient(context),
+                  borderRadius: radius,
+                  border: Border.all(
+                    color: LauncherVisuals.glassBorder(context),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.24),
+                      blurRadius: 42,
+                      offset: const Offset(0, 22),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: LauncherVisuals.accentBlue
+                                  .withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: Icon(
+                                Icons.sports_esports_rounded,
+                                color: LauncherVisuals.accentBlue,
+                                size: 25,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '游戏菜单',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(
+                                        color: LauncherVisuals.primaryText(
+                                          context,
+                                        ),
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  '调整辅助功能或继续游戏',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: LauncherVisuals.secondaryText(
+                                          context,
+                                        ),
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Material(
+                        color: LauncherVisuals.innerPanelBackground(context),
+                        clipBehavior: Clip.antiAlias,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          side: BorderSide(
+                            color: LauncherVisuals.separator(context)
+                                .withValues(alpha: 0.66),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SwitchListTile(
+                              secondary: const Icon(Icons.wb_sunny_rounded),
+                              title: const Text('自动收集阳光'),
+                              subtitle: const Text('每 1.5 秒自动按下 A 键'),
+                              value: autoCollectSunlightEnabled,
+                              onChanged: onAutoCollectSunlightChanged,
+                            ),
+                            Divider(
+                              height: 1,
+                              indent: 18,
+                              endIndent: 18,
+                              color: LauncherVisuals.separator(context),
+                            ),
+                            SwitchListTile(
+                              secondary: const Icon(Icons.branding_watermark),
+                              title: const Text('显示水印'),
+                              subtitle: const Text('在游戏画面左下角显示防倒卖提示'),
+                              value: watermarkEnabled,
+                              onChanged: onWatermarkChanged,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton.icon(
+                          onPressed: onContinue,
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('继续游戏'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 50,
+                              child: FilledButton.tonalIcon(
+                                onPressed: onReload,
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: const Text('重新加载'),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: SizedBox(
+                              height: 50,
+                              child: FilledButton.tonalIcon(
+                                onPressed: onDiagnostics,
+                                icon: const Icon(Icons.terminal_rounded),
+                                label: const Text('诊断信息'),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: LauncherVisuals.danger,
+                            side: BorderSide(
+                              color: LauncherVisuals.danger
+                                  .withValues(alpha: 0.62),
+                            ),
+                          ),
+                          onPressed: onReturnHome,
+                          icon: const Icon(Icons.home_rounded),
+                          label: const Text('返回首页'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
-        const Divider(height: 1),
-        SimpleDialogOption(
-          onPressed: onContinue,
-          child: const Text('继续游戏'),
-        ),
-        SimpleDialogOption(
-          onPressed: onReturnHome,
-          child: const Text('返回首页'),
-        ),
-        SimpleDialogOption(
-          onPressed: onReload,
-          child: const Text('重新加载'),
-        ),
-        SimpleDialogOption(
-          onPressed: onDiagnostics,
-          child: const Text('诊断信息'),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -523,12 +786,14 @@ class GameViewportFrame extends StatelessWidget {
   const GameViewportFrame({
     super.key,
     required this.child,
+    this.showWatermark = true,
     this.minAspectRatio = 16 / 10,
     this.maxAspectRatio = 17 / 9,
   })  : assert(minAspectRatio > 0),
         assert(maxAspectRatio >= minAspectRatio);
 
   final Widget child;
+  final bool showWatermark;
   final double minAspectRatio;
   final double maxAspectRatio;
 
@@ -571,11 +836,12 @@ class GameViewportFrame extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     child,
-                    const Positioned(
-                      left: 10,
-                      bottom: 8,
-                      child: GameWatermark(),
-                    ),
+                    if (showWatermark)
+                      const Positioned(
+                        left: 10,
+                        bottom: 8,
+                        child: GameWatermark(),
+                      ),
                   ],
                 ),
               ),

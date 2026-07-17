@@ -10,6 +10,7 @@ import 'models.dart';
 import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
 import 'services/app_paths_service.dart';
+import 'services/app_settings_store.dart';
 import 'services/diagnostics_service.dart';
 import 'services/game_update_check_service.dart';
 import 'services/import_service.dart';
@@ -83,8 +84,10 @@ class AppController extends ChangeNotifier {
   ImportProgressMeter? _importProgressMeter;
   Timer? _importCompletionTimer;
   Timer? _importProgressTickTimer;
+  Future<void> _appSettingsWrite = Future<void>.value();
 
   AppPaths? _paths;
+  AppSettingsStore? _appSettingsStore;
   ManifestStore? _manifestStore;
   ResourceManifest _manifest = ResourceManifest.initial();
   ResourceValidationResult _currentValidation =
@@ -106,6 +109,7 @@ class AppController extends ChangeNotifier {
   bool _appUpdateDetected = false;
   bool _gameUpdateDetected = false;
   bool _updateCheckInProgress = false;
+  bool _watermarkEnabled = true;
   bool _initialized = false;
   bool _busy = false;
   String? _message;
@@ -127,6 +131,7 @@ class AppController extends ChangeNotifier {
   String? get currentGameVersion => _currentGameVersion;
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
+  bool get watermarkEnabled => _watermarkEnabled;
   ServerStatus get serverStatus => _server.status;
   bool get isImporting =>
       _importProgress.phase != ImportPhase.idle &&
@@ -160,6 +165,8 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     try {
       _paths = await _pathsService.ensureInitialized();
+      _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
+      _watermarkEnabled = await _appSettingsStore!.readWatermarkEnabled();
       _manifestStore = ManifestStore(_paths!.manifestFile);
       _manifest = await _manifestStore!.read();
       final interruptedTransaction =
@@ -583,6 +590,30 @@ class AppController extends ChangeNotifier {
   void clearMessage() {
     _message = null;
     notifyListeners();
+  }
+
+  Future<void> setWatermarkEnabled(bool enabled) async {
+    if (_watermarkEnabled == enabled) {
+      return;
+    }
+    final appSettingsStore = _appSettingsStore;
+    if (appSettingsStore == null) {
+      throw StateError('AppSettingsStore 尚未初始化');
+    }
+
+    _watermarkEnabled = enabled;
+    notifyListeners();
+    final previousWrite = _appSettingsWrite;
+    final currentWrite = () async {
+      try {
+        await previousWrite;
+      } catch (_) {
+        // A later choice must still be persisted after an earlier write fails.
+      }
+      await appSettingsStore.writeWatermarkEnabled(enabled);
+    }();
+    _appSettingsWrite = currentWrite;
+    await currentWrite;
   }
 
   AppPaths _requirePaths() {

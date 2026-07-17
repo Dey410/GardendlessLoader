@@ -69,6 +69,47 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );
+
+  testWidgets('game page closes its menu after a backdrop double tap',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1180, 720);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final previousWebViewPlatform = InAppWebViewPlatform.instance;
+    InAppWebViewPlatform.instance = _FakeInAppWebViewPlatform();
+    if (previousWebViewPlatform != null) {
+      addTearDown(() {
+        InAppWebViewPlatform.instance = previousWebViewPlatform;
+      });
+    }
+
+    final previousWakelockPlatform = WakelockPlusPlatformInterface.instance;
+    WakelockPlusPlatformInterface.instance = _FakeWakelockPlusPlatform();
+    addTearDown(() {
+      WakelockPlusPlatformInterface.instance = previousWakelockPlatform;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(home: GamePage(controller: AppController())),
+    );
+    await tester.pump();
+
+    expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
+
+    await tester.tap(find.byTooltip('游戏菜单'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GameMenuDialog), findsOneWidget);
+
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GameMenuDialog), findsNothing);
+  });
 }
 
 class _FakeInAppWebViewPlatform extends InAppWebViewPlatform {

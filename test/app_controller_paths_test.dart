@@ -14,6 +14,91 @@ import 'package:gardendless_loader/src/services/resource_validator.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test('enables the game watermark by default', () async {
+    final root = await Directory.systemTemp.createTemp('gl_settings_default_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+
+    final controller = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await controller.initialize();
+
+    expect(controller.watermarkEnabled, isTrue);
+  });
+
+  test('remembers a disabled game watermark across app restarts', () async {
+    final root = await Directory.systemTemp.createTemp('gl_settings_saved_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+
+    final firstController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await firstController.initialize();
+    await firstController.setWatermarkEnabled(false);
+
+    final restartedController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await restartedController.initialize();
+
+    expect(restartedController.watermarkEnabled, isFalse);
+  });
+
+  test('persists re-enabling the game watermark', () async {
+    final root = await Directory.systemTemp.createTemp('gl_settings_toggle_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+
+    final firstController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await firstController.initialize();
+    await firstController.setWatermarkEnabled(false);
+    await firstController.setWatermarkEnabled(true);
+
+    final restartedController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await restartedController.initialize();
+
+    expect(restartedController.watermarkEnabled, isTrue);
+  });
+
+  test('persists the latest watermark choice after rapid toggles', () async {
+    final root = await Directory.systemTemp.createTemp('gl_settings_rapid_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+
+    final firstController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await firstController.initialize();
+    final disable = firstController.setWatermarkEnabled(false);
+    final enable = firstController.setWatermarkEnabled(true);
+    await Future.wait([disable, enable]);
+
+    final restartedController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await restartedController.initialize();
+
+    expect(restartedController.watermarkEnabled, isTrue);
+  });
+
   test('cleans an interrupted import on startup without replacing current',
       () async {
     final root =

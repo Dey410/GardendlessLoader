@@ -43,6 +43,9 @@ class AppPaths {
   final Directory root;
   final File manifestFile;
 
+  File get appSettingsFile =>
+      File('${root.path}${Platform.pathSeparator}app_settings.json');
+
   Directory get slotADir =>
       Directory('${root.path}${Platform.pathSeparator}slot-a');
   Directory get slotBDir =>

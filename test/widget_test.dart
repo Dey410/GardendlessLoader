@@ -114,6 +114,20 @@ void main() {
     expect(ignorePointer.ignoring, isTrue);
   });
 
+  testWidgets('game viewport hides the watermark when disabled',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: GameViewportFrame(
+          showWatermark: false,
+          child: ColoredBox(color: Colors.green),
+        ),
+      ),
+    );
+
+    expect(find.text(gameWatermarkText), findsNothing);
+  });
+
   testWidgets('game menu exposes auto sunlight collection switch',
       (tester) async {
     bool? requestedValue;
@@ -126,6 +140,8 @@ void main() {
             onAutoCollectSunlightChanged: (value) {
               requestedValue = value;
             },
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
             onContinue: () {},
             onReturnHome: () {},
             onReload: () {},
@@ -143,6 +159,42 @@ void main() {
     expect(requestedValue, isTrue);
   });
 
+  testWidgets('game menu exposes the watermark as the second switch',
+      (tester) async {
+    bool? requestedValue;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (value) {
+              requestedValue = value;
+            },
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('显示水印'), findsOneWidget);
+    expect(find.text('在游戏画面左下角显示防倒卖提示'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('自动收集阳光')).dy,
+      lessThan(tester.getTopLeft(find.text('显示水印')).dy),
+    );
+
+    await tester.tap(find.text('显示水印'));
+    await tester.pump();
+
+    expect(requestedValue, isFalse);
+  });
+
   testWidgets('game menu omits the removed force stretch switch',
       (tester) async {
     await tester.pumpWidget(
@@ -151,6 +203,8 @@ void main() {
           body: GameMenuDialog(
             autoCollectSunlightEnabled: false,
             onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
             onContinue: () {},
             onReturnHome: () {},
             onReload: () {},
@@ -161,5 +215,171 @@ void main() {
     );
 
     expect(find.text('强制拉伸'), findsNothing);
+  });
+
+  testWidgets('double tapping the game menu backdrop continues the game',
+      (tester) async {
+    var continueCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GameMenuOverlay(
+          onContinue: () {
+            continueCount += 1;
+          },
+          child: const SizedBox(width: 300, height: 200),
+        ),
+      ),
+    );
+
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(continueCount, 1);
+  });
+
+  testWidgets('double tapping inside the game menu keeps it open',
+      (tester) async {
+    var continueCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GameMenuOverlay(
+          onContinue: () {
+            continueCount += 1;
+          },
+          child: const Material(
+            key: ValueKey('game-menu-panel'),
+            child: SizedBox(width: 300, height: 200),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('game-menu-panel')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const ValueKey('game-menu-panel')));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(continueCount, 0);
+  });
+
+  testWidgets('game menu uses a responsive 480 pixel glass panel',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 700);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('game-menu-panel'))).width,
+      480,
+    );
+
+    tester.view.physicalSize = const Size(400, 300);
+    await tester.pump();
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('game-menu-panel'))).width,
+      lessThanOrEqualTo(360),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('game menu presents primary secondary and warning actions',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.widgetWithIcon(FilledButton, Icons.play_arrow_rounded),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithIcon(FilledButton, Icons.refresh_rounded),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithIcon(FilledButton, Icons.terminal_rounded),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithIcon(OutlinedButton, Icons.home_rounded),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('game menu glass surface follows light and dark themes',
+      (tester) async {
+    Widget buildMenu(Brightness brightness) {
+      return MaterialApp(
+        theme: ThemeData.light(),
+        darkTheme: ThemeData.dark(),
+        themeMode:
+            brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildMenu(Brightness.light));
+    final lightDecoration = tester
+        .widget<DecoratedBox>(
+          find.byKey(const ValueKey('game-menu-glass-surface')),
+        )
+        .decoration as BoxDecoration;
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(buildMenu(Brightness.dark));
+    final darkDecoration = tester
+        .widget<DecoratedBox>(
+          find.byKey(const ValueKey('game-menu-glass-surface')),
+        )
+        .decoration as BoxDecoration;
+
+    expect(lightDecoration.gradient, isNot(darkDecoration.gradient));
   });
 }
