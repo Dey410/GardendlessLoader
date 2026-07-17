@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "announcement": {
-    "id": "2026-05-17-welcome",
-    "title": "公告",
-    "message": "欢迎使用 GardendlessLoader。如果你喜欢这个项目，请给它一个⭐️！也可以前往GitHub仓库查看源代码，或者在小朱的B站主页上关注小朱，获取更多更新和教程！",
+    "id": "2026-07-18-v0.5.2",
+    "title": "v0.5.2 更新重点",
+    "message": "GardendlessLoader v0.5.2 已发布：全新设计首页与游戏菜单；升级移动端触控，支持单指左键、双指右键和双指滚轮；新增双槽资源导入，更新失败时保留当前可用资源；新增游戏版本识别与更新检查；修复 iOS ZIP 导入、HarmonyOS 文件导出及文本输入控件触摸问题。",
     "links": [
       {
         "label": "GitHub",
