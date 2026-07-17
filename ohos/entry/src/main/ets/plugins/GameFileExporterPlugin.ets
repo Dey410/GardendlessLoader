@@ -97,10 +97,15 @@ export class GameFileExporterPlugin implements FlutterPlugin, MethodCallHandler 
 
   private copyFile(sourcePath: string, targetUri: string): void {
     let input: fs.File | null = null;
+    let output: fs.File | null = null;
     try {
       input = fs.openSync(sourcePath, fs.OpenMode.READ_ONLY);
-      fs.copyFileSync(input.fd, targetUri);
+      output = fs.openSync(targetUri, fs.OpenMode.READ_WRITE);
+      fs.copyFileSync(input.fd, output.fd);
     } finally {
+      if (output != null) {
+        fs.closeSync(output.fd);
+      }
       if (input != null) {
         fs.closeSync(input.fd);
       }

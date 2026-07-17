@@ -3,6 +3,21 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Android streams ZIP import progress to Flutter', () {
+    final activity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',
+    ).readAsStringSync();
+
+    expect(activity, contains('resourceZipImporterChannel'));
+    expect(activity, contains('invokeMethod("progress"'));
+    expect(activity, contains('phase = "receiving"'));
+    expect(activity, contains('phase = "extracting"'));
+    expect(activity, contains('"processedBytes"'));
+    expect(activity, contains('"totalBytes"'));
+    expect(activity, contains('"processedFiles"'));
+    expect(activity, contains('"totalFiles"'));
+  });
+
   test('Android registers a native game save exporter', () {
     final activity = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',

@@ -6,11 +6,6 @@ void main() {
   test('OpenHarmony override uses compatible plugin forks', () {
     final pubspec = File('pubspec_overrides.ohos.yaml').readAsStringSync();
 
-    expect(pubspec, contains('file_selector'));
-    expect(pubspec, contains('file_selector_ohos'));
-    expect(pubspec, contains('packages/file_selector/file_selector'));
-    expect(pubspec, contains('packages/file_selector/file_selector_ohos'));
-    expect(pubspec, contains('openharmony-sig/flutter_packages.git'));
     expect(pubspec, contains('openharmony-tpc/flutter_packages.git'));
     expect(pubspec, contains('packages/path_provider/path_provider'));
     expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
@@ -96,6 +91,30 @@ void main() {
     expect(importer, contains('src/import-map.json'));
   });
 
+  test('OpenHarmony extracts resources into the inactive slot without copying',
+      () {
+    final importer =
+        File('ohos/entry/src/main/ets/plugins/ResourceZipImporterPlugin.ets')
+            .readAsStringSync();
+
+    expect(importer, contains('decompressFile(zipPath, targetDirectory)'));
+    expect(importer, isNot(contains('copyDirectoryContents')));
+  });
+
+  test('OpenHarmony streams ZIP import progress to Flutter', () {
+    final importer =
+        File('ohos/entry/src/main/ets/plugins/ResourceZipImporterPlugin.ets')
+            .readAsStringSync();
+
+    expect(importer, contains("invokeMethod('progress'"));
+    expect(importer, contains("phase: 'receiving'"));
+    expect(importer, contains("phase: 'extracting'"));
+    expect(importer, contains("'processedBytes'"));
+    expect(importer, contains("'totalBytes'"));
+    expect(importer, contains("'processedFiles'"));
+    expect(importer, contains("'totalFiles'"));
+  });
+
   test('OpenHarmony registers a game save exporter', () {
     final ability =
         File('ohos/entry/src/main/ets/entryability/EntryAbility.ets')
@@ -112,7 +131,10 @@ void main() {
     expect(exporter, contains('DocumentSaveOptions'));
     expect(exporter, contains('DocumentViewPicker'));
     expect(exporter, contains('documentViewPicker.save'));
-    expect(exporter, contains('copyFileSync'));
+    expect(
+        exporter, contains('fs.openSync(targetUri, fs.OpenMode.READ_WRITE)'));
+    expect(exporter, contains('fs.copyFileSync(input.fd, output.fd)'));
+    expect(exporter, contains('fs.closeSync(output.fd)'));
     expect(exporter, contains('isCancelledError'));
     expect(exporter, contains("result.error('export_cancelled'"));
     expect(exporter, contains("message.toLowerCase().includes('cancel')"));

@@ -8,8 +8,7 @@ void main() {
     expect(const GardendlessLoaderApp(), isA<GardendlessLoaderApp>());
   });
 
-  testWidgets('game viewport contains 16:9 content on iPad landscape',
-      (tester) async {
+  testWidgets('game viewport clamps iPad landscape to 16:10', (tester) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1024, 768);
@@ -30,10 +29,10 @@ void main() {
     final size = tester.getSize(find.byKey(childKey));
 
     expect(size.width, 1024);
-    expect(size.height, 576);
+    expect(size.height, 640);
   });
 
-  testWidgets('game viewport contains 16:9 content on ultrawide landscape',
+  testWidgets('game viewport clamps ultrawide landscape to 17:9',
       (tester) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
@@ -54,22 +53,21 @@ void main() {
 
     final size = tester.getSize(find.byKey(childKey));
 
-    expect(size.width, 1920);
+    expect(size.width, 2040);
     expect(size.height, 1080);
   });
 
-  testWidgets('game viewport can stretch to fill iPad landscape',
+  testWidgets('game viewport fills screens within the adaptive ratio range',
       (tester) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(1024, 768);
+    tester.view.physicalSize = const Size(1920, 1080);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
       const MaterialApp(
         home: GameViewportFrame(
-          fit: GameViewportFit.stretch,
           child: ColoredBox(
             key: childKey,
             color: Colors.green,
@@ -80,8 +78,8 @@ void main() {
 
     final size = tester.getSize(find.byKey(childKey));
 
-    expect(size.width, 1024);
-    expect(size.height, 768);
+    expect(size.width, 1920);
+    expect(size.height, 1080);
   });
 
   testWidgets('game viewport overlays watermark in content bottom-left',
@@ -116,6 +114,20 @@ void main() {
     expect(ignorePointer.ignoring, isTrue);
   });
 
+  testWidgets('game viewport hides the watermark when disabled',
+      (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: GameViewportFrame(
+          showWatermark: false,
+          child: ColoredBox(color: Colors.green),
+        ),
+      ),
+    );
+
+    expect(find.text(gameWatermarkText), findsNothing);
+  });
+
   testWidgets('game menu exposes auto sunlight collection switch',
       (tester) async {
     bool? requestedValue;
@@ -125,11 +137,11 @@ void main() {
         home: Scaffold(
           body: GameMenuDialog(
             autoCollectSunlightEnabled: false,
-            stretchGameViewportEnabled: false,
             onAutoCollectSunlightChanged: (value) {
               requestedValue = value;
             },
-            onStretchGameViewportChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
             onContinue: () {},
             onReturnHome: () {},
             onReload: () {},
@@ -147,7 +159,8 @@ void main() {
     expect(requestedValue, isTrue);
   });
 
-  testWidgets('game menu exposes force stretch switch', (tester) async {
+  testWidgets('game menu exposes the watermark as the second switch',
+      (tester) async {
     bool? requestedValue;
 
     await tester.pumpWidget(
@@ -155,9 +168,9 @@ void main() {
         home: Scaffold(
           body: GameMenuDialog(
             autoCollectSunlightEnabled: false,
-            stretchGameViewportEnabled: false,
             onAutoCollectSunlightChanged: (_) {},
-            onStretchGameViewportChanged: (value) {
+            watermarkEnabled: true,
+            onWatermarkChanged: (value) {
               requestedValue = value;
             },
             onContinue: () {},
@@ -169,11 +182,223 @@ void main() {
       ),
     );
 
-    expect(find.text('强制拉伸'), findsOneWidget);
+    expect(find.text('显示水印'), findsOneWidget);
+    expect(find.text('在游戏画面左下角显示防倒卖提示'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('自动收集阳光')).dy,
+      lessThan(tester.getTopLeft(find.text('显示水印')).dy),
+    );
 
-    await tester.tap(find.text('强制拉伸'));
+    await tester.tap(find.text('显示水印'));
     await tester.pump();
 
-    expect(requestedValue, isTrue);
+    expect(requestedValue, isFalse);
+  });
+
+  testWidgets('game menu omits the removed force stretch switch',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('强制拉伸'), findsNothing);
+  });
+
+  testWidgets('double tapping the game menu backdrop continues the game',
+      (tester) async {
+    var continueCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GameMenuOverlay(
+          onContinue: () {
+            continueCount += 1;
+          },
+          child: const SizedBox(width: 300, height: 200),
+        ),
+      ),
+    );
+
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(continueCount, 1);
+  });
+
+  testWidgets('double tapping inside the game menu keeps it open',
+      (tester) async {
+    var continueCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GameMenuOverlay(
+          onContinue: () {
+            continueCount += 1;
+          },
+          child: const Material(
+            key: ValueKey('game-menu-panel'),
+            child: SizedBox(width: 300, height: 200),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('game-menu-panel')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const ValueKey('game-menu-panel')));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(continueCount, 0);
+  });
+
+  testWidgets('game menu uses a responsive 480 pixel glass panel',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 700);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('game-menu-panel'))).width,
+      480,
+    );
+
+    tester.view.physicalSize = const Size(400, 300);
+    await tester.pump();
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('game-menu-panel'))).width,
+      lessThanOrEqualTo(360),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('game menu presents primary secondary and warning actions',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    final filledButtons = find.byWidgetPredicate(
+      (widget) => widget is FilledButton,
+    );
+    final outlinedButtons = find.byWidgetPredicate(
+      (widget) => widget is OutlinedButton,
+    );
+
+    expect(
+      find.descendant(
+        of: filledButtons,
+        matching: find.byIcon(Icons.play_arrow_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: filledButtons,
+        matching: find.byIcon(Icons.refresh_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: filledButtons,
+        matching: find.byIcon(Icons.terminal_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: outlinedButtons,
+        matching: find.byIcon(Icons.home_rounded),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('game menu glass surface follows light and dark themes',
+      (tester) async {
+    Widget buildMenu(Brightness brightness) {
+      return MaterialApp(
+        theme: ThemeData.light(),
+        darkTheme: ThemeData.dark(),
+        themeMode:
+            brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildMenu(Brightness.light));
+    final lightDecoration = tester
+        .widget<DecoratedBox>(
+          find.byKey(const ValueKey('game-menu-glass-surface')),
+        )
+        .decoration as BoxDecoration;
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(buildMenu(Brightness.dark));
+    final darkDecoration = tester
+        .widget<DecoratedBox>(
+          find.byKey(const ValueKey('game-menu-glass-surface')),
+        )
+        .decoration as BoxDecoration;
+
+    expect(lightDecoration.gradient, isNot(darkDecoration.gradient));
   });
 }

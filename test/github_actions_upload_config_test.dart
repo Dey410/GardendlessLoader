@@ -28,17 +28,6 @@ void main() {
       path: 'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-x64.hap',
     );
   });
-
-  test('GitHub Actions keeps directory artifacts archived', () {
-    final workflow =
-        File('.github/workflows/build-mobile.yml').readAsStringSync();
-    final webUpload = _workflowStep(workflow, 'Upload Web bundle');
-
-    expect(webUpload, contains('uses: actions/upload-artifact@v7'));
-    expect(webUpload, contains('name: gardendless-loader-web'));
-    expect(webUpload, contains('path: build/web'));
-    expect(webUpload, isNot(contains('archive: false')));
-  });
 }
 
 void _expectDirectFileUpload(

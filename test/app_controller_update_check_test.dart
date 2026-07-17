@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
+import 'package:gardendless_loader/src/services/game_update_check_service.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
 
 void main() {
@@ -10,6 +11,7 @@ void main() {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.1.0',
         loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
@@ -38,6 +40,7 @@ void main() {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.2.0',
         loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
@@ -56,13 +59,17 @@ void main() {
     await controller.checkForUpdates();
 
     expect(controller.availableUpdate, isNull);
-    expect(controller.message, 'v0.2.0');
+    expect(
+      controller.message,
+      '加载器 v0.2.0 已是最新；游戏资源尚未导入，当前稳定版 0.11.0',
+    );
   });
 
   test('silent update check failure does not set user message', () async {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
         loader: (uri, timeout, maxBytes) async =>
             throw const SocketException('offline'),
@@ -80,6 +87,7 @@ void main() {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
         loader: (uri, timeout, maxBytes) async =>
             throw const SocketException('offline'),
@@ -90,13 +98,14 @@ void main() {
     await controller.checkForUpdates();
 
     expect(controller.availableUpdate, isNull);
-    expect(controller.message, '检查更新失败，请稍后重试');
+    expect(controller.message, '加载器更新检查失败，请稍后重试');
   });
 
   test('defer update hides current release for this run', () async {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.1.0',
         loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
@@ -118,4 +127,13 @@ void main() {
 
     expect(controller.availableUpdate, isNull);
   });
+}
+
+GameUpdateCheckService _stableGameService() {
+  return GameUpdateCheckService(
+    loader: (uri, timeout, maxBytes) async => const GameUpdateCheckHttpResponse(
+      statusCode: HttpStatus.ok,
+      body: '[{"name":"0.11.0"}]',
+    ),
+  );
 }

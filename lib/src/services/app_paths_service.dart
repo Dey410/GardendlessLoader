@@ -8,7 +8,6 @@ import '../models.dart';
 
 typedef DirectoryProvider = Future<Directory> Function();
 typedef NullableDirectoryProvider = Future<Directory?> Function();
-typedef ExecutableDirectoryProvider = Directory Function();
 
 class AppPathsService {
   AppPathsService({
@@ -16,21 +15,17 @@ class AppPathsService {
     String? platformName,
     DirectoryProvider? documentsDirectoryProvider,
     NullableDirectoryProvider? externalStorageDirectoryProvider,
-    ExecutableDirectoryProvider? executableDirectoryProvider,
   })  : _rootOverride = rootOverride,
         _platformName = platformName ?? Platform.operatingSystem,
         _documentsDirectoryProvider =
             documentsDirectoryProvider ?? getApplicationDocumentsDirectory,
         _externalStorageDirectoryProvider =
-            externalStorageDirectoryProvider ?? getExternalStorageDirectory,
-        _executableDirectoryProvider =
-            executableDirectoryProvider ?? _defaultExecutableDirectory;
+            externalStorageDirectoryProvider ?? getExternalStorageDirectory;
 
   final Directory? _rootOverride;
   final String _platformName;
   final DirectoryProvider _documentsDirectoryProvider;
   final NullableDirectoryProvider _externalStorageDirectoryProvider;
-  final ExecutableDirectoryProvider _executableDirectoryProvider;
 
   Future<AppPaths> ensureInitialized() async {
     if (_rootOverride != null) {
@@ -57,32 +52,19 @@ class AppPathsService {
     return AppPaths(
       root: root,
       manifestFile: File(p.join(root.path, 'manifest.json')),
-      importDir: Directory(p.join(root.path, 'import')),
-      importDocsDir: Directory(p.join(root.path, 'import', 'docs')),
-      currentDir: Directory(p.join(root.path, 'current')),
-      previousDir: Directory(p.join(root.path, 'previous')),
-      stagingDir: Directory(p.join(root.path, 'staging')),
     );
   }
 
   Future<void> _createPaths(AppPaths paths) async {
     await paths.root.create(recursive: true);
-    await paths.importDir.create(recursive: true);
-    await paths.importDocsDir.create(recursive: true);
-    await paths.currentDir.create(recursive: true);
-    await paths.previousDir.create(recursive: true);
-    await paths.stagingDir.create(recursive: true);
+    await paths.slotADir.create(recursive: true);
+    await paths.slotBDir.create(recursive: true);
   }
 
   Future<List<Directory>> _defaultRoots() async {
     if (_platformName == 'ios') {
       final documents = await _documentsDirectoryProvider();
       return [Directory(p.join(documents.path, resourceFolderName))];
-    }
-
-    if (_platformName == 'windows') {
-      final executableDirectory = _executableDirectoryProvider();
-      return [Directory(p.join(executableDirectory.path, resourceFolderName))];
     }
 
     if (_platformName == 'ohos') {
@@ -97,11 +79,11 @@ class AppPathsService {
       }
     }
 
-    final documents = await _documentsDirectoryProvider();
-    return [Directory(p.join(documents.path, resourceFolderName))];
-  }
+    if (_platformName == 'android') {
+      final documents = await _documentsDirectoryProvider();
+      return [Directory(p.join(documents.path, resourceFolderName))];
+    }
 
-  static Directory _defaultExecutableDirectory() {
-    return File(Platform.resolvedExecutable).parent;
+    throw UnsupportedError('当前平台不受支持：$_platformName');
   }
 }

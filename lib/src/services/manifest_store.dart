@@ -8,16 +8,58 @@ class ManifestStore {
 
   final File _file;
 
+  File get _temporaryFile => File('${_file.path}.tmp');
+
   Future<ResourceManifest> read() async {
-    if (!await _file.exists()) {
+    final mainExists = await _file.exists();
+    final temporaryExists = await _temporaryFile.exists();
+    if (!mainExists && !temporaryExists) {
       return ResourceManifest.initial();
     }
 
+    final main = mainExists ? await _tryRead(_file) : null;
+    final temporary = temporaryExists ? await _tryRead(_temporaryFile) : null;
+    final useTemporary = temporary != null &&
+        (main == null || temporary.generation > main.generation);
+    final selected = useTemporary ? temporary : main;
+    if (selected == null) {
+      return ResourceManifest.initial().copyWith(
+        resourceStatus: ResourceStatus.invalid,
+        lastErrorCode: 'manifest_unreadable',
+        lastErrorMessage: 'manifest.json 无法读取或不是有效 JSON',
+      );
+    }
+
+    if (useTemporary) {
+      await _temporaryFile.rename(_file.path);
+    } else if (temporaryExists) {
+      await _temporaryFile.delete();
+    }
+    return selected;
+  }
+
+  Future<void> write(ResourceManifest manifest) async {
+    await _file.parent.create(recursive: true);
+    const encoder = JsonEncoder.withIndent('  ');
+    await _temporaryFile.writeAsString(
+      '${encoder.convert(manifest.toJson())}\n',
+      flush: true,
+    );
+    await _temporaryFile.rename(_file.path);
+  }
+
+  Future<ResourceManifest?> _tryRead(File file) async {
     try {
       final json =
-          jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       return ResourceManifest(
-        schemaVersion: json['schemaVersion'] as int? ?? 1,
+        schemaVersion: ResourceManifest.initial().schemaVersion,
+        generation: json['generation'] as int? ?? 0,
+        activeSlot: _parseResourceSlot(json['activeSlot']),
+        transactionSlot: _parseResourceSlot(
+          (json['transaction'] as Map?)?['slot'],
+        ),
+        gameVersion: json['gameVersion'] as String?,
         lastImportAt: _parseDate(json['lastImportAt']),
         fileCount: json['fileCount'] as int? ?? 0,
         totalBytes: json['totalBytes'] as int? ?? 0,
@@ -31,18 +73,8 @@ class ManifestStore {
         ),
       );
     } catch (_) {
-      return ResourceManifest.initial().copyWith(
-        resourceStatus: ResourceStatus.invalid,
-        lastErrorCode: 'manifest_unreadable',
-        lastErrorMessage: 'manifest.json 无法读取或不是有效 JSON',
-      );
+      return null;
     }
-  }
-
-  Future<void> write(ResourceManifest manifest) async {
-    await _file.parent.create(recursive: true);
-    const encoder = JsonEncoder.withIndent('  ');
-    await _file.writeAsString('${encoder.convert(manifest.toJson())}\n');
   }
 
   DateTime? _parseDate(Object? value) {
@@ -59,7 +91,17 @@ class ManifestStore {
     );
   }
 
+  ResourceSlot? _parseResourceSlot(Object? value) {
+    return ResourceSlot.values.cast<ResourceSlot?>().firstWhere(
+          (slot) => slot?.name == value,
+          orElse: () => null,
+        );
+  }
+
   TransactionState _parseTransactionState(Object? value) {
+    if (value == 'staging' || value == 'switching') {
+      return TransactionState.migrating;
+    }
     return TransactionState.values.firstWhere(
       (state) => state.name == value,
       orElse: () => TransactionState.idle,

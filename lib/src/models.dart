@@ -2,39 +2,69 @@ import 'dart:io';
 
 enum ResourceStatus { missing, valid, invalid, ready }
 
-enum TransactionState { idle, staging, switching, selfChecking }
+enum ResourceSlot {
+  slotA,
+  slotB;
+
+  ResourceSlot get other => this == slotA ? slotB : slotA;
+}
+
+enum TransactionState {
+  idle,
+  extracting,
+  validating,
+  selfChecking,
+  readyToActivate,
+  cleaningOldSlot,
+  migrating,
+}
 
 enum ServerStatus { stopped, starting, running, failed }
 
 enum ImportPhase {
   idle,
+  receiving,
+  extracting,
   validating,
   scanning,
-  copying,
-  switching,
   selfChecking,
   completed,
   failed,
 }
 
+typedef ImportProgressCallback = void Function(ImportProgress progress);
+
 class AppPaths {
   AppPaths({
     required this.root,
     required this.manifestFile,
-    required this.importDir,
-    required this.importDocsDir,
-    required this.currentDir,
-    required this.previousDir,
-    required this.stagingDir,
   });
 
   final Directory root;
   final File manifestFile;
-  final Directory importDir;
-  final Directory importDocsDir;
-  final Directory currentDir;
-  final Directory previousDir;
-  final Directory stagingDir;
+
+  File get appSettingsFile =>
+      File('${root.path}${Platform.pathSeparator}app_settings.json');
+
+  Directory get slotADir =>
+      Directory('${root.path}${Platform.pathSeparator}slot-a');
+  Directory get slotBDir =>
+      Directory('${root.path}${Platform.pathSeparator}slot-b');
+
+  Directory get legacyImportDir =>
+      Directory('${root.path}${Platform.pathSeparator}import');
+  Directory get legacyImportDocsDir => Directory(
+        '${legacyImportDir.path}${Platform.pathSeparator}docs',
+      );
+  Directory get legacyCurrentDir =>
+      Directory('${root.path}${Platform.pathSeparator}current');
+  Directory get legacyPreviousDir =>
+      Directory('${root.path}${Platform.pathSeparator}previous');
+  Directory get legacyStagingDir =>
+      Directory('${root.path}${Platform.pathSeparator}staging');
+
+  Directory directoryFor(ResourceSlot slot) =>
+      slot == ResourceSlot.slotA ? slotADir : slotBDir;
 }
 
 class ResourceValidationResult {
@@ -228,6 +258,8 @@ class ImportProgress {
     this.copiedBytes = 0,
     this.totalFiles = 0,
     this.totalBytes = 0,
+    this.elapsed = Duration.zero,
+    this.bytesPerSecond = 0,
     this.message,
   });
 
@@ -236,9 +268,34 @@ class ImportProgress {
   final int copiedBytes;
   final int totalFiles;
   final int totalBytes;
+  final Duration elapsed;
+  final double bytesPerSecond;
   final String? message;
 
   static const idle = ImportProgress(phase: ImportPhase.idle);
+
+  int get stepCount => 4;
+
+  int get stepIndex => switch (phase) {
+        ImportPhase.receiving => 1,
+        ImportPhase.extracting => 2,
+        ImportPhase.validating || ImportPhase.scanning => 3,
+        ImportPhase.selfChecking || ImportPhase.completed => 4,
+        ImportPhase.idle || ImportPhase.failed => 0,
+      };
+
+  double? get value {
+    if (phase == ImportPhase.completed) {
+      return 1;
+    }
+    if (totalBytes > 0) {
+      return (copiedBytes / totalBytes).clamp(0.0, 1.0);
+    }
+    if (totalFiles > 0) {
+      return (copiedFiles / totalFiles).clamp(0.0, 1.0);
+    }
+    return null;
+  }
 
   ImportProgress copyWith({
     ImportPhase? phase,
@@ -246,6 +303,8 @@ class ImportProgress {
     int? copiedBytes,
     int? totalFiles,
     int? totalBytes,
+    Duration? elapsed,
+    double? bytesPerSecond,
     String? message,
   }) {
     return ImportProgress(
@@ -254,6 +313,8 @@ class ImportProgress {
       copiedBytes: copiedBytes ?? this.copiedBytes,
       totalFiles: totalFiles ?? this.totalFiles,
       totalBytes: totalBytes ?? this.totalBytes,
+      elapsed: elapsed ?? this.elapsed,
+      bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
       message: message ?? this.message,
     );
   }
@@ -262,6 +323,10 @@ class ImportProgress {
 class ResourceManifest {
   const ResourceManifest({
     required this.schemaVersion,
+    required this.generation,
+    required this.activeSlot,
+    required this.transactionSlot,
+    required this.gameVersion,
     required this.lastImportAt,
     required this.fileCount,
     required this.totalBytes,
@@ -275,7 +340,11 @@ class ResourceManifest {
 
   factory ResourceManifest.initial() {
     return const ResourceManifest(
-      schemaVersion: 1,
+      schemaVersion: 3,
+      generation: 0,
+      activeSlot: null,
+      transactionSlot: null,
+      gameVersion: null,
       lastImportAt: null,
       fileCount: 0,
       totalBytes: 0,
@@ -289,6 +358,10 @@ class ResourceManifest {
   }
 
   final int schemaVersion;
+  final int generation;
+  final ResourceSlot? activeSlot;
+  final ResourceSlot? transactionSlot;
+  final String? gameVersion;
   final DateTime? lastImportAt;
   final int fileCount;
   final int totalBytes;
@@ -300,6 +373,10 @@ class ResourceManifest {
   final TransactionState transactionState;
 
   ResourceManifest copyWith({
+    int? generation,
+    ResourceSlot? activeSlot,
+    ResourceSlot? transactionSlot,
+    String? gameVersion,
     DateTime? lastImportAt,
     int? fileCount,
     int? totalBytes,
@@ -310,9 +387,17 @@ class ResourceManifest {
     String? lastErrorMessage,
     TransactionState? transactionState,
     bool clearError = false,
+    bool clearGameVersion = false,
+    bool clearActiveSlot = false,
+    bool clearTransactionSlot = false,
   }) {
     return ResourceManifest(
       schemaVersion: schemaVersion,
+      generation: generation ?? this.generation,
+      activeSlot: clearActiveSlot ? null : activeSlot ?? this.activeSlot,
+      transactionSlot:
+          clearTransactionSlot ? null : transactionSlot ?? this.transactionSlot,
+      gameVersion: clearGameVersion ? null : gameVersion ?? this.gameVersion,
       lastImportAt: lastImportAt ?? this.lastImportAt,
       fileCount: fileCount ?? this.fileCount,
       totalBytes: totalBytes ?? this.totalBytes,
@@ -329,6 +414,9 @@ class ResourceManifest {
   Map<String, Object?> toJson() {
     return {
       'schemaVersion': schemaVersion,
+      'generation': generation,
+      'activeSlot': activeSlot?.name,
+      'gameVersion': gameVersion,
       'lastImportAt': lastImportAt?.toIso8601String(),
       'fileCount': fileCount,
       'totalBytes': totalBytes,
@@ -339,6 +427,7 @@ class ResourceManifest {
       'lastErrorMessage': lastErrorMessage,
       'transaction': {
         'state': transactionState.name,
+        'slot': transactionSlot?.name,
       },
     };
   }
@@ -351,6 +440,8 @@ class DiagnosticSnapshot {
     required this.osVersion,
     required this.webViewEngineVersion,
     required this.resourceRoot,
+    required this.activeSlot,
+    required this.activeResourcePath,
     required this.currentValidation,
     required this.importValidation,
     required this.lastImportAt,
@@ -371,6 +462,8 @@ class DiagnosticSnapshot {
   final String osVersion;
   final String webViewEngineVersion;
   final String resourceRoot;
+  final ResourceSlot? activeSlot;
+  final String? activeResourcePath;
   final ResourceValidationResult currentValidation;
   final ResourceValidationResult importValidation;
   final DateTime? lastImportAt;
@@ -392,9 +485,11 @@ class DiagnosticSnapshot {
       'OS version: $osVersion',
       'WebView engine version: $webViewEngineVersion',
       'resourceRoot: $resourceRoot',
-      'current validation: ${currentValidation.status.name}'
+      'activeSlot: ${activeSlot?.name}',
+      'activeResourcePath: $activeResourcePath',
+      'active slot validation: ${currentValidation.status.name}'
           '${currentValidation.errorCode == null ? '' : ' (${currentValidation.errorCode}: ${currentValidation.errorMessage})'}',
-      'import/docs validation: ${importValidation.status.name}'
+      'selected import validation: ${importValidation.status.name}'
           '${importValidation.errorCode == null ? '' : ' (${importValidation.errorCode}: ${importValidation.errorMessage})'}',
       'lastImportAt: ${lastImportAt?.toIso8601String()}',
       'fileCount: $fileCount',
@@ -425,8 +520,14 @@ class DiagnosticSnapshot {
         'resource.root',
         'path="${_logValue(resourceRoot)}"',
       ),
-      _validationLogLine('current.validation', currentValidation),
-      _validationLogLine('import.docs.validation', importValidation),
+      _logLine(
+        'INFO',
+        'resource.active',
+        'slot=${activeSlot?.name ?? 'none'} '
+            'path="${_logValue(activeResourcePath)}"',
+      ),
+      _validationLogLine('active.slot.validation', currentValidation),
+      _validationLogLine('selected.import.validation', importValidation),
       _logLine(
         'INFO',
         'manifest',

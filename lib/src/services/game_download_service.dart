@@ -4,8 +4,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:file_selector/file_selector.dart' as file_selector;
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -17,16 +15,7 @@ typedef FileExporter = Future<void> Function(
   GameDownloadFile file,
   Rect presentationOrigin,
 );
-typedef SaveLocationPicker = Future<file_selector.FileSaveLocation?> Function({
-  required List<file_selector.XTypeGroup> acceptedTypeGroups,
-  String? suggestedName,
-  String? confirmButtonText,
-});
-typedef FileSaver = Future<void> Function(GameDownloadFile file, String path);
 typedef HttpClientFactory = HttpClient Function();
-typedef WebHttpDownload = Future<GameDownloadPayload> Function(
-  GameDownloadRequest request,
-);
 typedef PlatformNameProvider = String Function();
 typedef UriPredicate = bool Function(Uri uri);
 
@@ -34,34 +23,22 @@ class GameDownloadService {
   GameDownloadService({
     DirectoryProvider? temporaryDirectoryProvider,
     FileExporter? fileExporter,
-    SaveLocationPicker? saveLocationPicker,
-    FileSaver? fileSaver,
     HttpClientFactory? httpClientFactory,
-    WebHttpDownload? webHttpDownload,
     PlatformNameProvider? platformNameProvider,
     UriPredicate? isAllowedHttpUri,
-    bool? isWeb,
   })  : _temporaryDirectoryProvider =
             temporaryDirectoryProvider ?? getTemporaryDirectory,
         _platformNameProvider =
             platformNameProvider ?? (() => Platform.operatingSystem),
-        _saveLocationPicker = saveLocationPicker ?? _pickSaveLocation,
-        _fileSaver = fileSaver ?? _saveFileToPath,
         _fileExporter = fileExporter,
         _httpClientFactory = httpClientFactory ?? HttpClient.new,
-        _webHttpDownload = webHttpDownload ?? _downloadWebHttp,
-        _isAllowedHttpUri = isAllowedHttpUri ?? _isLocalHttpUri,
-        _isWeb = isWeb ?? kIsWeb;
+        _isAllowedHttpUri = isAllowedHttpUri ?? _isLocalHttpUri;
 
   final DirectoryProvider _temporaryDirectoryProvider;
   final PlatformNameProvider _platformNameProvider;
-  final SaveLocationPicker _saveLocationPicker;
-  final FileSaver _fileSaver;
   final FileExporter? _fileExporter;
   final HttpClientFactory _httpClientFactory;
-  final WebHttpDownload _webHttpDownload;
   final UriPredicate _isAllowedHttpUri;
-  final bool _isWeb;
 
   Future<GameDownloadFile> prepareDownload({
     required GameDownloadRequest request,
@@ -84,15 +61,6 @@ class GameDownloadService {
       mimeType: mimeType,
       preferJsonExtension: _isJsonMimeType(mimeType),
     );
-
-    if (_isWeb) {
-      return GameDownloadFile(
-        name: fileName,
-        mimeType: mimeType,
-        byteLength: payload.bytes.length,
-        bytes: payload.bytes,
-      );
-    }
 
     final directory = await _temporaryDirectoryProvider();
     final exportDirectory = Directory(p.join(directory.path, 'game_exports'));
@@ -126,31 +94,11 @@ class GameDownloadService {
     GameDownloadFile file,
     Rect presentationOrigin,
   ) async {
-    if (!_isWeb) {
-      final platformName = _platformNameProvider();
-      if (_usesNativeFileExporter(platformName)) {
-        await GameDownloadFileExporter.export(file, presentationOrigin);
-        return;
-      }
+    final platformName = _platformNameProvider();
+    if (!_usesNativeFileExporter(platformName)) {
+      throw GameDownloadFailure('当前平台不支持导出：$platformName');
     }
-
-    final location = await _saveLocationPicker(
-      acceptedTypeGroups: const [
-        file_selector.XTypeGroup(
-          label: 'JSON save file',
-          extensions: ['json'],
-          mimeTypes: ['application/json'],
-          uniformTypeIdentifiers: ['public.json'],
-          webWildCards: ['application/json'],
-        ),
-      ],
-      suggestedName: file.name,
-      confirmButtonText: '保存',
-    );
-    if (location == null) {
-      throw const GameDownloadFailure.cancelled();
-    }
-    await _fileSaver(file, location.path);
+    await GameDownloadFileExporter.export(file, presentationOrigin);
   }
 
   Future<GameDownloadPayload> _resolveBlob(
@@ -167,10 +115,6 @@ class GameDownloadService {
     if (!_isAllowedHttpUri(request.uri)) {
       throw GameDownloadFailure('已拦截非本地导出地址');
     }
-    if (_isWeb) {
-      return _webHttpDownload(request);
-    }
-
     final client = _httpClientFactory();
     try {
       final httpRequest = await client.getUrl(request.uri);
@@ -192,19 +136,6 @@ class GameDownloadService {
       client.close(force: true);
     }
   }
-}
-
-Future<GameDownloadPayload> _downloadWebHttp(
-    GameDownloadRequest request) async {
-  final response = await http.get(request.uri);
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw GameDownloadFailure('导出下载失败：HTTP ${response.statusCode}');
-  }
-  return GameDownloadPayload(
-    bytes: response.bodyBytes,
-    mimeType: response.headers['content-type']?.split(';').first.trim() ??
-        request.mimeType,
-  );
 }
 
 class GameDownloadFileExporter {
@@ -452,35 +383,4 @@ bool _usesNativeFileExporter(String platformName) {
   return platformName == 'android' ||
       platformName == 'ios' ||
       platformName == 'ohos';
-}
-
-Future<file_selector.FileSaveLocation?> _pickSaveLocation({
-  required List<file_selector.XTypeGroup> acceptedTypeGroups,
-  String? suggestedName,
-  String? confirmButtonText,
-}) {
-  return file_selector.getSaveLocation(
-    acceptedTypeGroups: acceptedTypeGroups,
-    suggestedName: suggestedName,
-    confirmButtonText: confirmButtonText,
-  );
-}
-
-Future<void> _saveFileToPath(
-  GameDownloadFile file,
-  String destinationPath,
-) async {
-  final sourcePath = file.path;
-  final exportFile = sourcePath == null || sourcePath.isEmpty
-      ? file_selector.XFile.fromData(
-          file.bytes,
-          name: file.name,
-          mimeType: file.mimeType,
-        )
-      : file_selector.XFile(
-          sourcePath,
-          name: file.name,
-          mimeType: file.mimeType,
-        );
-  await exportFile.saveTo(destinationPath);
 }

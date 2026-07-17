@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,15 +7,125 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/constants.dart';
+import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/about_content_service.dart';
 import 'package:gardendless_loader/src/services/announcement_service.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/diagnostics_service.dart';
+import 'package:gardendless_loader/src/services/game_update_check_service.dart';
+import 'package:gardendless_loader/src/services/resource_picker_service.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
 import 'package:gardendless_loader/src/ui/home_page.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  testWidgets(
+    'active import expands in the hero and remains visible across navigation',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1180, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      late Directory root;
+      late AppController controller;
+      late Completer<void> importerStarted;
+      late Completer<void> releaseImporter;
+      Future<void>? importFuture;
+      await tester.runAsync(() async {
+        importerStarted = Completer<void>();
+        releaseImporter = Completer<void>();
+        root = await Directory.systemTemp.createTemp('gl_home_progress_');
+        controller = AppController(
+          pathsService:
+              AppPathsService(rootOverride: root, platformName: 'test'),
+          announcementService: _announcementService('null'),
+          aboutContentService: _aboutContentService(),
+          updateCheckService: _noUpdateService(),
+          gameUpdateCheckService: _noGameUpdateService(),
+          importAwakeModeSetter: (_) async {},
+          resourcePickerService: ResourcePickerService(
+            platformName: 'android',
+            mobileZipImporter: ({
+              required targetDirectory,
+              onProgress,
+            }) async {
+              onProgress?.call(const ImportProgress(
+                phase: ImportPhase.extracting,
+                copiedBytes: 256,
+                totalBytes: 1024,
+                copiedFiles: 2,
+                totalFiles: 8,
+                message: '正在解压资源',
+              ));
+              if (!importerStarted.isCompleted) {
+                importerStarted.complete();
+              }
+              await releaseImporter.future;
+              await _writeValidResource(Directory(targetDirectory));
+              return targetDirectory;
+            },
+          ),
+        );
+        await controller.initialize();
+      });
+      addTearDown(() {
+        if (!releaseImporter.isCompleted) {
+          releaseImporter.complete();
+        }
+      });
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+
+      expect(
+          find.byKey(const ValueKey('resource-progress-region')), findsNothing);
+
+      await tester.runAsync(() async {
+        importFuture = controller.importResources();
+        await importerStarted.future;
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      try {
+        expect(find.byKey(const ValueKey('resource-progress-region')),
+            findsOneWidget);
+        expect(find.text('步骤 2/4 · 正在解压资源'), findsOneWidget);
+        expect(find.byKey(const ValueKey('resource-progress-details')),
+            findsOneWidget);
+
+        await tester
+            .tap(find.byKey(const ValueKey('resource-progress-toggle')));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(find.byKey(const ValueKey('resource-progress-region')),
+            findsOneWidget);
+        expect(find.byKey(const ValueKey('resource-progress-details')),
+            findsNothing);
+
+        await tester.tap(find.text('日志'));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('resource-nav-progress')),
+            findsOneWidget);
+        expect(find.text('25%'), findsOneWidget);
+      } finally {
+        await tester.runAsync(() async {
+          if (!releaseImporter.isCompleted) {
+            releaseImporter.complete();
+          }
+          await importFuture!;
+        });
+        controller.dispose();
+        await tester.runAsync(() async {
+          if (await root.exists()) {
+            await root.delete(recursive: true);
+          }
+        });
+      }
+    },
+    timeout: const Timeout(Duration(seconds: 15)),
+  );
+
   testWidgets(
     'home page enters immersive system UI',
     (tester) async {
@@ -72,8 +183,10 @@ void main() {
       expect(find.text('日志'), findsOneWidget);
       expect(find.text('关于'), findsOneWidget);
       expect(find.text('PvZ2 Gardendless'), findsOneWidget);
-      expect(find.text('v0.1.0'), findsOneWidget);
+      expect(find.text('加载器 v0.1.0'), findsOneWidget);
+      expect(find.text('游戏 未知'), findsOneWidget);
       expect(find.byKey(const ValueKey('app-version-pill')), findsOneWidget);
+      expect(find.byKey(const ValueKey('game-version-pill')), findsOneWidget);
       expect(find.text('资源根目录'), findsOneWidget);
       expect(find.text('复制'), findsOneWidget);
       expect(find.text('资源校验'), findsOneWidget);
@@ -327,7 +440,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('current.validation', findRichText: true),
+        find.textContaining('active.slot.validation', findRichText: true),
         findsOneWidget,
       );
       expect(find.text('资源信息'), findsNothing);
@@ -407,7 +520,7 @@ void main() {
       await tester.pump();
 
       expect(copiedText, contains('App version:'));
-      expect(copiedText, contains('current validation:'));
+      expect(copiedText, contains('active slot validation:'));
       expect(copiedText, contains('serverStatus:'));
       expect(find.text('日志信息已复制'), findsOneWidget);
     },
@@ -499,6 +612,7 @@ Future<AppController> _readyController(
       aboutContentService: aboutContentService ?? _aboutContentService(),
       diagnosticsService: diagnosticsService,
       updateCheckService: _noUpdateService(),
+      gameUpdateCheckService: _noGameUpdateService(),
     );
     await controller.initialize();
     return controller;
@@ -511,6 +625,7 @@ Future<AppController> _emptyController(WidgetTester tester) async {
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: _noUpdateService(),
+      gameUpdateCheckService: _noGameUpdateService(),
     );
     await controller.initialize();
     return controller;
@@ -529,6 +644,15 @@ UpdateCheckService _noUpdateService() {
   "html_url": "https://github.com/Dey410/GardendlessLoader/releases/tag/v0.1.0"
 }
 ''',
+    ),
+  );
+}
+
+GameUpdateCheckService _noGameUpdateService() {
+  return GameUpdateCheckService(
+    loader: (uri, timeout, maxBytes) async => const GameUpdateCheckHttpResponse(
+      statusCode: HttpStatus.ok,
+      body: '[{"name":"0.11.0"}]',
     ),
   );
 }

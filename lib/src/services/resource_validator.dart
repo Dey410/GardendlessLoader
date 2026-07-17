@@ -48,7 +48,8 @@ class ResourceValidator {
     }
 
     final lowerIndex = indexHtml.toLowerCase();
-    if (!lowerIndex.contains('pvzge') && !lowerIndex.contains('play.pvzge.com')) {
+    if (!lowerIndex.contains('pvzge') &&
+        !lowerIndex.contains('play.pvzge.com')) {
       return ResourceValidationResult.invalid(
         'index_fingerprint_mismatch',
         'index.html 未包含 pvzge 指纹',
@@ -63,7 +64,8 @@ class ResourceValidator {
     return ResourceValidationResult.valid(detectedTitle: detectedTitle);
   }
 
-  Future<ResourceStats> scanStats(Directory root, {String? detectedTitle}) async {
+  Future<ResourceStats> scanStats(Directory root,
+      {String? detectedTitle}) async {
     var fileCount = 0;
     var totalBytes = 0;
 

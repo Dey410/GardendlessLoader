@@ -9,6 +9,8 @@ import zlib
     "io.github.dey410.gardendlessloader/resource_zip_importer"
   private let gameFileExporterChannelName =
     "io.github.dey410.gardendlessloader/game_file_exporter"
+  private var resourceZipImporterChannel: FlutterMethodChannel?
+  private var lastImportProgressReportAt: UInt64 = 0
   private var pendingImportResult: FlutterResult?
   private var pendingImportTargetDirectory: String?
   private var zipImportInProgress = false
@@ -33,6 +35,7 @@ import zlib
       name: resourceZipImporterChannelName,
       binaryMessenger: controller.binaryMessenger
     )
+    resourceZipImporterChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
       guard call.method == "pickAndExtractDocsZip" else {
         result(FlutterMethodNotImplemented)
@@ -260,7 +263,22 @@ import zlib
   }
 
   private func extractDocsZip(from zipUrl: URL, to targetDirectory: URL) throws {
+    let attributes = try FileManager.default.attributesOfItem(atPath: zipUrl.path)
+    let sourceBytes = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+    reportImportProgress(
+      phase: "receiving",
+      totalBytes: sourceBytes,
+      message: "正在读取 ZIP",
+      force: true
+    )
     let entries = try readZipCentralDirectory(from: zipUrl)
+    reportImportProgress(
+      phase: "receiving",
+      processedBytes: sourceBytes,
+      totalBytes: sourceBytes,
+      message: "已读取 ZIP",
+      force: true
+    )
     let docsPrefix = try findDocsPrefix(in: entries)
     guard let docsPrefix else {
       throw ZipImportError("选择的 ZIP 中没有找到有效的 docs 资源目录")
@@ -268,20 +286,39 @@ import zlib
 
     try resetDirectory(targetDirectory)
 
+    var selectedEntries: [(entry: ZipEntry, archivePath: String)] = []
+    for entry in entries {
+      if entry.isSymbolicLink {
+        throw ZipImportError("选择的 ZIP 包含不支持的符号链接")
+      }
+      let archivePath = try safeArchivePath(entry.name)
+      if isWithinArchivePrefix(archivePath, prefix: docsPrefix) {
+        selectedEntries.append((entry, archivePath))
+      }
+    }
+    let fileEntries = selectedEntries.filter { !$0.entry.isDirectory }
+    let totalFiles = fileEntries.count
+    let totalBytes = fileEntries.reduce(UInt64(0)) {
+      $0 + $1.entry.uncompressedSize
+    }
+    var processedFiles = 0
+    var processedBytes = UInt64(0)
+    reportImportProgress(
+      phase: "extracting",
+      totalBytes: totalBytes,
+      totalFiles: totalFiles,
+      message: "正在解压资源",
+      force: true
+    )
+
     let zipFile = try FileHandle(forReadingFrom: zipUrl)
     defer {
       zipFile.closeFile()
     }
 
-    for entry in entries {
-      if entry.isSymbolicLink {
-        throw ZipImportError("选择的 ZIP 包含不支持的符号链接")
-      }
-
-      let archivePath = try safeArchivePath(entry.name)
-      if !isWithinArchivePrefix(archivePath, prefix: docsPrefix) {
-        continue
-      }
+    for selected in selectedEntries {
+      let entry = selected.entry
+      let archivePath = selected.archivePath
 
       let relativePath = docsPrefix.isEmpty
         ? archivePath
@@ -319,22 +356,72 @@ import zlib
 
       let dataOffset = try localFileDataOffset(for: entry, in: zipFile)
       zipFile.seek(toFileOffset: dataOffset)
+      let onBytesWritten: (Int) -> Void = { [weak self] count in
+        processedBytes += UInt64(count)
+        self?.reportImportProgress(
+          phase: "extracting",
+          processedBytes: processedBytes,
+          totalBytes: totalBytes,
+          processedFiles: processedFiles,
+          totalFiles: totalFiles,
+          message: "正在解压资源"
+        )
+      }
       switch entry.compressionMethod {
       case 0:
         try copyStoredEntry(
           from: zipFile,
           compressedSize: entry.compressedSize,
-          to: output
+          to: output,
+          onBytesWritten: onBytesWritten
         )
       case 8:
         try inflateDeflatedEntry(
           from: zipFile,
           compressedSize: entry.compressedSize,
-          to: output
+          to: output,
+          onBytesWritten: onBytesWritten
         )
       default:
         throw ZipImportError("选择的 ZIP 包含不支持的压缩方式")
       }
+      processedFiles += 1
+      reportImportProgress(
+        phase: "extracting",
+        processedBytes: processedBytes,
+        totalBytes: totalBytes,
+        processedFiles: processedFiles,
+        totalFiles: totalFiles,
+        message: "正在解压资源",
+        force: true
+      )
+    }
+  }
+
+  private func reportImportProgress(
+    phase: String,
+    processedBytes: UInt64 = 0,
+    totalBytes: UInt64 = 0,
+    processedFiles: Int = 0,
+    totalFiles: Int = 0,
+    message: String,
+    force: Bool = false
+  ) {
+    let now = DispatchTime.now().uptimeNanoseconds
+    if !force && now - lastImportProgressReportAt < progressReportIntervalNs {
+      return
+    }
+    lastImportProgressReportAt = now
+    let arguments: [String: Any] = [
+      "phase": phase,
+      "processedBytes": Int64(clamping: processedBytes),
+      "totalBytes": Int64(clamping: totalBytes),
+      "processedFiles": processedFiles,
+      "totalFiles": totalFiles,
+      "message": message,
+    ]
+    DispatchQueue.main.async { [weak self] in
+      self?.resourceZipImporterChannel?.invokeMethod("progress", arguments: arguments)
     }
   }
 
@@ -512,7 +599,8 @@ import zlib
   private func copyStoredEntry(
     from zipFile: FileHandle,
     compressedSize: UInt64,
-    to output: OutputStream
+    to output: OutputStream,
+    onBytesWritten: (Int) -> Void
   ) throws {
     var remaining = compressedSize
     while remaining > 0 {
@@ -527,6 +615,7 @@ import zlib
         }
         try write(baseAddress, count: data.count, to: output)
       }
+      onBytesWritten(data.count)
       remaining -= UInt64(data.count)
     }
   }
@@ -534,7 +623,8 @@ import zlib
   private func inflateDeflatedEntry(
     from zipFile: FileHandle,
     compressedSize: UInt64,
-    to output: OutputStream
+    to output: OutputStream,
+    onBytesWritten: (Int) -> Void
   ) throws {
     var stream = z_stream()
     let initStatus = inflateInit2_(
@@ -588,6 +678,7 @@ import zlib
               }
               try write(outputBaseAddress, count: produced, to: output)
             }
+            onBytesWritten(produced)
           }
 
           if status == Z_STREAM_END {
@@ -818,3 +909,4 @@ private let zipCentralHeaderLength = 46
 private let zipEndOfCentralDirectoryMinLength = 22
 private let zipMaxCommentLength = 0xffff
 private let zipCopyBufferSize = 64 * 1024
+private let progressReportIntervalNs: UInt64 = 100_000_000

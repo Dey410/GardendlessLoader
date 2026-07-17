@@ -18,11 +18,21 @@ import {
 const CHANNEL_NAME = 'io.github.dey410.gardendlessloader/resource_zip_importer';
 const METHOD_PICK_AND_EXTRACT = 'pickAndExtractDocsZip';
 const ZIP_COPY_NAME = 'gardendless-resource.zip';
+const PROGRESS_REPORT_INTERVAL_MS = 100;
+
+interface ImportProgressPayload {
+  phase: string;
+  processedBytes: number;
+  totalBytes: number;
+  processedFiles: number;
+  totalFiles: number;
+}
 
 export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, MethodCallHandler {
   private channel: MethodChannel | null = null;
   private context: common.UIAbilityContext | null = null;
   private busy: boolean = false;
+  private lastProgressReportAt: number = 0;
 
   getUniqueClassName(): string {
     return 'ResourceZipImporterPlugin';
@@ -91,22 +101,43 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
     }
 
     const workRoot = this.joinPath(context.cacheDir, `resource_zip_import_${Date.now()}`);
-    const extractRoot = this.joinPath(workRoot, 'extract');
     const zipPath = this.joinPath(workRoot, ZIP_COPY_NAME);
 
     try {
       this.ensureDirectory(workRoot);
-      this.ensureDirectory(extractRoot);
+      this.reportProgress({
+        phase: 'receiving',
+        processedBytes: 0,
+        totalBytes: 0,
+        processedFiles: 0,
+        totalFiles: 0,
+      }, true);
       this.copyPickerUriToFile(selectedUri, zipPath);
-      await zlib.decompressFile(zipPath, extractRoot);
+      const zipBytes = fs.statSync(zipPath).size;
+      this.reportProgress({
+        phase: 'receiving',
+        processedBytes: zipBytes,
+        totalBytes: zipBytes,
+        processedFiles: 0,
+        totalFiles: 0,
+      }, true);
+      this.reportProgress({
+        phase: 'extracting',
+        processedBytes: 0,
+        totalBytes: 0,
+        processedFiles: 0,
+        totalFiles: 0,
+      }, true);
+      this.resetDirectory(targetDirectory);
+      await zlib.decompressFile(zipPath, targetDirectory);
 
-      const docsDirectory = this.findDocsDirectory(extractRoot);
+      const docsDirectory = this.findDocsDirectory(targetDirectory);
       if (docsDirectory == null) {
         throw new Error('选择的 ZIP 中没有找到有效的 docs 资源目录');
       }
 
-      this.resetDirectory(targetDirectory);
-      this.copyDirectoryContents(docsDirectory, targetDirectory);
+      this.reportExtractedFiles(docsDirectory);
+      this.promoteDocsDirectory(docsDirectory, targetDirectory);
       return targetDirectory;
     } finally {
       this.deleteIfExists(workRoot);
@@ -167,32 +198,60 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
       this.isDirectory(this.joinPath(directory, 'src'));
   }
 
-  private copyDirectoryContents(sourceDirectory: string, targetDirectory: string): void {
-    this.ensureDirectory(targetDirectory);
-    for (const name of this.listFileNames(sourceDirectory)) {
-      this.copyPath(this.joinPath(sourceDirectory, name), this.joinPath(targetDirectory, name));
+  private reportExtractedFiles(directory: string): void {
+    const files = this.collectFiles(directory);
+    const totalFiles = files.length;
+    let totalBytes = 0;
+    for (const filePath of files) {
+      totalBytes += fs.statSync(filePath).size;
     }
+
+    this.reportProgress({
+      phase: 'extracting',
+      processedBytes: totalBytes,
+      totalBytes: totalBytes,
+      processedFiles: totalFiles,
+      totalFiles: totalFiles,
+    }, true);
   }
 
-  private copyPath(sourcePath: string, targetPath: string): void {
-    if (this.isDirectory(sourcePath)) {
-      this.ensureDirectory(targetPath);
-      for (const name of this.listFileNames(sourcePath)) {
-        this.copyPath(this.joinPath(sourcePath, name), this.joinPath(targetPath, name));
-      }
+  private promoteDocsDirectory(docsDirectory: string, targetDirectory: string): void {
+    if (docsDirectory === targetDirectory) {
       return;
     }
 
-    this.ensureDirectory(this.dirname(targetPath));
-    let input: fs.File | null = null;
-    try {
-      input = fs.openSync(sourcePath, fs.OpenMode.READ_ONLY);
-      fs.copyFileSync(input.fd, targetPath);
-    } finally {
-      if (input != null) {
-        fs.closeSync(input.fd);
+    const promotedName = `.promoted-docs-${Date.now()}`;
+    const promotedDirectory = this.joinPath(targetDirectory, promotedName);
+    fs.renameSync(docsDirectory, promotedDirectory);
+
+    for (const name of this.listFileNames(targetDirectory)) {
+      if (name !== promotedName) {
+        this.deleteIfExists(this.joinPath(targetDirectory, name));
       }
     }
+    for (const name of this.listFileNames(promotedDirectory)) {
+      fs.renameSync(
+        this.joinPath(promotedDirectory, name),
+        this.joinPath(targetDirectory, name),
+      );
+    }
+    fs.rmdirSync(promotedDirectory);
+  }
+
+  private reportProgress(progress: ImportProgressPayload, force: boolean = false): void {
+    const now = Date.now();
+    if (!force && now - this.lastProgressReportAt < PROGRESS_REPORT_INTERVAL_MS) {
+      return;
+    }
+    this.lastProgressReportAt = now;
+
+    const argumentsMap = new Map<string, Object>();
+    argumentsMap.set('phase', progress.phase);
+    argumentsMap.set('processedBytes', progress.processedBytes);
+    argumentsMap.set('totalBytes', progress.totalBytes);
+    argumentsMap.set('processedFiles', progress.processedFiles);
+    argumentsMap.set('totalFiles', progress.totalFiles);
+    this.channel?.invokeMethod('progress', argumentsMap);
   }
 
   private resetDirectory(directory: string): void {
