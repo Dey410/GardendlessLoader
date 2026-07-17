@@ -131,7 +131,10 @@ void main() {
     expect(exporter, contains('DocumentSaveOptions'));
     expect(exporter, contains('DocumentViewPicker'));
     expect(exporter, contains('documentViewPicker.save'));
-    expect(exporter, contains('copyFileSync'));
+    expect(
+        exporter, contains('fs.openSync(targetUri, fs.OpenMode.READ_WRITE)'));
+    expect(exporter, contains('fs.copyFileSync(input.fd, output.fd)'));
+    expect(exporter, contains('fs.closeSync(output.fd)'));
     expect(exporter, contains('isCancelledError'));
     expect(exporter, contains("result.error('export_cancelled'"));
     expect(exporter, contains("message.toLowerCase().includes('cancel')"));
