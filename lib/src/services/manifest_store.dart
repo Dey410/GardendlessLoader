@@ -17,7 +17,8 @@ class ManifestStore {
       final json =
           jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
       return ResourceManifest(
-        schemaVersion: json['schemaVersion'] as int? ?? 1,
+        schemaVersion: ResourceManifest.initial().schemaVersion,
+        gameVersion: json['gameVersion'] as String?,
         lastImportAt: _parseDate(json['lastImportAt']),
         fileCount: json['fileCount'] as int? ?? 0,
         totalBytes: json['totalBytes'] as int? ?? 0,

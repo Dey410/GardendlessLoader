@@ -20,6 +20,20 @@ void main() {
     expect(appDelegate, contains('src/import-map.json'));
   });
 
+  test('iOS streams ZIP import progress to Flutter', () {
+    final appDelegate = File('ios/Runner/AppDelegate.swift').readAsStringSync();
+
+    expect(appDelegate, contains('resourceZipImporterChannel'));
+    expect(appDelegate, contains('invokeMethod("progress"'));
+    expect(appDelegate, contains('phase: "receiving"'));
+    expect(appDelegate, contains('phase: "extracting"'));
+    expect(appDelegate, contains('"processedBytes"'));
+    expect(appDelegate, contains('"totalBytes"'));
+    expect(appDelegate, contains('"processedFiles"'));
+    expect(appDelegate, contains('"totalFiles"'));
+    expect(appDelegate, contains('onBytesWritten'));
+  });
+
   test('iOS zip picker imports a copied file so tapping a zip completes', () {
     final appDelegate = File('ios/Runner/AppDelegate.swift').readAsStringSync();
     final pickerFactory = RegExp(

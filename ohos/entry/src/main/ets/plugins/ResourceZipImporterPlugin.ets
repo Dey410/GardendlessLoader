@@ -18,11 +18,21 @@ import {
 const CHANNEL_NAME = 'io.github.dey410.gardendlessloader/resource_zip_importer';
 const METHOD_PICK_AND_EXTRACT = 'pickAndExtractDocsZip';
 const ZIP_COPY_NAME = 'gardendless-resource.zip';
+const PROGRESS_REPORT_INTERVAL_MS = 100;
+
+interface ImportProgressPayload {
+  phase: string;
+  processedBytes: number;
+  totalBytes: number;
+  processedFiles: number;
+  totalFiles: number;
+}
 
 export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, MethodCallHandler {
   private channel: MethodChannel | null = null;
   private context: common.UIAbilityContext | null = null;
   private busy: boolean = false;
+  private lastProgressReportAt: number = 0;
 
   getUniqueClassName(): string {
     return 'ResourceZipImporterPlugin';
@@ -97,7 +107,29 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
     try {
       this.ensureDirectory(workRoot);
       this.ensureDirectory(extractRoot);
+      this.reportProgress({
+        phase: 'receiving',
+        processedBytes: 0,
+        totalBytes: 0,
+        processedFiles: 0,
+        totalFiles: 0,
+      }, true);
       this.copyPickerUriToFile(selectedUri, zipPath);
+      const zipBytes = fs.statSync(zipPath).size;
+      this.reportProgress({
+        phase: 'receiving',
+        processedBytes: zipBytes,
+        totalBytes: zipBytes,
+        processedFiles: 0,
+        totalFiles: 0,
+      }, true);
+      this.reportProgress({
+        phase: 'extracting',
+        processedBytes: 0,
+        totalBytes: 0,
+        processedFiles: 0,
+        totalFiles: 0,
+      }, true);
       await zlib.decompressFile(zipPath, extractRoot);
 
       const docsDirectory = this.findDocsDirectory(extractRoot);
@@ -169,9 +201,51 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
 
   private copyDirectoryContents(sourceDirectory: string, targetDirectory: string): void {
     this.ensureDirectory(targetDirectory);
-    for (const name of this.listFileNames(sourceDirectory)) {
-      this.copyPath(this.joinPath(sourceDirectory, name), this.joinPath(targetDirectory, name));
+    const files = this.collectFiles(sourceDirectory);
+    const totalFiles = files.length;
+    let totalBytes = 0;
+    for (const filePath of files) {
+      totalBytes += fs.statSync(filePath).size;
     }
+
+    let processedFiles = 0;
+    let processedBytes = 0;
+    this.reportProgress({
+      phase: 'extracting',
+      processedBytes: 0,
+      totalBytes: totalBytes,
+      processedFiles: 0,
+      totalFiles: totalFiles,
+    }, true);
+    for (const sourcePath of files) {
+      const relativePath = sourcePath.substring(sourceDirectory.length + 1);
+      this.copyPath(sourcePath, this.joinPath(targetDirectory, relativePath));
+      processedFiles += 1;
+      processedBytes += fs.statSync(sourcePath).size;
+      this.reportProgress({
+        phase: 'extracting',
+        processedBytes: processedBytes,
+        totalBytes: totalBytes,
+        processedFiles: processedFiles,
+        totalFiles: totalFiles,
+      }, processedFiles === totalFiles);
+    }
+  }
+
+  private reportProgress(progress: ImportProgressPayload, force: boolean = false): void {
+    const now = Date.now();
+    if (!force && now - this.lastProgressReportAt < PROGRESS_REPORT_INTERVAL_MS) {
+      return;
+    }
+    this.lastProgressReportAt = now;
+
+    const argumentsMap = new Map<string, Object>();
+    argumentsMap.set('phase', progress.phase);
+    argumentsMap.set('processedBytes', progress.processedBytes);
+    argumentsMap.set('totalBytes', progress.totalBytes);
+    argumentsMap.set('processedFiles', progress.processedFiles);
+    argumentsMap.set('totalFiles', progress.totalFiles);
+    this.channel?.invokeMethod('progress', argumentsMap);
   }
 
   private copyPath(sourcePath: string, targetPath: string): void {

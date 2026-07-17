@@ -6,7 +6,7 @@
 
 [English](README.en.md)
 
-`GardendlessLoader` 是一个 Flutter 本地加载器，用来在移动端和 Web 端加载用户自行提供的
+`GardendlessLoader` 是一个 Flutter 本地加载器，用来在 Android、iOS 和 HarmonyOS/OpenHarmony 上加载用户自行提供的
 [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) 网页资源包。
 
 App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构建目录，完成结构校验后通过本地 HTTP
@@ -23,8 +23,9 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 - 游戏页固定横屏、沉浸式显示，并默认拦截非本地请求。
 - 导入过程带进度显示，失败时回滚到旧资源，启动时恢复未完成事务。
 - 提供可复制的诊断信息，方便排查资源、平台、WebView 和本地 server 状态。
-- 游戏画面在 `16:10～17:9` 之间自适应屏幕，并支持首页公告、GitHub Release 更新检查和自动收集阳光。
-- GitHub Actions 可产出 Android、iOS、HarmonyOS/OpenHarmony 和 Web 产物。
+- 游戏画面在 `16:10～17:9` 之间自适应屏幕，并支持首页公告、加载器与游戏资源双更新检查和自动收集阳光。
+- 从资源页面标题识别本地游戏版本，以 [`pvzg_site` 稳定版 tags](https://github.com/Gzh0821/pvzg_site/tags) 检查游戏更新；发现更新时提供游戏 GitHub 与共享网盘入口。
+- GitHub Actions 可产出 Android、iOS 和 HarmonyOS/OpenHarmony 产物。
 
 ## 使用方式
 
@@ -51,7 +52,7 @@ GardendlessLoader/
   current/         # 当前正在使用的资源
   previous/        # 回滚用的上一版资源
   staging/         # 导入事务临时目录
-  manifest.json    # 导入状态、资源统计和公告状态
+  manifest.json    # 导入状态、资源统计和本地游戏版本
 ```
 
 资源根目录位置会因平台不同而不同，App 首页会显示当前设备上的完整路径。
@@ -75,6 +76,7 @@ docs/
 校验器还会检查：
 
 - `index.html` 标题包含 `PvZ2 Gardendless`。
+- 若标题包含 `0.11.0`、`v0.11.0` 或 `0.12.0-next` 形式的版本号，App 会识别并显示该游戏版本。
 - `index.html` 包含 `pvzge` 或 `play.pvzge.com` 指纹。
 - `src/settings.json` 是有效 JSON，并符合 Cocos 配置文件的基本形态。
 
@@ -97,6 +99,7 @@ flutter run
 | `lib/src/services/import_service.dart` | staging 导入、current 切换、失败回滚、启动恢复 |
 | `lib/src/services/local_game_server.dart` | 本地 HTTP server、MIME 处理和自检 |
 | `lib/src/services/resource_validator.dart` | 资源结构、标题和 Cocos 配置校验 |
+| `lib/src/services/game_update_check_service.dart` | 本地游戏版本识别、稳定 tag 选择和版本比较 |
 | `lib/src/ui/home_page.dart` | 导入、状态、公告、更新和诊断 UI |
 | `lib/src/ui/game_page.dart` | 横屏 WebView 游戏页、菜单和游戏辅助开关 |
 | `lib/src/web/touch_patch.dart` | 单指左键、双指右键/滚轮和触摸取消状态机 |
@@ -158,7 +161,6 @@ flutter build hap --release --target-platform ohos-x64
 `.github/workflows/build-mobile.yml` 会运行测试并构建以下产物：
 
 - Android release APK
-- Web bundle
 - 未签名 iOS IPA
 - 未签名 HarmonyOS HAP（配置 `OHOS_COMMANDLINE_TOOLS_URL` 后启用）
 

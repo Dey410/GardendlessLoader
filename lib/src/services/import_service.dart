@@ -4,21 +4,51 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models.dart';
+import 'game_update_check_service.dart';
 import 'local_game_server.dart';
 import 'manifest_store.dart';
 import 'resource_validator.dart';
 
-typedef ImportProgressCallback = void Function(ImportProgress progress);
-
 class ImportService {
+  static const importSessionMarkerName = '.import_in_progress';
+
   ImportService({
     required ResourceValidator validator,
     required LocalGameServer server,
+    GameUpdateCheckService? gameUpdateCheckService,
   })  : _validator = validator,
-        _server = server;
+        _server = server,
+        _gameUpdateCheckService =
+            gameUpdateCheckService ?? GameUpdateCheckService();
 
   final ResourceValidator _validator;
   final LocalGameServer _server;
+  final GameUpdateCheckService _gameUpdateCheckService;
+
+  Future<void> markImportStarted(AppPaths paths) async {
+    await _importSessionMarker(paths).writeAsString(
+      DateTime.now().toUtc().toIso8601String(),
+      flush: true,
+    );
+  }
+
+  Future<void> clearImportMarker(AppPaths paths) async {
+    final marker = _importSessionMarker(paths);
+    if (await marker.exists()) {
+      await marker.delete();
+    }
+  }
+
+  Future<bool> recoverInterruptedImport(AppPaths paths) async {
+    final marker = _importSessionMarker(paths);
+    if (!await marker.exists()) {
+      return false;
+    }
+
+    await _resetDirectory(paths.importDocsDir);
+    await marker.delete();
+    return true;
+  }
 
   Future<ResourceManifest> importResources({
     required AppPaths paths,
@@ -106,8 +136,11 @@ class ImportService {
 
       await _server.selfCheck(root: paths.currentDir);
       await _server.stop();
+      final gameVersion =
+          await _gameUpdateCheckService.loadCurrentVersion(paths.currentDir);
 
       manifest = ResourceManifest.initial().copyWith(
+        gameVersion: gameVersion,
         lastImportAt: DateTime.now(),
         fileCount: stats.fileCount,
         totalBytes: stats.totalBytes,
@@ -215,6 +248,10 @@ class ImportService {
       await _copyDirectoryContents(paths.previousDir, paths.currentDir);
       await _resetDirectory(paths.previousDir);
     }
+  }
+
+  File _importSessionMarker(AppPaths paths) {
+    return File(p.join(paths.root.path, importSessionMarkerName));
   }
 
   Future<void> _copyDirectory(

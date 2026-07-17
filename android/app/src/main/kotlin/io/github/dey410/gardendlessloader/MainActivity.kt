@@ -10,21 +10,26 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.Locale
 import java.util.zip.ZipInputStream
 
 class MainActivity : FlutterActivity() {
+    private var resourceZipImporterChannel: MethodChannel? = null
     private var pendingResult: MethodChannel.Result? = null
     private var pendingTargetDirectory: String? = null
     private var pendingExportResult: MethodChannel.Result? = null
     private var pendingExportPath: String? = null
+    private var lastImportProgressReportAt = 0L
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(
+        val importChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "io.github.dey410.gardendlessloader/resource_zip_importer",
-        ).setMethodCallHandler { call, result ->
+        )
+        resourceZipImporterChannel = importChannel
+        importChannel.setMethodCallHandler { call, result ->
             if (call.method != "pickAndExtractDocsZip") {
                 result.notImplemented()
                 return@setMethodCallHandler
@@ -151,6 +156,7 @@ class MainActivity : FlutterActivity() {
 
         Thread {
             try {
+                lastImportProgressReportAt = 0L
                 extractDocsZip(uri, File(targetDirectory))
                 runOnUiThread { result.success(targetDirectory) }
             } catch (error: Exception) {
@@ -211,24 +217,43 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun extractDocsZip(uri: Uri, targetDirectory: File) {
-        val docsPrefix = findDocsPrefix(uri)
+        val sourceBytes = contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+            descriptor.length.coerceAtLeast(0L)
+        } ?: 0L
+        reportImportProgress(
+            phase = "receiving",
+            processedBytes = 0,
+            totalBytes = sourceBytes,
+            message = "正在读取 ZIP",
+            force = true,
+        )
+        val scan = findDocsPrefix(uri, sourceBytes)
             ?: throw IllegalArgumentException("选择的 ZIP 中没有找到有效的 docs 资源目录")
         resetDirectory(targetDirectory)
+        var processedBytes = 0L
+        var processedFiles = 0
+        reportImportProgress(
+            phase = "extracting",
+            processedFiles = 0,
+            totalFiles = scan.totalFiles,
+            message = "正在解压资源",
+            force = true,
+        )
 
         contentResolver.openInputStream(uri)?.use { input ->
             ZipInputStream(BufferedInputStream(input)).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     val archivePath = safeArchivePath(entry.name)
-                    if (!isWithinArchivePrefix(archivePath, docsPrefix)) {
+                    if (!isWithinArchivePrefix(archivePath, scan.prefix)) {
                         zip.closeEntry()
                         continue
                     }
 
-                    val relativePath = if (docsPrefix.isEmpty()) {
+                    val relativePath = if (scan.prefix.isEmpty()) {
                         archivePath
                     } else {
-                        archivePath.removePrefix("$docsPrefix/")
+                        archivePath.removePrefix("${scan.prefix}/")
                     }
                     if (relativePath.isEmpty()) {
                         zip.closeEntry()
@@ -241,8 +266,32 @@ class MainActivity : FlutterActivity() {
                     } else {
                         targetFile.parentFile?.mkdirs()
                         BufferedOutputStream(FileOutputStream(targetFile)).use { output ->
-                            zip.copyTo(output, zipCopyBufferSize)
+                            val buffer = ByteArray(zipCopyBufferSize)
+                            while (true) {
+                                val count = zip.read(buffer)
+                                if (count < 0) {
+                                    break
+                                }
+                                output.write(buffer, 0, count)
+                                processedBytes += count
+                                reportImportProgress(
+                                    phase = "extracting",
+                                    processedBytes = processedBytes,
+                                    processedFiles = processedFiles,
+                                    totalFiles = scan.totalFiles,
+                                    message = "正在解压资源",
+                                )
+                            }
                         }
+                        processedFiles++
+                        reportImportProgress(
+                            phase = "extracting",
+                            processedBytes = processedBytes,
+                            processedFiles = processedFiles,
+                            totalFiles = scan.totalFiles,
+                            message = "正在解压资源",
+                            force = true,
+                        )
                     }
                     zip.closeEntry()
                 }
@@ -250,12 +299,22 @@ class MainActivity : FlutterActivity() {
         } ?: throw IllegalArgumentException("无法打开选择的 ZIP")
     }
 
-    private fun findDocsPrefix(uri: Uri): String? {
+    private fun findDocsPrefix(uri: Uri, sourceBytes: Long): DocsScan? {
         val filePaths = linkedSetOf<String>()
         val directoryPaths = linkedSetOf<String>()
+        var bytesRead = 0L
 
         contentResolver.openInputStream(uri)?.use { input ->
-            ZipInputStream(BufferedInputStream(input)).use { zip ->
+            val progressInput = ProgressInputStream(BufferedInputStream(input)) { processed ->
+                bytesRead = processed
+                reportImportProgress(
+                    phase = "receiving",
+                    processedBytes = processed,
+                    totalBytes = sourceBytes,
+                    message = "正在读取 ZIP",
+                )
+            }
+            ZipInputStream(progressInput).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     val archivePath = safeArchivePath(entry.name)
@@ -268,6 +327,13 @@ class MainActivity : FlutterActivity() {
                 }
             }
         } ?: throw IllegalArgumentException("无法打开选择的 ZIP")
+        reportImportProgress(
+            phase = "receiving",
+            processedBytes = if (sourceBytes > 0) sourceBytes else bytesRead,
+            totalBytes = sourceBytes,
+            message = "已读取 ZIP",
+            force = true,
+        )
 
         val candidates = linkedSetOf<String>()
         for (path in filePaths) {
@@ -276,7 +342,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        return candidates.filter { candidate ->
+        val prefix = candidates.filter { candidate ->
             fun candidatePath(relativePath: String): String {
                 return if (candidate.isEmpty()) relativePath else "$candidate/$relativePath"
             }
@@ -304,7 +370,38 @@ class MainActivity : FlutterActivity() {
                 aIsDocs != bIsDocs -> if (aIsDocs) -1 else 1
                 else -> a.length.compareTo(b.length)
             }
-        }.firstOrNull()
+        }.firstOrNull() ?: return null
+        val totalFiles = filePaths.count { path ->
+            isWithinArchivePrefix(path, prefix)
+        }
+        return DocsScan(prefix, totalFiles)
+    }
+
+    private fun reportImportProgress(
+        phase: String,
+        processedBytes: Long = 0,
+        totalBytes: Long = 0,
+        processedFiles: Int = 0,
+        totalFiles: Int = 0,
+        message: String,
+        force: Boolean = false,
+    ) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!force && now - lastImportProgressReportAt < progressReportIntervalMs) {
+            return
+        }
+        lastImportProgressReportAt = now
+        val arguments = mapOf(
+            "phase" to phase,
+            "processedBytes" to processedBytes,
+            "totalBytes" to totalBytes,
+            "processedFiles" to processedFiles,
+            "totalFiles" to totalFiles,
+            "message" to message,
+        )
+        runOnUiThread {
+            resourceZipImporterChannel?.invokeMethod("progress", arguments)
+        }
     }
 
     private fun safeArchivePath(path: String): String {
@@ -365,5 +462,37 @@ class MainActivity : FlutterActivity() {
         private const val pickZipRequestCode = 26410
         private const val exportFileRequestCode = 26411
         private const val zipCopyBufferSize = 64 * 1024
+        private const val progressReportIntervalMs = 100L
+    }
+
+    private data class DocsScan(val prefix: String, val totalFiles: Int)
+
+    private class ProgressInputStream(
+        private val source: InputStream,
+        private val onProgress: (Long) -> Unit,
+    ) : InputStream() {
+        private var bytesRead = 0L
+
+        override fun read(): Int {
+            val value = source.read()
+            if (value >= 0) {
+                bytesRead++
+                onProgress(bytesRead)
+            }
+            return value
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            val count = source.read(buffer, offset, length)
+            if (count > 0) {
+                bytesRead += count
+                onProgress(bytesRead)
+            }
+            return count
+        }
+
+        override fun close() {
+            source.close()
+        }
     }
 }

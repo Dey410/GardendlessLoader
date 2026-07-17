@@ -183,6 +183,41 @@ writeResult();
     expect(leftEvents.last, containsPair('buttons', 0));
   });
 
+  test('second touch cancels a pending left press before right-click',
+      () async {
+    final result = await _runTouchScenario(r'''
+const first = touch(20, 30);
+const second = touch(40, 50);
+
+dispatchTouch('touchstart', [first], [first]);
+dispatchTouch('touchstart', [first, second], [second]);
+dispatchTouch('touchend', [first], [second]);
+dispatchTouch('touchend', [], [first]);
+flushTasks();
+
+writeResult();
+''');
+
+    final events =
+        (result['events'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final leftPressEvents = events
+        .where((event) =>
+            event['button'] == 0 &&
+            (event['type'] == 'mousedown' || event['type'] == 'mouseup'))
+        .toList();
+    final rightPressEvents = events
+        .where((event) =>
+            event['button'] == 2 &&
+            (event['type'] == 'mousedown' || event['type'] == 'mouseup'))
+        .toList();
+
+    expect(leftPressEvents, isEmpty);
+    expect(
+      rightPressEvents.map((event) => event['type']),
+      ['mousedown', 'mouseup'],
+    );
+  });
+
   test('touch cancellation clears a two-finger candidate without a right-click',
       () async {
     final result = await _runTouchScenario(r'''
@@ -342,6 +377,22 @@ writeResult();
     expect(leftEvents[2], containsPair('buttons', 0));
   });
 
+  test('single tap presses after the game consumes the pointer position',
+      () async {
+    final result = await _runTouchScenario(r'''
+enableDeferredGameCursorUpdates();
+const point = touch(20, 30);
+
+dispatchTouch('touchstart', [point], [point]);
+dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult();
+''');
+
+    expect(result['successfulLeftDowns'], 1);
+  });
+
   test('two-finger scrolling stays on the gesture start target', () async {
     final result = await _runTouchScenario(r'''
 const first = touch(20, 30);
@@ -439,6 +490,10 @@ const cancelledTasks = new Set();
 const mutationObservers = [];
 let currentTime = 0;
 let nextTaskId = 0;
+let deferGameCursorUpdates = false;
+let gameCursorX = 0;
+let gameCursorY = 0;
+let successfulLeftDowns = 0;
 
 function advanceTime(milliseconds) {
   currentTime += milliseconds;
@@ -470,6 +525,10 @@ function clearEvents() {
   events.length = 0;
 }
 
+function enableDeferredGameCursorUpdates() {
+  deferGameCursorUpdates = true;
+}
+
 class SyntheticMouseEvent {
   constructor(type, init) {
     this.type = type;
@@ -484,6 +543,24 @@ function makeTarget(name) {
     name,
     isConnected: true,
     dispatchEvent(event) {
+      if (name === 'canvas' && event.type === 'mousemove') {
+        const updateGameCursor = () => {
+          gameCursorX = event.clientX;
+          gameCursorY = event.clientY;
+        };
+        if (deferGameCursorUpdates) {
+          requestAnimationFrame(updateGameCursor);
+        } else {
+          updateGameCursor();
+        }
+      }
+      if (name === 'canvas' &&
+          event.type === 'mousedown' &&
+          event.button === 0 &&
+          gameCursorX === event.clientX &&
+          gameCursorY === event.clientY) {
+        successfulLeftDowns += 1;
+      }
       events.push({
         target: name,
         type: event.type,
@@ -580,7 +657,7 @@ function dispatchDocumentEvent(type) {
 }
 
 function writeResult() {
-  process.stdout.write(JSON.stringify({events}));
+  process.stdout.write(JSON.stringify({events, successfulLeftDowns}));
 }
 
 globalThis.MouseEvent = SyntheticMouseEvent;

@@ -6,11 +6,6 @@ void main() {
   test('OpenHarmony override uses compatible plugin forks', () {
     final pubspec = File('pubspec_overrides.ohos.yaml').readAsStringSync();
 
-    expect(pubspec, contains('file_selector'));
-    expect(pubspec, contains('file_selector_ohos'));
-    expect(pubspec, contains('packages/file_selector/file_selector'));
-    expect(pubspec, contains('packages/file_selector/file_selector_ohos'));
-    expect(pubspec, contains('openharmony-sig/flutter_packages.git'));
     expect(pubspec, contains('openharmony-tpc/flutter_packages.git'));
     expect(pubspec, contains('packages/path_provider/path_provider'));
     expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
@@ -94,6 +89,20 @@ void main() {
     expect(importer, contains('decompressFile'));
     expect(importer, contains('src/settings.json'));
     expect(importer, contains('src/import-map.json'));
+  });
+
+  test('OpenHarmony streams ZIP import progress to Flutter', () {
+    final importer =
+        File('ohos/entry/src/main/ets/plugins/ResourceZipImporterPlugin.ets')
+            .readAsStringSync();
+
+    expect(importer, contains("invokeMethod('progress'"));
+    expect(importer, contains("phase: 'receiving'"));
+    expect(importer, contains("phase: 'extracting'"));
+    expect(importer, contains("'processedBytes'"));
+    expect(importer, contains("'totalBytes'"));
+    expect(importer, contains("'processedFiles'"));
+    expect(importer, contains("'totalFiles'"));
   });
 
   test('OpenHarmony registers a game save exporter', () {

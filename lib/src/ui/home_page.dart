@@ -10,6 +10,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../app_controller.dart';
 import '../constants.dart';
 import '../models.dart';
+import '../services/game_update_check_service.dart';
 import '../services/update_check_service.dart';
 import 'game_page.dart';
 
@@ -27,6 +28,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String? _lastMessage;
   _LauncherSection _selectedSection = _LauncherSection.resources;
+  bool _importProgressExpanded = true;
+  ImportPhase _lastImportPhase = ImportPhase.idle;
 
   @override
   void initState() {
@@ -47,6 +50,7 @@ class _HomePageState extends State<HomePage> {
         _showMessageIfNeeded();
 
         final controller = widget.controller;
+        _syncImportProgressExpansion(controller.importProgress.phase);
         if (!controller.initialized && controller.busy) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -70,6 +74,7 @@ class _HomePageState extends State<HomePage> {
                 onOpenGitHub: _openGitHub,
                 onOpenRelease: _openRelease,
                 onDeferUpdate: widget.controller.deferUpdate,
+                onDeferGameUpdate: widget.controller.deferGameUpdate,
                 onCheckUpdates: widget.controller.checkForUpdates,
                 onShowResources: _showResources,
                 onShowDiagnostics: _showDiagnostics,
@@ -77,6 +82,8 @@ class _HomePageState extends State<HomePage> {
                 onOpenExternalUrl: _openExternalUrl,
                 onCopyResourceRoot: _copyResourceRoot,
                 onCopyDiagnostics: _copyDiagnostics,
+                importProgressExpanded: _importProgressExpanded,
+                onToggleImportProgress: _toggleImportProgress,
               ),
             ),
           ),
@@ -85,12 +92,36 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _syncImportProgressExpansion(ImportPhase phase) {
+    final wasActive = _lastImportPhase != ImportPhase.idle &&
+        _lastImportPhase != ImportPhase.completed &&
+        _lastImportPhase != ImportPhase.failed;
+    final isActive = phase != ImportPhase.idle &&
+        phase != ImportPhase.completed &&
+        phase != ImportPhase.failed;
+    if (!wasActive && isActive) {
+      _importProgressExpanded = true;
+    }
+    _lastImportPhase = phase;
+  }
+
+  void _toggleImportProgress() {
+    setState(() {
+      _importProgressExpanded = !_importProgressExpanded;
+    });
+  }
+
   void _showMessageIfNeeded() {
     final message = widget.controller.message;
     if (message == null || message == _lastMessage) {
       return;
     }
     _lastMessage = message;
+    final importPhase = widget.controller.importProgress.phase;
+    if (importPhase == ImportPhase.completed ||
+        importPhase == ImportPhase.failed) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -202,6 +233,7 @@ class _LauncherHome extends StatelessWidget {
     required this.onOpenGitHub,
     required this.onOpenRelease,
     required this.onDeferUpdate,
+    required this.onDeferGameUpdate,
     required this.onCheckUpdates,
     required this.onShowResources,
     required this.onShowDiagnostics,
@@ -209,6 +241,8 @@ class _LauncherHome extends StatelessWidget {
     required this.onOpenExternalUrl,
     required this.onCopyResourceRoot,
     required this.onCopyDiagnostics,
+    required this.importProgressExpanded,
+    required this.onToggleImportProgress,
   });
 
   final AppController controller;
@@ -218,6 +252,7 @@ class _LauncherHome extends StatelessWidget {
   final Future<void> Function() onOpenGitHub;
   final Future<void> Function(UpdateInfo update) onOpenRelease;
   final void Function(UpdateInfo update) onDeferUpdate;
+  final void Function(GameUpdateInfo update) onDeferGameUpdate;
   final Future<void> Function() onCheckUpdates;
   final VoidCallback onShowResources;
   final Future<void> Function() onShowDiagnostics;
@@ -225,6 +260,8 @@ class _LauncherHome extends StatelessWidget {
   final Future<void> Function(String url) onOpenExternalUrl;
   final Future<void> Function() onCopyResourceRoot;
   final Future<void> Function() onCopyDiagnostics;
+  final bool importProgressExpanded;
+  final VoidCallback onToggleImportProgress;
 
   static const double _minSurfaceWidth = 980;
   static const double _minSurfaceHeight = 680;
@@ -260,6 +297,7 @@ class _LauncherHome extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _LauncherNavigation(
+                      importProgress: controller.importProgress,
                       selectedSection: selectedSection,
                       onShowResources: onShowResources,
                       onShowDiagnostics: onShowDiagnostics,
@@ -275,6 +313,8 @@ class _LauncherHome extends StatelessWidget {
                             onOpenGitHub: onOpenGitHub,
                             onCheckUpdates: onCheckUpdates,
                             onCopyResourceRoot: onCopyResourceRoot,
+                            importProgressExpanded: importProgressExpanded,
+                            onToggleImportProgress: onToggleImportProgress,
                           ),
                         ),
                       ),
@@ -290,6 +330,7 @@ class _LauncherHome extends StatelessWidget {
                                   controller: controller,
                                   onOpenRelease: onOpenRelease,
                                   onDeferUpdate: onDeferUpdate,
+                                  onDeferGameUpdate: onDeferGameUpdate,
                                   onOpenExternalUrl: onOpenExternalUrl,
                                 ),
                               ),
@@ -362,12 +403,14 @@ class _LauncherWorkbench extends StatelessWidget {
 
 class _LauncherNavigation extends StatelessWidget {
   const _LauncherNavigation({
+    required this.importProgress,
     required this.selectedSection,
     required this.onShowResources,
     required this.onShowDiagnostics,
     required this.onShowAbout,
   });
 
+  final ImportProgress importProgress;
   final _LauncherSection selectedSection;
   final VoidCallback onShowResources;
   final Future<void> Function() onShowDiagnostics;
@@ -395,6 +438,7 @@ class _LauncherNavigation extends StatelessWidget {
                   label: '资源',
                   selected: selectedSection == _LauncherSection.resources,
                   onTap: onShowResources,
+                  trailing: _ImportNavigationStatus(progress: importProgress),
                 ),
                 const SizedBox(height: 8),
                 _NavItem(
@@ -418,18 +462,76 @@ class _LauncherNavigation extends StatelessWidget {
   }
 }
 
+class _ImportNavigationStatus extends StatelessWidget {
+  const _ImportNavigationStatus({required this.progress});
+
+  final ImportProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final phase = progress.phase;
+    if (phase == ImportPhase.idle) {
+      return const SizedBox.shrink();
+    }
+    if (phase == ImportPhase.completed) {
+      return const Icon(
+        key: ValueKey('resource-nav-progress'),
+        Icons.check_circle_rounded,
+        size: 18,
+        color: _LauncherColors.success,
+      );
+    }
+    if (phase == ImportPhase.failed) {
+      return Icon(
+        key: const ValueKey('resource-nav-progress'),
+        Icons.error_rounded,
+        size: 18,
+        color: Theme.of(context).colorScheme.error,
+      );
+    }
+
+    final value = progress.value;
+    return Row(
+      key: const ValueKey('resource-nav-progress'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            value: value,
+          ),
+        ),
+        if (value != null) ...[
+          const SizedBox(width: 4),
+          Text(
+            '${(value * 100).round()}%',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.icon,
     required this.label,
     required this.onTap,
     this.selected = false,
+    this.trailing,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool selected;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -470,6 +572,10 @@ class _NavItem extends StatelessWidget {
                         ),
                   ),
                 ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 6),
+                  trailing!,
+                ],
                 const SizedBox(width: 10),
               ],
             ),
@@ -487,6 +593,8 @@ class _LauncherMainColumn extends StatelessWidget {
     required this.onOpenGitHub,
     required this.onCheckUpdates,
     required this.onCopyResourceRoot,
+    required this.importProgressExpanded,
+    required this.onToggleImportProgress,
   });
 
   final AppController controller;
@@ -494,6 +602,8 @@ class _LauncherMainColumn extends StatelessWidget {
   final Future<void> Function() onOpenGitHub;
   final Future<void> Function() onCheckUpdates;
   final Future<void> Function() onCopyResourceRoot;
+  final bool importProgressExpanded;
+  final VoidCallback onToggleImportProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -508,7 +618,12 @@ class _LauncherMainColumn extends StatelessWidget {
               onCheckUpdates: onCheckUpdates,
             ),
             const SizedBox(height: 20),
-            _ResourceHeroCard(controller: controller),
+            _ResourceHeroCard(
+              controller: controller,
+              expanded: importProgressExpanded,
+              onToggle: onToggleImportProgress,
+              onDismiss: controller.dismissImportProgress,
+            ),
             const SizedBox(height: 16),
             _ResourceDetailsCard(
               controller: controller,
@@ -520,10 +635,6 @@ class _LauncherMainColumn extends StatelessWidget {
               onImportResources: onImportResources,
               onOpenGitHub: onOpenGitHub,
             ),
-            if (controller.importProgress.phase != ImportPhase.idle) ...[
-              const SizedBox(height: 18),
-              _ImportProgressView(progress: controller.importProgress),
-            ],
           ],
         ),
       ),
@@ -649,31 +760,44 @@ class _LauncherTitle extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                appDisplayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
-                      color: _LauncherColors.primaryText(context),
-                      height: 1.04,
-                    ),
+        Text(
+          appDisplayName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0,
+                color: _LauncherColors.primaryText(context),
+                height: 1.04,
               ),
-            ),
-            const SizedBox(width: 12),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
             _VersionPill(
+              label: '加载器',
               version: controller.currentAppVersion,
               hasUpdate: controller.availableUpdate != null,
               checking: controller.updateCheckInProgress,
+              pillKey: const ValueKey('app-version-pill'),
+              dotKey: const ValueKey('app-update-dot'),
+              spinnerKey: const ValueKey('app-update-spinner'),
               onTap: onCheckUpdates,
             ),
-            const SizedBox(width: 8),
+            _VersionPill(
+              label: '游戏',
+              version: controller.currentGameVersion ??
+                  (controller.hasCurrentResource ? '未知' : '--'),
+              hasUpdate: controller.availableGameUpdate != null,
+              checking: controller.updateCheckInProgress,
+              pillKey: const ValueKey('game-version-pill'),
+              dotKey: const ValueKey('game-update-dot'),
+              spinnerKey: const ValueKey('game-update-spinner'),
+              onTap: onCheckUpdates,
+            ),
             _StatusPill(
               label: canStart ? '可启动' : '需导入',
               color:
@@ -697,15 +821,23 @@ class _LauncherTitle extends StatelessWidget {
 
 class _VersionPill extends StatelessWidget {
   const _VersionPill({
+    required this.label,
     required this.version,
     required this.hasUpdate,
     required this.checking,
+    required this.pillKey,
+    required this.dotKey,
+    required this.spinnerKey,
     required this.onTap,
   });
 
+  final String label;
   final String version;
   final bool hasUpdate;
   final bool checking;
+  final Key pillKey;
+  final Key dotKey;
+  final Key spinnerKey;
   final Future<void> Function() onTap;
 
   @override
@@ -719,7 +851,7 @@ class _VersionPill extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         Material(
-          key: const ValueKey('app-version-pill'),
+          key: pillKey,
           color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(999),
           child: InkWell(
@@ -731,7 +863,7 @@ class _VersionPill extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'v$version',
+                    '$label ${version == '--' || version == '未知' ? version : 'v$version'}',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                           color: foreground,
                           fontWeight: FontWeight.w700,
@@ -741,7 +873,7 @@ class _VersionPill extends StatelessWidget {
                   if (checking) ...[
                     const SizedBox(width: 7),
                     SizedBox(
-                      key: const ValueKey('app-update-spinner'),
+                      key: spinnerKey,
                       width: 12,
                       height: 12,
                       child: CircularProgressIndicator(
@@ -757,7 +889,7 @@ class _VersionPill extends StatelessWidget {
         ),
         if (hasUpdate)
           Positioned(
-            key: const ValueKey('app-update-dot'),
+            key: dotKey,
             top: -2,
             right: -2,
             child: DecoratedBox(
@@ -807,16 +939,23 @@ class _StatusPill extends StatelessWidget {
 }
 
 class _ResourceHeroCard extends StatelessWidget {
-  const _ResourceHeroCard({required this.controller});
+  const _ResourceHeroCard({
+    required this.controller,
+    required this.expanded,
+    required this.onToggle,
+    required this.onDismiss,
+  });
 
   final AppController controller;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
     final hasCurrent = controller.hasCurrentResource;
     final statusLabel = hasCurrent ? '资源已就绪' : '需要导入资源';
-    final integrityLabel = hasCurrent ? '资源完整' : '等待校验';
-    final progress = hasCurrent ? 1.0 : 0.0;
+    final progress = controller.importProgress;
 
     return _LauncherPanel(
       padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
@@ -847,52 +986,22 @@ class _ResourceHeroCard extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                       ),
                 ),
-                const SizedBox(height: 17),
-                Row(
-                  children: [
-                    Icon(
-                      hasCurrent
-                          ? Icons.check_circle_rounded
-                          : Icons.error_outline_rounded,
-                      size: 22,
-                      color: hasCurrent
-                          ? _LauncherColors.success
-                          : _LauncherColors.warning,
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      integrityLabel,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: _LauncherColors.primaryText(context),
-                            fontWeight: FontWeight.w700,
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeInOut,
+                  alignment: Alignment.topCenter,
+                  child: progress.phase == ImportPhase.idle
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 17),
+                          child: _ImportProgressRegion(
+                            progress: progress,
+                            expanded: expanded,
+                            hasCurrentResource: hasCurrent,
+                            onToggle: onToggle,
+                            onDismiss: onDismiss,
                           ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${(progress * 100).round()}%',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: _LauncherColors.secondaryText(context),
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    minHeight: 7,
-                    value: progress,
-                    backgroundColor:
-                        _LauncherColors.separator(context).withValues(
-                      alpha: 0.65,
-                    ),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      hasCurrent
-                          ? _LauncherColors.success
-                          : _LauncherColors.warning,
-                    ),
-                  ),
+                        ),
                 ),
               ],
             ),
@@ -901,6 +1010,230 @@ class _ResourceHeroCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ImportProgressRegion extends StatelessWidget {
+  const _ImportProgressRegion({
+    required this.progress,
+    required this.expanded,
+    required this.hasCurrentResource,
+    required this.onToggle,
+    required this.onDismiss,
+  });
+
+  final ImportProgress progress;
+  final bool expanded;
+  final bool hasCurrentResource;
+  final VoidCallback onToggle;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final isFailed = progress.phase == ImportPhase.failed;
+    final isCompleted = progress.phase == ImportPhase.completed;
+    final color = isFailed
+        ? Theme.of(context).colorScheme.error
+        : isCompleted
+            ? _LauncherColors.success
+            : Theme.of(context).colorScheme.primary;
+    final value = isFailed || isCompleted ? 1.0 : progress.value;
+    final message = progress.message ?? _importPhaseMessage(progress.phase);
+    final title = isFailed
+        ? '导入失败 · $message'
+        : isCompleted
+            ? '导入完成 100%'
+            : '步骤 ${progress.stepIndex}/${progress.stepCount} · $message';
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeInOut,
+      alignment: Alignment.topCenter,
+      child: Column(
+        key: const ValueKey('resource-progress-region'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (isFailed || isCompleted)
+                Icon(
+                  isFailed ? Icons.error_rounded : Icons.check_circle_rounded,
+                  size: 21,
+                  color: color,
+                )
+              else
+                SizedBox(
+                  width: 19,
+                  height: 19,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: color,
+                  ),
+                ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: _LauncherColors.primaryText(context),
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              if (!isFailed && !isCompleted && progress.value != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    '${(progress.value! * 100).round()}%',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: color,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+              IconButton(
+                key: const ValueKey('resource-progress-toggle'),
+                tooltip: expanded ? '收起进度详情' : '展开进度详情',
+                onPressed: onToggle,
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                ),
+              ),
+              if (isFailed)
+                IconButton(
+                  key: const ValueKey('dismiss-import-progress'),
+                  tooltip: '关闭失败提示',
+                  onPressed: onDismiss,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 7,
+              value: value,
+              backgroundColor:
+                  _LauncherColors.separator(context).withValues(alpha: 0.65),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          if (expanded) ...[
+            const SizedBox(height: 10),
+            _ImportProgressDetails(
+              key: const ValueKey('resource-progress-details'),
+              progress: progress,
+              hasCurrentResource: hasCurrentResource,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ImportProgressDetails extends StatelessWidget {
+  const _ImportProgressDetails({
+    super.key,
+    required this.progress,
+    required this.hasCurrentResource,
+  });
+
+  final ImportProgress progress;
+  final bool hasCurrentResource;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <String>[];
+    if (progress.totalBytes > 0) {
+      items.add(
+        '${_formatImportBytes(progress.copiedBytes)} / '
+        '${_formatImportBytes(progress.totalBytes)}',
+      );
+    }
+    if (progress.totalFiles > 0) {
+      items.add('${progress.copiedFiles} / ${progress.totalFiles} 个文件');
+    }
+    if (progress.bytesPerSecond > 0) {
+      items.add('${_formatImportBytes(progress.bytesPerSecond.round())}/s');
+    }
+    items.add('已用 ${_formatImportDuration(progress.elapsed)}');
+
+    final isFailed = progress.phase == ImportPhase.failed;
+    final isCompleted = progress.phase == ImportPhase.completed;
+    final hint = isFailed
+        ? hasCurrentResource
+            ? '原有资源未受影响，可重新选择 ZIP。'
+            : '请重新选择有效的 ZIP 资源。'
+        : isCompleted
+            ? '资源已就绪。'
+            : '仍在处理中，请保持应用在前台。';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          items.join(' · '),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: _LauncherColors.secondaryText(context),
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          hint,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: _LauncherColors.secondaryText(context),
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+String _importPhaseMessage(ImportPhase phase) => switch (phase) {
+      ImportPhase.receiving => '正在读取 ZIP',
+      ImportPhase.extracting => '正在解压资源',
+      ImportPhase.validating => '正在校验资源',
+      ImportPhase.scanning => '正在统计资源',
+      ImportPhase.copying => '正在复制资源',
+      ImportPhase.switching => '正在安全切换资源',
+      ImportPhase.selfChecking => '正在本地自检',
+      ImportPhase.completed => '导入完成',
+      ImportPhase.failed => '导入失败',
+      ImportPhase.idle => '等待导入',
+    };
+
+String _formatImportBytes(int bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  var value = bytes.toDouble();
+  var unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex++;
+  }
+  final digits = unitIndex == 0 || value >= 100 ? 0 : 1;
+  return '${value.toStringAsFixed(digits)} ${units[unitIndex]}';
+}
+
+String _formatImportDuration(Duration duration) {
+  final totalSeconds = duration.inSeconds;
+  final hours = totalSeconds ~/ 3600;
+  final minutes = (totalSeconds % 3600) ~/ 60;
+  final seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
+  }
+  return '${minutes.toString().padLeft(2, '0')}:'
+      '${seconds.toString().padLeft(2, '0')}';
 }
 
 class _AppIconMark extends StatelessWidget {
@@ -1113,12 +1446,14 @@ class _LauncherSideColumn extends StatelessWidget {
     required this.controller,
     required this.onOpenRelease,
     required this.onDeferUpdate,
+    required this.onDeferGameUpdate,
     required this.onOpenExternalUrl,
   });
 
   final AppController controller;
   final Future<void> Function(UpdateInfo update) onOpenRelease;
   final void Function(UpdateInfo update) onDeferUpdate;
+  final void Function(GameUpdateInfo update) onDeferGameUpdate;
   final Future<void> Function(String url) onOpenExternalUrl;
 
   @override
@@ -1128,14 +1463,17 @@ class _LauncherSideColumn extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _StartupHealthPanel(controller: controller),
-          if (controller.availableUpdate != null) ...[
+          if (controller.availableUpdate != null ||
+              controller.availableGameUpdate != null) ...[
             const SizedBox(height: 16),
-            _UpdateNotice(
-              update: controller.availableUpdate!,
-              onOpenCloudDriveUpdate: () =>
-                  onOpenExternalUrl(appCloudDriveUpdateUrl),
+            _UpdateCenter(
+              appUpdate: controller.availableUpdate,
+              gameUpdate: controller.availableGameUpdate,
+              onOpenCloudDrive: () => onOpenExternalUrl(appCloudDriveUpdateUrl),
               onOpenRelease: onOpenRelease,
-              onDefer: onDeferUpdate,
+              onOpenGameGitHub: () => onOpenExternalUrl(githubUrl),
+              onDeferApp: onDeferUpdate,
+              onDeferGame: onDeferGameUpdate,
             ),
           ],
           const SizedBox(height: 16),
@@ -1490,18 +1828,24 @@ class _StartGameButton extends StatelessWidget {
   }
 }
 
-class _UpdateNotice extends StatelessWidget {
-  const _UpdateNotice({
-    required this.update,
-    required this.onOpenCloudDriveUpdate,
+class _UpdateCenter extends StatelessWidget {
+  const _UpdateCenter({
+    required this.appUpdate,
+    required this.gameUpdate,
+    required this.onOpenCloudDrive,
     required this.onOpenRelease,
-    required this.onDefer,
+    required this.onOpenGameGitHub,
+    required this.onDeferApp,
+    required this.onDeferGame,
   });
 
-  final UpdateInfo update;
-  final Future<void> Function() onOpenCloudDriveUpdate;
+  final UpdateInfo? appUpdate;
+  final GameUpdateInfo? gameUpdate;
+  final Future<void> Function() onOpenCloudDrive;
   final Future<void> Function(UpdateInfo update) onOpenRelease;
-  final void Function(UpdateInfo update) onDefer;
+  final Future<void> Function() onOpenGameGitHub;
+  final void Function(UpdateInfo update) onDeferApp;
+  final void Function(GameUpdateInfo update) onDeferGame;
 
   @override
   Widget build(BuildContext context) {
@@ -1520,7 +1864,7 @@ class _UpdateNotice extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  '发现新版本 v${update.latestVersion}',
+                  '更新中心',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: _LauncherColors.primaryText(context),
                         fontWeight: FontWeight.w700,
@@ -1529,73 +1873,103 @@ class _UpdateNotice extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            '当前版本 ${update.currentVersion}',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: _LauncherColors.secondaryText(context),
-                ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: onOpenCloudDriveUpdate,
-                icon: const Icon(Icons.cloud_download_rounded),
-                label: const Text('网盘更新'),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: () => onOpenRelease(update),
-                icon: const Icon(Icons.open_in_new_rounded),
-                label: const Text('查看 GitHub Release'),
-              ),
-              TextButton(
-                onPressed: () => onDefer(update),
-                child: const Text('稍后提醒'),
-              ),
-            ],
-          ),
+          if (appUpdate != null) ...[
+            const SizedBox(height: 14),
+            _UpdateEntry(
+              key: const ValueKey('app-update-entry'),
+              title: '加载器',
+              currentVersion: appUpdate!.currentVersion,
+              latestVersion: appUpdate!.latestVersion,
+              primaryLabel: '网盘更新',
+              secondaryLabel: '查看 GitHub Release',
+              onPrimary: onOpenCloudDrive,
+              onSecondary: () => onOpenRelease(appUpdate!),
+              onDefer: () => onDeferApp(appUpdate!),
+            ),
+          ],
+          if (gameUpdate != null) ...[
+            const SizedBox(height: 14),
+            _UpdateEntry(
+              key: const ValueKey('game-update-entry'),
+              title: '游戏资源',
+              currentVersion: gameUpdate!.currentVersion,
+              latestVersion: gameUpdate!.latestVersion,
+              primaryLabel: '获取游戏资源',
+              secondaryLabel: '查看游戏 GitHub',
+              onPrimary: onOpenCloudDrive,
+              onSecondary: onOpenGameGitHub,
+              onDefer: () => onDeferGame(gameUpdate!),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _ImportProgressView extends StatelessWidget {
-  const _ImportProgressView({required this.progress});
+class _UpdateEntry extends StatelessWidget {
+  const _UpdateEntry({
+    super.key,
+    required this.title,
+    required this.currentVersion,
+    required this.latestVersion,
+    required this.primaryLabel,
+    required this.secondaryLabel,
+    required this.onPrimary,
+    required this.onSecondary,
+    required this.onDefer,
+  });
 
-  final ImportProgress progress;
+  final String title;
+  final String currentVersion;
+  final String latestVersion;
+  final String primaryLabel;
+  final String secondaryLabel;
+  final Future<void> Function() onPrimary;
+  final Future<void> Function() onSecondary;
+  final VoidCallback onDefer;
 
   @override
   Widget build(BuildContext context) {
-    final total = progress.totalBytes;
-    final value = total <= 0 ? null : progress.copiedBytes / total;
-    return _LauncherPanel(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            progress.message ?? '处理中',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: _LauncherColors.primaryText(context),
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-          const SizedBox(height: 10),
-          LinearProgressIndicator(value: value),
-          const SizedBox(height: 8),
-          Text(
-            '${progress.copiedFiles}/${progress.totalFiles} 文件，'
-            '${progress.copiedBytes}/${progress.totalBytes} 字节',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: _LauncherColors.secondaryText(context),
-                ),
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: _LauncherColors.primaryText(context),
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          '$currentVersion → $latestVersion',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: _LauncherColors.secondaryText(context),
+              ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: onPrimary,
+              icon: const Icon(Icons.cloud_download_rounded),
+              label: Text(primaryLabel),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: onSecondary,
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: Text(secondaryLabel),
+            ),
+            TextButton(
+              onPressed: onDefer,
+              child: const Text('稍后提醒'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

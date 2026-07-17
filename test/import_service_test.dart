@@ -50,7 +50,10 @@ void main() {
   });
 
   test('imports valid docs into current and writes ready manifest', () async {
-    await _writeValidResource(sourceDocsDir);
+    await _writeValidResource(
+      sourceDocsDir,
+      title: 'PvZ2 Gardendless Online | 0.11.0',
+    );
 
     final manifest = await importService.importResources(
       paths: paths,
@@ -67,6 +70,7 @@ void main() {
     expect(manifest.resourceStatus, ResourceStatus.ready);
     expect(manifest.transactionState, TransactionState.idle);
     expect(manifest.fileCount, greaterThan(0));
+    expect(manifest.gameVersion, '0.11.0');
   });
 
   test('does not use directory rename while switching imported resources',

@@ -8,7 +8,7 @@
 
 `GardendlessLoader` is a Flutter local loader for user-supplied
 [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) web resource
-packages on mobile and web platforms.
+packages on Android, iOS, and HarmonyOS/OpenHarmony.
 
 The app lets users select a resource ZIP, extracts and locates the bundled
 `docs` web build, validates it, serves it from a local HTTP server, and opens
@@ -27,8 +27,9 @@ the game in an in-app WebView.
 - Uses a landscape, immersive WebView and blocks non-local requests by default.
 - Shows import progress, rolls back failed imports, and recovers unfinished startup transactions.
 - Provides copyable diagnostics for resource, platform, WebView, and local server state.
-- Adapts the game viewport between `16:10` and `17:9`, and supports inline home-page announcements, GitHub Release update checks, and auto sunlight collection.
-- Builds Android, iOS, HarmonyOS/OpenHarmony, and Web artifacts in GitHub Actions.
+- Adapts the game viewport between `16:10` and `17:9`, and supports inline home-page announcements, independent loader/game update checks, and auto sunlight collection.
+- Detects the imported game version from the page title and checks it against stable [`pvzg_site` tags](https://github.com/Gzh0821/pvzg_site/tags); available updates link to the game repository and the shared cloud drive.
+- Builds Android, iOS, and HarmonyOS/OpenHarmony artifacts in GitHub Actions.
 
 ## Usage
 
@@ -55,7 +56,7 @@ GardendlessLoader/
   current/         # active resources
   previous/        # previous resources used for rollback
   staging/         # temporary import transaction directory
-  manifest.json    # import state, resource stats, and announcement state
+  manifest.json    # import state, resource stats, and local game version
 ```
 
 The exact resource root depends on the platform. The home screen shows the full
@@ -82,6 +83,7 @@ docs/
 The validator also checks that:
 
 - `index.html` has a title containing `PvZ2 Gardendless`.
+- A title version such as `0.11.0`, `v0.11.0`, or `0.12.0-next` is detected and shown as the imported game version.
 - `index.html` contains a `pvzge` or `play.pvzge.com` fingerprint.
 - `src/settings.json` is valid JSON and looks like a Cocos configuration file.
 
@@ -104,6 +106,7 @@ Useful project files:
 | `lib/src/services/import_service.dart` | Staged import, current switching, rollback, and startup recovery |
 | `lib/src/services/local_game_server.dart` | Local HTTP server, MIME handling, and self-checks |
 | `lib/src/services/resource_validator.dart` | Resource shape, title, and Cocos config validation |
+| `lib/src/services/game_update_check_service.dart` | Local game version detection, stable tag selection, and version comparison |
 | `lib/src/ui/home_page.dart` | Import, status, announcement, update, and diagnostics UI |
 | `lib/src/ui/game_page.dart` | Landscape WebView shell, menu, and helper toggles |
 | `lib/src/web/touch_patch.dart` | Single-finger left click, two-finger right click/wheel, and cancellation state machine |
@@ -166,7 +169,6 @@ flutter build hap --release --target-platform ohos-x64
 `.github/workflows/build-mobile.yml` runs tests and builds:
 
 - Android release APK
-- Web bundle
 - unsigned iOS IPA
 - unsigned HarmonyOS HAPs when `OHOS_COMMANDLINE_TOOLS_URL` is configured
 

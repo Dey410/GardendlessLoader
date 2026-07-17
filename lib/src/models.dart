@@ -8,6 +8,8 @@ enum ServerStatus { stopped, starting, running, failed }
 
 enum ImportPhase {
   idle,
+  receiving,
+  extracting,
   validating,
   scanning,
   copying,
@@ -16,6 +18,8 @@ enum ImportPhase {
   completed,
   failed,
 }
+
+typedef ImportProgressCallback = void Function(ImportProgress progress);
 
 class AppPaths {
   AppPaths({
@@ -228,6 +232,8 @@ class ImportProgress {
     this.copiedBytes = 0,
     this.totalFiles = 0,
     this.totalBytes = 0,
+    this.elapsed = Duration.zero,
+    this.bytesPerSecond = 0,
     this.message,
   });
 
@@ -236,9 +242,36 @@ class ImportProgress {
   final int copiedBytes;
   final int totalFiles;
   final int totalBytes;
+  final Duration elapsed;
+  final double bytesPerSecond;
   final String? message;
 
   static const idle = ImportProgress(phase: ImportPhase.idle);
+
+  int get stepCount => 6;
+
+  int get stepIndex => switch (phase) {
+        ImportPhase.receiving => 1,
+        ImportPhase.extracting => 2,
+        ImportPhase.validating || ImportPhase.scanning => 3,
+        ImportPhase.copying => 4,
+        ImportPhase.switching => 5,
+        ImportPhase.selfChecking || ImportPhase.completed => 6,
+        ImportPhase.idle || ImportPhase.failed => 0,
+      };
+
+  double? get value {
+    if (phase == ImportPhase.completed) {
+      return 1;
+    }
+    if (totalBytes > 0) {
+      return (copiedBytes / totalBytes).clamp(0.0, 1.0);
+    }
+    if (totalFiles > 0) {
+      return (copiedFiles / totalFiles).clamp(0.0, 1.0);
+    }
+    return null;
+  }
 
   ImportProgress copyWith({
     ImportPhase? phase,
@@ -246,6 +279,8 @@ class ImportProgress {
     int? copiedBytes,
     int? totalFiles,
     int? totalBytes,
+    Duration? elapsed,
+    double? bytesPerSecond,
     String? message,
   }) {
     return ImportProgress(
@@ -254,6 +289,8 @@ class ImportProgress {
       copiedBytes: copiedBytes ?? this.copiedBytes,
       totalFiles: totalFiles ?? this.totalFiles,
       totalBytes: totalBytes ?? this.totalBytes,
+      elapsed: elapsed ?? this.elapsed,
+      bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
       message: message ?? this.message,
     );
   }
@@ -262,6 +299,7 @@ class ImportProgress {
 class ResourceManifest {
   const ResourceManifest({
     required this.schemaVersion,
+    required this.gameVersion,
     required this.lastImportAt,
     required this.fileCount,
     required this.totalBytes,
@@ -275,7 +313,8 @@ class ResourceManifest {
 
   factory ResourceManifest.initial() {
     return const ResourceManifest(
-      schemaVersion: 1,
+      schemaVersion: 2,
+      gameVersion: null,
       lastImportAt: null,
       fileCount: 0,
       totalBytes: 0,
@@ -289,6 +328,7 @@ class ResourceManifest {
   }
 
   final int schemaVersion;
+  final String? gameVersion;
   final DateTime? lastImportAt;
   final int fileCount;
   final int totalBytes;
@@ -300,6 +340,7 @@ class ResourceManifest {
   final TransactionState transactionState;
 
   ResourceManifest copyWith({
+    String? gameVersion,
     DateTime? lastImportAt,
     int? fileCount,
     int? totalBytes,
@@ -310,9 +351,11 @@ class ResourceManifest {
     String? lastErrorMessage,
     TransactionState? transactionState,
     bool clearError = false,
+    bool clearGameVersion = false,
   }) {
     return ResourceManifest(
       schemaVersion: schemaVersion,
+      gameVersion: clearGameVersion ? null : gameVersion ?? this.gameVersion,
       lastImportAt: lastImportAt ?? this.lastImportAt,
       fileCount: fileCount ?? this.fileCount,
       totalBytes: totalBytes ?? this.totalBytes,
@@ -329,6 +372,7 @@ class ResourceManifest {
   Map<String, Object?> toJson() {
     return {
       'schemaVersion': schemaVersion,
+      'gameVersion': gameVersion,
       'lastImportAt': lastImportAt?.toIso8601String(),
       'fileCount': fileCount,
       'totalBytes': totalBytes,

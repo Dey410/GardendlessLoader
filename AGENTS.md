@@ -6,9 +6,9 @@
 - `lib/src/app_controller.dart` coordinates state, imports, server lifecycle, announcements, and update checks.
 - `lib/src/services/` holds resource validation, ZIP import, manifest storage, diagnostics, and the local HTTP server.
 - `lib/src/ui/` contains screens: `home_page.dart` and `game_page.dart`.
-- `lib/src/web/` contains web-only support code.
+- `lib/src/web/` contains scripts injected into the mobile game WebView.
 - `test/` contains unit and widget tests named `*_test.dart`.
-- Platform folders (`android/`, `ios/`, `macos/`, `linux/`, `windows/`, `web/`, `ohos/`) hold generated and native integration files.
+- Maintained platform folders are `android/`, `ios/`, and `ohos/`. Generated folders for retired platforms remain in the repository but are unsupported.
 - `announcements.json` is the remote announcement payload; `docs/acceptance-checklist.md` records manual release checks.
 
 ## Build, Test, and Development Commands
@@ -17,10 +17,9 @@
 - `flutter analyze` runs static analysis with the repository lint rules.
 - `flutter test` runs the full test suite.
 - `flutter test test/resource_validator_test.dart` runs one focused test file.
-- `flutter run` starts the app on a connected device or selected desktop target.
+- `flutter run` starts the app on a connected supported device.
 - `flutter build apk --release` builds Android.
 - `flutter build ios --release --no-codesign` builds unsigned iOS artifacts.
-- `flutter build macos --release`, `flutter build windows --release`, or `flutter build linux --release` builds desktop targets.
 
 For HarmonyOS/OpenHarmony, copy `pubspec_overrides.ohos.yaml` to `pubspec_overrides.yaml`, use the OpenHarmony Flutter SDK, and follow `README.en.md`.
 
