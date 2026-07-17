@@ -22,6 +22,7 @@ const gardendlessTouchPatchSource = r'''
   let pendingMovePoint = null;
   let pendingMoveTarget = null;
   let lastTouchPoint = null;
+  let nativeTouchActive = false;
 
   function firstChangedTouch(event) {
     return event.changedTouches && event.changedTouches.length > 0
@@ -68,6 +69,31 @@ const gardendlessTouchPatchSource = r'''
       document.getElementById("GameCanvas") ||
       document.body ||
       document;
+  }
+
+  function isNativeTouchTarget(target) {
+    let current = target;
+    while (current && current !== document) {
+      const tagName = typeof current.tagName === "string"
+        ? current.tagName.toUpperCase()
+        : "";
+      if (tagName === "INPUT" ||
+          tagName === "TEXTAREA" ||
+          tagName === "SELECT") {
+        return true;
+      }
+      if (current.isContentEditable === true) {
+        return true;
+      }
+      if (typeof current.getAttribute === "function") {
+        const contentEditable = current.getAttribute("contenteditable");
+        if (contentEditable !== null && contentEditable !== "false") {
+          return true;
+        }
+      }
+      current = current.parentElement;
+    }
+    return false;
   }
 
   function mouseEvent(type, point, button, buttons) {
@@ -214,6 +240,16 @@ const gardendlessTouchPatchSource = r'''
     const target = touchTarget(changedTouch);
     lastTouchPoint = point;
 
+    if (nativeTouchActive) {
+      return;
+    }
+
+    if (event.touches.length === 1 && isNativeTouchTarget(target)) {
+      cancelInteraction();
+      nativeTouchActive = true;
+      return;
+    }
+
     if (event.touches.length >= 3) {
       cancelLeftMouse(point);
       resetTwoFingerGesture();
@@ -241,6 +277,10 @@ const gardendlessTouchPatchSource = r'''
   }, { capture: true, passive: false });
 
   document.addEventListener("touchmove", function (event) {
+    if (nativeTouchActive) {
+      return;
+    }
+
     if (event.touches.length >= 3) {
       cancelInteraction();
       event.preventDefault();
@@ -298,6 +338,13 @@ const gardendlessTouchPatchSource = r'''
   }, { capture: true, passive: false });
 
   function endTouch(event) {
+    if (nativeTouchActive) {
+      if (event.touches.length === 0) {
+        nativeTouchActive = false;
+      }
+      return;
+    }
+
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     lastTouchPoint = point;
@@ -323,6 +370,11 @@ const gardendlessTouchPatchSource = r'''
   }
 
   function cancelTouch(event) {
+    if (nativeTouchActive) {
+      nativeTouchActive = false;
+      return;
+    }
+
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     lastTouchPoint = point;
