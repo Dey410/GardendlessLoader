@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:collection';
+import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -14,41 +13,11 @@ import '../app_controller.dart';
 import '../constants.dart';
 import '../services/auto_sun_collector.dart';
 import '../services/game_download_service.dart';
+import '../web/collect_sunlight_key_press.dart';
 import '../web/export_download_patch.dart';
 import '../web/touch_patch.dart';
-import '../web/viewport_stretch_patch.dart';
 
 const gameWatermarkText = '本加载器B站xiaozhu_410免费分享，仅供学习，严禁售卖';
-
-const _collectSunlightKeyPressScript = r'''
-(function () {
-  const eventInit = {
-    key: "a",
-    code: "KeyA",
-    keyCode: 65,
-    which: 65,
-    bubbles: true,
-    cancelable: true,
-    composed: true
-  };
-  const targets = [
-    document.activeElement,
-    document.getElementById("GameCanvas"),
-    document,
-    window
-  ].filter(Boolean);
-  const uniqueTargets = Array.from(new Set(targets));
-
-  for (const target of uniqueTargets) {
-    target.dispatchEvent(new KeyboardEvent("keydown", eventInit));
-  }
-  setTimeout(function () {
-    for (const target of uniqueTargets) {
-      target.dispatchEvent(new KeyboardEvent("keyup", eventInit));
-    }
-  }, 30);
-})();
-''';
 
 class GamePage extends StatefulWidget {
   const GamePage({super.key, required this.controller});
@@ -64,7 +33,6 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   late final AutoSunCollector _autoSunCollector;
   late final GameDownloadService _downloadService;
   bool _autoCollectSunlightEnabled = false;
-  bool _stretchGameViewport = false;
   bool _resumeReloadNotified = false;
 
   @override
@@ -118,9 +86,6 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
           children: [
             Positioned.fill(
               child: GameViewportFrame(
-                fit: _stretchGameViewport
-                    ? GameViewportFit.stretch
-                    : GameViewportFit.contain,
                 child: InAppWebView(
                   gestureRecognizers: {
                     Factory<OneSequenceGestureRecognizer>(
@@ -135,11 +100,6 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                     ),
                     UserScript(
                       source: gardendlessTouchPatchSource,
-                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                      forMainFrameOnly: false,
-                    ),
-                    UserScript(
-                      source: gardendlessViewportStretchPatchSource,
                       injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
                       forMainFrameOnly: false,
                     ),
@@ -211,9 +171,6 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                       action: PermissionResponseAction.DENY,
                     );
                   },
-                  onLoadStop: (_, __) {
-                    unawaited(_applyGameViewportStretch());
-                  },
                   onDownloadStartRequest: _handleDownloadStart,
                 ),
               ),
@@ -275,13 +232,8 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => GameMenuDialog(
           autoCollectSunlightEnabled: _autoCollectSunlightEnabled,
-          stretchGameViewportEnabled: _stretchGameViewport,
           onAutoCollectSunlightChanged: (enabled) {
             _setAutoCollectSunlightEnabled(enabled);
-            setDialogState(() {});
-          },
-          onStretchGameViewportChanged: (enabled) {
-            _setStretchGameViewport(enabled);
             setDialogState(() {});
           },
           onContinue: () => Navigator.of(context).pop(),
@@ -313,35 +265,9 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     _autoSunCollector.setEnabled(enabled);
   }
 
-  void _setStretchGameViewport(bool enabled) {
-    if (_stretchGameViewport == enabled) {
-      return;
-    }
-
-    setState(() {
-      _stretchGameViewport = enabled;
-    });
-    unawaited(_applyGameViewportStretch());
-  }
-
-  Future<void> _applyGameViewportStretch() async {
-    final controller = _webViewController;
-    if (controller == null) {
-      return;
-    }
-
-    try {
-      await controller.evaluateJavascript(
-        source: gardendlessViewportStretchToggleScript(
-          enabled: _stretchGameViewport,
-        ),
-      );
-    } catch (_) {}
-  }
-
   Future<void> _pressCollectSunlightKey() async {
     await _webViewController?.evaluateJavascript(
-      source: _collectSunlightKeyPressScript,
+      source: gardendlessCollectSunlightKeyPressScript,
     );
   }
 
@@ -546,9 +472,7 @@ class GameMenuDialog extends StatelessWidget {
   const GameMenuDialog({
     super.key,
     required this.autoCollectSunlightEnabled,
-    required this.stretchGameViewportEnabled,
     required this.onAutoCollectSunlightChanged,
-    required this.onStretchGameViewportChanged,
     required this.onContinue,
     required this.onReturnHome,
     required this.onReload,
@@ -556,9 +480,7 @@ class GameMenuDialog extends StatelessWidget {
   });
 
   final bool autoCollectSunlightEnabled;
-  final bool stretchGameViewportEnabled;
   final ValueChanged<bool> onAutoCollectSunlightChanged;
-  final ValueChanged<bool> onStretchGameViewportChanged;
   final VoidCallback onContinue;
   final VoidCallback onReturnHome;
   final VoidCallback onReload;
@@ -574,12 +496,6 @@ class GameMenuDialog extends StatelessWidget {
           subtitle: const Text('每 1.5 秒自动按下 A 键'),
           value: autoCollectSunlightEnabled,
           onChanged: onAutoCollectSunlightChanged,
-        ),
-        SwitchListTile(
-          title: const Text('强制拉伸'),
-          subtitle: const Text('填满屏幕，画面可能变形'),
-          value: stretchGameViewportEnabled,
-          onChanged: onStretchGameViewportChanged,
         ),
         const Divider(height: 1),
         SimpleDialogOption(
@@ -607,13 +523,14 @@ class GameViewportFrame extends StatelessWidget {
   const GameViewportFrame({
     super.key,
     required this.child,
-    this.aspectRatio = 16 / 9,
-    this.fit = GameViewportFit.contain,
-  });
+    this.minAspectRatio = 16 / 10,
+    this.maxAspectRatio = 17 / 9,
+  })  : assert(minAspectRatio > 0),
+        assert(maxAspectRatio >= minAspectRatio);
 
   final Widget child;
-  final double aspectRatio;
-  final GameViewportFit fit;
+  final double minAspectRatio;
+  final double maxAspectRatio;
 
   @override
   Widget build(BuildContext context) {
@@ -627,17 +544,21 @@ class GameViewportFrame extends StatelessWidget {
             ? constraints.maxHeight
             : fallbackSize.height;
 
-        if (maxWidth <= 0 || maxHeight <= 0 || aspectRatio <= 0) {
+        if (maxWidth <= 0 || maxHeight <= 0) {
           return const SizedBox.shrink();
         }
 
-        final (width, height) = switch (fit) {
-          GameViewportFit.contain => (
-              math.min(maxWidth, maxHeight * aspectRatio),
-              math.min(maxWidth, maxHeight * aspectRatio) / aspectRatio,
-            ),
-          GameViewportFit.stretch => (maxWidth, maxHeight),
-        };
+        final screenAspectRatio = maxWidth / maxHeight;
+        final targetAspectRatio = screenAspectRatio.clamp(
+          minAspectRatio,
+          maxAspectRatio,
+        );
+        final width = screenAspectRatio > targetAspectRatio
+            ? maxHeight * targetAspectRatio
+            : maxWidth;
+        final height = screenAspectRatio < targetAspectRatio
+            ? maxWidth / targetAspectRatio
+            : maxHeight;
 
         return ColoredBox(
           color: Colors.black,
@@ -737,9 +658,4 @@ class GameWatermark extends StatelessWidget {
 String? _payloadString(Map<dynamic, dynamic> payload, String key) {
   final value = payload[key];
   return value is String ? value : null;
-}
-
-enum GameViewportFit {
-  contain,
-  stretch,
 }

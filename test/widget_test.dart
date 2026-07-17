@@ -8,8 +8,7 @@ void main() {
     expect(const GardendlessLoaderApp(), isA<GardendlessLoaderApp>());
   });
 
-  testWidgets('game viewport contains 16:9 content on iPad landscape',
-      (tester) async {
+  testWidgets('game viewport clamps iPad landscape to 16:10', (tester) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1024, 768);
@@ -30,10 +29,10 @@ void main() {
     final size = tester.getSize(find.byKey(childKey));
 
     expect(size.width, 1024);
-    expect(size.height, 576);
+    expect(size.height, 640);
   });
 
-  testWidgets('game viewport contains 16:9 content on ultrawide landscape',
+  testWidgets('game viewport clamps ultrawide landscape to 17:9',
       (tester) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
@@ -54,22 +53,21 @@ void main() {
 
     final size = tester.getSize(find.byKey(childKey));
 
-    expect(size.width, 1920);
+    expect(size.width, 2040);
     expect(size.height, 1080);
   });
 
-  testWidgets('game viewport can stretch to fill iPad landscape',
+  testWidgets('game viewport fills screens within the adaptive ratio range',
       (tester) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(1024, 768);
+    tester.view.physicalSize = const Size(1920, 1080);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
       const MaterialApp(
         home: GameViewportFrame(
-          fit: GameViewportFit.stretch,
           child: ColoredBox(
             key: childKey,
             color: Colors.green,
@@ -80,8 +78,8 @@ void main() {
 
     final size = tester.getSize(find.byKey(childKey));
 
-    expect(size.width, 1024);
-    expect(size.height, 768);
+    expect(size.width, 1920);
+    expect(size.height, 1080);
   });
 
   testWidgets('game viewport overlays watermark in content bottom-left',
@@ -125,11 +123,9 @@ void main() {
         home: Scaffold(
           body: GameMenuDialog(
             autoCollectSunlightEnabled: false,
-            stretchGameViewportEnabled: false,
             onAutoCollectSunlightChanged: (value) {
               requestedValue = value;
             },
-            onStretchGameViewportChanged: (_) {},
             onContinue: () {},
             onReturnHome: () {},
             onReload: () {},
@@ -147,19 +143,14 @@ void main() {
     expect(requestedValue, isTrue);
   });
 
-  testWidgets('game menu exposes force stretch switch', (tester) async {
-    bool? requestedValue;
-
+  testWidgets('game menu omits the removed force stretch switch',
+      (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: GameMenuDialog(
             autoCollectSunlightEnabled: false,
-            stretchGameViewportEnabled: false,
             onAutoCollectSunlightChanged: (_) {},
-            onStretchGameViewportChanged: (value) {
-              requestedValue = value;
-            },
             onContinue: () {},
             onReturnHome: () {},
             onReload: () {},
@@ -169,11 +160,6 @@ void main() {
       ),
     );
 
-    expect(find.text('强制拉伸'), findsOneWidget);
-
-    await tester.tap(find.text('强制拉伸'));
-    await tester.pump();
-
-    expect(requestedValue, isTrue);
+    expect(find.text('强制拉伸'), findsNothing);
   });
 }

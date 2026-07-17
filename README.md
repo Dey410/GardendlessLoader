@@ -23,7 +23,7 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 - 游戏页固定横屏、沉浸式显示，并默认拦截非本地请求。
 - 导入过程带进度显示，失败时回滚到旧资源，启动时恢复未完成事务。
 - 提供可复制的诊断信息，方便排查资源、平台、WebView 和本地 server 状态。
-- 支持首页公告、GitHub Release 更新检查、自动收集阳光和强制拉伸画面开关。
+- 游戏画面在 `16:10～17:9` 之间自适应屏幕，并支持首页公告、GitHub Release 更新检查和自动收集阳光。
 - GitHub Actions 可产出 Android、iOS、HarmonyOS/OpenHarmony 和 Web 产物。
 
 ## 使用方式
@@ -32,6 +32,16 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 2. 打开 `GardendlessLoader`，点击“选择 ZIP 导入”。
 3. App 会在 ZIP 根目录或嵌套目录中查找有效的 `docs`，解压到应用资源目录并导入到 `current`。
 4. 导入成功后点击“开始游戏”，游戏将从本地地址加载。
+
+### 游戏内触摸操作
+
+- 单指轻点或拖动：鼠标左键点击或拖动。
+- 双指轻点：在双指中心位置执行鼠标右键点击。
+- 双指滑动：模拟鼠标滚轮；移动超过阈值后，本次手势不再触发右键。
+- 三指及以上：不执行鼠标映射，并取消当前触摸手势。
+- 实体鼠标和键盘继续由系统 WebView 原生处理。
+
+双指轻点需要在 250 毫秒内完成，且双指中心移动不超过 14 CSS 像素。游戏菜单中的“自动收集阳光”开启后，会每 1.5 秒模拟一次 `A` 键。
 
 导入完成后，资源会被组织在应用创建的 `GardendlessLoader` 目录下：
 
@@ -89,6 +99,7 @@ flutter run
 | `lib/src/services/resource_validator.dart` | 资源结构、标题和 Cocos 配置校验 |
 | `lib/src/ui/home_page.dart` | 导入、状态、公告、更新和诊断 UI |
 | `lib/src/ui/game_page.dart` | 横屏 WebView 游戏页、菜单和游戏辅助开关 |
+| `lib/src/web/touch_patch.dart` | 单指左键、双指右键/滚轮和触摸取消状态机 |
 | `announcements.json` | 远程公告配置 |
 
 ## 构建

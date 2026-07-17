@@ -27,7 +27,7 @@ the game in an in-app WebView.
 - Uses a landscape, immersive WebView and blocks non-local requests by default.
 - Shows import progress, rolls back failed imports, and recovers unfinished startup transactions.
 - Provides copyable diagnostics for resource, platform, WebView, and local server state.
-- Supports inline home-page announcements, GitHub Release update checks, auto sunlight collection, and stretch mode.
+- Adapts the game viewport between `16:10` and `17:9`, and supports inline home-page announcements, GitHub Release update checks, and auto sunlight collection.
 - Builds Android, iOS, HarmonyOS/OpenHarmony, and Web artifacts in GitHub Actions.
 
 ## Usage
@@ -36,6 +36,16 @@ the game in an in-app WebView.
 2. Open `GardendlessLoader` and choose `Select ZIP to import`.
 3. The app searches the ZIP root and nested directories for a valid `docs`, extracts it, and imports it into `current`.
 4. After import succeeds, start the game. It loads from the local origin.
+
+### In-game touch controls
+
+- Single-finger tap or drag: left mouse click or drag.
+- Two-finger tap: right mouse click at the center of both touches.
+- Two-finger swipe: mouse wheel; after movement crosses the threshold, the gesture can no longer right-click.
+- Three or more touches: no mouse mapping; the current touch gesture is cancelled.
+- Physical mice and keyboards continue through the platform WebView unchanged.
+
+A two-finger tap must finish within 250 milliseconds without moving its center more than 14 CSS pixels. When enabled in the game menu, auto sunlight collection simulates one `A` key press every 1.5 seconds.
 
 Imported resources are stored under an app-created `GardendlessLoader` directory:
 
@@ -96,6 +106,7 @@ Useful project files:
 | `lib/src/services/resource_validator.dart` | Resource shape, title, and Cocos config validation |
 | `lib/src/ui/home_page.dart` | Import, status, announcement, update, and diagnostics UI |
 | `lib/src/ui/game_page.dart` | Landscape WebView shell, menu, and helper toggles |
+| `lib/src/web/touch_patch.dart` | Single-finger left click, two-finger right click/wheel, and cancellation state machine |
 | `announcements.json` | Remote announcement payload |
 
 ## Build
