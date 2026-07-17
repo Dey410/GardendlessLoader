@@ -465,6 +465,25 @@ writeResult();
     expect(events.single, containsPair('type', 'mouseup'));
     expect(events.single, containsPair('buttons', 0));
   });
+
+  test('touching a text input preserves native activation', () async {
+    final result = await _runTouchScenario(r'''
+const point = touch(20, 30, input);
+
+const startEvent = dispatchTouch('touchstart', [point], [point]);
+const endEvent = dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult({
+  startDefaultPrevented: startEvent.defaultPrevented,
+  endDefaultPrevented: endEvent.defaultPrevented
+});
+''');
+
+    expect(result['startDefaultPrevented'], isFalse);
+    expect(result['endDefaultPrevented'], isFalse);
+    expect(result['events'], isEmpty);
+  });
 }
 
 Future<Map<String, dynamic>> _runTouchScenario(String scenario) async {
@@ -594,6 +613,8 @@ function triggerMutations() {
 const canvas = makeTarget('canvas');
 const body = makeTarget('body');
 const overlay = makeTarget('overlay');
+const input = makeTarget('input');
+input.tagName = 'INPUT';
 let hitTarget = canvas;
 const window = makeTarget('window');
 window.addEventListener = function (type, listener) {
@@ -656,8 +677,8 @@ function dispatchDocumentEvent(type) {
   listeners.get(type)?.({type});
 }
 
-function writeResult() {
-  process.stdout.write(JSON.stringify({events, successfulLeftDowns}));
+function writeResult(extra = {}) {
+  process.stdout.write(JSON.stringify({events, successfulLeftDowns, ...extra}));
 }
 
 globalThis.MouseEvent = SyntheticMouseEvent;
