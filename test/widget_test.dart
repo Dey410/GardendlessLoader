@@ -324,20 +324,39 @@ void main() {
       ),
     );
 
+    final filledButtons = find.byWidgetPredicate(
+      (widget) => widget is FilledButton,
+    );
+    final outlinedButtons = find.byWidgetPredicate(
+      (widget) => widget is OutlinedButton,
+    );
+
     expect(
-      find.widgetWithIcon(FilledButton, Icons.play_arrow_rounded),
+      find.descendant(
+        of: filledButtons,
+        matching: find.byIcon(Icons.play_arrow_rounded),
+      ),
       findsOneWidget,
     );
     expect(
-      find.widgetWithIcon(FilledButton, Icons.refresh_rounded),
+      find.descendant(
+        of: filledButtons,
+        matching: find.byIcon(Icons.refresh_rounded),
+      ),
       findsOneWidget,
     );
     expect(
-      find.widgetWithIcon(FilledButton, Icons.terminal_rounded),
+      find.descendant(
+        of: filledButtons,
+        matching: find.byIcon(Icons.terminal_rounded),
+      ),
       findsOneWidget,
     );
     expect(
-      find.widgetWithIcon(OutlinedButton, Icons.home_rounded),
+      find.descendant(
+        of: outlinedButtons,
+        matching: find.byIcon(Icons.home_rounded),
+      ),
       findsOneWidget,
     );
   });
