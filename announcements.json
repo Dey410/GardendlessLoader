@@ -3,7 +3,7 @@
   "announcement": {
     "id": "2026-07-18-v0.5.2",
     "title": "v0.5.2 更新重点",
-    "message": "GardendlessLoader v0.5.2 已发布：全新设计首页与游戏菜单；升级移动端触控，支持单指左键、双指右键和双指滚轮；新增双槽资源导入，更新失败时保留当前可用资源；新增游戏版本识别与更新检查；修复 iOS ZIP 导入、HarmonyOS 文件导出及文本输入控件触摸问题。",
+    "message": "GardendlessLoader v0.6.2 已发布：支持gp-next，注意网盘中0.11.4为gpnext版本，需要更新v0.6.2方可使用",
     "links": [
       {
         "label": "GitHub",
