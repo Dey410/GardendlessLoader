@@ -189,6 +189,34 @@ void main() {
     expect(requestedValue, isFalse);
   });
 
+  testWidgets('game menu hides auto sunlight collection for GP-Next', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            showGpNext: true,
+            onOpenGpNext: () {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('自动收集阳光'), findsNothing);
+    expect(find.text('每 1.5 秒自动按下 A 键'), findsNothing);
+    expect(find.text('显示水印'), findsOneWidget);
+    expect(find.byType(Divider), findsNothing);
+  });
+
   testWidgets('game menu omits the removed force stretch switch', (
     tester,
   ) async {

@@ -863,19 +863,21 @@ class GameMenuDialog extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SwitchListTile(
-                              secondary: const Icon(Icons.wb_sunny_rounded),
-                              title: const Text('自动收集阳光'),
-                              subtitle: const Text('每 1.5 秒自动按下 A 键'),
-                              value: autoCollectSunlightEnabled,
-                              onChanged: onAutoCollectSunlightChanged,
-                            ),
-                            Divider(
-                              height: 1,
-                              indent: 18,
-                              endIndent: 18,
-                              color: LauncherVisuals.separator(context),
-                            ),
+                            if (!showGpNext) ...[
+                              SwitchListTile(
+                                secondary: const Icon(Icons.wb_sunny_rounded),
+                                title: const Text('自动收集阳光'),
+                                subtitle: const Text('每 1.5 秒自动按下 A 键'),
+                                value: autoCollectSunlightEnabled,
+                                onChanged: onAutoCollectSunlightChanged,
+                              ),
+                              Divider(
+                                height: 1,
+                                indent: 18,
+                                endIndent: 18,
+                                color: LauncherVisuals.separator(context),
+                              ),
+                            ],
                             SwitchListTile(
                               secondary: const Icon(Icons.branding_watermark),
                               title: const Text('显示水印'),
