@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import '../constants.dart';
 
 const defaultGameTagsApiUrl =
@@ -10,7 +12,11 @@ const defaultGameUpdateCheckTimeout = Duration(seconds: 5);
 const defaultGameUpdateCheckMaxBytes = 64 * 1024;
 
 typedef GameUpdateCheckHttpLoader = Future<GameUpdateCheckHttpResponse>
-    Function(Uri uri, Duration timeout, int maxBytes);
+    Function(
+  Uri uri,
+  Duration timeout,
+  int maxBytes,
+);
 
 class GameUpdateCheckHttpResponse {
   const GameUpdateCheckHttpResponse({
@@ -76,14 +82,37 @@ class GameUpdateCheckService {
       caseSensitive: false,
       dotAll: true,
     ).firstMatch(html)?.group(1);
-    if (title == null) {
-      return null;
+    final titleVersion = title == null
+        ? null
+        : RegExp(
+            r'(?:^|[^0-9A-Za-z])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?![0-9A-Za-z.-])',
+            caseSensitive: false,
+          ).firstMatch(title)?.group(1);
+    if (titleVersion != null) {
+      return titleVersion;
     }
 
-    return RegExp(
-      r'(?:^|[^0-9A-Za-z])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?![0-9A-Za-z.-])',
+    final moduleTag = RegExp(
+      r'''<script\b(?=[^>]*\btype\s*=\s*["']module["'])[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>''',
       caseSensitive: false,
-    ).firstMatch(title)?.group(1);
+    ).firstMatch(html);
+    final source = moduleTag?.group(1);
+    if (source == null || source.contains('://')) {
+      return null;
+    }
+    final relative = (Uri.tryParse(source)?.path ?? source).replaceFirst(
+      RegExp(r'^/+'),
+      '',
+    );
+    final module = File(p.join(root.path, relative));
+    if (!await module.exists()) {
+      return null;
+    }
+    final entry = await module.readAsString();
+    return RegExp(
+      r'(?:Playing version|Game Version:)\s*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)',
+      caseSensitive: false,
+    ).firstMatch(entry)?.group(1);
   }
 
   Future<GameUpdateCheckResult> check({
@@ -115,8 +144,11 @@ class GameUpdateCheckService {
   }
 
   Future<String> loadLatestVersion() async {
-    final response =
-        await _loader(_tagsUri, _timeout, _maxBytes).timeout(_timeout);
+    final response = await _loader(
+      _tagsUri,
+      _timeout,
+      _maxBytes,
+    ).timeout(_timeout);
     if (response.statusCode != HttpStatus.ok) {
       throw const GameUpdateCheckException('GitHub tags request failed');
     }

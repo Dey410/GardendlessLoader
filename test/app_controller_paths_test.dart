@@ -217,15 +217,39 @@ void main() {
     );
     await controller.initialize();
 
+    final extractionPublished = Completer<ImportProgress>();
+    final elapsedAdvanced = Completer<ImportProgress>();
+    void captureExtractionProgress() {
+      final progress = controller.importProgress;
+      if (progress.phase != ImportPhase.extracting) {
+        return;
+      }
+      if (!extractionPublished.isCompleted) {
+        extractionPublished.complete(progress);
+      }
+      if (progress.elapsed > Duration.zero && !elapsedAdvanced.isCompleted) {
+        elapsedAdvanced.complete(progress);
+      }
+    }
+
+    controller.addListener(captureExtractionProgress);
+    addTearDown(
+      () => controller.removeListener(captureExtractionProgress),
+    );
+
     final importFuture = controller.importResources();
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(controller.importProgress.phase, ImportPhase.extracting);
-      expect(controller.importProgress.value, 0.25);
-      await Future<void>.delayed(const Duration(milliseconds: 25));
+      final initialProgress = await extractionPublished.future.timeout(
+        const Duration(seconds: 1),
+      );
+      expect(initialProgress.value, 0.25);
+
+      final advancedProgress = await elapsedAdvanced.future.timeout(
+        const Duration(seconds: 1),
+      );
       expect(
-        controller.importProgress.elapsed,
-        greaterThanOrEqualTo(const Duration(milliseconds: 20)),
+        advancedProgress.elapsed,
+        greaterThan(initialProgress.elapsed),
       );
     } finally {
       releaseImporter.complete();

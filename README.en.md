@@ -25,6 +25,7 @@ the game in an in-app WebView.
 - Validates the expected `PvZ2 Gardendless` Cocos web build shape, title, and fingerprints.
 - Serves static files from `http://127.0.0.1:26410`.
 - Uses a landscape, immersive WebView and blocks non-local requests by default.
+- Detects the GP-Next 1.4.2 desktop build, injects a mobile compatibility bridge without modifying game resources, and conditionally exposes `Open GP-Next` in the game menu.
 - Shows import progress, extracts directly into the inactive slot, keeps the active slot on failure, and recovers unfinished transactions at startup.
 - Provides copyable diagnostics for resource, platform, WebView, and local server state.
 - Adapts the game viewport between `16:10` and `17:9`, and supports inline home-page announcements, independent loader/game update checks, and auto sunlight collection.
@@ -54,6 +55,9 @@ Imported resources are stored under an app-created `GardendlessLoader` directory
 GardendlessLoader/
   slot-a/          # resource slot A
   slot-b/          # resource slot B
+  gp-next/
+    packs/         # persistent GP-Next ZIP packs
+    patches/       # persistent JSON/JSON5 single-file patches
   manifest.json    # active slot, transaction state, stats, and game version
 ```
 
@@ -88,6 +92,14 @@ The validator also checks that:
 - `index.html` contains a `pvzge` or `play.pvzge.com` fingerprint.
 - `src/settings.json` is valid JSON and looks like a Cocos configuration file.
 
+### GP-Next compatibility
+
+The loader currently targets GP-Next `1.4.2` from the inspected desktop build. An unknown GP-Next version remains importable and playable, but its compatibility bridge and `Open GP-Next` action are disabled with a diagnostic reason. Standard web builds retain their original path.
+
+GP-Next-defined patch discovery, parsing, loading, saving, reloading, and JS Mod switch behavior is preserved. Only desktop system boundaries are mapped on mobile: AppData file APIs use the loader's `gp-next` sandbox, `open patch folder` invokes the system file picker, and save dialogs invoke the system exporter. Imports accept ZIP packs with a root `pack.json`, JSON, and JSON5; naked JavaScript is rejected. Replacements require confirmation and use a rollback-safe file swap. JS Mods remain disabled by GP-Next by default until the user explicitly enables them there.
+
+The persistent `gp-next` directory is outside both game resource slots, so resource updates do not remove installed patches or Mods. The bridge rejects paths outside this sandbox and symbolic links. External WebView traffic remains blocked except for the fixed official domains used by the built-in GP-Next module.
+
 ## Development
 
 This repository expects Flutter with Dart `>=3.5.0 <4.0.0`.
@@ -108,6 +120,8 @@ Useful project files:
 | `lib/src/services/local_game_server.dart` | Local HTTP server, MIME handling, and self-checks |
 | `lib/src/services/resource_validator.dart` | Resource shape, title, and Cocos config validation |
 | `lib/src/services/game_update_check_service.dart` | Local game version detection, stable tag selection, and version comparison |
+| `lib/src/services/gp_next_bridge_service.dart` | GP-Next 1.4.2 Tauri file, dialog, and opener compatibility |
+| `lib/src/services/gp_next_package_importer.dart` | GP-Next package validation and transactional replacement |
 | `lib/src/ui/home_page.dart` | Import, status, announcement, update, and diagnostics UI |
 | `lib/src/ui/game_page.dart` | Landscape WebView shell, menu, and helper toggles |
 | `lib/src/web/touch_patch.dart` | Single-finger left click, two-finger right click/wheel, and cancellation state machine |

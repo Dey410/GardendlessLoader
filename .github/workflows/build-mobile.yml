@@ -63,8 +63,19 @@ jobs:
             echo "No Android signing secrets configured; using debug signing."
           fi
 
+      - name: Compute Android version code
+        id: android_version
+        shell: bash
+        run: |
+          VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "### Android build" >> "$GITHUB_STEP_SUMMARY"
+          echo "- versionCode: $VERSION_CODE" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Build release APK
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release \
+            --build-number "${{ steps.android_version.outputs.version_code }}"
 
       - name: Stage APK
         run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/GardendlessLoader-android.apk

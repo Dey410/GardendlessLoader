@@ -21,6 +21,7 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 - 校验 `PvZ2 Gardendless` Cocos Web 构建结构、标题和指纹。
 - 使用 `http://127.0.0.1:26410` 提供本地静态资源服务。
 - 游戏页固定横屏、沉浸式显示，并默认拦截非本地请求。
+- 自动识别 GP-Next 1.4.2 桌面构建，在不修改游戏资源的前提下注入移动端兼容桥，并在游戏菜单显示“打开 GP-Next”。
 - 导入过程带进度显示；新资源直接写入空闲槽，失败时继续使用原激活槽，启动时恢复未完成事务。
 - 提供可复制的诊断信息，方便排查资源、平台、WebView 和本地 server 状态。
 - 游戏画面在 `16:10～17:9` 之间自适应屏幕，并支持首页公告、加载器与游戏资源双更新检查和自动收集阳光。
@@ -50,6 +51,9 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 GardendlessLoader/
   slot-a/          # 资源槽 A
   slot-b/          # 资源槽 B
+  gp-next/
+    packs/         # 持久化的 GP-Next ZIP 补丁包
+    patches/       # 持久化的 JSON/JSON5 单文件补丁
   manifest.json    # 激活槽、事务状态、资源统计和本地游戏版本
 ```
 
@@ -78,6 +82,14 @@ docs/
 - `index.html` 包含 `pvzge` 或 `play.pvzge.com` 指纹。
 - `src/settings.json` 是有效 JSON，并符合 Cocos 配置文件的基本形态。
 
+### GP-Next 兼容
+
+Loader 当前精确适配反编译资源中的 GP-Next `1.4.2`。识别到其他 GP-Next 版本时，游戏资源仍可正常导入和启动，但兼容桥与“打开 GP-Next”按钮会禁用并显示原因；普通 Web 构建继续使用原有流程。
+
+GP-Next 明确定义的补丁发现、解析、加载、保存、重新加载和 JS Mod 开关行为保持不变。移动端仅替代桌面系统边界：AppData 文件 API 映射到 Loader 的 `gp-next` 沙箱，“打开补丁目录”映射为系统文件选择器，保存对话框映射为系统导出。选择器只接受根目录含 `pack.json` 的 ZIP、JSON 和 JSON5；裸 JavaScript 不可导入。重名文件必须确认后才以可回滚方式替换。JS Mod 仍按 GP-Next 默认关闭，需用户在 GP-Next 中明确开启。
+
+`gp-next` 不属于双资源槽，因此游戏资源更新不会删除已导入补丁和 Mod。兼容桥拒绝访问该目录之外的路径和符号链接；WebView 仍默认阻止外部请求，只放行内置 GP-Next 使用的固定官方域名。
+
 ## 开发
 
 本仓库要求 Flutter 和 Dart `>=3.5.0 <4.0.0`。
@@ -98,6 +110,8 @@ flutter run
 | `lib/src/services/local_game_server.dart` | 本地 HTTP server、MIME 处理和自检 |
 | `lib/src/services/resource_validator.dart` | 资源结构、标题和 Cocos 配置校验 |
 | `lib/src/services/game_update_check_service.dart` | 本地游戏版本识别、稳定 tag 选择和版本比较 |
+| `lib/src/services/gp_next_bridge_service.dart` | GP-Next 1.4.2 Tauri 文件、对话框和 opener 兼容层 |
+| `lib/src/services/gp_next_package_importer.dart` | GP-Next 补丁选择、校验和事务替换 |
 | `lib/src/ui/home_page.dart` | 导入、状态、公告、更新和诊断 UI |
 | `lib/src/ui/game_page.dart` | 横屏 WebView 游戏页、菜单和游戏辅助开关 |
 | `lib/src/web/touch_patch.dart` | 单指左键、双指右键/滚轮和触摸取消状态机 |

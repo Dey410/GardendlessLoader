@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import '../constants.dart';
 import '../models.dart';
 
+const _androidMediaIgnoreFileName = '.nomedia';
+
 typedef DirectoryProvider = Future<Directory> Function();
 typedef NullableDirectoryProvider = Future<Directory?> Function();
 
@@ -57,8 +59,13 @@ class AppPathsService {
 
   Future<void> _createPaths(AppPaths paths) async {
     await paths.root.create(recursive: true);
+    if (_platformName == 'android') {
+      await File(p.join(paths.root.path, _androidMediaIgnoreFileName)).create();
+    }
     await paths.slotADir.create(recursive: true);
     await paths.slotBDir.create(recursive: true);
+    await paths.gpNextPacksDir.create(recursive: true);
+    await paths.gpNextPatchesDir.create(recursive: true);
   }
 
   Future<List<Directory>> _defaultRoots() async {

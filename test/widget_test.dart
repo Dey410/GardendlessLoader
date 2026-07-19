@@ -18,10 +18,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: GameViewportFrame(
-          child: ColoredBox(
-            key: childKey,
-            color: Colors.green,
-          ),
+          child: ColoredBox(key: childKey, color: Colors.green),
         ),
       ),
     );
@@ -32,8 +29,9 @@ void main() {
     expect(size.height, 640);
   });
 
-  testWidgets('game viewport clamps ultrawide landscape to 17:9',
-      (tester) async {
+  testWidgets('game viewport clamps ultrawide landscape to 17:9', (
+    tester,
+  ) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(2400, 1080);
@@ -43,10 +41,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: GameViewportFrame(
-          child: ColoredBox(
-            key: childKey,
-            color: Colors.green,
-          ),
+          child: ColoredBox(key: childKey, color: Colors.green),
         ),
       ),
     );
@@ -57,8 +52,9 @@ void main() {
     expect(size.height, 1080);
   });
 
-  testWidgets('game viewport fills screens within the adaptive ratio range',
-      (tester) async {
+  testWidgets('game viewport fills screens within the adaptive ratio range', (
+    tester,
+  ) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1920, 1080);
@@ -68,10 +64,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: GameViewportFrame(
-          child: ColoredBox(
-            key: childKey,
-            color: Colors.green,
-          ),
+          child: ColoredBox(key: childKey, color: Colors.green),
         ),
       ),
     );
@@ -82,8 +75,9 @@ void main() {
     expect(size.height, 1080);
   });
 
-  testWidgets('game viewport overlays watermark in content bottom-left',
-      (tester) async {
+  testWidgets('game viewport overlays watermark in content bottom-left', (
+    tester,
+  ) async {
     const childKey = Key('game-child');
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1024, 768);
@@ -93,10 +87,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: GameViewportFrame(
-          child: ColoredBox(
-            key: childKey,
-            color: Colors.green,
-          ),
+          child: ColoredBox(key: childKey, color: Colors.green),
         ),
       ),
     );
@@ -114,8 +105,9 @@ void main() {
     expect(ignorePointer.ignoring, isTrue);
   });
 
-  testWidgets('game viewport hides the watermark when disabled',
-      (tester) async {
+  testWidgets('game viewport hides the watermark when disabled', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: GameViewportFrame(
@@ -128,8 +120,9 @@ void main() {
     expect(find.text(gameWatermarkText), findsNothing);
   });
 
-  testWidgets('game menu exposes auto sunlight collection switch',
-      (tester) async {
+  testWidgets('game menu exposes auto sunlight collection switch', (
+    tester,
+  ) async {
     bool? requestedValue;
 
     await tester.pumpWidget(
@@ -159,8 +152,9 @@ void main() {
     expect(requestedValue, isTrue);
   });
 
-  testWidgets('game menu exposes the watermark as the second switch',
-      (tester) async {
+  testWidgets('game menu exposes the watermark as the second switch', (
+    tester,
+  ) async {
     bool? requestedValue;
 
     await tester.pumpWidget(
@@ -195,8 +189,37 @@ void main() {
     expect(requestedValue, isFalse);
   });
 
-  testWidgets('game menu omits the removed force stretch switch',
-      (tester) async {
+  testWidgets('game menu hides auto sunlight collection for GP-Next', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            showGpNext: true,
+            onOpenGpNext: () {},
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('自动收集阳光'), findsNothing);
+    expect(find.text('每 1.5 秒自动按下 A 键'), findsNothing);
+    expect(find.text('显示水印'), findsOneWidget);
+    expect(find.byType(Divider), findsNothing);
+  });
+
+  testWidgets('game menu omits the removed force stretch switch', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -217,8 +240,70 @@ void main() {
     expect(find.text('强制拉伸'), findsNothing);
   });
 
-  testWidgets('double tapping the game menu backdrop continues the game',
-      (tester) async {
+  testWidgets('game menu only exposes GP-Next for a detected build', (
+    tester,
+  ) async {
+    var openCount = 0;
+
+    Widget buildMenu({required bool showGpNext, VoidCallback? onOpenGpNext}) {
+      return MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            showGpNext: showGpNext,
+            onOpenGpNext: onOpenGpNext,
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildMenu(showGpNext: false));
+    expect(find.text('打开 GP-Next'), findsNothing);
+
+    await tester.pumpWidget(
+      buildMenu(showGpNext: true, onOpenGpNext: () => openCount += 1),
+    );
+    await tester.tap(find.byKey(const ValueKey('open-gp-next-button')));
+    expect(openCount, 1);
+  });
+
+  testWidgets('unsupported GP-Next is visible but disabled', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameMenuDialog(
+            autoCollectSunlightEnabled: false,
+            onAutoCollectSunlightChanged: (_) {},
+            watermarkEnabled: true,
+            onWatermarkChanged: (_) {},
+            showGpNext: true,
+            gpNextUnavailableReason: '暂不支持 GP-Next 9.9.9',
+            onContinue: () {},
+            onReturnHome: () {},
+            onReload: () {},
+            onDiagnostics: () {},
+          ),
+        ),
+      ),
+    );
+
+    final button = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('open-gp-next-button')),
+    );
+    expect(button.onPressed, isNull);
+    expect(find.text('暂不支持 GP-Next 9.9.9'), findsOneWidget);
+  });
+
+  testWidgets('double tapping the game menu backdrop continues the game', (
+    tester,
+  ) async {
     var continueCount = 0;
 
     await tester.pumpWidget(
@@ -240,8 +325,9 @@ void main() {
     expect(continueCount, 1);
   });
 
-  testWidgets('double tapping inside the game menu keeps it open',
-      (tester) async {
+  testWidgets('double tapping inside the game menu keeps it open', (
+    tester,
+  ) async {
     var continueCount = 0;
 
     await tester.pumpWidget(
@@ -266,8 +352,9 @@ void main() {
     expect(continueCount, 0);
   });
 
-  testWidgets('game menu uses a responsive 480 pixel glass panel',
-      (tester) async {
+  testWidgets('game menu uses a responsive 480 pixel glass panel', (
+    tester,
+  ) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1000, 700);
     addTearDown(tester.view.resetPhysicalSize);
@@ -305,8 +392,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('game menu presents primary secondary and warning actions',
-      (tester) async {
+  testWidgets('game menu presents primary secondary and warning actions', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -361,8 +449,9 @@ void main() {
     );
   });
 
-  testWidgets('game menu glass surface follows light and dark themes',
-      (tester) async {
+  testWidgets('game menu glass surface follows light and dark themes', (
+    tester,
+  ) async {
     Widget buildMenu(Brightness brightness) {
       return MaterialApp(
         theme: ThemeData.light(),

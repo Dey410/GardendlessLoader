@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -9,14 +10,18 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:path/path.dart' as p;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../app_controller.dart';
 import '../constants.dart';
 import '../services/auto_sun_collector.dart';
 import '../services/game_download_service.dart';
+import '../services/gp_next_bridge_service.dart';
+import '../services/gp_next_package_importer.dart';
 import '../web/collect_sunlight_key_press.dart';
 import '../web/export_download_patch.dart';
+import '../web/gp_next_compat_bridge.dart';
 import '../web/touch_patch.dart';
 import 'launcher_visuals.dart';
 
@@ -35,6 +40,8 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   InAppWebViewController? _webViewController;
   late final AutoSunCollector _autoSunCollector;
   late final GameDownloadService _downloadService;
+  GpNextBridgeService? _gpNextBridgeService;
+  GpNextPackageImporter? _gpNextPackageImporter;
   bool _autoCollectSunlightEnabled = false;
   bool _resumeReloadNotified = false;
 
@@ -45,6 +52,19 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       onPressCollectKey: _pressCollectSunlightKey,
     );
     _downloadService = GameDownloadService();
+    if (widget.controller.gpNextCompatible && widget.controller.paths != null) {
+      _gpNextPackageImporter = GpNextPackageImporter(
+        paths: widget.controller.paths!,
+        confirmReplace: _confirmGpNextReplacement,
+      );
+      _gpNextBridgeService = GpNextBridgeService(
+        paths: widget.controller.paths!,
+        openPath: _importGpNextPackages,
+        openUrl: _openGpNextUrl,
+        exportFile: _exportGpNextFile,
+      );
+      unawaited(_gpNextBridgeService!.initialize());
+    }
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
     SystemChrome.setPreferredOrientations([
@@ -96,18 +116,9 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                       () => EagerGestureRecognizer(),
                     ),
                   },
-                  initialUserScripts: UnmodifiableListView<UserScript>([
-                    UserScript(
-                      source: gardendlessExportDownloadPatchSource,
-                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                      forMainFrameOnly: false,
-                    ),
-                    UserScript(
-                      source: gardendlessTouchPatchSource,
-                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                      forMainFrameOnly: false,
-                    ),
-                  ]),
+                  initialUserScripts: UnmodifiableListView<UserScript>(
+                    _initialUserScripts(),
+                  ),
                   initialUrlRequest: URLRequest(
                     url: WebUri('$localOrigin/index.html'),
                   ),
@@ -142,6 +153,12 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                         return {'accepted': true};
                       },
                     );
+                    if (_gpNextBridgeService != null) {
+                      controller.addJavaScriptHandler(
+                        handlerName: gardendlessGpNextBridgeHandlerName,
+                        callback: _handleGpNextBridge,
+                      );
+                    }
                   },
                   shouldOverrideUrlLoading: (controller, action) async {
                     final url = action.request.url;
@@ -159,7 +176,8 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
                     return NavigationActionPolicy.CANCEL;
                   },
                   shouldInterceptRequest: (controller, request) async {
-                    if (_isLocalUrl(request.url)) {
+                    if (_isLocalUrl(request.url) ||
+                        _isAllowedGpNextNetworkUrl(request.url)) {
                       return null;
                     }
                     return WebResourceResponse(
@@ -229,9 +247,9 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     }
     if (!_resumeReloadNotified) {
       _resumeReloadNotified = true;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('本地 server 已重启，游戏页面已重新加载')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('本地 server 已重启，游戏页面已重新加载')));
     }
   }
 
@@ -245,6 +263,40 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   bool _isGitHubUrl(WebUri? url) {
     return url != null &&
         (url.host == 'github.com' || url.host.endsWith('.github.com'));
+  }
+
+  bool _isAllowedGpNextNetworkUrl(WebUri? url) {
+    if (!widget.controller.gpNextCompatible || url == null) {
+      return false;
+    }
+    return url.scheme == 'https' &&
+        const {
+          'api-cloud-save.pvzge.com',
+          'cloud-save.pvzge.com',
+          'daily-level-api.pvzge.com',
+          'pvzge.com',
+        }.contains(url.host.toLowerCase());
+  }
+
+  List<UserScript> _initialUserScripts() {
+    return [
+      if (widget.controller.gpNextCompatible)
+        UserScript(
+          source: gardendlessGpNextCompatBridgeSource,
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+          forMainFrameOnly: false,
+        ),
+      UserScript(
+        source: gardendlessExportDownloadPatchSource,
+        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+        forMainFrameOnly: false,
+      ),
+      UserScript(
+        source: gardendlessTouchPatchSource,
+        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+        forMainFrameOnly: false,
+      ),
+    ];
   }
 
   bool _isInlineDownloadUrl(WebUri? url) {
@@ -272,6 +324,14 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
               unawaited(_setWatermarkEnabled(enabled));
               setDialogState(() {});
             },
+            showGpNext: widget.controller.hasGpNext,
+            gpNextUnavailableReason: widget.controller.gpNextCompatibilityError,
+            onOpenGpNext: widget.controller.gpNextCompatible
+                ? () {
+                    Navigator.of(dialogContext).pop();
+                    unawaited(_openGpNext());
+                  }
+                : null,
             onContinue: () => Navigator.of(dialogContext).pop(),
             onReturnHome: () {
               Navigator.of(dialogContext).pop();
@@ -322,9 +382,9 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存水印设置失败：$error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('保存水印设置失败：$error')));
     }
   }
 
@@ -368,9 +428,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
 
   Future<void> _exportGameDownload(GameDownloadRequest request) async {
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('正在准备导出文件...')),
-    );
+    messenger.showSnackBar(const SnackBar(content: Text('正在准备导出文件...')));
 
     try {
       final file = await _downloadService.exportDownload(
@@ -381,9 +439,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text('已打开保存位置选择：${file.name}')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('已打开保存位置选择：${file.name}')));
     } on PlatformException catch (error) {
       if (!mounted) {
         return;
@@ -391,25 +447,19 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       final message = error.code == 'export_cancelled'
           ? '已取消导出'
           : '导出失败：${error.message ?? error.code}';
-      messenger.showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } on GameDownloadFailure catch (error) {
       if (!mounted) {
         return;
       }
       final message =
           error.message == '已取消导出' ? error.message : '导出失败：${error.message}';
-      messenger.showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text('导出失败：$error')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('导出失败：$error')));
     }
   }
 
@@ -417,9 +467,9 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('导出失败：$message')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('导出失败：$message')));
   }
 
   Rect _presentationOrigin() {
@@ -457,6 +507,113 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<Object?> _handleGpNextBridge(List<dynamic> arguments) async {
+    final service = _gpNextBridgeService;
+    if (service == null || arguments.isEmpty || arguments.first is! Map) {
+      return const {
+        'ok': false,
+        'error': 'GP-Next compatibility bridge is unavailable',
+      };
+    }
+    try {
+      final value = await service.invoke(
+        Map<Object?, Object?>.from(arguments.first as Map),
+      );
+      return {'ok': true, 'value': value};
+    } catch (error) {
+      return {'ok': false, 'error': error.toString()};
+    }
+  }
+
+  Future<List<String>> _importGpNextPackages() async {
+    final importer = _gpNextPackageImporter;
+    if (importer == null) {
+      throw const GpNextPackageImportFailure('GP-Next 文件导入器不可用');
+    }
+    final imported = await importer.pickAndImport();
+    if (mounted && imported.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '已导入 ${imported.length} 个 GP-Next 文件，请在 GP-Next 中重新加载补丁',
+          ),
+        ),
+      );
+    }
+    return imported;
+  }
+
+  Future<bool> _confirmGpNextReplacement(String fileName) {
+    return _confirm(
+      title: '替换 GP-Next 文件',
+      message: '$fileName 已存在，是否使用新文件替换？原文件会在替换成功后删除。',
+    );
+  }
+
+  Future<void> _openGpNextUrl(Uri uri) async {
+    final host = uri.host.toLowerCase();
+    final allowed = host == 'pvzge.com' ||
+        host.endsWith('.pvzge.com') ||
+        host == 'github.com' ||
+        host.endsWith('.github.com') ||
+        host == 'discord.gg';
+    if (!allowed) {
+      throw GpNextBridgeFailure('GP-Next 请求打开未授权域名：$host');
+    }
+    final browser = ChromeSafariBrowser();
+    await browser.open(url: WebUri(uri.toString()));
+  }
+
+  Future<void> _exportGpNextFile(File file, String name) async {
+    final bytes = await file.readAsBytes();
+    final extension = p.extension(name).toLowerCase();
+    final mimeType = switch (extension) {
+      '.json' || '.json5' => 'application/json',
+      '.zip' => 'application/zip',
+      '.txt' => 'text/plain',
+      _ => 'application/octet-stream',
+    };
+    await GameDownloadFileExporter.export(
+      GameDownloadFile(
+        path: file.path,
+        name: name,
+        mimeType: mimeType,
+        byteLength: bytes.length,
+        bytes: bytes,
+      ),
+      _presentationOrigin(),
+    );
+  }
+
+  Future<void> _openGpNext() async {
+    final result = await _webViewController?.evaluateJavascript(
+      source: '''
+(function () {
+  if (!window.gpNext || typeof window.gpNext.show !== "function") {
+    return JSON.stringify({ ok: false, error: "GP-Next 尚未完成初始化" });
+  }
+  window.gpNext.show();
+  return JSON.stringify({ ok: true });
+})()
+''',
+    );
+    final text = result is String ? result : result?.toString();
+    var opened = false;
+    String? error;
+    try {
+      final decoded = jsonDecode(text ?? '') as Map<String, dynamic>;
+      opened = decoded['ok'] == true;
+      error = decoded['error'] as String?;
+    } catch (_) {
+      opened = false;
+    }
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error ?? '无法打开 GP-Next')));
+    }
+  }
+
   Future<void> _confirmReturnHome() async {
     final confirmed = await _confirm(
       title: '返回首页',
@@ -481,8 +638,10 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<bool> _confirm(
-      {required String title, required String message}) async {
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+  }) async {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -581,6 +740,9 @@ class GameMenuDialog extends StatelessWidget {
     required this.onReturnHome,
     required this.onReload,
     required this.onDiagnostics,
+    this.showGpNext = false,
+    this.gpNextUnavailableReason,
+    this.onOpenGpNext,
   });
 
   final bool autoCollectSunlightEnabled;
@@ -591,6 +753,9 @@ class GameMenuDialog extends StatelessWidget {
   final VoidCallback onReturnHome;
   final VoidCallback onReload;
   final VoidCallback onDiagnostics;
+  final bool showGpNext;
+  final String? gpNextUnavailableReason;
+  final VoidCallback? onOpenGpNext;
 
   @override
   Widget build(BuildContext context) {
@@ -635,8 +800,9 @@ class GameMenuDialog extends StatelessWidget {
                         children: [
                           DecoratedBox(
                             decoration: BoxDecoration(
-                              color: LauncherVisuals.accentBlue
-                                  .withValues(alpha: 0.16),
+                              color: LauncherVisuals.accentBlue.withValues(
+                                alpha: 0.16,
+                              ),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: const Padding(
@@ -689,26 +855,29 @@ class GameMenuDialog extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                           side: BorderSide(
-                            color: LauncherVisuals.separator(context)
-                                .withValues(alpha: 0.66),
+                            color: LauncherVisuals.separator(
+                              context,
+                            ).withValues(alpha: 0.66),
                           ),
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SwitchListTile(
-                              secondary: const Icon(Icons.wb_sunny_rounded),
-                              title: const Text('自动收集阳光'),
-                              subtitle: const Text('每 1.5 秒自动按下 A 键'),
-                              value: autoCollectSunlightEnabled,
-                              onChanged: onAutoCollectSunlightChanged,
-                            ),
-                            Divider(
-                              height: 1,
-                              indent: 18,
-                              endIndent: 18,
-                              color: LauncherVisuals.separator(context),
-                            ),
+                            if (!showGpNext) ...[
+                              SwitchListTile(
+                                secondary: const Icon(Icons.wb_sunny_rounded),
+                                title: const Text('自动收集阳光'),
+                                subtitle: const Text('每 1.5 秒自动按下 A 键'),
+                                value: autoCollectSunlightEnabled,
+                                onChanged: onAutoCollectSunlightChanged,
+                              ),
+                              Divider(
+                                height: 1,
+                                indent: 18,
+                                endIndent: 18,
+                                color: LauncherVisuals.separator(context),
+                              ),
+                            ],
                             SwitchListTile(
                               secondary: const Icon(Icons.branding_watermark),
                               title: const Text('显示水印'),
@@ -720,6 +889,29 @@ class GameMenuDialog extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 18),
+                      if (showGpNext) ...[
+                        SizedBox(
+                          height: 52,
+                          child: FilledButton.tonalIcon(
+                            key: const ValueKey('open-gp-next-button'),
+                            onPressed: onOpenGpNext,
+                            icon: const Icon(Icons.extension_rounded),
+                            label: const Text('打开 GP-Next'),
+                          ),
+                        ),
+                        if (gpNextUnavailableReason != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            gpNextUnavailableReason!,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: LauncherVisuals.warning),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                      ],
                       SizedBox(
                         height: 52,
                         child: FilledButton.icon(
@@ -761,8 +953,9 @@ class GameMenuDialog extends StatelessWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: LauncherVisuals.danger,
                             side: BorderSide(
-                              color: LauncherVisuals.danger
-                                  .withValues(alpha: 0.62),
+                              color: LauncherVisuals.danger.withValues(
+                                alpha: 0.62,
+                              ),
                             ),
                           ),
                           onPressed: onReturnHome,

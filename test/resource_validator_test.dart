@@ -39,8 +39,10 @@ void main() {
   });
 
   test('rejects missing pvzge fingerprint', () async {
-    await _writeValidResource(temp,
-        indexBody: '<html><title>PvZ2 Gardendless</title></html>');
+    await _writeValidResource(
+      temp,
+      indexBody: '<html><title>PvZ2 Gardendless</title></html>',
+    );
 
     final result = await validator.validate(temp);
 
@@ -61,11 +63,15 @@ void main() {
     await _writeValidResource(temp);
 
     final result = await validator.validate(temp);
-    final stats =
-        await validator.scanStats(temp, detectedTitle: result.detectedTitle);
+    final stats = await validator.scanStats(
+      temp,
+      detectedTitle: result.detectedTitle,
+    );
 
     expect(result.isValid, isTrue);
     expect(result.detectedTitle, 'PvZ2 Gardendless');
+    expect(result.buildProfile, ResourceBuildProfile.standardWeb);
+    expect(result.gpNextVersion, isNull);
     expect(stats.fileCount, greaterThanOrEqualTo(4));
     expect(stats.totalBytes, greaterThan(0));
   });
@@ -101,6 +107,60 @@ void main() {
 
     expect(result.isValid, isTrue);
   });
+
+  test('detects the supported GP-Next desktop build', () async {
+    await _writeGpNextResource(temp, version: '1.4.2');
+
+    final result = await validator.validate(temp);
+
+    expect(result.isValid, isTrue);
+    expect(result.detectedTitle, 'Cocos Creator | PvZ2_Gardendless');
+    expect(result.buildProfile, ResourceBuildProfile.gpNext);
+    expect(result.gpNextVersion, '1.4.2');
+    expect(result.gpNextCompatibilityError, isNull);
+    expect(result.gpNextCompatible, isTrue);
+  });
+
+  test(
+    'keeps an unknown GP-Next build playable but disables its bridge',
+    () async {
+      await _writeGpNextResource(temp, version: '9.9.9');
+
+      final result = await validator.validate(temp);
+
+      expect(result.isValid, isTrue);
+      expect(result.hasGpNext, isTrue);
+      expect(result.gpNextCompatible, isFalse);
+      expect(result.gpNextCompatibilityError, '暂不支持 GP-Next 9.9.9');
+    },
+  );
+}
+
+Future<void> _writeGpNextResource(
+  Directory root, {
+  required String version,
+}) async {
+  await _writeValidResource(
+    root,
+    indexBody: '''
+<html>
+  <head><title>Cocos Creator | PvZ2_Gardendless</title></head>
+  <body><script type="module" src="./assets/index-test.js"></script></body>
+</html>
+''',
+  );
+  await File(p.join(root.path, 'assets', 'index-test.js')).writeAsString('''
+console.info('GP-Next loading...');
+window.gpNext = {};
+function loadAllPatches() {}
+import('./patcher-test.js');
+import('./file-loader-test.js');
+import('./js-mod-loader-test.js');
+import('./config-test.js');
+''');
+  await File(
+    p.join(root.path, 'assets', 'config-test.js'),
+  ).writeAsString("export const version = '$version';");
 }
 
 Future<void> _writeValidResource(
@@ -120,9 +180,11 @@ Future<void> _writeValidResource(
           '<html><head><title>$title</title></head><body>pvzge</body></html>',
     );
   }
-  await File(p.join(root.path, 'src', 'settings.json'))
-      .writeAsString(settingsJson);
+  await File(
+    p.join(root.path, 'src', 'settings.json'),
+  ).writeAsString(settingsJson);
   await File(p.join(root.path, 'src', 'import-map.json')).writeAsString('{}');
-  await File(p.join(root.path, 'cocos-js', 'cc.js'))
-      .writeAsString('console.log("cc");');
+  await File(
+    p.join(root.path, 'cocos-js', 'cc.js'),
+  ).writeAsString('console.log("cc");');
 }

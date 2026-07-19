@@ -92,8 +92,9 @@ class AppController extends ChangeNotifier {
   ResourceManifest _manifest = ResourceManifest.initial();
   ResourceValidationResult _currentValidation =
       ResourceValidationResult.missing('尚未检查激活槽');
-  ResourceValidationResult _importValidation =
-      ResourceValidationResult.missing('尚未选择 ZIP');
+  ResourceValidationResult _importValidation = ResourceValidationResult.missing(
+    '尚未选择 ZIP',
+  );
   ImportProgress _importProgress = ImportProgress.idle;
   Directory? _selectedImportSource;
   Announcement? _announcement;
@@ -138,11 +139,26 @@ class AppController extends ChangeNotifier {
       _importProgress.phase != ImportPhase.completed &&
       _importProgress.phase != ImportPhase.failed;
   bool get hasCurrentResource => _currentValidation.isValid;
+  bool get hasGpNext =>
+      hasCurrentResource &&
+      (_currentValidation.isValid
+          ? _currentValidation.hasGpNext
+          : _manifest.hasGpNext);
+  bool get gpNextCompatible =>
+      hasGpNext &&
+      (_currentValidation.isValid
+          ? _currentValidation.gpNextCompatible
+          : _manifest.gpNextCompatible);
+  String? get gpNextVersion =>
+      _currentValidation.gpNextVersion ?? _manifest.gpNextVersion;
+  String? get gpNextCompatibilityError =>
+      _currentValidation.gpNextCompatibilityError ??
+      _manifest.gpNextCompatibilityError;
   bool get hasValidImportSource => _importValidation.isValid;
   bool get canStartGame => hasCurrentResource;
   String get detectedTitle =>
       _currentValidation.detectedTitle ?? _manifest.detectedTitle ?? '未检测到标题';
-//返回一个适合在 UI 中显示的资源根目录名称。如果路径信息不可用，则返回一个默认的资源文件夹名称。
+  //返回一个适合在 UI 中显示的资源根目录名称。如果路径信息不可用，则返回一个默认的资源文件夹名称。
   String get userVisibleRoot {
     final root = _paths?.root;
     if (root == null) {
@@ -159,7 +175,7 @@ class AppController extends ChangeNotifier {
     return '尚未选择 ZIP';
   }
 
-//initialize 方法负责初始化应用的核心状态，包括加载路径信息、读取资源清单、恢复未完成的导入事务，并刷新公告信息。它会在整个过程中更新 busy 状态和 message，以便 UI 可以显示加载状态和错误信息。
+  //initialize 方法负责初始化应用的核心状态，包括加载路径信息、读取资源清单、恢复未完成的导入事务，并刷新公告信息。它会在整个过程中更新 busy 状态和 message，以便 UI 可以显示加载状态和错误信息。
   Future<void> initialize() async {
     _busy = true;
     notifyListeners();
@@ -219,10 +235,25 @@ class AppController extends ChangeNotifier {
       _currentGameVersionIsAhead = false;
       _gameUpdateDetected = false;
     }
-    if (_manifest.gameVersion != _currentGameVersion) {
+    final compatibilityMetadataChanged = _currentValidation.isValid &&
+        (_manifest.buildProfile != _currentValidation.buildProfile ||
+            _manifest.gpNextVersion != _currentValidation.gpNextVersion ||
+            _manifest.gpNextCompatibilityError !=
+                _currentValidation.gpNextCompatibilityError);
+    if (_manifest.gameVersion != _currentGameVersion ||
+        compatibilityMetadataChanged) {
       _manifest = _manifest.copyWith(
         gameVersion: _currentGameVersion,
         clearGameVersion: _currentGameVersion == null,
+        buildProfile: _currentValidation.isValid
+            ? _currentValidation.buildProfile
+            : _manifest.buildProfile,
+        gpNextVersion: _currentValidation.gpNextVersion,
+        gpNextCompatibilityError: _currentValidation.gpNextCompatibilityError,
+        clearGpNextVersion: _currentValidation.isValid &&
+            _currentValidation.gpNextVersion == null,
+        clearGpNextCompatibilityError: _currentValidation.isValid &&
+            _currentValidation.gpNextCompatibilityError == null,
       );
       await manifestStore.write(_manifest);
     }
@@ -402,10 +433,7 @@ class AppController extends ChangeNotifier {
       _selectedImportSource = selectedSource;
       _importValidation = ResourceValidationResult.missing('正在校验 docs');
       _updateImportProgress(
-        const ImportProgress(
-          phase: ImportPhase.validating,
-          message: '正在校验资源',
-        ),
+        const ImportProgress(phase: ImportPhase.validating, message: '正在校验资源'),
       );
 
       _manifest = await _importService.completeImport(
@@ -435,10 +463,9 @@ class AppController extends ChangeNotifier {
         importTarget = null;
       }
       _message = failure.message;
-      _updateImportProgress(ImportProgress(
-        phase: ImportPhase.failed,
-        message: failure.message,
-      ));
+      _updateImportProgress(
+        ImportProgress(phase: ImportPhase.failed, message: failure.message),
+      );
     } on ImportFailure catch (failure) {
       _message = failure.message;
       await refresh();
@@ -451,10 +478,9 @@ class AppController extends ChangeNotifier {
         importTarget = null;
       }
       _message = '导入失败：$error';
-      _updateImportProgress(ImportProgress(
-        phase: ImportPhase.failed,
-        message: _message,
-      ));
+      _updateImportProgress(
+        ImportProgress(phase: ImportPhase.failed, message: _message),
+      );
       await refresh();
     } finally {
       _importProgressTickTimer?.cancel();

@@ -484,6 +484,364 @@ writeResult({
     expect(result['endDefaultPrevented'], isFalse);
     expect(result['events'], isEmpty);
   });
+
+  test('touching a GP-Next overlay control preserves native activation',
+      () async {
+    final result = await _runTouchScenario(r'''
+const point = touch(20, 30, gpButton);
+
+const startEvent = dispatchTouch('touchstart', [point], [point]);
+const endEvent = dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult({
+  startDefaultPrevented: startEvent.defaultPrevented,
+  endDefaultPrevented: endEvent.defaultPrevented
+});
+''');
+
+    expect(result['startDefaultPrevented'], isFalse);
+    expect(result['endDefaultPrevented'], isFalse);
+    expect(result['events'], isEmpty);
+  });
+
+  test('touching the GP-Next hint preserves native activation', () async {
+    final result = await _runTouchScenario(r'''
+const point = touch(20, 30, gpHint);
+
+const startEvent = dispatchTouch('touchstart', [point], [point]);
+const endEvent = dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult({
+  startDefaultPrevented: startEvent.defaultPrevented,
+  endDefaultPrevented: endEvent.defaultPrevented
+});
+''');
+
+    expect(result['startDefaultPrevented'], isFalse);
+    expect(result['endDefaultPrevented'], isFalse);
+    expect(result['events'], isEmpty);
+  });
+
+  test('touching a GP-Next toast preserves native activation', () async {
+    final result = await _runTouchScenario(r'''
+const point = touch(20, 30, gpToast);
+
+const startEvent = dispatchTouch('touchstart', [point], [point]);
+const endEvent = dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult({
+  startDefaultPrevented: startEvent.defaultPrevented,
+  endDefaultPrevented: endEvent.defaultPrevented
+});
+''');
+
+    expect(result['startDefaultPrevented'], isFalse);
+    expect(result['endDefaultPrevented'], isFalse);
+    expect(result['events'], isEmpty);
+  });
+
+  test('a GP-Next gesture stays native until every finger is lifted', () async {
+    final result = await _runTouchScenario(r'''
+const first = touch(20, 30, gpButton);
+const second = touch(40, 50, canvas);
+const third = touch(60, 70, canvas);
+
+const startEvent = dispatchTouch('touchstart', [first], [first]);
+const secondStartEvent = dispatchTouch(
+  'touchstart',
+  [first, second],
+  [second]
+);
+const thirdStartEvent = dispatchTouch(
+  'touchstart',
+  [first, second, third],
+  [third]
+);
+const moveEvent = dispatchTouch(
+  'touchmove',
+  [first, second, third],
+  [first, second, third]
+);
+dispatchTouch('touchend', [first, second], [third]);
+dispatchTouch('touchend', [first], [second]);
+const nativeEndEvent = dispatchTouch('touchend', [], [first]);
+flushTasks();
+
+const gamePoint = touch(80, 90, canvas);
+dispatchTouch('touchstart', [gamePoint], [gamePoint]);
+dispatchTouch('touchend', [], [gamePoint]);
+flushTasks();
+
+writeResult({
+  nativeEventsPrevented: [
+    startEvent,
+    secondStartEvent,
+    thirdStartEvent,
+    moveEvent,
+    nativeEndEvent
+  ].some((event) => event.defaultPrevented)
+});
+''');
+
+    expect(result['nativeEventsPrevented'], isFalse);
+    final events =
+        (result['events'] as List<dynamic>).cast<Map<String, dynamic>>();
+    expect(
+      events.map((event) => event['type']),
+      ['mousemove', 'mousedown', 'mouseup'],
+    );
+  });
+
+  test('the first GP-Next backdrop tap is consumed without closing', () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const point = touch(600, 100, canvas);
+
+const startEvent = dispatchTouch('touchstart', [point], [point]);
+const endEvent = dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult({
+  startDefaultPrevented: startEvent.defaultPrevented,
+  endDefaultPrevented: endEvent.defaultPrevented
+});
+''');
+
+    expect(result['startDefaultPrevented'], isTrue);
+    expect(result['endDefaultPrevented'], isTrue);
+    expect(result['gpNextHideCount'], 0);
+    expect(result['events'], isEmpty);
+  });
+
+  test('double tapping the GP-Next backdrop closes it without game input',
+      () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const first = touch(600, 100, canvas);
+
+dispatchTouch('touchstart', [first], [first]);
+dispatchTouch('touchend', [], [first]);
+advanceTime(100);
+
+const second = touch(600, 100, canvas);
+dispatchTouch('touchstart', [second], [second]);
+dispatchTouch('touchend', [], [second]);
+flushTasks();
+
+writeResult();
+''');
+
+    expect(result['gpNextHideCount'], 1);
+    expect(result['events'], isEmpty);
+  });
+
+  test('dragging the GP-Next backdrop does not complete a double tap',
+      () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const first = touch(600, 100, canvas);
+
+dispatchTouch('touchstart', [first], [first]);
+dispatchTouch('touchend', [], [first]);
+advanceTime(50);
+
+const dragStart = touch(600, 100, canvas);
+const dragEnd = touch(620, 100, canvas);
+dispatchTouch('touchstart', [dragStart], [dragStart]);
+dispatchTouch('touchmove', [dragEnd], [dragEnd]);
+dispatchTouch('touchend', [], [dragEnd]);
+flushTasks();
+
+writeResult();
+''');
+
+    expect(result['gpNextHideCount'], 0);
+    expect(result['events'], isEmpty);
+  });
+
+  test('a multi-touch backdrop gesture does not complete a double tap',
+      () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const firstTap = touch(600, 100, canvas);
+
+dispatchTouch('touchstart', [firstTap], [firstTap]);
+dispatchTouch('touchend', [], [firstTap]);
+advanceTime(50);
+
+const first = touch(600, 100, canvas);
+const second = touch(620, 120, canvas);
+dispatchTouch('touchstart', [first], [first]);
+dispatchTouch('touchstart', [first, second], [second]);
+dispatchTouch('touchend', [first], [second]);
+dispatchTouch('touchend', [], [first]);
+flushTasks();
+
+writeResult();
+''');
+
+    expect(result['gpNextHideCount'], 0);
+    expect(result['events'], isEmpty);
+  });
+
+  test('a long backdrop press resets the double-tap candidate', () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const point = touch(600, 100, canvas);
+
+dispatchTouch('touchstart', [point], [point]);
+dispatchTouch('touchend', [], [point]);
+advanceTime(10);
+
+dispatchTouch('touchstart', [point], [point]);
+advanceTime(251);
+dispatchTouch('touchend', [], [point]);
+advanceTime(10);
+
+dispatchTouch('touchstart', [point], [point]);
+dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult();
+''');
+
+    expect(result['gpNextHideCount'], 0);
+    expect(result['events'], isEmpty);
+  });
+
+  test('a distant backdrop tap starts a new double-tap candidate', () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const first = touch(600, 100, canvas);
+const distant = touch(630, 100, canvas);
+
+dispatchTouch('touchstart', [first], [first]);
+dispatchTouch('touchend', [], [first]);
+advanceTime(100);
+dispatchTouch('touchstart', [distant], [distant]);
+dispatchTouch('touchend', [], [distant]);
+const hideCountAfterDistantTap = gpNextHideCount;
+advanceTime(100);
+dispatchTouch('touchstart', [distant], [distant]);
+dispatchTouch('touchend', [], [distant]);
+flushTasks();
+
+writeResult({hideCountAfterDistantTap});
+''');
+
+    expect(result['hideCountAfterDistantTap'], 0);
+    expect(result['gpNextHideCount'], 1);
+    expect(result['events'], isEmpty);
+  });
+
+  test('a GP-Next control touch interrupts backdrop double tapping', () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const backdrop = touch(600, 100, canvas);
+const control = touch(100, 100, gpButton);
+
+dispatchTouch('touchstart', [backdrop], [backdrop]);
+dispatchTouch('touchend', [], [backdrop]);
+advanceTime(50);
+dispatchTouch('touchstart', [control], [control]);
+dispatchTouch('touchend', [], [control]);
+advanceTime(50);
+dispatchTouch('touchstart', [backdrop], [backdrop]);
+dispatchTouch('touchend', [], [backdrop]);
+flushTasks();
+
+writeResult();
+''');
+
+    expect(result['gpNextHideCount'], 0);
+    expect(result['events'], isEmpty);
+  });
+
+  test('a late backdrop tap starts a new double-tap candidate', () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const point = touch(600, 100, canvas);
+
+dispatchTouch('touchstart', [point], [point]);
+dispatchTouch('touchend', [], [point]);
+advanceTime(301);
+dispatchTouch('touchstart', [point], [point]);
+dispatchTouch('touchend', [], [point]);
+const hideCountAfterLateTap = gpNextHideCount;
+advanceTime(100);
+dispatchTouch('touchstart', [point], [point]);
+dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult({hideCountAfterLateTap});
+''');
+
+    expect(result['hideCountAfterLateTap'], 0);
+    expect(result['gpNextHideCount'], 1);
+    expect(result['events'], isEmpty);
+  });
+
+  test('a non-GP-Next button keeps the game mouse mapping', () async {
+    final result = await _runTouchScenario(r'''
+const point = touch(20, 30, gameButton);
+
+const startEvent = dispatchTouch('touchstart', [point], [point]);
+const endEvent = dispatchTouch('touchend', [], [point]);
+flushTasks();
+
+writeResult({
+  startDefaultPrevented: startEvent.defaultPrevented,
+  endDefaultPrevented: endEvent.defaultPrevented
+});
+''');
+
+    expect(result['startDefaultPrevented'], isTrue);
+    expect(result['endDefaultPrevented'], isTrue);
+    final events =
+        (result['events'] as List<dynamic>).cast<Map<String, dynamic>>();
+    expect(
+      events.map((event) => event['type']),
+      ['mousemove', 'mousedown', 'mouseup'],
+    );
+  });
+
+  test('closing GP-Next mid-gesture does not leak input to the game', () async {
+    final result = await _runTouchScenario(r'''
+openGpNext();
+const start = touch(20, 30, gpButton);
+
+const startEvent = dispatchTouch('touchstart', [start], [start]);
+window.gpNext.hide();
+const moved = touch(80, 90, canvas);
+const moveEvent = dispatchTouch('touchmove', [moved], [moved]);
+const endEvent = dispatchTouch('touchend', [], [moved]);
+flushTasks();
+const eventsBeforeNextGesture = events.length;
+
+const next = touch(100, 110, canvas);
+dispatchTouch('touchstart', [next], [next]);
+dispatchTouch('touchend', [], [next]);
+flushTasks();
+
+writeResult({
+  nativeEventsPrevented: [startEvent, moveEvent, endEvent]
+    .some((event) => event.defaultPrevented),
+  eventsBeforeNextGesture
+});
+''');
+
+    expect(result['nativeEventsPrevented'], isFalse);
+    expect(result['eventsBeforeNextGesture'], 0);
+    final events =
+        (result['events'] as List<dynamic>).cast<Map<String, dynamic>>();
+    expect(
+      events.map((event) => event['type']),
+      ['mousemove', 'mousedown', 'mouseup'],
+    );
+  });
 }
 
 Future<Map<String, dynamic>> _runTouchScenario(String scenario) async {
@@ -513,6 +871,7 @@ let deferGameCursorUpdates = false;
 let gameCursorX = 0;
 let gameCursorY = 0;
 let successfulLeftDowns = 0;
+let gpNextHideCount = 0;
 
 function advanceTime(milliseconds) {
   currentTime += milliseconds;
@@ -615,8 +974,43 @@ const body = makeTarget('body');
 const overlay = makeTarget('overlay');
 const input = makeTarget('input');
 input.tagName = 'INPUT';
+const gameButton = makeTarget('game-button');
+gameButton.tagName = 'BUTTON';
+gameButton.parentElement = body;
+const gpOverlay = makeTarget('gp-overlay');
+gpOverlay.id = 'gp-overlay';
+gpOverlay.parentElement = body;
+const gpButton = makeTarget('gp-button');
+gpButton.tagName = 'BUTTON';
+gpButton.parentElement = gpOverlay;
+const gpHint = makeTarget('gp-hint');
+gpHint.className = 'gp-f1-hint';
+gpHint.parentElement = body;
+const gpToastWrap = makeTarget('gp-toast-wrap');
+gpToastWrap.id = 'ge-toast-wrap';
+gpToastWrap.parentElement = body;
+const gpToast = makeTarget('gp-toast');
+gpToast.parentElement = gpToastWrap;
+const gpOverlayClasses = new Set();
+gpOverlay.classList = {
+  add(name) {
+    gpOverlayClasses.add(name);
+  },
+  remove(name) {
+    gpOverlayClasses.delete(name);
+  },
+  contains(name) {
+    return gpOverlayClasses.has(name);
+  }
+};
 let hitTarget = canvas;
 const window = makeTarget('window');
+window.gpNext = {
+  hide() {
+    gpNextHideCount += 1;
+    gpOverlay.classList.remove('gp-open');
+  }
+};
 window.addEventListener = function (type, listener) {
   listeners.set(`window:${type}`, listener);
 };
@@ -632,9 +1026,19 @@ const document = {
     return hitTarget;
   },
   getElementById(id) {
-    return id === 'GameCanvas' ? canvas : null;
+    if (id === 'GameCanvas') {
+      return canvas;
+    }
+    if (id === 'gp-overlay') {
+      return gpOverlay;
+    }
+    return null;
   }
 };
+
+function openGpNext() {
+  gpOverlay.classList.add('gp-open');
+}
 
 function setHitTarget(target) {
   hitTarget = target;
@@ -678,7 +1082,12 @@ function dispatchDocumentEvent(type) {
 }
 
 function writeResult(extra = {}) {
-  process.stdout.write(JSON.stringify({events, successfulLeftDowns, ...extra}));
+  process.stdout.write(JSON.stringify({
+    events,
+    successfulLeftDowns,
+    gpNextHideCount,
+    ...extra
+  }));
 }
 
 globalThis.MouseEvent = SyntheticMouseEvent;

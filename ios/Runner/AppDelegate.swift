@@ -9,12 +9,16 @@ import zlib
     "io.github.dey410.gardendlessloader/resource_zip_importer"
   private let gameFileExporterChannelName =
     "io.github.dey410.gardendlessloader/game_file_exporter"
+  private let gpNextFileImporterChannelName =
+    "io.github.dey410.gardendlessloader/gp_next_file_importer"
   private var resourceZipImporterChannel: FlutterMethodChannel?
   private var lastImportProgressReportAt: UInt64 = 0
   private var pendingImportResult: FlutterResult?
   private var pendingImportTargetDirectory: String?
   private var zipImportInProgress = false
   private var pendingExportResult: FlutterResult?
+  private var pendingGpNextImportResult: FlutterResult?
+  private var pendingGpNextImportTargetDirectory: String?
 
   override func application(
     _ application: UIApplication,
@@ -23,6 +27,7 @@ import zlib
     GeneratedPluginRegistrant.register(with: self)
     registerResourceZipImporter()
     registerGameFileExporter()
+    registerGpNextFileImporter()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -60,6 +65,106 @@ import zlib
         return
       }
       self?.exportFile(call: call, result: result)
+    }
+  }
+
+  private func registerGpNextFileImporter() {
+    guard let controller = window?.rootViewController as? FlutterViewController else {
+      return
+    }
+    let channel = FlutterMethodChannel(
+      name: gpNextFileImporterChannelName,
+      binaryMessenger: controller.binaryMessenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "pickAndCopyFiles" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.pickGpNextFiles(call: call, result: result)
+    }
+  }
+
+  private func pickGpNextFiles(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any],
+          let targetDirectory = args["targetDirectory"] as? String,
+          !targetDirectory.isEmpty else {
+      result(FlutterError(
+        code: "invalid_target_directory",
+        message: "Missing GP-Next import staging directory",
+        details: nil
+      ))
+      return
+    }
+    DispatchQueue.main.async { [weak self] in
+      guard let self, let rootController = self.topViewController() else {
+        result(FlutterError(
+          code: "missing_view_controller",
+          message: "Unable to present GP-Next file picker",
+          details: nil
+        ))
+        return
+      }
+      if self.pendingGpNextImportResult != nil || self.pendingImportResult != nil {
+        result(FlutterError(
+          code: "gp_next_import_busy",
+          message: "Another file import is already in progress",
+          details: nil
+        ))
+        return
+      }
+      let picker: UIDocumentPickerViewController
+      if #available(iOS 14.0, *) {
+        picker = UIDocumentPickerViewController(
+          forOpeningContentTypes: [.zip, .json, .plainText, .data],
+          asCopy: true
+        )
+      } else {
+        picker = UIDocumentPickerViewController(
+          documentTypes: [
+            "public.zip-archive",
+            "public.json",
+            "public.plain-text",
+            "public.data",
+          ],
+          in: .import
+        )
+      }
+      picker.delegate = self
+      picker.allowsMultipleSelection = true
+      picker.modalPresentationStyle = .formSheet
+      self.pendingGpNextImportResult = result
+      self.pendingGpNextImportTargetDirectory = targetDirectory
+      rootController.present(picker, animated: true)
+    }
+  }
+
+  private func copyGpNextFiles(_ urls: [URL], to targetDirectory: String) throws -> [String] {
+    let manager = FileManager.default
+    let target = URL(fileURLWithPath: targetDirectory, isDirectory: true)
+    try manager.createDirectory(at: target, withIntermediateDirectories: true)
+    return try urls.map { source in
+      let accessed = source.startAccessingSecurityScopedResource()
+      defer {
+        if accessed {
+          source.stopAccessingSecurityScopedResource()
+        }
+      }
+      let unsafe = source.lastPathComponent
+      let safe = unsafe
+        .replacingOccurrences(of: "/", with: "_")
+        .replacingOccurrences(of: "\\", with: "_")
+      var destination = target.appendingPathComponent(safe.isEmpty ? "gp-next-file" : safe)
+      var suffix = 1
+      while manager.fileExists(atPath: destination.path) {
+        let stem = destination.deletingPathExtension().lastPathComponent
+        let ext = destination.pathExtension
+        let name = ext.isEmpty ? "\(stem)-\(suffix)" : "\(stem)-\(suffix).\(ext)"
+        destination = target.appendingPathComponent(name)
+        suffix += 1
+      }
+      try manager.copyItem(at: source, to: destination)
+      return destination.path
     }
   }
 
@@ -835,6 +940,13 @@ extension AppDelegate: UIDocumentPickerDelegate {
       return
     }
 
+    if let pendingGpNextImportResult {
+      pendingGpNextImportResult(nil)
+      self.pendingGpNextImportResult = nil
+      pendingGpNextImportTargetDirectory = nil
+      return
+    }
+
     pendingExportResult?(FlutterError(
       code: "export_cancelled",
       message: "Export was cancelled",
@@ -863,6 +975,33 @@ extension AppDelegate: UIDocumentPickerDelegate {
         targetDirectory: targetDirectory,
         result: pendingImportResult
       )
+      return
+    }
+
+
+    if let pendingGpNextImportResult {
+      let targetDirectory = pendingGpNextImportTargetDirectory
+      self.pendingGpNextImportResult = nil
+      pendingGpNextImportTargetDirectory = nil
+      guard let targetDirectory else {
+        pendingGpNextImportResult(nil)
+        return
+      }
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        do {
+          guard let self else { return }
+          let copied = try self.copyGpNextFiles(urls, to: targetDirectory)
+          DispatchQueue.main.async { pendingGpNextImportResult(copied) }
+        } catch {
+          DispatchQueue.main.async {
+            pendingGpNextImportResult(FlutterError(
+              code: "gp_next_import_failed",
+              message: "Unable to import GP-Next files: \(error.localizedDescription)",
+              details: nil
+            ))
+          }
+        }
+      }
       return
     }
 

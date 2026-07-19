@@ -5,8 +5,11 @@ const gardendlessTouchPatchSource = r'''
   }
   window.__gardendlessTouchPatchInstalled = true;
 
-  const twoFingerMoveThreshold = 14;
+  const touchMoveThreshold = 14;
   const twoFingerTapMaxDuration = 250;
+  const gpNextBackdropTapMaxDuration = 250;
+  const gpNextBackdropDoubleTapMaxDelay = 300;
+  const gpNextBackdropDoubleTapMaxDistance = 24;
   let lastWheelY = null;
   let leftMouseActive = false;
   let leftMouseTarget = null;
@@ -23,6 +26,13 @@ const gardendlessTouchPatchSource = r'''
   let pendingMoveTarget = null;
   let lastTouchPoint = null;
   let nativeTouchActive = false;
+  let gpNextBackdropTouchActive = false;
+  let gpNextBackdropTouchStartedAt = null;
+  let gpNextBackdropTouchStartPoint = null;
+  let gpNextBackdropTouchMoved = false;
+  let gpNextBackdropTouchHadMultipleFingers = false;
+  let lastGpNextBackdropTapAt = null;
+  let lastGpNextBackdropTapPoint = null;
 
   function firstChangedTouch(event) {
     return event.changedTouches && event.changedTouches.length > 0
@@ -74,6 +84,15 @@ const gardendlessTouchPatchSource = r'''
   function isNativeTouchTarget(target) {
     let current = target;
     while (current && current !== document) {
+      if (current.id === "gp-overlay" || current.id === "ge-toast-wrap") {
+        return true;
+      }
+      const className = typeof current.className === "string"
+        ? current.className
+        : "";
+      if (className.split(/\s+/).includes("gp-f1-hint")) {
+        return true;
+      }
       const tagName = typeof current.tagName === "string"
         ? current.tagName.toUpperCase()
         : "";
@@ -94,6 +113,47 @@ const gardendlessTouchPatchSource = r'''
       current = current.parentElement;
     }
     return false;
+  }
+
+  function isGpNextOpen() {
+    const overlay = document.getElementById("gp-overlay");
+    return !!(overlay && overlay.classList &&
+      overlay.classList.contains("gp-open"));
+  }
+
+  function resetGpNextBackdropTapCandidate() {
+    lastGpNextBackdropTapAt = null;
+    lastGpNextBackdropTapPoint = null;
+  }
+
+  function resetGpNextBackdropTouchState() {
+    gpNextBackdropTouchActive = false;
+    gpNextBackdropTouchStartedAt = null;
+    gpNextBackdropTouchStartPoint = null;
+    gpNextBackdropTouchMoved = false;
+    gpNextBackdropTouchHadMultipleFingers = false;
+  }
+
+  function registerGpNextBackdropTap(point) {
+    const now = performance.now();
+    const isDoubleTap = lastGpNextBackdropTapAt !== null &&
+      lastGpNextBackdropTapPoint &&
+      now - lastGpNextBackdropTapAt <= gpNextBackdropDoubleTapMaxDelay &&
+      Math.hypot(
+        point.clientX - lastGpNextBackdropTapPoint.clientX,
+        point.clientY - lastGpNextBackdropTapPoint.clientY
+      ) <= gpNextBackdropDoubleTapMaxDistance;
+    if (isDoubleTap) {
+      resetGpNextBackdropTapCandidate();
+      if (isGpNextOpen() && window.gpNext &&
+          typeof window.gpNext.hide === "function") {
+        window.gpNext.hide();
+      }
+      return;
+    }
+
+    lastGpNextBackdropTapAt = now;
+    lastGpNextBackdropTapPoint = point;
   }
 
   function mouseEvent(type, point, button, buttons) {
@@ -244,9 +304,31 @@ const gardendlessTouchPatchSource = r'''
       return;
     }
 
+    if (gpNextBackdropTouchActive) {
+      if (event.touches.length > 1) {
+        gpNextBackdropTouchHadMultipleFingers = true;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (event.touches.length === 1 && isNativeTouchTarget(target)) {
       cancelInteraction();
+      resetGpNextBackdropTapCandidate();
       nativeTouchActive = true;
+      return;
+    }
+
+    if (event.touches.length === 1 && isGpNextOpen()) {
+      cancelInteraction();
+      gpNextBackdropTouchActive = true;
+      gpNextBackdropTouchStartedAt = performance.now();
+      gpNextBackdropTouchStartPoint = point;
+      gpNextBackdropTouchMoved = false;
+      gpNextBackdropTouchHadMultipleFingers = false;
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
 
@@ -281,6 +363,21 @@ const gardendlessTouchPatchSource = r'''
       return;
     }
 
+    if (gpNextBackdropTouchActive) {
+      const changedTouch = firstChangedTouch(event);
+      const point = changedTouch || averageTouchPoint(event.touches);
+      if (gpNextBackdropTouchStartPoint &&
+          Math.hypot(
+            point.clientX - gpNextBackdropTouchStartPoint.clientX,
+            point.clientY - gpNextBackdropTouchStartPoint.clientY
+          ) > touchMoveThreshold) {
+        gpNextBackdropTouchMoved = true;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (event.touches.length >= 3) {
       cancelInteraction();
       event.preventDefault();
@@ -294,7 +391,7 @@ const gardendlessTouchPatchSource = r'''
       if (twoFingerStartPoint) {
         const deltaX = point.clientX - twoFingerStartPoint.clientX;
         const deltaY = point.clientY - twoFingerStartPoint.clientY;
-        if (Math.hypot(deltaX, deltaY) > twoFingerMoveThreshold) {
+        if (Math.hypot(deltaX, deltaY) > touchMoveThreshold) {
           twoFingerMoved = true;
         }
       }
@@ -345,6 +442,26 @@ const gardendlessTouchPatchSource = r'''
       return;
     }
 
+    if (gpNextBackdropTouchActive) {
+      if (event.touches.length === 0) {
+        const tapDuration = gpNextBackdropTouchStartedAt === null
+          ? Infinity
+          : performance.now() - gpNextBackdropTouchStartedAt;
+        if (gpNextBackdropTouchStartPoint &&
+            !gpNextBackdropTouchMoved &&
+            !gpNextBackdropTouchHadMultipleFingers &&
+            tapDuration <= gpNextBackdropTapMaxDuration) {
+          registerGpNextBackdropTap(gpNextBackdropTouchStartPoint);
+        } else {
+          resetGpNextBackdropTapCandidate();
+        }
+        resetGpNextBackdropTouchState();
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     lastTouchPoint = point;
@@ -372,6 +489,14 @@ const gardendlessTouchPatchSource = r'''
   function cancelTouch(event) {
     if (nativeTouchActive) {
       nativeTouchActive = false;
+      return;
+    }
+
+    if (gpNextBackdropTouchActive) {
+      resetGpNextBackdropTouchState();
+      resetGpNextBackdropTapCandidate();
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
 
