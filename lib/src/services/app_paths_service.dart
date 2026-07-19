@@ -59,6 +59,8 @@ class AppPathsService {
     await paths.root.create(recursive: true);
     await paths.slotADir.create(recursive: true);
     await paths.slotBDir.create(recursive: true);
+    await paths.gpNextPacksDir.create(recursive: true);
+    await paths.gpNextPatchesDir.create(recursive: true);
   }
 
   Future<List<Directory>> _defaultRoots() async {

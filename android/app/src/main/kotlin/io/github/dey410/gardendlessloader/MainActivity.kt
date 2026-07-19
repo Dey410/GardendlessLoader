@@ -3,6 +3,7 @@ package io.github.dey410.gardendlessloader
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -20,6 +21,8 @@ class MainActivity : FlutterActivity() {
     private var pendingTargetDirectory: String? = null
     private var pendingExportResult: MethodChannel.Result? = null
     private var pendingExportPath: String? = null
+    private var pendingGpNextImportResult: MethodChannel.Result? = null
+    private var pendingGpNextImportTarget: String? = null
     private var lastImportProgressReportAt = 0L
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -121,9 +124,56 @@ class MainActivity : FlutterActivity() {
                 result.error("export_picker_failed", error.message, null)
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "io.github.dey410.gardendlessloader/gp_next_file_importer",
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "pickAndCopyFiles") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            if (pendingGpNextImportResult != null) {
+                result.error("gp_next_import_busy", "已有 GP-Next 文件选择正在进行", null)
+                return@setMethodCallHandler
+            }
+            val targetDirectory = call.argument<String>("targetDirectory")
+            if (targetDirectory.isNullOrBlank()) {
+                result.error("invalid_target_directory", "缺少 GP-Next 导入暂存目录", null)
+                return@setMethodCallHandler
+            }
+            pendingGpNextImportResult = result
+            pendingGpNextImportTarget = targetDirectory
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    arrayOf(
+                        "application/zip",
+                        "application/json",
+                        "application/json5",
+                        "text/plain",
+                        "application/octet-stream",
+                    ),
+                )
+            }
+            try {
+                startActivityForResult(intent, gpNextImportRequestCode)
+            } catch (error: Exception) {
+                pendingGpNextImportResult = null
+                pendingGpNextImportTarget = null
+                result.error("gp_next_picker_failed", error.message, null)
+            }
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == gpNextImportRequestCode) {
+            handleGpNextImportResult(resultCode, data)
+            return
+        }
         if (requestCode == exportFileRequestCode) {
             handleExportFileResult(resultCode, data)
             return
@@ -169,6 +219,81 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun handleGpNextImportResult(resultCode: Int, data: Intent?) {
+        val result = pendingGpNextImportResult
+        val targetPath = pendingGpNextImportTarget
+        pendingGpNextImportResult = null
+        pendingGpNextImportTarget = null
+        if (result == null || targetPath == null) {
+            return
+        }
+        if (resultCode != Activity.RESULT_OK || data == null) {
+            result.success(null)
+            return
+        }
+        val uris = mutableListOf<Uri>()
+        data.clipData?.let { clip ->
+            for (index in 0 until clip.itemCount) {
+                uris.add(clip.getItemAt(index).uri)
+            }
+        }
+        data.data?.let { uri ->
+            if (!uris.contains(uri)) {
+                uris.add(uri)
+            }
+        }
+        if (uris.isEmpty()) {
+            result.success(null)
+            return
+        }
+        Thread {
+            try {
+                val target = File(targetPath)
+                target.mkdirs()
+                val copied = uris.map { uri -> copyGpNextFile(uri, target).path }
+                runOnUiThread { result.success(copied) }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    result.error(
+                        "gp_next_import_failed",
+                        "无法导入选择的 GP-Next 文件：${error.message ?: error}",
+                        null,
+                    )
+                }
+            }
+        }.start()
+    }
+
+    private fun copyGpNextFile(uri: Uri, targetDirectory: File): File {
+        val displayName = contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+        val fallbackName = uri.lastPathSegment?.substringAfterLast('/') ?: "gp-next-file"
+        val safeName = File(displayName ?: fallbackName).name
+            .replace(Regex("[\\u0000-\\u001f:*?\"<>|]"), "_")
+            .ifBlank { "gp-next-file" }
+        var destination = File(targetDirectory, safeName)
+        var suffix = 1
+        while (destination.exists()) {
+            val stem = destination.nameWithoutExtension
+            val extension = destination.extension.let { if (it.isEmpty()) "" else ".$it" }
+            destination = File(targetDirectory, "$stem-$suffix$extension")
+            suffix++
+        }
+        contentResolver.openInputStream(uri)?.use { input ->
+            destination.outputStream().use { output ->
+                input.copyTo(output, zipCopyBufferSize)
+            }
+        } ?: throw IllegalArgumentException("无法读取所选文件")
+        return destination
     }
 
     private fun handleExportFileResult(resultCode: Int, data: Intent?) {
@@ -461,6 +586,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val pickZipRequestCode = 26410
         private const val exportFileRequestCode = 26411
+        private const val gpNextImportRequestCode = 26412
         private const val zipCopyBufferSize = 64 * 1024
         private const val progressReportIntervalMs = 100L
     }

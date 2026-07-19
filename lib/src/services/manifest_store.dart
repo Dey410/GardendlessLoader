@@ -64,6 +64,9 @@ class ManifestStore {
         fileCount: json['fileCount'] as int? ?? 0,
         totalBytes: json['totalBytes'] as int? ?? 0,
         detectedTitle: json['detectedTitle'] as String?,
+        buildProfile: _parseBuildProfile(json['buildProfile']),
+        gpNextVersion: json['gpNextVersion'] as String?,
+        gpNextCompatibilityError: json['gpNextCompatibilityError'] as String?,
         resourceStatus: _parseResourceStatus(json['resourceStatus']),
         lastSelfCheckAt: _parseDate(json['lastSelfCheckAt']),
         lastErrorCode: json['lastErrorCode'] as String?,
@@ -88,6 +91,13 @@ class ManifestStore {
     return ResourceStatus.values.firstWhere(
       (status) => status.name == value,
       orElse: () => ResourceStatus.missing,
+    );
+  }
+
+  ResourceBuildProfile _parseBuildProfile(Object? value) {
+    return ResourceBuildProfile.values.firstWhere(
+      (profile) => profile.name == value,
+      orElse: () => ResourceBuildProfile.standardWeb,
     );
   }
 

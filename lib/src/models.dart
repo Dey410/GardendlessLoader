@@ -2,6 +2,8 @@ import 'dart:io';
 
 enum ResourceStatus { missing, valid, invalid, ready }
 
+enum ResourceBuildProfile { standardWeb, gpNext }
+
 enum ResourceSlot {
   slotA,
   slotB;
@@ -35,10 +37,7 @@ enum ImportPhase {
 typedef ImportProgressCallback = void Function(ImportProgress progress);
 
 class AppPaths {
-  AppPaths({
-    required this.root,
-    required this.manifestFile,
-  });
+  AppPaths({required this.root, required this.manifestFile});
 
   final Directory root;
   final File manifestFile;
@@ -51,11 +50,17 @@ class AppPaths {
   Directory get slotBDir =>
       Directory('${root.path}${Platform.pathSeparator}slot-b');
 
+  Directory get gpNextDir =>
+      Directory('${root.path}${Platform.pathSeparator}gp-next');
+  Directory get gpNextPacksDir =>
+      Directory('${gpNextDir.path}${Platform.pathSeparator}packs');
+  Directory get gpNextPatchesDir =>
+      Directory('${gpNextDir.path}${Platform.pathSeparator}patches');
+
   Directory get legacyImportDir =>
       Directory('${root.path}${Platform.pathSeparator}import');
-  Directory get legacyImportDocsDir => Directory(
-        '${legacyImportDir.path}${Platform.pathSeparator}docs',
-      );
+  Directory get legacyImportDocsDir =>
+      Directory('${legacyImportDir.path}${Platform.pathSeparator}docs');
   Directory get legacyCurrentDir =>
       Directory('${root.path}${Platform.pathSeparator}current');
   Directory get legacyPreviousDir =>
@@ -73,14 +78,25 @@ class ResourceValidationResult {
     required this.errorCode,
     required this.errorMessage,
     this.detectedTitle,
+    this.buildProfile = ResourceBuildProfile.standardWeb,
+    this.gpNextVersion,
+    this.gpNextCompatibilityError,
   });
 
-  factory ResourceValidationResult.valid({String? detectedTitle}) {
+  factory ResourceValidationResult.valid({
+    String? detectedTitle,
+    ResourceBuildProfile buildProfile = ResourceBuildProfile.standardWeb,
+    String? gpNextVersion,
+    String? gpNextCompatibilityError,
+  }) {
     return ResourceValidationResult(
       status: ResourceStatus.valid,
       errorCode: null,
       errorMessage: null,
       detectedTitle: detectedTitle,
+      buildProfile: buildProfile,
+      gpNextVersion: gpNextVersion,
+      gpNextCompatibilityError: gpNextCompatibilityError,
     );
   }
 
@@ -104,9 +120,14 @@ class ResourceValidationResult {
   final String? errorCode;
   final String? errorMessage;
   final String? detectedTitle;
+  final ResourceBuildProfile buildProfile;
+  final String? gpNextVersion;
+  final String? gpNextCompatibilityError;
 
   bool get isValid =>
       status == ResourceStatus.valid || status == ResourceStatus.ready;
+  bool get hasGpNext => buildProfile == ResourceBuildProfile.gpNext;
+  bool get gpNextCompatible => hasGpNext && gpNextCompatibilityError == null;
 
   ResourceValidationResult asReady() {
     return ResourceValidationResult(
@@ -114,6 +135,9 @@ class ResourceValidationResult {
       errorCode: errorCode,
       errorMessage: errorMessage,
       detectedTitle: detectedTitle,
+      buildProfile: buildProfile,
+      gpNextVersion: gpNextVersion,
+      gpNextCompatibilityError: gpNextCompatibilityError,
     );
   }
 }
@@ -123,18 +147,21 @@ class ResourceStats {
     required this.fileCount,
     required this.totalBytes,
     required this.detectedTitle,
+    this.buildProfile = ResourceBuildProfile.standardWeb,
+    this.gpNextVersion,
+    this.gpNextCompatibilityError,
   });
 
   final int fileCount;
   final int totalBytes;
   final String? detectedTitle;
+  final ResourceBuildProfile buildProfile;
+  final String? gpNextVersion;
+  final String? gpNextCompatibilityError;
 }
 
 class AnnouncementLink {
-  const AnnouncementLink({
-    required this.label,
-    required this.url,
-  });
+  const AnnouncementLink({required this.label, required this.url});
 
   factory AnnouncementLink.fromJson(Object? value) {
     if (value is! Map<String, dynamic>) {
@@ -210,10 +237,7 @@ class Announcement {
 }
 
 class AboutContent {
-  const AboutContent({
-    required this.contentVersion,
-    required this.content,
-  });
+  const AboutContent({required this.contentVersion, required this.content});
 
   factory AboutContent.fromJson(Object? value) {
     if (value is! Map<String, dynamic>) {
@@ -233,10 +257,7 @@ class AboutContent {
       throw const FormatException('about content is missing');
     }
 
-    return AboutContent(
-      contentVersion: contentVersion,
-      content: content,
-    );
+    return AboutContent(contentVersion: contentVersion, content: content);
   }
 
   final int contentVersion;
@@ -336,11 +357,14 @@ class ResourceManifest {
     required this.lastErrorCode,
     required this.lastErrorMessage,
     required this.transactionState,
+    this.buildProfile = ResourceBuildProfile.standardWeb,
+    this.gpNextVersion,
+    this.gpNextCompatibilityError,
   });
 
   factory ResourceManifest.initial() {
     return const ResourceManifest(
-      schemaVersion: 3,
+      schemaVersion: 4,
       generation: 0,
       activeSlot: null,
       transactionSlot: null,
@@ -354,6 +378,9 @@ class ResourceManifest {
       lastErrorCode: null,
       lastErrorMessage: null,
       transactionState: TransactionState.idle,
+      buildProfile: ResourceBuildProfile.standardWeb,
+      gpNextVersion: null,
+      gpNextCompatibilityError: null,
     );
   }
 
@@ -371,6 +398,12 @@ class ResourceManifest {
   final String? lastErrorCode;
   final String? lastErrorMessage;
   final TransactionState transactionState;
+  final ResourceBuildProfile buildProfile;
+  final String? gpNextVersion;
+  final String? gpNextCompatibilityError;
+
+  bool get hasGpNext => buildProfile == ResourceBuildProfile.gpNext;
+  bool get gpNextCompatible => hasGpNext && gpNextCompatibilityError == null;
 
   ResourceManifest copyWith({
     int? generation,
@@ -386,10 +419,15 @@ class ResourceManifest {
     String? lastErrorCode,
     String? lastErrorMessage,
     TransactionState? transactionState,
+    ResourceBuildProfile? buildProfile,
+    String? gpNextVersion,
+    String? gpNextCompatibilityError,
     bool clearError = false,
     bool clearGameVersion = false,
     bool clearActiveSlot = false,
     bool clearTransactionSlot = false,
+    bool clearGpNextVersion = false,
+    bool clearGpNextCompatibilityError = false,
   }) {
     return ResourceManifest(
       schemaVersion: schemaVersion,
@@ -408,6 +446,12 @@ class ResourceManifest {
       lastErrorMessage:
           clearError ? null : lastErrorMessage ?? this.lastErrorMessage,
       transactionState: transactionState ?? this.transactionState,
+      buildProfile: buildProfile ?? this.buildProfile,
+      gpNextVersion:
+          clearGpNextVersion ? null : gpNextVersion ?? this.gpNextVersion,
+      gpNextCompatibilityError: clearGpNextCompatibilityError
+          ? null
+          : gpNextCompatibilityError ?? this.gpNextCompatibilityError,
     );
   }
 
@@ -421,6 +465,9 @@ class ResourceManifest {
       'fileCount': fileCount,
       'totalBytes': totalBytes,
       'detectedTitle': detectedTitle,
+      'buildProfile': buildProfile.name,
+      'gpNextVersion': gpNextVersion,
+      'gpNextCompatibilityError': gpNextCompatibilityError,
       'resourceStatus': resourceStatus.name,
       'lastSelfCheckAt': lastSelfCheckAt?.toIso8601String(),
       'lastErrorCode': lastErrorCode,
@@ -448,6 +495,9 @@ class DiagnosticSnapshot {
     required this.fileCount,
     required this.totalBytes,
     required this.detectedTitle,
+    required this.buildProfile,
+    required this.gpNextVersion,
+    required this.gpNextCompatibilityError,
     required this.serverHost,
     required this.serverPort,
     required this.serverStatus,
@@ -470,6 +520,9 @@ class DiagnosticSnapshot {
   final int fileCount;
   final int totalBytes;
   final String? detectedTitle;
+  final ResourceBuildProfile buildProfile;
+  final String? gpNextVersion;
+  final String? gpNextCompatibilityError;
   final String serverHost;
   final int serverPort;
   final ServerStatus serverStatus;
@@ -495,6 +548,9 @@ class DiagnosticSnapshot {
       'fileCount: $fileCount',
       'totalBytes: $totalBytes',
       'detectedTitle: $detectedTitle',
+      'buildProfile: ${buildProfile.name}',
+      'gpNextVersion: $gpNextVersion',
+      'gpNextCompatibilityError: $gpNextCompatibilityError',
       'serverHost: $serverHost',
       'serverPort: $serverPort',
       'serverStatus: ${serverStatus.name}',
@@ -515,11 +571,7 @@ class DiagnosticSnapshot {
             'os="${_logValue(osVersion)}" '
             'webview="${_logValue(webViewEngineVersion)}"',
       ),
-      _logLine(
-        'INFO',
-        'resource.root',
-        'path="${_logValue(resourceRoot)}"',
-      ),
+      _logLine('INFO', 'resource.root', 'path="${_logValue(resourceRoot)}"'),
       _logLine(
         'INFO',
         'resource.active',
@@ -534,7 +586,10 @@ class DiagnosticSnapshot {
         'lastImportAt=${_iso(lastImportAt)} '
             'fileCount=$fileCount '
             'totalBytes=$totalBytes '
-            'detectedTitle="${_logValue(detectedTitle)}"',
+            'detectedTitle="${_logValue(detectedTitle)}" '
+            'buildProfile=${buildProfile.name} '
+            'gpNextVersion="${_logValue(gpNextVersion)}" '
+            'gpNextCompatibilityError="${_logValue(gpNextCompatibilityError)}"',
       ),
       _logLine(
         _serverLogLevel(),

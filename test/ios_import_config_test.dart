@@ -6,8 +6,10 @@ void main() {
   test('iOS registers a streaming zip importer', () {
     final appDelegate = File('ios/Runner/AppDelegate.swift').readAsStringSync();
 
-    expect(appDelegate,
-        contains('io.github.dey410.gardendlessloader/resource_zip_importer'));
+    expect(
+      appDelegate,
+      contains('io.github.dey410.gardendlessloader/resource_zip_importer'),
+    );
     expect(appDelegate, contains('pickAndExtractDocsZip'));
     expect(appDelegate, contains('UIDocumentPickerViewController'));
     expect(appDelegate, contains('UTType.zip'));
@@ -45,5 +47,19 @@ void main() {
     expect(pickerFactory, contains('forOpeningContentTypes: [UTType.zip]'));
     expect(pickerFactory, contains('asCopy: true'));
     expect(pickerFactory, contains('in: .import'));
+  });
+
+  test('iOS registers the GP-Next package picker', () {
+    final appDelegate = File('ios/Runner/AppDelegate.swift').readAsStringSync();
+
+    expect(
+      appDelegate,
+      contains('io.github.dey410.gardendlessloader/gp_next_file_importer'),
+    );
+    expect(appDelegate, contains('pickAndCopyFiles'));
+    expect(appDelegate, contains('allowsMultipleSelection = true'));
+    expect(appDelegate, contains('UTType.zip'));
+    expect(appDelegate, contains('.zip, .json, .plainText, .data'));
+    expect(appDelegate, contains('copyGpNextFiles'));
   });
 }

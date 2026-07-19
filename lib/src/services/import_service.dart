@@ -108,10 +108,9 @@ class ImportService {
         transactionState: TransactionState.validating,
       );
       await manifestStore.write(manifest);
-      report(const ImportProgress(
-        phase: ImportPhase.validating,
-        message: '正在校验资源',
-      ));
+      report(
+        const ImportProgress(phase: ImportPhase.validating, message: '正在校验资源'),
+      );
 
       final validation = await _validator.validate(target.directory);
       if (!validation.isValid) {
@@ -123,6 +122,9 @@ class ImportService {
       final stats = await _validator.scanStats(
         target.directory,
         detectedTitle: validation.detectedTitle,
+        buildProfile: validation.buildProfile,
+        gpNextVersion: validation.gpNextVersion,
+        gpNextCompatibilityError: validation.gpNextCompatibilityError,
       );
 
       manifest = manifest.copyWith(
@@ -130,20 +132,23 @@ class ImportService {
         transactionState: TransactionState.selfChecking,
       );
       await manifestStore.write(manifest);
-      report(ImportProgress(
-        phase: ImportPhase.selfChecking,
-        copiedFiles: stats.fileCount,
-        copiedBytes: stats.totalBytes,
-        totalFiles: stats.fileCount,
-        totalBytes: stats.totalBytes,
-        message: '正在通过本地 server 自检',
-      ));
+      report(
+        ImportProgress(
+          phase: ImportPhase.selfChecking,
+          copiedFiles: stats.fileCount,
+          copiedBytes: stats.totalBytes,
+          totalFiles: stats.fileCount,
+          totalBytes: stats.totalBytes,
+          message: '正在通过本地 server 自检',
+        ),
+      );
       await _server.selfCheck(root: target.directory);
       await _server.stop();
 
       final now = DateTime.now();
-      final gameVersion =
-          await _gameUpdateCheckService.loadCurrentVersion(target.directory);
+      final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
+        target.directory,
+      );
       manifest = manifest.copyWith(
         generation: manifest.generation + 1,
         transactionState: TransactionState.readyToActivate,
@@ -169,6 +174,11 @@ class ImportService {
         fileCount: stats.fileCount,
         totalBytes: stats.totalBytes,
         detectedTitle: stats.detectedTitle,
+        buildProfile: stats.buildProfile,
+        gpNextVersion: stats.gpNextVersion,
+        gpNextCompatibilityError: stats.gpNextCompatibilityError,
+        clearGpNextVersion: stats.gpNextVersion == null,
+        clearGpNextCompatibilityError: stats.gpNextCompatibilityError == null,
         resourceStatus: ResourceStatus.ready,
         lastSelfCheckAt: now,
         clearError: true,
@@ -186,14 +196,16 @@ class ImportService {
         clearError: true,
       );
       await manifestStore.write(manifest);
-      report(ImportProgress(
-        phase: ImportPhase.completed,
-        copiedFiles: stats.fileCount,
-        copiedBytes: stats.totalBytes,
-        totalFiles: stats.fileCount,
-        totalBytes: stats.totalBytes,
-        message: '导入成功',
-      ));
+      report(
+        ImportProgress(
+          phase: ImportPhase.completed,
+          copiedFiles: stats.fileCount,
+          copiedBytes: stats.totalBytes,
+          totalFiles: stats.fileCount,
+          totalBytes: stats.totalBytes,
+          message: '导入成功',
+        ),
+      );
       return manifest;
     } catch (error) {
       await _server.stop();
@@ -205,10 +217,12 @@ class ImportService {
           lastErrorMessage: error.toString(),
         );
         await manifestStore.write(pendingCleanup);
-        report(const ImportProgress(
-          phase: ImportPhase.completed,
-          message: '导入成功，旧槽将在下次启动清理',
-        ));
+        report(
+          const ImportProgress(
+            phase: ImportPhase.completed,
+            message: '导入成功，旧槽将在下次启动清理',
+          ),
+        );
         return pendingCleanup;
       }
       await _resetDirectory(target.directory);
@@ -227,10 +241,9 @@ class ImportService {
         lastErrorMessage: failure.message,
       );
       await manifestStore.write(failed);
-      report(ImportProgress(
-        phase: ImportPhase.failed,
-        message: failure.message,
-      ));
+      report(
+        ImportProgress(phase: ImportPhase.failed, message: failure.message),
+      );
       throw failure;
     }
   }
@@ -325,9 +338,13 @@ class ImportService {
       final stats = await _validator.scanStats(
         candidate,
         detectedTitle: validation.detectedTitle,
+        buildProfile: validation.buildProfile,
+        gpNextVersion: validation.gpNextVersion,
+        gpNextCompatibilityError: validation.gpNextCompatibilityError,
       );
-      final gameVersion =
-          await _gameUpdateCheckService.loadCurrentVersion(candidate);
+      final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
+        candidate,
+      );
       final oldSlot = manifest.activeSlot;
       final now = DateTime.now();
       final activationGeneration = manifest.generation + 1;
@@ -348,6 +365,11 @@ class ImportService {
         fileCount: stats.fileCount,
         totalBytes: stats.totalBytes,
         detectedTitle: stats.detectedTitle,
+        buildProfile: stats.buildProfile,
+        gpNextVersion: stats.gpNextVersion,
+        gpNextCompatibilityError: stats.gpNextCompatibilityError,
+        clearGpNextVersion: stats.gpNextVersion == null,
+        clearGpNextCompatibilityError: stats.gpNextCompatibilityError == null,
         resourceStatus: ResourceStatus.ready,
         lastSelfCheckAt: now,
         clearError: true,
@@ -398,13 +420,17 @@ class ImportService {
       return manifest;
     }
     candidates.sort(
-      (left, right) => (right.metadata?.generation ?? 0)
-          .compareTo(left.metadata?.generation ?? 0),
+      (left, right) => (right.metadata?.generation ?? 0).compareTo(
+        left.metadata?.generation ?? 0,
+      ),
     );
     final selected = candidates.first;
     final stats = await _validator.scanStats(
       selected.directory,
       detectedTitle: selected.validation.detectedTitle,
+      buildProfile: selected.validation.buildProfile,
+      gpNextVersion: selected.validation.gpNextVersion,
+      gpNextCompatibilityError: selected.validation.gpNextCompatibilityError,
     );
     final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
       selected.directory,
@@ -445,6 +471,11 @@ class ImportService {
       fileCount: stats.fileCount,
       totalBytes: stats.totalBytes,
       detectedTitle: stats.detectedTitle,
+      buildProfile: stats.buildProfile,
+      gpNextVersion: stats.gpNextVersion,
+      gpNextCompatibilityError: stats.gpNextCompatibilityError,
+      clearGpNextVersion: stats.gpNextVersion == null,
+      clearGpNextCompatibilityError: stats.gpNextCompatibilityError == null,
       resourceStatus: ResourceStatus.ready,
       lastSelfCheckAt: selected.metadata?.lastSelfCheckAt,
       clearError: true,
@@ -537,10 +568,14 @@ class ImportService {
     }
     final stats = await _validator.scanStats(
       target,
-      detectedTitle: sourceValidation.detectedTitle,
+      detectedTitle: migratedValidation.detectedTitle,
+      buildProfile: migratedValidation.buildProfile,
+      gpNextVersion: migratedValidation.gpNextVersion,
+      gpNextCompatibilityError: migratedValidation.gpNextCompatibilityError,
     );
-    final gameVersion =
-        await _gameUpdateCheckService.loadCurrentVersion(target);
+    final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
+      target,
+    );
     final now = DateTime.now();
     final activationGeneration = manifest.generation + 1;
     await _writeSlotMetadata(
@@ -558,6 +593,11 @@ class ImportService {
       fileCount: stats.fileCount,
       totalBytes: stats.totalBytes,
       detectedTitle: stats.detectedTitle,
+      buildProfile: stats.buildProfile,
+      gpNextVersion: stats.gpNextVersion,
+      gpNextCompatibilityError: stats.gpNextCompatibilityError,
+      clearGpNextVersion: stats.gpNextVersion == null,
+      clearGpNextCompatibilityError: stats.gpNextCompatibilityError == null,
       resourceStatus: ResourceStatus.ready,
       lastSelfCheckAt: manifest.lastSelfCheckAt,
       transactionState: TransactionState.migrating,
@@ -586,8 +626,10 @@ class ImportService {
     Directory target,
   ) async {
     await target.create(recursive: true);
-    await for (final entity
-        in source.list(recursive: true, followLinks: false)) {
+    await for (final entity in source.list(
+      recursive: true,
+      followLinks: false,
+    )) {
       final relative = p.relative(entity.path, from: source.path);
       final targetPath = p.join(target.path, relative);
       if (entity is Directory) {
@@ -633,7 +675,7 @@ class ImportService {
             'generation': generation,
             'gameVersion': gameVersion,
             'importedAt': importedAt.toUtc().toIso8601String(),
-            'lastSelfCheckAt': lastSelfCheckAt?.toUtc().toIso8601String(),
+            'lastSelfCheckAt': lastSelfCheckAt?.toUtc().toIso8601String()
           })}\n',
       flush: true,
     );
@@ -642,12 +684,13 @@ class ImportService {
 
   Future<_SlotMetadata?> _readSlotMetadata(Directory directory) async {
     try {
-      final decoded = jsonDecode(
-        await _slotMetadataFile(directory).readAsString(),
-      ) as Map<String, dynamic>;
+      final decoded =
+          jsonDecode(await _slotMetadataFile(directory).readAsString())
+              as Map<String, dynamic>;
       final generation = decoded['generation'];
-      final importedAt =
-          DateTime.tryParse(decoded['importedAt'] as String? ?? '');
+      final importedAt = DateTime.tryParse(
+        decoded['importedAt'] as String? ?? '',
+      );
       if (generation is! int || importedAt == null) {
         return null;
       }

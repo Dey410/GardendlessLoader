@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 import '../models.dart';
 
 class ResourceValidator {
+  static const supportedGpNextVersions = {'1.4.2'};
+
   Future<ResourceValidationResult> validate(Directory root) async {
     if (!await root.exists()) {
       return ResourceValidationResult.missing('${root.path} 不存在');
@@ -40,7 +42,10 @@ class ResourceValidator {
 
     final indexHtml = await indexFile.readAsString();
     final detectedTitle = _extractTitle(indexHtml);
-    if (detectedTitle == null || !detectedTitle.contains('PvZ2 Gardendless')) {
+    final gpNext = await _detectGpNext(root, indexHtml);
+    final normalizedTitle = detectedTitle?.replaceAll('_', ' ');
+    if (normalizedTitle == null ||
+        !normalizedTitle.contains('PvZ2 Gardendless')) {
       return ResourceValidationResult.invalid(
         'title_fingerprint_mismatch',
         'index.html title 未包含 PvZ2 Gardendless',
@@ -48,7 +53,8 @@ class ResourceValidator {
     }
 
     final lowerIndex = indexHtml.toLowerCase();
-    if (!lowerIndex.contains('pvzge') &&
+    if (!gpNext.detected &&
+        !lowerIndex.contains('pvzge') &&
         !lowerIndex.contains('play.pvzge.com')) {
       return ResourceValidationResult.invalid(
         'index_fingerprint_mismatch',
@@ -61,11 +67,23 @@ class ResourceValidator {
       return settingsResult;
     }
 
-    return ResourceValidationResult.valid(detectedTitle: detectedTitle);
+    return ResourceValidationResult.valid(
+      detectedTitle: detectedTitle,
+      buildProfile: gpNext.detected
+          ? ResourceBuildProfile.gpNext
+          : ResourceBuildProfile.standardWeb,
+      gpNextVersion: gpNext.version,
+      gpNextCompatibilityError: gpNext.compatibilityError,
+    );
   }
 
-  Future<ResourceStats> scanStats(Directory root,
-      {String? detectedTitle}) async {
+  Future<ResourceStats> scanStats(
+    Directory root, {
+    String? detectedTitle,
+    ResourceBuildProfile buildProfile = ResourceBuildProfile.standardWeb,
+    String? gpNextVersion,
+    String? gpNextCompatibilityError,
+  }) async {
     var fileCount = 0;
     var totalBytes = 0;
 
@@ -80,7 +98,106 @@ class ResourceValidator {
       fileCount: fileCount,
       totalBytes: totalBytes,
       detectedTitle: detectedTitle,
+      buildProfile: buildProfile,
+      gpNextVersion: gpNextVersion,
+      gpNextCompatibilityError: gpNextCompatibilityError,
     );
+  }
+
+  Future<_GpNextDetection> _detectGpNext(
+    Directory root,
+    String indexHtml,
+  ) async {
+    final entryPath = _moduleEntryPath(indexHtml);
+    if (entryPath == null) {
+      return const _GpNextDetection.notDetected();
+    }
+
+    final normalizedPath = p.normalize(
+      entryPath.replaceAll('\\', '/').replaceFirst(RegExp(r'^/+'), ''),
+    );
+    if (normalizedPath == '.' ||
+        normalizedPath.startsWith('..${p.separator}') ||
+        p.isAbsolute(normalizedPath)) {
+      return const _GpNextDetection.notDetected();
+    }
+    final entryFile = File(p.join(root.path, normalizedPath));
+    if (!await entryFile.exists()) {
+      return const _GpNextDetection.notDetected();
+    }
+
+    final entry = await entryFile.readAsString();
+    final hasMarker = entry.contains('GP-Next loading') &&
+        entry.contains('window.gpNext') &&
+        entry.contains('loadAllPatches');
+    if (!hasMarker) {
+      return const _GpNextDetection.notDetected();
+    }
+
+    final requiredFingerprints = {
+      'patcher module': 'patcher-',
+      'file loader module': 'file-loader-',
+      'JS mod loader module': 'js-mod-loader-',
+    };
+    final missing = requiredFingerprints.entries
+        .where((entryFingerprint) => !entry.contains(entryFingerprint.value))
+        .map((entryFingerprint) => entryFingerprint.key)
+        .toList(growable: false);
+    final version = await _readGpNextVersion(root, entry);
+    String? compatibilityError;
+    if (missing.isNotEmpty) {
+      compatibilityError = 'GP-Next 缺少兼容模块：${missing.join(', ')}';
+    } else if (version == null) {
+      compatibilityError = '无法识别 GP-Next 版本';
+    } else if (!supportedGpNextVersions.contains(version)) {
+      compatibilityError = '暂不支持 GP-Next $version';
+    }
+    return _GpNextDetection(
+      detected: true,
+      version: version,
+      compatibilityError: compatibilityError,
+    );
+  }
+
+  String? _moduleEntryPath(String indexHtml) {
+    final scripts = RegExp(
+      r'<script\b[^>]*>',
+      caseSensitive: false,
+    ).allMatches(indexHtml);
+    for (final script in scripts) {
+      final tag = script.group(0)!;
+      final type = RegExp(
+        r'''\btype\s*=\s*["']module["']''',
+        caseSensitive: false,
+      ).hasMatch(tag);
+      if (!type) {
+        continue;
+      }
+      final source = RegExp(
+        r'''\bsrc\s*=\s*["']([^"']+)["']''',
+        caseSensitive: false,
+      ).firstMatch(tag)?.group(1);
+      if (source != null && !source.contains('://')) {
+        return Uri.tryParse(source)?.path ?? source;
+      }
+    }
+    return null;
+  }
+
+  Future<String?> _readGpNextVersion(Directory root, String entry) async {
+    final configPath = RegExp(
+      r'''["']\./(config-[^"']+\.js)["']''',
+      caseSensitive: false,
+    ).firstMatch(entry)?.group(1);
+    if (configPath == null) {
+      return null;
+    }
+    final configFile = File(p.join(root.path, 'assets', configPath));
+    if (!await configFile.exists()) {
+      return null;
+    }
+    final config = await configFile.readAsString();
+    return RegExp(r'\b(\d+\.\d+\.\d+)\b').firstMatch(config)?.group(1);
   }
 
   String? _extractTitle(String html) {
@@ -157,4 +274,21 @@ class ResourceValidator {
 
     return false;
   }
+}
+
+class _GpNextDetection {
+  const _GpNextDetection({
+    required this.detected,
+    required this.version,
+    required this.compatibilityError,
+  });
+
+  const _GpNextDetection.notDetected()
+      : detected = false,
+        version = null,
+        compatibilityError = null;
+
+  final bool detected;
+  final String? version;
+  final String? compatibilityError;
 }
