@@ -119,6 +119,31 @@ void main() {
     expect(openedUrls.single.host, 'pvzge.com');
   });
 
+  test('disables optional Discord RPC without aborting GP-Next startup',
+      () async {
+    expect(
+      await service.invoke({
+        'command': 'plugin:drpc|is_running',
+        'args': const <String, Object?>{},
+      }),
+      isFalse,
+    );
+
+    for (final command in const [
+      'plugin:drpc|destroy_thread',
+      'plugin:drpc|spawn_thread',
+      'plugin:drpc|set_activity',
+    ]) {
+      expect(
+        await service.invoke({
+          'command': command,
+          'args': const <String, Object?>{},
+        }),
+        isNull,
+      );
+    }
+  });
+
   test('turns a GP-Next save command into a native export', () async {
     final path = await service.invoke({
       'command': 'plugin:dialog|save',

@@ -89,9 +89,14 @@ class GpNextBridgeService {
         return null;
       case 'update_macos_menu':
         return null;
+      case 'plugin:drpc|is_running':
+        return false;
+      case 'plugin:drpc|destroy_thread':
+      case 'plugin:drpc|spawn_thread':
+      case 'plugin:drpc|set_activity':
+        return null;
       default:
         if (command.startsWith('plugin:window|') ||
-            command.startsWith('plugin:drpc|') ||
             command.startsWith('plugin:image|')) {
           throw GpNextBridgeFailure('移动平台不支持 $command');
         }
