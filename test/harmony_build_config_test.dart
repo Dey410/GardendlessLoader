@@ -3,15 +3,12 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('OpenHarmony override uses compatible plugin forks', () {
+  test('OpenHarmony override no longer carries a Flutter WebView plugin', () {
     final pubspec = File('pubspec_overrides.ohos.yaml').readAsStringSync();
 
     expect(pubspec, contains('openharmony-tpc/flutter_packages.git'));
     expect(pubspec, contains('packages/path_provider/path_provider'));
-    expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
-    expect(pubspec, contains('br_v6.1.5_ohos'));
-    expect(pubspec, contains('flutter_inappwebview'));
-    expect(pubspec, contains('flutter_inappwebview_platform_interface'));
+    expect(pubspec, isNot(contains('flutter_inappwebview')));
     expect(pubspec, contains('openharmony-sig/fluttertpc_wakelock_plus.git'));
     expect(pubspec, contains('wakelock_plus'));
     expect(pubspec, contains('wakelock_plus_platform_interface: 1.3.0'));
@@ -126,55 +123,6 @@ void main() {
     expect(importer, contains("'totalBytes'"));
     expect(importer, contains("'processedFiles'"));
     expect(importer, contains("'totalFiles'"));
-  });
-
-  test('OpenHarmony registers a game save exporter', () {
-    final ability = File(
-      'ohos/entry/src/main/ets/entryability/EntryAbility.ets',
-    ).readAsStringSync();
-    final exporter = File(
-      'ohos/entry/src/main/ets/plugins/GameFileExporterPlugin.ets',
-    ).readAsStringSync();
-
-    expect(ability, contains('GameFileExporterPlugin'));
-    expect(ability, contains('addPlugin(new GameFileExporterPlugin())'));
-    expect(
-      exporter,
-      contains('io.github.dey410.gardendlessloader/game_file_exporter'),
-    );
-    expect(exporter, contains('exportFile'));
-    expect(exporter, contains('DocumentSaveOptions'));
-    expect(exporter, contains('DocumentViewPicker'));
-    expect(exporter, contains('documentViewPicker.save'));
-    expect(
-      exporter,
-      contains('fs.openSync(targetUri, fs.OpenMode.READ_WRITE)'),
-    );
-    expect(exporter, contains('fs.copyFileSync(input.fd, output.fd)'));
-    expect(exporter, contains('fs.closeSync(output.fd)'));
-    expect(exporter, contains('isCancelledError'));
-    expect(exporter, contains("result.error('export_cancelled'"));
-    expect(exporter, contains("message.toLowerCase().includes('cancel')"));
-    expect(exporter, contains("message.includes('取消')"));
-  });
-
-  test('OpenHarmony registers the GP-Next package picker', () {
-    final ability = File(
-      'ohos/entry/src/main/ets/entryability/EntryAbility.ets',
-    ).readAsStringSync();
-    final importer = File(
-      'ohos/entry/src/main/ets/plugins/GpNextFileImporterPlugin.ets',
-    ).readAsStringSync();
-
-    expect(ability, contains('GpNextFileImporterPlugin'));
-    expect(ability, contains('addPlugin(new GpNextFileImporterPlugin())'));
-    expect(
-      importer,
-      contains('io.github.dey410.gardendlessloader/gp_next_file_importer'),
-    );
-    expect(importer, contains('pickAndCopyFiles'));
-    expect(importer, contains("['.zip', '.json', '.json5']"));
-    expect(importer, contains('fs.copyFileSync(input.fd, destination)'));
   });
 
   test('GitHub Actions exports a HAP artifact', () {

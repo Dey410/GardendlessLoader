@@ -7,7 +7,6 @@ import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
-import 'package:gardendless_loader/src/services/local_game_server.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
 import 'package:gardendless_loader/src/services/resource_picker_service.dart';
 import 'package:gardendless_loader/src/services/resource_validator.dart';
@@ -161,13 +160,10 @@ void main() {
         resourceStatus: ResourceStatus.ready,
       ),
     );
-    final importServer = LocalGameServer();
-    addTearDown(importServer.stop);
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       importService: ImportService(
         validator: ResourceValidator(),
-        server: importServer,
         oldSlotCleaner: (_) async {
           throw const FileSystemException('slot is busy');
         },

@@ -6,8 +6,8 @@ import 'package:path/path.dart' as p;
 
 import '../models.dart';
 import 'game_update_check_service.dart';
-import 'local_game_server.dart';
 import 'manifest_store.dart';
+import 'resource_self_check.dart';
 import 'resource_validator.dart';
 
 class ImportTarget {
@@ -22,17 +22,17 @@ typedef OldSlotCleaner = Future<void> Function(Directory directory);
 class ImportService {
   ImportService({
     required ResourceValidator validator,
-    required LocalGameServer server,
+    ResourceSelfCheck? selfCheck,
     GameUpdateCheckService? gameUpdateCheckService,
     OldSlotCleaner? oldSlotCleaner,
   })  : _validator = validator,
-        _server = server,
+        _selfCheck = selfCheck ?? FileResourceSelfCheck(),
         _gameUpdateCheckService =
             gameUpdateCheckService ?? GameUpdateCheckService(),
         _oldSlotCleaner = oldSlotCleaner;
 
   final ResourceValidator _validator;
-  final LocalGameServer _server;
+  final ResourceSelfCheck _selfCheck;
   final GameUpdateCheckService _gameUpdateCheckService;
   final OldSlotCleaner? _oldSlotCleaner;
 
@@ -68,7 +68,6 @@ class ImportService {
     required AppPaths paths,
     required ManifestStore manifestStore,
   }) async {
-    await _server.stop();
     final manifest = await manifestStore.read();
     final candidateSlot = manifest.transactionSlot;
     if (candidateSlot != null && candidateSlot != manifest.activeSlot) {
@@ -139,11 +138,10 @@ class ImportService {
           copiedBytes: stats.totalBytes,
           totalFiles: stats.fileCount,
           totalBytes: stats.totalBytes,
-          message: '正在通过本地 server 自检',
+          message: '正在检查原生宿主入口资源',
         ),
       );
-      await _server.selfCheck(root: target.directory);
-      await _server.stop();
+      await _selfCheck.validate(target.directory);
 
       final now = DateTime.now();
       final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
@@ -208,7 +206,6 @@ class ImportService {
       );
       return manifest;
     } catch (error) {
-      await _server.stop();
       if (activated) {
         final current = await manifestStore.read();
         final pendingCleanup = current.copyWith(
@@ -301,7 +298,6 @@ class ImportService {
     if (manifest.transactionState == TransactionState.extracting ||
         manifest.transactionState == TransactionState.validating ||
         manifest.transactionState == TransactionState.selfChecking) {
-      await _server.stop();
       final candidateSlot = manifest.transactionSlot;
       if (candidateSlot != null && candidateSlot != manifest.activeSlot) {
         await _resetDirectory(paths.directoryFor(candidateSlot));

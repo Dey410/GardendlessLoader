@@ -3,7 +3,7 @@ package io.github.dey410.gardendlessloader
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import android.provider.OpenableColumns
+import io.github.dey410.gardendlessloader.game.GameActivity
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -14,19 +14,60 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.Locale
 import java.util.zip.ZipInputStream
+import org.json.JSONObject
 
 class MainActivity : FlutterActivity() {
     private var resourceZipImporterChannel: MethodChannel? = null
     private var pendingResult: MethodChannel.Result? = null
     private var pendingTargetDirectory: String? = null
-    private var pendingExportResult: MethodChannel.Result? = null
-    private var pendingExportPath: String? = null
-    private var pendingGpNextImportResult: MethodChannel.Result? = null
-    private var pendingGpNextImportTarget: String? = null
     private var lastImportProgressReportAt = 0L
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "io.github.dey410.gardendlessloader/game_host",
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "launch") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val arguments = call.arguments as? Map<*, *>
+            if (arguments == null) {
+                result.error("invalid_game_session", "缺少原生游戏会话", null)
+                return@setMethodCallHandler
+            }
+            try {
+                startActivity(
+                    Intent(this, GameActivity::class.java).putExtra(
+                        GameActivity.EXTRA_SESSION,
+                        JSONObject(arguments).toString(),
+                    ),
+                )
+                result.success(null)
+                window.decorView.post { finish() }
+            } catch (error: Exception) {
+                result.error("game_host_launch_failed", error.message, null)
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "io.github.dey410.gardendlessloader/external_browser",
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "open") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val value = call.argument<String>("url")
+            val uri = value?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            if (uri == null || (uri.scheme != "https" && uri.scheme != "http")) {
+                result.error("invalid_external_url", "只允许打开 HTTP(S) 链接", null)
+                return@setMethodCallHandler
+            }
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                .onSuccess { result.success(null) }
+                .onFailure { result.error("external_open_failed", it.message, null) }
+        }
         val importChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "io.github.dey410.gardendlessloader/resource_zip_importer",
@@ -73,112 +114,9 @@ class MainActivity : FlutterActivity() {
                 result.error("zip_picker_failed", error.message, null)
             }
         }
-
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "io.github.dey410.gardendlessloader/game_file_exporter",
-        ).setMethodCallHandler { call, result ->
-            if (call.method != "exportFile") {
-                result.notImplemented()
-                return@setMethodCallHandler
-            }
-
-            if (pendingExportResult != null) {
-                result.error("export_in_progress", "已有导出正在进行", null)
-                return@setMethodCallHandler
-            }
-
-            val path = call.argument<String>("path")
-            if (path.isNullOrBlank()) {
-                result.error("invalid_arguments", "缺少导出文件路径", null)
-                return@setMethodCallHandler
-            }
-
-            val sourceFile = File(path)
-            if (!sourceFile.exists() || !sourceFile.isFile) {
-                result.error("file_not_found", "导出文件不存在", path)
-                return@setMethodCallHandler
-            }
-
-            val fileName = call.argument<String>("name")
-                ?.takeIf { it.isNotBlank() }
-                ?: sourceFile.name
-            val mimeType = call.argument<String>("mimeType")
-                ?.takeIf { it.isNotBlank() }
-                ?: "application/json"
-
-            pendingExportResult = result
-            pendingExportPath = sourceFile.path
-
-            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = mimeType
-                putExtra(Intent.EXTRA_TITLE, fileName)
-            }
-
-            try {
-                startActivityForResult(intent, exportFileRequestCode)
-            } catch (error: Exception) {
-                pendingExportResult = null
-                pendingExportPath = null
-                result.error("export_picker_failed", error.message, null)
-            }
-        }
-
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "io.github.dey410.gardendlessloader/gp_next_file_importer",
-        ).setMethodCallHandler { call, result ->
-            if (call.method != "pickAndCopyFiles") {
-                result.notImplemented()
-                return@setMethodCallHandler
-            }
-            if (pendingGpNextImportResult != null) {
-                result.error("gp_next_import_busy", "已有 GP-Next 文件选择正在进行", null)
-                return@setMethodCallHandler
-            }
-            val targetDirectory = call.argument<String>("targetDirectory")
-            if (targetDirectory.isNullOrBlank()) {
-                result.error("invalid_target_directory", "缺少 GP-Next 导入暂存目录", null)
-                return@setMethodCallHandler
-            }
-            pendingGpNextImportResult = result
-            pendingGpNextImportTarget = targetDirectory
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
-                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                putExtra(
-                    Intent.EXTRA_MIME_TYPES,
-                    arrayOf(
-                        "application/zip",
-                        "application/json",
-                        "application/json5",
-                        "text/plain",
-                        "application/octet-stream",
-                    ),
-                )
-            }
-            try {
-                startActivityForResult(intent, gpNextImportRequestCode)
-            } catch (error: Exception) {
-                pendingGpNextImportResult = null
-                pendingGpNextImportTarget = null
-                result.error("gp_next_picker_failed", error.message, null)
-            }
-        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == gpNextImportRequestCode) {
-            handleGpNextImportResult(resultCode, data)
-            return
-        }
-        if (requestCode == exportFileRequestCode) {
-            handleExportFileResult(resultCode, data)
-            return
-        }
-
         if (requestCode != pickZipRequestCode) {
             super.onActivityResult(requestCode, resultCode, data)
             return
@@ -219,126 +157,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }.start()
-    }
-
-    private fun handleGpNextImportResult(resultCode: Int, data: Intent?) {
-        val result = pendingGpNextImportResult
-        val targetPath = pendingGpNextImportTarget
-        pendingGpNextImportResult = null
-        pendingGpNextImportTarget = null
-        if (result == null || targetPath == null) {
-            return
-        }
-        if (resultCode != Activity.RESULT_OK || data == null) {
-            result.success(null)
-            return
-        }
-        val uris = mutableListOf<Uri>()
-        data.clipData?.let { clip ->
-            for (index in 0 until clip.itemCount) {
-                uris.add(clip.getItemAt(index).uri)
-            }
-        }
-        data.data?.let { uri ->
-            if (!uris.contains(uri)) {
-                uris.add(uri)
-            }
-        }
-        if (uris.isEmpty()) {
-            result.success(null)
-            return
-        }
-        Thread {
-            try {
-                val target = File(targetPath)
-                target.mkdirs()
-                val copied = uris.map { uri -> copyGpNextFile(uri, target).path }
-                runOnUiThread { result.success(copied) }
-            } catch (error: Exception) {
-                runOnUiThread {
-                    result.error(
-                        "gp_next_import_failed",
-                        "无法导入选择的 GP-Next 文件：${error.message ?: error}",
-                        null,
-                    )
-                }
-            }
-        }.start()
-    }
-
-    private fun copyGpNextFile(uri: Uri, targetDirectory: File): File {
-        val displayName = contentResolver.query(
-            uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null,
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) else null
-        }
-        val fallbackName = uri.lastPathSegment?.substringAfterLast('/') ?: "gp-next-file"
-        val safeName = File(displayName ?: fallbackName).name
-            .replace(Regex("[\\u0000-\\u001f:*?\"<>|]"), "_")
-            .ifBlank { "gp-next-file" }
-        var destination = File(targetDirectory, safeName)
-        var suffix = 1
-        while (destination.exists()) {
-            val stem = destination.nameWithoutExtension
-            val extension = destination.extension.let { if (it.isEmpty()) "" else ".$it" }
-            destination = File(targetDirectory, "$stem-$suffix$extension")
-            suffix++
-        }
-        contentResolver.openInputStream(uri)?.use { input ->
-            destination.outputStream().use { output ->
-                input.copyTo(output, zipCopyBufferSize)
-            }
-        } ?: throw IllegalArgumentException("无法读取所选文件")
-        return destination
-    }
-
-    private fun handleExportFileResult(resultCode: Int, data: Intent?) {
-        val result = pendingExportResult
-        val sourcePath = pendingExportPath
-        pendingExportResult = null
-        pendingExportPath = null
-
-        if (result == null || sourcePath == null) {
-            return
-        }
-
-        if (resultCode != Activity.RESULT_OK) {
-            result.error("export_cancelled", "已取消导出", null)
-            return
-        }
-
-        val uri = data?.data
-        if (uri == null) {
-            result.error("export_cancelled", "已取消导出", null)
-            return
-        }
-
-        Thread {
-            try {
-                copyFileToUri(File(sourcePath), uri)
-                runOnUiThread { result.success(null) }
-            } catch (error: Exception) {
-                runOnUiThread {
-                    result.error(
-                        "export_failed",
-                        "无法保存导出文件：${error.message ?: error.toString()}",
-                        null,
-                    )
-                }
-            }
-        }.start()
-    }
-
-    private fun copyFileToUri(sourceFile: File, uri: Uri) {
-        sourceFile.inputStream().use { input ->
-            contentResolver.openOutputStream(uri, "w")?.use { output ->
-                input.copyTo(output, zipCopyBufferSize)
-            } ?: throw IllegalArgumentException("无法打开保存位置")
-        }
     }
 
     private fun extractDocsZip(uri: Uri, targetDirectory: File) {
@@ -585,8 +403,6 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val pickZipRequestCode = 26410
-        private const val exportFileRequestCode = 26411
-        private const val gpNextImportRequestCode = 26412
         private const val zipCopyBufferSize = 64 * 1024
         private const val progressReportIntervalMs = 100L
     }

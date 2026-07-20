@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'constants.dart';
+import 'game_host/game_host.dart';
+import 'game_host/game_session_store.dart';
 import 'models.dart';
 import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
@@ -15,7 +17,6 @@ import 'services/diagnostics_service.dart';
 import 'services/game_update_check_service.dart';
 import 'services/import_service.dart';
 import 'services/import_progress_meter.dart';
-import 'services/local_game_server.dart';
 import 'services/manifest_store.dart';
 import 'services/resource_validator.dart';
 import 'services/resource_picker_service.dart';
@@ -29,8 +30,10 @@ class AppController extends ChangeNotifier {
   AppController({
     AppPathsService? pathsService,
     ResourceValidator? validator,
-    LocalGameServer? server,
     ImportService? importService,
+    GameHost? gameHost,
+    GameHostPlatform? gameHostPlatform,
+    String Function()? gameSessionIdFactory,
     DiagnosticsService? diagnosticsService,
     AnnouncementService? announcementService,
     AboutContentService? aboutContentService,
@@ -43,7 +46,9 @@ class AppController extends ChangeNotifier {
     Duration importProgressTickInterval = const Duration(seconds: 1),
   })  : _pathsService = pathsService ?? AppPathsService(),
         _validator = validator ?? ResourceValidator(),
-        _server = server ?? LocalGameServer(),
+        _gameHost = gameHost ?? GameHostRouter.platformChannel(),
+        _gameHostPlatform = gameHostPlatform,
+        _gameSessionIdFactory = gameSessionIdFactory ?? _newGameSessionId,
         _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
         _announcementService = announcementService ?? AnnouncementService(),
         _aboutContentService = aboutContentService ?? AboutContentService(),
@@ -62,14 +67,15 @@ class AppController extends ChangeNotifier {
     _importService = importService ??
         ImportService(
           validator: _validator,
-          server: _server,
           gameUpdateCheckService: _gameUpdateCheckService,
         );
   }
 
   final AppPathsService _pathsService;
   final ResourceValidator _validator;
-  final LocalGameServer _server;
+  final GameHost _gameHost;
+  final GameHostPlatform? _gameHostPlatform;
+  final String Function() _gameSessionIdFactory;
   final DiagnosticsService _diagnosticsService;
   final AnnouncementService _announcementService;
   final AboutContentService _aboutContentService;
@@ -89,6 +95,7 @@ class AppController extends ChangeNotifier {
   AppPaths? _paths;
   AppSettingsStore? _appSettingsStore;
   ManifestStore? _manifestStore;
+  GameSessionStore? _gameSessionStore;
   ResourceManifest _manifest = ResourceManifest.initial();
   ResourceValidationResult _currentValidation =
       ResourceValidationResult.missing('尚未检查激活槽');
@@ -133,7 +140,26 @@ class AppController extends ChangeNotifier {
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
   bool get watermarkEnabled => _watermarkEnabled;
-  ServerStatus get serverStatus => _server.status;
+  GameHostPlatform get gameHostPlatform {
+    final configured = _gameHostPlatform;
+    if (configured != null) {
+      return configured;
+    }
+    try {
+      return GameHostPlatform.current();
+    } on UnsupportedError {
+      GameHostPlatform? testFallback;
+      assert(() {
+        testFallback = GameHostPlatform.android;
+        return true;
+      }());
+      if (testFallback != null) {
+        return testFallback!;
+      }
+      rethrow;
+    }
+  }
+
   bool get isImporting =>
       _importProgress.phase != ImportPhase.idle &&
       _importProgress.phase != ImportPhase.completed &&
@@ -181,6 +207,8 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     try {
       _paths = await _pathsService.ensureInitialized();
+      _gameSessionStore = GameSessionStore(_paths!.root);
+      final exitResult = await _gameSessionStore!.consumeExitResult();
       _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
       _watermarkEnabled = await _appSettingsStore!.readWatermarkEnabled();
       _manifestStore = ManifestStore(_paths!.manifestFile);
@@ -198,6 +226,10 @@ class AppController extends ChangeNotifier {
         _message = '游戏资源可用，旧槽清理将在下次启动重试';
       } else if (interruptedTransaction) {
         _message = '上次导入意外中断，已清理未完成文件';
+      } else if (exitResult?.reason == GameExitReason.rendererGone) {
+        _message = exitResult?.message ?? '游戏渲染进程已退出';
+      } else if (exitResult?.reason == GameExitReason.launchFailed) {
+        _message = exitResult?.message ?? '原生游戏宿主启动失败';
       }
       _initialized = true;
     } catch (error) {
@@ -576,30 +608,29 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       throw StateError(_message!);
     }
-    await _server.start(root: activeDirectory!);
-    notifyListeners();
-  }
-
-  Future<void> stopGame() async {
-    await _server.stop();
-    notifyListeners();
-  }
-
-  Future<bool> ensureServerAfterResume() async {
-    if (_server.isRunning) {
-      return false;
-    }
-    if (!canStartGame) {
-      return false;
-    }
-    final paths = _requirePaths();
-    final activeDirectory = _importService.activeDirectory(paths, _manifest);
-    if (activeDirectory == null) {
-      return false;
-    }
-    await _server.start(root: activeDirectory);
-    notifyListeners();
-    return true;
+    final exportRoot = Directory(p.join(paths.gpNextDir.path, '.exports'));
+    await exportRoot.create(recursive: true);
+    final session = GameSession(
+      sessionId: _gameSessionIdFactory(),
+      resourceRoot: activeDirectory!.path,
+      platform: gameHostPlatform,
+      entryPath: 'index.html',
+      activationGeneration: _manifest.generation,
+      hasGpNext: hasGpNext,
+      gpNextCompatible: gpNextCompatible,
+      gpNextVersion: gpNextVersion,
+      watermarkEnabled: _watermarkEnabled,
+      allowedRemoteHosts: hasGpNext
+          ? const ['pvzge.com', 'github.com', 'discord.gg']
+          : const [],
+      gpNextRoot: paths.gpNextDir.path,
+      exportTemporaryRoot: exportRoot.path,
+    );
+    final store = _gameSessionStore ??= GameSessionStore(paths.root);
+    await store.prepare(session);
+    _importCompletionTimer?.cancel();
+    _importProgressTickTimer?.cancel();
+    await _gameHost.launch(session);
   }
 
   DiagnosticSnapshot diagnostics({String? webViewEngineVersion}) {
@@ -608,7 +639,7 @@ class AppController extends ChangeNotifier {
       currentValidation: _currentValidation,
       importValidation: _importValidation,
       manifest: _manifest,
-      serverStatus: _server.status,
+      gameHostPlatform: gameHostPlatform,
       webViewEngineVersion: webViewEngineVersion,
     );
   }
@@ -657,4 +688,8 @@ class AppController extends ChangeNotifier {
     }
     return manifestStore;
   }
+}
+
+String _newGameSessionId() {
+  return '${DateTime.now().toUtc().microsecondsSinceEpoch}-${pid.toRadixString(16)}';
 }

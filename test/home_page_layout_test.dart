@@ -190,7 +190,8 @@ void main() {
       expect(find.text('资源根目录'), findsOneWidget);
       expect(find.text('复制'), findsOneWidget);
       expect(find.text('资源校验'), findsOneWidget);
-      expect(find.text('本地服务'), findsOneWidget);
+      expect(find.text('游戏宿主'), findsOneWidget);
+      expect(find.text('无 HTTP Server'), findsOneWidget);
       expect(find.text('诊断摘要'), findsOneWidget);
       expect(find.text('上次自检'), findsOneWidget);
       expect(find.text('最近错误'), findsOneWidget);
@@ -404,7 +405,7 @@ void main() {
       expect(find.text('资源信息'), findsOneWidget);
       expect(find.text('资源根目录'), findsOneWidget);
       expect(find.text('资源校验'), findsOneWidget);
-      expect(find.text('本地服务'), findsOneWidget);
+      expect(find.text('游戏宿主'), findsOneWidget);
       expect(find.text('快捷操作'), findsOneWidget);
 
       final resourceInfoTop = tester.getTopLeft(find.text('资源信息')).dy;
@@ -521,7 +522,7 @@ void main() {
 
       expect(copiedText, contains('App version:'));
       expect(copiedText, contains('active slot validation:'));
-      expect(copiedText, contains('serverStatus:'));
+      expect(copiedText, contains('resourceServer: none'));
       expect(find.text('日志信息已复制'), findsOneWidget);
     },
     timeout: const Timeout(Duration(seconds: 5)),

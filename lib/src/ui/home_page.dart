@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../app_controller.dart';
@@ -12,7 +11,6 @@ import '../constants.dart';
 import '../models.dart';
 import '../services/game_update_check_service.dart';
 import '../services/update_check_service.dart';
-import 'game_page.dart';
 import 'launcher_visuals.dart';
 
 enum _LauncherSection { resources, diagnostics }
@@ -137,26 +135,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openRelease(UpdateInfo update) async {
-    final browser = ChromeSafariBrowser();
-    await browser.open(url: WebUri(update.releaseUrl));
+    await _openExternalUrl(update.releaseUrl);
   }
 
   Future<void> _openExternalUrl(String url) async {
-    final browser = ChromeSafariBrowser();
-    await browser.open(url: WebUri(url));
+    await const MethodChannel(
+      'io.github.dey410.gardendlessloader/external_browser',
+    ).invokeMethod<void>('open', <String, Object?>{'url': url});
   }
 
   Future<void> _startGame() async {
     try {
       await widget.controller.startGame();
-      if (!mounted) {
-        return;
-      }
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => GamePage(controller: widget.controller),
-        ),
-      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -1276,18 +1266,9 @@ class _ResourceDetailsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final validationStatus = controller.hasCurrentResource ? '校验通过' : '等待导入';
-    final serverStatus = switch (controller.serverStatus) {
-      ServerStatus.running => '运行中',
-      ServerStatus.starting => '启动中',
-      ServerStatus.failed => '异常',
-      ServerStatus.stopped => controller.hasCurrentResource ? '待启动' : '未启动',
-    };
     final validationColor = controller.hasCurrentResource
         ? LauncherVisuals.success
         : LauncherVisuals.warning;
-    final serverColor = controller.serverStatus == ServerStatus.failed
-        ? LauncherVisuals.danger
-        : LauncherVisuals.service;
 
     return _GroupedPanel(
       title: '资源信息',
@@ -1321,12 +1302,12 @@ class _ResourceDetailsCard extends StatelessWidget {
           statusColor: validationColor,
         ),
         _InfoRow(
-          icon: Icons.settings_ethernet_rounded,
-          iconColor: serverColor,
-          label: '本地服务',
-          value: '$localServerHost:$localServerPort',
-          detail: serverStatus,
-          statusColor: serverColor,
+          icon: Icons.rocket_launch_rounded,
+          iconColor: LauncherVisuals.service,
+          label: '游戏宿主',
+          value: controller.gameHostPlatform.nativeHostName,
+          detail: '无 HTTP Server',
+          statusColor: LauncherVisuals.service,
         ),
       ],
     );

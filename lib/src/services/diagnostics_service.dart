@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../constants.dart';
+import '../game_host/game_host.dart';
 import '../models.dart';
 
 typedef DiagnosticsAppVersionLoader = Future<String?> Function();
@@ -38,7 +39,7 @@ class DiagnosticsService {
     required ResourceValidationResult currentValidation,
     required ResourceValidationResult importValidation,
     required ResourceManifest manifest,
-    required ServerStatus serverStatus,
+    required GameHostPlatform gameHostPlatform,
     String? webViewEngineVersion,
   }) {
     return DiagnosticSnapshot(
@@ -60,9 +61,9 @@ class DiagnosticsService {
       buildProfile: manifest.buildProfile,
       gpNextVersion: manifest.gpNextVersion,
       gpNextCompatibilityError: manifest.gpNextCompatibilityError,
-      serverHost: localServerHost,
-      serverPort: localServerPort,
-      serverStatus: serverStatus,
+      gameHost: gameHostPlatform.nativeHostName,
+      resourceServer: 'none',
+      origin: gameHostPlatform.origin,
       lastSelfCheckAt: manifest.lastSelfCheckAt,
       lastErrorCode: manifest.lastErrorCode,
       lastErrorMessage: manifest.lastErrorMessage,

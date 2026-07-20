@@ -21,8 +21,6 @@ enum TransactionState {
   migrating,
 }
 
-enum ServerStatus { stopped, starting, running, failed }
-
 enum ImportPhase {
   idle,
   receiving,
@@ -498,9 +496,9 @@ class DiagnosticSnapshot {
     required this.buildProfile,
     required this.gpNextVersion,
     required this.gpNextCompatibilityError,
-    required this.serverHost,
-    required this.serverPort,
-    required this.serverStatus,
+    required this.gameHost,
+    required this.resourceServer,
+    required this.origin,
     required this.lastSelfCheckAt,
     required this.lastErrorCode,
     required this.lastErrorMessage,
@@ -523,9 +521,9 @@ class DiagnosticSnapshot {
   final ResourceBuildProfile buildProfile;
   final String? gpNextVersion;
   final String? gpNextCompatibilityError;
-  final String serverHost;
-  final int serverPort;
-  final ServerStatus serverStatus;
+  final String gameHost;
+  final String resourceServer;
+  final String origin;
   final DateTime? lastSelfCheckAt;
   final String? lastErrorCode;
   final String? lastErrorMessage;
@@ -551,9 +549,9 @@ class DiagnosticSnapshot {
       'buildProfile: ${buildProfile.name}',
       'gpNextVersion: $gpNextVersion',
       'gpNextCompatibilityError: $gpNextCompatibilityError',
-      'serverHost: $serverHost',
-      'serverPort: $serverPort',
-      'serverStatus: ${serverStatus.name}',
+      'gameHost: $gameHost',
+      'resourceServer: $resourceServer',
+      'origin: $origin',
       'lastSelfCheckAt: ${lastSelfCheckAt?.toIso8601String()}',
       'lastErrorCode: $lastErrorCode',
       'lastErrorMessage: $lastErrorMessage',
@@ -592,9 +590,10 @@ class DiagnosticSnapshot {
             'gpNextCompatibilityError="${_logValue(gpNextCompatibilityError)}"',
       ),
       _logLine(
-        _serverLogLevel(),
-        'server',
-        'status=${serverStatus.name} host=$serverHost port=$serverPort',
+        'INFO',
+        'game.host',
+        'implementation=$gameHost resourceServer=$resourceServer '
+            'origin="$origin"',
       ),
       _logLine(
         currentValidation.isValid && lastSelfCheckAt == null ? 'WARN' : 'INFO',
@@ -639,14 +638,6 @@ class DiagnosticSnapshot {
       ResourceStatus.invalid => 'ERROR',
       ResourceStatus.missing => 'WARN',
       ResourceStatus.valid || ResourceStatus.ready => 'INFO',
-    };
-  }
-
-  String _serverLogLevel() {
-    return switch (serverStatus) {
-      ServerStatus.failed => 'ERROR',
-      ServerStatus.starting => 'WARN',
-      ServerStatus.running || ServerStatus.stopped => 'INFO',
     };
   }
 
