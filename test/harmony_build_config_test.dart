@@ -212,8 +212,10 @@ void main() {
         r'flutter build hap --release --target-platform "${{ matrix.target-platform }}"',
       ),
     );
-    expect(workflow, isNot(contains('set +e')));
-    expect(workflow, isNot(contains('FLUTTER_BUILD_STATUS')));
+    expect(workflow, contains('set +e'));
+    expect(workflow, contains(r'FLUTTER_BUILD_STATUS="$?"'));
+    expect(workflow, contains(r'exit "$FLUTTER_BUILD_STATUS"'));
+    expect(workflow, contains('Unsigned HAP recovered'));
     expect(
       workflow,
       contains("find ohos/entry/build -type f -name '*unsigned*.hap'"),

@@ -329,7 +329,10 @@ jobs:
           BUILD_MARKER="$RUNNER_TEMP/hap-build-${{ matrix.target-platform }}.marker"
           touch "$BUILD_MARKER"
 
+          set +e
           flutter build hap --release --target-platform "${{ matrix.target-platform }}"
+          FLUTTER_BUILD_STATUS="$?"
+          set -e
 
           UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -newer "$BUILD_MARKER" -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
 
@@ -337,7 +340,14 @@ jobs:
             echo "Unsigned HAP was not generated for ${{ matrix.target-platform }}."
             echo "Available HAP outputs:"
             find ohos/entry/build -type f -name '*.hap' -print || true
+            if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
+              exit "$FLUTTER_BUILD_STATUS"
+            fi
             exit 1
+          fi
+
+          if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
+            echo "::notice title=Unsigned HAP recovered::Flutter exited with status $FLUTTER_BUILD_STATUS because no signing configuration is available; the generated unsigned HAP will be uploaded."
           fi
 
           cp "$UNSIGNED_HAP" "build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap"
