@@ -6,6 +6,32 @@ import XCTest
 final class RunnerTests: XCTestCase {
   private var root: URL!
 
+  func testGameViewportLimitsSquareAndUltrawideWindows() {
+    XCTAssertEqual(
+      GameViewportSize.fit(CGSize(width: 1600, height: 1200)),
+      CGSize(width: 1600, height: 1000)
+    )
+    XCTAssertEqual(
+      GameViewportSize.fit(CGSize(width: 2400, height: 1080)),
+      CGSize(width: 2040, height: 1080)
+    )
+  }
+
+  func testGameViewportFillsSupportedAspectRatios() {
+    XCTAssertEqual(
+      GameViewportSize.fit(CGSize(width: 1600, height: 1000)),
+      CGSize(width: 1600, height: 1000)
+    )
+    XCTAssertEqual(
+      GameViewportSize.fit(CGSize(width: 1920, height: 1080)),
+      CGSize(width: 1920, height: 1080)
+    )
+    XCTAssertEqual(
+      GameViewportSize.fit(CGSize(width: 1700, height: 900)),
+      CGSize(width: 1700, height: 900)
+    )
+  }
+
   func testNetworkPolicyBlocksByDefaultAndAllowsOnlyExactHostSuffixes() throws {
     let encoded = try NativeGameNetworkPolicy.encodedRules(for: ["github.com"])
     let rules = try XCTUnwrap(

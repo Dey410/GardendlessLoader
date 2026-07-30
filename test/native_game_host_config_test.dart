@@ -10,9 +10,14 @@ void main() {
     final bridge = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameBridge.kt',
     ).readAsStringSync();
+    final viewport = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameViewportLayout.kt',
+    ).readAsStringSync();
 
     expect(activity, contains('class GameActivity : Activity()'));
-    expect(activity, contains('setContentView(webView)'));
+    expect(activity, contains('setContentView(viewport)'));
+    expect(viewport, contains('16.0 / 10.0'));
+    expect(viewport, contains('17.0 / 9.0'));
     expect(activity, contains('addDocumentStartJavaScript'));
     expect(activity, contains('settings.allowFileAccess = false'));
     expect(bridge, contains('sourceOrigin.toString() != session.origin'));
@@ -31,6 +36,9 @@ void main() {
 
     expect(delegate, contains('engine?.destroyContext()'));
     expect(controller, contains('WKUserScript('));
+    expect(controller, contains('GameViewportView(webView: webView)'));
+    expect(controller, contains('16.0 / 10.0'));
+    expect(controller, contains('17.0 / 9.0'));
     expect(controller, contains('injectionTime: .atDocumentStart'));
     expect(controller, contains('setURLSchemeHandler'));
     expect(handler, contains('WKURLSchemeHandler'));
@@ -56,9 +64,16 @@ void main() {
     final plugin = File(
       'ohos/entry/src/main/ets/plugins/GameHostPlugin.ets',
     ).readAsStringSync();
+    final ability = File(
+      'ohos/entry/src/main/ets/game/GameAbility.ets',
+    ).readAsStringSync();
 
     expect(page, contains('.javaScriptOnDocumentStart'));
     expect(page, contains('.fileAccess(false)'));
+    expect(page, contains('const minimumAspectRatio = 16 / 10'));
+    expect(page, contains('const maximumAspectRatio = 17 / 9'));
+    expect(ability, contains('setWindowLayoutFullScreen(true)'));
+    expect(ability, contains('setWindowSystemBarEnable([])'));
     expect(handler, contains("setWebSchemeHandler('http'"));
     expect(handler, contains("setWebSchemeHandler('https'"));
     expect(handler, contains('didReceiveResponseBody'));

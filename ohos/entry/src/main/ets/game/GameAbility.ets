@@ -14,6 +14,16 @@ export default class GameAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     const storage = LocalStorage.getShared();
     storage.setOrCreate<string>('gameSession', this.sessionJson);
+    windowStage.getMainWindow().then((gameWindow: window.Window): void => {
+      gameWindow.setWindowLayoutFullScreen(true).catch((error: Error): void => {
+        console.error(`Unable to enable full-screen game layout: ${error.message}`);
+      });
+      gameWindow.setWindowSystemBarEnable([]).catch((error: Error): void => {
+        console.error(`Unable to hide game system bars: ${error.message}`);
+      });
+    }).catch((error: Error): void => {
+      console.error(`Unable to configure the game window: ${error.message}`);
+    });
     windowStage.loadContent('pages/GamePage', storage).catch((error: Error) => {
       console.error(`Unable to load native GamePage: ${error.message}`);
       this.context.terminateSelf();

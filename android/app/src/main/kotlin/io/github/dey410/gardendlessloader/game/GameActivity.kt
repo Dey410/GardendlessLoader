@@ -111,7 +111,10 @@ class GameActivity : Activity() {
         }
         webView.webChromeClient = GameChromeClient(::openFileChooser)
         menuController = GameMenuController(webView)
-        setContentView(webView)
+        val viewport = GameViewportLayout(this).apply {
+            addView(webView)
+        }
+        setContentView(viewport)
         webView.loadUrl(session.entryUrl)
     }
 

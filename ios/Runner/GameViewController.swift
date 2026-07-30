@@ -2,6 +2,48 @@ import Flutter
 import UIKit
 import WebKit
 
+enum GameViewportSize {
+  static let minimumAspectRatio: CGFloat = 16.0 / 10.0
+  static let maximumAspectRatio: CGFloat = 17.0 / 9.0
+
+  static func fit(_ bounds: CGSize) -> CGSize {
+    guard bounds.width > 0, bounds.height > 0 else { return .zero }
+    let aspectRatio = bounds.width / bounds.height
+    if aspectRatio > maximumAspectRatio {
+      return CGSize(width: floor(bounds.height * maximumAspectRatio), height: bounds.height)
+    }
+    if aspectRatio < minimumAspectRatio {
+      return CGSize(width: bounds.width, height: floor(bounds.width / minimumAspectRatio))
+    }
+    return bounds
+  }
+}
+
+private final class GameViewportView: UIView {
+  let webView: WKWebView
+
+  init(webView: WKWebView) {
+    self.webView = webView
+    super.init(frame: .zero)
+    backgroundColor = .black
+    addSubview(webView)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    let size = GameViewportSize.fit(bounds.size)
+    webView.frame = CGRect(
+      x: floor((bounds.width - size.width) / 2),
+      y: floor((bounds.height - size.height) / 2),
+      width: size.width,
+      height: size.height
+    )
+  }
+}
+
 final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDocumentPickerDelegate {
   private let session: NativeGameSession
   private let onExit: () -> Void
@@ -67,10 +109,11 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
     navigationDelegate.owner = self
     webView.navigationDelegate = navigationDelegate
     menuController = GameMenuController(webView: webView)
+    let viewport = GameViewportView(webView: webView)
     let edgeGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(openGameMenu))
     edgeGesture.edges = .left
-    webView.addGestureRecognizer(edgeGesture)
-    view = webView
+    viewport.addGestureRecognizer(edgeGesture)
+    view = viewport
   }
 
   override func viewDidLoad() {

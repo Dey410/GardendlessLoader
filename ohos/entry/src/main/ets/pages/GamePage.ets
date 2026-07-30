@@ -22,6 +22,8 @@ struct GamePage {
   private menu: GameMenu | null = null;
   private documentStartScripts: Array<ScriptItem> = [];
   private exiting: boolean = false;
+  @State private viewportWidth: string = '100%';
+  @State private viewportHeight: string = '100%';
 
   aboutToAppear(): void {
     try {
@@ -52,8 +54,8 @@ struct GamePage {
   build() {
     Stack() {
       Web({ src: 'about:blank', controller: this.controller })
-        .width('100%')
-        .height('100%')
+        .width(this.viewportWidth)
+        .height(this.viewportHeight)
         .backgroundColor(Color.Black)
         .javaScriptAccess(true)
         .domStorageAccess(true)
@@ -118,12 +120,38 @@ struct GamePage {
         });
     }
     .width('100%')
-    .height('100%');
+    .height('100%')
+    .alignContent(Alignment.Center)
+    .backgroundColor(Color.Black)
+    .onAreaChange((_oldArea: Area, newArea: Area): void => {
+      this.updateViewport(
+        Number.parseFloat(newArea.width.toString()),
+        Number.parseFloat(newArea.height.toString()),
+      );
+    });
   }
 
   onBackPress(): boolean {
     this.menu?.open();
     return true;
+  }
+
+  private updateViewport(width: number, height: number): void {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return;
+    }
+    const minimumAspectRatio = 16 / 10;
+    const maximumAspectRatio = 17 / 9;
+    const aspectRatio = width / height;
+    let viewportWidth = width;
+    let viewportHeight = height;
+    if (aspectRatio > maximumAspectRatio) {
+      viewportWidth = Math.floor(height * maximumAspectRatio);
+    } else if (aspectRatio < minimumAspectRatio) {
+      viewportHeight = Math.floor(width / minimumAspectRatio);
+    }
+    this.viewportWidth = `${viewportWidth}vp`;
+    this.viewportHeight = `${viewportHeight}vp`;
   }
 
   private buildDocumentStartScript(session: GameSession): string {
