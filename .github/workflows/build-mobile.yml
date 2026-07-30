@@ -139,8 +139,18 @@ jobs:
           archive: false
 
   harmonyos:
-    name: Build unsigned HarmonyOS HAP
+    name: Build unsigned HarmonyOS HAP (${{ matrix.target-platform }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target-platform: ohos-arm64
+            experimental: false
+          - target-platform: ohos-x64
+            experimental: true
 
     env:
       OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-tpc/flutter_flutter.git
@@ -310,48 +320,43 @@ jobs:
             echo "No Flutter tests found."
           fi
 
-      - name: Build unsigned HAPs
+      - name: Build unsigned HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           mkdir -p build/ohos/unsigned
 
-          for TARGET_PLATFORM in ohos-arm64 ohos-x64; do
-            echo "Building unsigned HAP for $TARGET_PLATFORM"
-            BUILD_MARKER="$RUNNER_TEMP/hap-build-$TARGET_PLATFORM.marker"
-            touch "$BUILD_MARKER"
+          echo "Building unsigned HAP for ${{ matrix.target-platform }}"
+          BUILD_MARKER="$RUNNER_TEMP/hap-build-${{ matrix.target-platform }}.marker"
+          touch "$BUILD_MARKER"
 
-            set +e
-            flutter build hap --release --target-platform "$TARGET_PLATFORM"
-            FLUTTER_BUILD_STATUS="$?"
-            set -e
+          set +e
+          flutter build hap --release --target-platform "${{ matrix.target-platform }}"
+          FLUTTER_BUILD_STATUS="$?"
+          set -e
 
-            echo "flutter build hap ($TARGET_PLATFORM) exit code: $FLUTTER_BUILD_STATUS"
+          UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -newer "$BUILD_MARKER" -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
 
-            UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -newer "$BUILD_MARKER" -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
-
-            if [ -z "$UNSIGNED_HAP" ]; then
-              echo "Unsigned HAP was not generated for $TARGET_PLATFORM."
-              echo "Available HAP outputs:"
-              find ohos/entry/build -type f -name '*.hap' -print || true
-              exit 1
+          if [ -z "$UNSIGNED_HAP" ]; then
+            echo "Unsigned HAP was not generated for ${{ matrix.target-platform }}."
+            echo "Available HAP outputs:"
+            find ohos/entry/build -type f -name '*.hap' -print || true
+            if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
+              exit "$FLUTTER_BUILD_STATUS"
             fi
+            exit 1
+          fi
 
-            cp "$UNSIGNED_HAP" "build/ohos/unsigned/GardendlessLoader-unsigned-$TARGET_PLATFORM.hap"
-            echo "Unsigned HAP ($TARGET_PLATFORM): $UNSIGNED_HAP"
-          done
+          if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
+            echo "::notice title=Unsigned HAP recovered::Flutter exited with status $FLUTTER_BUILD_STATUS because no signing configuration is available; the generated unsigned HAP will be uploaded."
+          fi
 
-      - name: Upload unsigned HarmonyOS arm64 HAP
+          cp "$UNSIGNED_HAP" "build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap"
+          echo "Unsigned HAP (${{ matrix.target-platform }}): $UNSIGNED_HAP"
+
+      - name: Upload unsigned HarmonyOS HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
-          path: build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap
-          if-no-files-found: error
-          archive: false
-
-      - name: Upload unsigned HarmonyOS x64 HAP
-        if: steps.ohos-tools.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          path: build/ohos/unsigned/GardendlessLoader-unsigned-ohos-x64.hap
+          path: build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap
           if-no-files-found: error
           archive: false

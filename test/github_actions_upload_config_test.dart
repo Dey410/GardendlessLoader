@@ -40,13 +40,9 @@ void main() {
     );
     _expectDirectFileUpload(
       workflow,
-      stepName: 'Upload unsigned HarmonyOS arm64 HAP',
-      path: 'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap',
-    );
-    _expectDirectFileUpload(
-      workflow,
-      stepName: 'Upload unsigned HarmonyOS x64 HAP',
-      path: 'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-x64.hap',
+      stepName: 'Upload unsigned HarmonyOS HAP',
+      path:
+          r'build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap',
     );
   });
 }
@@ -65,11 +61,12 @@ void _expectDirectFileUpload(
 }
 
 String _workflowStep(String workflow, String stepName) {
+  final normalizedWorkflow = workflow.replaceAll('\r\n', '\n');
   final match = RegExp(
     '^      - name: ${RegExp.escape(stepName)}\n'
     r'(?:(?!^      - name: |^  [a-zA-Z0-9_-]+:).*\n?)*',
     multiLine: true,
-  ).firstMatch(workflow);
+  ).firstMatch(normalizedWorkflow);
 
   if (match == null) {
     fail('Could not find workflow step "$stepName".');
