@@ -160,6 +160,27 @@ function createTransportHarness({nativeAvailable = true} = {}) {
     await window.__TAURI_INTERNALS__.invoke('plugin:drpc|is_running', {}, {}),
     false,
   );
+  assert.equal(
+    await window.__TAURI_INTERNALS__.invoke(
+      'plugin:window|is_maximized',
+      {label: 'main'},
+      {},
+    ),
+    false,
+  );
+  for (const command of [
+    'plugin:window|set_size',
+    'plugin:window|set_fullscreen',
+    'plugin:window|center',
+    'plugin:window|close',
+    'open_devtools',
+  ]) {
+    assert.equal(
+      await window.__TAURI_INTERNALS__.invoke(command, {label: 'main'}, {}),
+      null,
+      command,
+    );
+  }
   assert.equal(nativeCalls.length, 0, 'optional GP-Next commands stay in the shared core');
 
   const exists = await window.__TAURI_INTERNALS__.invoke(

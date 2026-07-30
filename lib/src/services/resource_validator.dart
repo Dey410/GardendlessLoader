@@ -6,8 +6,6 @@ import 'package:path/path.dart' as p;
 import '../models.dart';
 
 class ResourceValidator {
-  static const supportedGpNextVersions = {'1.4.2'};
-
   Future<ResourceValidationResult> validate(Directory root) async {
     if (!await root.exists()) {
       return ResourceValidationResult.missing('${root.path} 不存在');
@@ -72,7 +70,6 @@ class ResourceValidator {
       buildProfile: gpNext.detected
           ? ResourceBuildProfile.gpNext
           : ResourceBuildProfile.standardWeb,
-      gpNextVersion: gpNext.version,
       gpNextCompatibilityError: gpNext.compatibilityError,
     );
   }
@@ -143,18 +140,10 @@ class ResourceValidator {
         .where((entryFingerprint) => !entry.contains(entryFingerprint.value))
         .map((entryFingerprint) => entryFingerprint.key)
         .toList(growable: false);
-    final version = await _readGpNextVersion(root, entry);
-    String? compatibilityError;
-    if (missing.isNotEmpty) {
-      compatibilityError = 'GP-Next 缺少兼容模块：${missing.join(', ')}';
-    } else if (version == null) {
-      compatibilityError = '无法识别 GP-Next 版本';
-    } else if (!supportedGpNextVersions.contains(version)) {
-      compatibilityError = '暂不支持 GP-Next $version';
-    }
+    final compatibilityError =
+        missing.isEmpty ? null : 'GP-Next 缺少兼容模块：${missing.join(', ')}';
     return _GpNextDetection(
       detected: true,
-      version: version,
       compatibilityError: compatibilityError,
     );
   }
@@ -182,22 +171,6 @@ class ResourceValidator {
       }
     }
     return null;
-  }
-
-  Future<String?> _readGpNextVersion(Directory root, String entry) async {
-    final configPath = RegExp(
-      r'''["']\./(config-[^"']+\.js)["']''',
-      caseSensitive: false,
-    ).firstMatch(entry)?.group(1);
-    if (configPath == null) {
-      return null;
-    }
-    final configFile = File(p.join(root.path, 'assets', configPath));
-    if (!await configFile.exists()) {
-      return null;
-    }
-    final config = await configFile.readAsString();
-    return RegExp(r'\b(\d+\.\d+\.\d+)\b').firstMatch(config)?.group(1);
   }
 
   String? _extractTitle(String html) {
@@ -279,16 +252,13 @@ class ResourceValidator {
 class _GpNextDetection {
   const _GpNextDetection({
     required this.detected,
-    required this.version,
     required this.compatibilityError,
   });
 
   const _GpNextDetection.notDetected()
       : detected = false,
-        version = null,
         compatibilityError = null;
 
   final bool detected;
-  final String? version;
   final String? compatibilityError;
 }

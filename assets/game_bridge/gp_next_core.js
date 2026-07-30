@@ -8,7 +8,9 @@
     "plugin:drpc|set_activity", "update_macos_menu",
     "plugin:event|unlisten", "plugin:event|emit", "plugin:event|emit_to",
     "plugin:resources|close", "plugin:deep-link|register",
-    "plugin:deep-link|unregister"
+    "plugin:deep-link|unregister", "plugin:window|set_size",
+    "plugin:window|set_fullscreen", "plugin:window|center",
+    "plugin:window|close", "open_devtools"
   ]);
 
   async function invoke(command, args, options, nativeInvoke) {
@@ -22,6 +24,7 @@
     if (command === "plugin:event|listen") return nextEventId++;
     if (command === "plugin:drpc|is_running" ||
         command === "plugin:deep-link|is_registered") return false;
+    if (command === "plugin:window|is_maximized") return false;
     if (command === "plugin:deep-link|get_current") return [];
     if (nullCommands.has(command)) return null;
     if (command.startsWith("plugin:window|") || command.startsWith("plugin:image|")) {
