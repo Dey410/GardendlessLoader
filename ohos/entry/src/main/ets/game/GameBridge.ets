@@ -310,7 +310,7 @@ export class GameBridge {
             if (existed && !this.fileExists(destination) && this.fileExists(backup)) {
               fs.renameSync(backup, destination);
             }
-            throw error;
+            throw new Error((error as Error).message);
           }
         } finally {
           if (this.fileExists(incoming)) fs.unlinkSync(incoming);
@@ -351,7 +351,18 @@ export class GameBridge {
   private persistWatermark(enabled: boolean): void {
     const output = `${this.session.appRoot}/app_settings.json`;
     const temporary = `${output}.tmp`;
-    fs.writeTextSync(temporary, `${JSON.stringify({ watermarkEnabled: enabled }, null, 2)}\n`);
+    let file: fs.File | null = null;
+    try {
+      file = fs.openSync(
+        temporary,
+        fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC,
+      );
+      fs.writeSync(file.fd, `${JSON.stringify({ watermarkEnabled: enabled }, null, 2)}\n`);
+    } finally {
+      if (file != null) {
+        fs.closeSync(file.fd);
+      }
+    }
     fs.renameSync(temporary, output);
   }
 

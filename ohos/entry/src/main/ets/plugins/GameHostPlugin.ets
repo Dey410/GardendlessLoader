@@ -53,7 +53,7 @@ export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHa
       result.error('game_host_unavailable', '无法获取 Ability 上下文', null);
       return;
     }
-    const argumentsObject = call.arguments as Object;
+    const argumentsObject = call.argument as Object;
     const sessionJson = JSON.stringify(argumentsObject);
     if (sessionJson.length > 1024 * 1024) {
       result.error('invalid_game_session', '原生游戏会话过大', null);

@@ -50,78 +50,75 @@ struct GamePage {
   }
 
   build() {
-    Web({ src: 'about:blank', controller: this.controller })
-      .width('100%')
-      .height('100%')
-      .backgroundColor(Color.Black)
-      .javaScriptAccess(true)
-      .domStorageAccess(true)
-      .fileAccess(false)
-      .javaScriptOnDocumentStart(this.documentStartScripts)
-      .onControllerAttached((): void => {
-        const session = this.session;
-        const bridge = this.bridge;
-        const resourceHandler = this.resourceHandler;
-        if (session == null || bridge == null || resourceHandler == null) {
-          this.returnToLauncher('launchFailed', 'Native GameHost session is unavailable');
-          return;
-        }
-        try {
-          resourceHandler.attach(this.controller);
-          const permission = JSON.stringify({
-            javascriptProxyPermission: {
-              urlPermissionList: [{
-                scheme: 'https',
-                host: 'gardendless.invalid',
-                port: '',
-                path: '',
-              }],
-            },
+    Stack() {
+      Web({ src: 'about:blank', controller: this.controller })
+        .width('100%')
+        .height('100%')
+        .backgroundColor(Color.Black)
+        .javaScriptAccess(true)
+        .domStorageAccess(true)
+        .fileAccess(false)
+        .javaScriptOnDocumentStart(this.documentStartScripts)
+        .onControllerAttached((): void => {
+          const session = this.session;
+          const bridge = this.bridge;
+          const resourceHandler = this.resourceHandler;
+          if (session == null || bridge == null || resourceHandler == null) {
+            this.returnToLauncher('launchFailed', 'Native GameHost session is unavailable');
+            return;
+          }
+          try {
+            resourceHandler.attach(this.controller);
+            const permission =
+              '{"javascriptProxyPermission":{"urlPermissionList":[{"scheme":"https",' +
+              '"host":"gardendless.invalid","port":"","path":""}]}}';
+            this.controller.registerJavaScriptProxy(
+              bridge,
+              'gardendlessNative',
+              ['postMessage'],
+              [],
+              permission,
+            );
+            this.controller.loadUrl(session.entryUrl);
+          } catch (error) {
+            this.returnToLauncher('launchFailed', (error as Error).message);
+          }
+        })
+        .onOverrideUrlLoading((request: WebResourceRequest): boolean => {
+          if (request == null) {
+            return true;
+          }
+          const url = request.getRequestUrl();
+          if (url === GameSession.ORIGIN || url.startsWith(`${GameSession.ORIGIN}/`)) {
+            return false;
+          }
+          if (url.startsWith('https://')) {
+            this.context.startAbility({ action: 'ohos.want.action.viewData', uri: url })
+              .catch((_error: Error): void => {});
+          }
+          return true;
+        })
+        .onShowFileSelector((event): boolean => {
+          if (event == null) {
+            return true;
+          }
+          const options = new picker.DocumentSelectOptions();
+          new picker.DocumentViewPicker().select(options).then((uris: string[]): void => {
+            event.result.handleFileList(uris);
+          }).catch((_error: Error): void => {
+            event.result.handleFileList([]);
           });
-          this.controller.registerJavaScriptProxy(
-            bridge,
-            'gardendlessNative',
-            ['postMessage'],
-            [],
-            permission,
-          );
-          this.controller.loadUrl(session.entryUrl);
-        } catch (error) {
-          this.returnToLauncher('launchFailed', (error as Error).message);
-        }
-      })
-      .onOverrideUrlLoading((event): boolean => {
-        if (event == null) {
           return true;
-        }
-        const url = event.request.getRequestUrl();
-        if (url === GameSession.ORIGIN || url.startsWith(`${GameSession.ORIGIN}/`)) {
-          return false;
-        }
-        if (url.startsWith('https://')) {
-          this.context.startAbility({ action: 'ohos.want.action.viewData', uri: url })
-            .catch((_error: Error): void => {});
-        }
-        return true;
-      })
-      .onShowFileSelector((event): boolean => {
-        if (event == null) {
-          return true;
-        }
-        const options = new picker.DocumentSelectOptions();
-        new picker.DocumentViewPicker().select(options).then((uris: string[]): void => {
-          event.result.handleFileList(uris);
-        }).catch((_error: Error): void => {
-          event.result.handleFileList([]);
+        })
+        .onRenderExited((event): void => {
+          const message = event == null
+            ? 'ArkWeb renderer exited'
+            : `ArkWeb renderer exited: ${event.renderExitReason}`;
+          this.returnToLauncher('rendererGone', message);
         });
-        return true;
-      })
-      .onRenderExited((event): void => {
-        const message = event == null
-          ? 'ArkWeb renderer exited'
-          : `ArkWeb renderer exited: ${event.renderExitReason}`;
-        this.returnToLauncher('rendererGone', message);
-      });
+    }
+    .width('100%')
+    .height('100%');
   }
 
   onBackPress(): boolean {
@@ -204,9 +201,24 @@ struct GamePage {
       message: message,
     }, null, 2);
     try {
-      fs.writeTextSync(temporary, `${value}\n`);
+      this.writeTextFile(temporary, `${value}\n`);
       fs.renameSync(temporary, output);
     } catch (_error) {
+    }
+  }
+
+  private writeTextFile(path: string, value: string): void {
+    let file: fs.File | null = null;
+    try {
+      file = fs.openSync(
+        path,
+        fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC,
+      );
+      fs.writeSync(file.fd, value);
+    } finally {
+      if (file != null) {
+        fs.closeSync(file.fd);
+      }
     }
   }
 

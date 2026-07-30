@@ -125,6 +125,42 @@ void main() {
     expect(importer, contains("'totalFiles'"));
   });
 
+  test('OpenHarmony native GameHost avoids known ArkTS build blockers', () {
+    final gamePage = File(
+      'ohos/entry/src/main/ets/pages/GamePage.ets',
+    ).readAsStringSync();
+    final gameBridge = File(
+      'ohos/entry/src/main/ets/game/GameBridge.ets',
+    ).readAsStringSync();
+    final gpNextCore = File(
+      'ohos/entry/src/main/ets/game/GpNextNativeCore.ets',
+    ).readAsStringSync();
+    final gameHostPlugin = File(
+      'ohos/entry/src/main/ets/plugins/GameHostPlugin.ets',
+    ).readAsStringSync();
+    final arkTsSources = [
+      gamePage,
+      gameBridge,
+      gpNextCore,
+      gameHostPlugin,
+    ].join('\n');
+
+    expect(gamePage, contains('Stack() {'));
+    expect(
+      gamePage,
+      contains(
+        '.onOverrideUrlLoading((request: WebResourceRequest): boolean =>',
+      ),
+    );
+    expect(gamePage, contains('request.getRequestUrl()'));
+    expect(gamePage, isNot(contains('event.request.getRequestUrl()')));
+    expect(gameHostPlugin, contains('call.argument as Object'));
+    expect(gameHostPlugin, isNot(contains('call.arguments')));
+    expect(gpNextCore, contains('class GpNextDirectoryEntry'));
+    expect(arkTsSources, isNot(contains('writeTextSync')));
+    expect(arkTsSources, isNot(contains('throw error;')));
+  });
+
   test('GitHub Actions exports a HAP artifact', () {
     final workflow = File(
       '.github/workflows/build-mobile.yml',

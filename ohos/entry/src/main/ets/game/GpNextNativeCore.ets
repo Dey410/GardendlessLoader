@@ -36,6 +36,20 @@ interface GpNextRequest {
   options?: GpNextOptions;
 }
 
+class GpNextDirectoryEntry {
+  readonly name: string;
+  readonly isFile: boolean;
+  readonly isDirectory: boolean;
+  readonly isSymlink: boolean;
+
+  constructor(name: string, isFile: boolean, isDirectory: boolean, isSymlink: boolean) {
+    this.name = name;
+    this.isFile = isFile;
+    this.isDirectory = isDirectory;
+    this.isSymlink = isSymlink;
+  }
+}
+
 export class GpNextNativeCore {
   private readonly session: GameSession;
   private readonly root: string;
@@ -85,17 +99,17 @@ export class GpNextNativeCore {
     if (!fs.statSync(path).isDirectory()) {
       throw new Error(`目录不存在：${path}`);
     }
-    const entries: Object[] = [];
+    const entries: GpNextDirectoryEntry[] = [];
     const names = fs.listFileSync(path).sort();
     for (const name of names) {
       const child = `${path}/${name}`;
       const stat = fs.lstatSync(child);
-      entries.push({
-        name: name,
-        isFile: stat.isFile(),
-        isDirectory: stat.isDirectory(),
-        isSymlink: stat.isSymbolicLink(),
-      });
+      entries.push(new GpNextDirectoryEntry(
+        name,
+        stat.isFile(),
+        stat.isDirectory(),
+        stat.isSymbolicLink(),
+      ));
     }
     return entries;
   }
@@ -226,7 +240,9 @@ export class GpNextNativeCore {
       try {
         if (fs.lstatSync(current).isSymbolicLink()) throw new Error('不允许通过符号链接访问文件');
       } catch (error) {
-        if ((error as Error).message === '不允许通过符号链接访问文件') throw error;
+        if ((error as Error).message === '不允许通过符号链接访问文件') {
+          throw new Error('不允许通过符号链接访问文件');
+        }
         return;
       }
     }
