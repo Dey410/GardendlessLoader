@@ -19,6 +19,7 @@ void main() {
     expect(viewport, contains('16.0 / 10.0'));
     expect(viewport, contains('17.0 / 9.0'));
     expect(activity, contains('addDocumentStartJavaScript'));
+    expect(activity, contains('add("touch_patch.js")'));
     expect(activity, contains('settings.allowFileAccess = false'));
     expect(bridge, contains('sourceOrigin.toString() != session.origin'));
     expect(bridge, contains('removeActive = false'));
@@ -40,6 +41,7 @@ void main() {
     expect(controller, contains('16.0 / 10.0'));
     expect(controller, contains('17.0 / 9.0'));
     expect(controller, contains('injectionTime: .atDocumentStart'));
+    expect(controller, contains('"touch_patch.js"'));
     expect(controller, contains('setURLSchemeHandler'));
     expect(handler, contains('WKURLSchemeHandler'));
     expect(handler, contains('attributes: .concurrent'));
@@ -69,6 +71,7 @@ void main() {
     ).readAsStringSync();
 
     expect(page, contains('.javaScriptOnDocumentStart'));
+    expect(page, contains("'touch_patch.js'"));
     expect(page, contains('.fileAccess(false)'));
     expect(page, contains('const minimumAspectRatio = 16 / 10'));
     expect(page, contains('const maximumAspectRatio = 17 / 9'));

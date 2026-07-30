@@ -24,6 +24,20 @@
 - Reimport keeps the same per-platform origin and does not clear WebView localStorage/IndexedDB.
 - HarmonyOS CI exports unsigned arm64 and x64 HAP artifacts under `build/ohos/unsigned/` when the OpenHarmony Flutter and DevEco command-line toolchain is configured.
 
+## Touch input
+
+- On Android, one-finger taps plant on lawn tiles and collect suns exactly once.
+- On Android, one-finger dragging keeps the left button pressed and follows the active finger without jumping to another finger.
+- On Android, adding a second finger releases the left button at the first finger's last position.
+- On Android, returning from two fingers to one does not restart a left-button gesture until every finger is lifted.
+- On Android, two-finger movement inside 20 CSS pixels remains a right-click candidate.
+- On Android, a two-finger gesture that exceeds 20 CSS pixels scrolls at the configured `-4.5` multiplier and does not emit a right click.
+- On Android, a stationary two-finger gesture emits one right click after both fingers are lifted, even when held longer than 250 ms.
+- On Android, cancelling the gesture, backgrounding the app, removing the target, or losing focus never leaves a mouse button pressed.
+- On Android, text inputs, selects, editable content, and GP-Next controls retain native touch behavior.
+- Repeat the complete touch-input matrix above on iOS WKWebView before release.
+- Repeat the complete touch-input matrix above on HarmonyOS ArkWeb before release.
+
 ## Failure paths
 
 - A ZIP without a valid `docs/index.html` rejects import and leaves the active slot unchanged.

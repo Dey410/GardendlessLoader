@@ -4,22 +4,24 @@
   }
   window.__gardendlessTouchPatchInstalled = true;
 
-  const touchMoveThreshold = 14;
-  const twoFingerTapMaxDuration = 250;
+  const touchActionStyleId = "gardendless-touch-action";
+  const touchMoveThreshold = 20;
+  const touchWheelMultiplier = -4.5;
   const gpNextBackdropTapMaxDuration = 250;
   const gpNextBackdropDoubleTapMaxDelay = 300;
   const gpNextBackdropDoubleTapMaxDistance = 24;
   let lastWheelY = null;
+  let leftTouchIdentifier = null;
   let leftMouseActive = false;
   let leftMouseTarget = null;
   let leftMouseDownPoint = null;
+  let leftMouseLastPoint = null;
   let leftMouseDownDispatched = false;
   let pendingLeftMouseDownFrame = null;
   let pendingLeftMouseUpPoint = null;
   let twoFingerStartPoint = null;
   let twoFingerTarget = null;
   let twoFingerMoved = false;
-  let twoFingerStartedAt = null;
   let pendingMoveFrame = null;
   let pendingMovePoint = null;
   let pendingMoveTarget = null;
@@ -33,10 +35,43 @@
   let lastGpNextBackdropTapAt = null;
   let lastGpNextBackdropTapPoint = null;
 
+  function installTouchActionStyle() {
+    if (document.getElementById(touchActionStyleId)) {
+      return;
+    }
+    const parent = document.head || document.documentElement;
+    if (!parent) {
+      document.addEventListener("DOMContentLoaded", installTouchActionStyle, {
+        once: true
+      });
+      return;
+    }
+    const style = document.createElement("style");
+    style.id = touchActionStyleId;
+    style.textContent =
+      "#GameDiv, #Cocos3dGameContainer, #GameCanvas {" +
+      " touch-action: none !important; }";
+    parent.appendChild(style);
+  }
+
+  installTouchActionStyle();
+
   function firstChangedTouch(event) {
     return event.changedTouches && event.changedTouches.length > 0
       ? event.changedTouches[0]
       : null;
+  }
+
+  function touchWithIdentifier(touches, identifier) {
+    if (identifier === null || !touches) {
+      return null;
+    }
+    for (const touch of touches) {
+      if (touch.identifier === identifier) {
+        return touch;
+      }
+    }
+    return null;
   }
 
   function averageTouchPoint(touches) {
@@ -213,22 +248,25 @@
     twoFingerStartPoint = null;
     twoFingerTarget = null;
     twoFingerMoved = false;
-    twoFingerStartedAt = null;
   }
 
   function clearLeftMouseState() {
+    leftTouchIdentifier = null;
     leftMouseActive = false;
     leftMouseTarget = null;
     leftMouseDownPoint = null;
+    leftMouseLastPoint = null;
     leftMouseDownDispatched = false;
     pendingLeftMouseDownFrame = null;
     pendingLeftMouseUpPoint = null;
   }
 
-  function beginLeftMouse(target, point) {
+  function beginLeftMouse(target, point, identifier) {
+    leftTouchIdentifier = identifier;
     leftMouseActive = true;
     leftMouseTarget = target;
     leftMouseDownPoint = point;
+    leftMouseLastPoint = point;
     leftMouseDownDispatched = false;
     pendingLeftMouseUpPoint = null;
     dispatchMouse(target, "mousemove", point, 0, 0);
@@ -283,7 +321,7 @@
   }
 
   function cancelInteraction() {
-    const point = lastTouchPoint || {
+    const point = leftMouseLastPoint || lastTouchPoint || {
       screenX: 0,
       screenY: 0,
       clientX: 0,
@@ -308,7 +346,7 @@
         gpNextBackdropTouchHadMultipleFingers = true;
       }
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
@@ -327,34 +365,37 @@
       gpNextBackdropTouchMoved = false;
       gpNextBackdropTouchHadMultipleFingers = false;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
     if (event.touches.length >= 3) {
-      cancelLeftMouse(point);
+      cancelLeftMouse(leftMouseLastPoint || point);
       resetTwoFingerGesture();
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
     if (event.touches.length === 2) {
-      cancelLeftMouse(point);
+      cancelLeftMouse(leftMouseLastPoint || point);
       twoFingerStartPoint = averageTouchPoint(event.touches);
       twoFingerTarget = targetAtPoint(twoFingerStartPoint);
       twoFingerMoved = false;
-      twoFingerStartedAt = performance.now();
       lastWheelY = twoFingerStartPoint.clientY;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
     lastWheelY = null;
-    beginLeftMouse(target, point);
+    beginLeftMouse(
+      target,
+      point,
+      changedTouch ? changedTouch.identifier : null
+    );
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation();
   }, { capture: true, passive: false });
 
   document.addEventListener("touchmove", function (event) {
@@ -373,14 +414,14 @@
         gpNextBackdropTouchMoved = true;
       }
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
     if (event.touches.length >= 3) {
       cancelInteraction();
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
@@ -395,7 +436,8 @@
         }
       }
       if (twoFingerMoved && lastWheelY !== null) {
-        const wheelDelta = (point.clientY - lastWheelY) * -3;
+        const wheelDelta =
+          (point.clientY - lastWheelY) * touchWheelMultiplier;
         if (wheelDelta !== 0) {
           const wheelEvent = new WheelEvent("wheel", {
             deltaY: wheelDelta,
@@ -414,23 +456,31 @@
       }
       lastWheelY = point.clientY;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
     if (!leftMouseActive) {
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
-    const changedTouch = firstChangedTouch(event);
+    const changedTouch =
+      touchWithIdentifier(event.changedTouches, leftTouchIdentifier) ||
+      touchWithIdentifier(event.touches, leftTouchIdentifier);
+    if (leftTouchIdentifier !== null && !changedTouch) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     const point = changedTouch || averageTouchPoint(event.touches);
     const target = leftMouseTarget || touchTarget(changedTouch);
     lastTouchPoint = point;
+    leftMouseLastPoint = point;
     scheduleMouseMove(target, point);
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation();
   }, { capture: true, passive: false });
 
   function endTouch(event) {
@@ -457,22 +507,25 @@
         resetGpNextBackdropTouchState();
       }
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
-    const changedTouch = firstChangedTouch(event);
+    const capturedTouch =
+      touchWithIdentifier(event.changedTouches, leftTouchIdentifier);
+    if (leftTouchIdentifier !== null && leftMouseTarget && !capturedTouch) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    const changedTouch = capturedTouch || firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     lastTouchPoint = point;
     lastWheelY = null;
     releaseLeftMouse(point);
-    const tapDuration = twoFingerStartedAt === null
-      ? Infinity
-      : performance.now() - twoFingerStartedAt;
     if (event.touches.length === 0 &&
         twoFingerStartPoint &&
-        !twoFingerMoved &&
-        tapDuration <= twoFingerTapMaxDuration) {
+        !twoFingerMoved) {
       const target = twoFingerTarget || targetAtPoint(twoFingerStartPoint);
       dispatchMouse(target, "mousemove", twoFingerStartPoint, 0, 0);
       dispatchMouse(target, "mousedown", twoFingerStartPoint, 2, 2);
@@ -482,7 +535,7 @@
       resetTwoFingerGesture();
     }
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation();
   }
 
   function cancelTouch(event) {
@@ -495,17 +548,19 @@
       resetGpNextBackdropTouchState();
       resetGpNextBackdropTapCandidate();
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
 
-    const changedTouch = firstChangedTouch(event);
+    const changedTouch =
+      touchWithIdentifier(event.changedTouches, leftTouchIdentifier) ||
+      firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     lastTouchPoint = point;
     cancelLeftMouse(point);
     resetTwoFingerGesture();
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation();
   }
 
   document.addEventListener("touchend", endTouch, { capture: true, passive: false });
