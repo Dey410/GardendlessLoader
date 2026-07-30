@@ -95,6 +95,14 @@ class GpNextBridgeService {
       case 'plugin:drpc|spawn_thread':
       case 'plugin:drpc|set_activity':
         return null;
+      case 'plugin:window|is_maximized':
+        return false;
+      case 'plugin:window|set_size':
+      case 'plugin:window|set_fullscreen':
+      case 'plugin:window|center':
+      case 'plugin:window|close':
+      case 'open_devtools':
+        return null;
       default:
         if (command.startsWith('plugin:window|') ||
             command.startsWith('plugin:image|')) {

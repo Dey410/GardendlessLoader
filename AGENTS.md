@@ -38,3 +38,13 @@ Recent history uses short prefixes such as `Fix:`, `Update:`, and `Modify:`. Fol
 ## Security & Configuration Tips
 
 Do not commit bundled game resources, signing files, generated archives, or `.DS_Store` files. Keep Android signing values in CI secrets. Preserve local-only serving and non-local WebView request blocking.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+This repository uses a single-context domain documentation layout. See `docs/agents/domain.md`.

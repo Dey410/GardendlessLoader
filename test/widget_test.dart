@@ -274,7 +274,7 @@ void main() {
     expect(openCount, 1);
   });
 
-  testWidgets('unsupported GP-Next is visible but disabled', (tester) async {
+  testWidgets('incompatible GP-Next is visible but disabled', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -284,7 +284,7 @@ void main() {
             watermarkEnabled: true,
             onWatermarkChanged: (_) {},
             showGpNext: true,
-            gpNextUnavailableReason: '暂不支持 GP-Next 9.9.9',
+            gpNextUnavailableReason: 'GP-Next 缺少兼容模块：JS mod loader module',
             onContinue: () {},
             onReturnHome: () {},
             onReload: () {},
@@ -298,7 +298,10 @@ void main() {
       find.byKey(const ValueKey('open-gp-next-button')),
     );
     expect(button.onPressed, isNull);
-    expect(find.text('暂不支持 GP-Next 9.9.9'), findsOneWidget);
+    expect(
+      find.text('GP-Next 缺少兼容模块：JS mod loader module'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('double tapping the game menu backdrop continues the game', (

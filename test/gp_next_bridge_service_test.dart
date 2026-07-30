@@ -144,6 +144,74 @@ void main() {
     }
   });
 
+  test('reports that the GP-Next 1.4.3 mobile window is not maximized',
+      () async {
+    expect(
+      await service.invoke({
+        'command': 'plugin:window|is_maximized',
+        'args': {'label': 'main'},
+      }),
+      isFalse,
+    );
+  });
+
+  test('accepts the GP-Next 1.4.3 desktop window size request on mobile',
+      () async {
+    expect(
+      await service.invoke({
+        'command': 'plugin:window|set_size',
+        'args': {
+          'label': 'main',
+          'value': {
+            'Logical': {'width': 1280, 'height': 720},
+          },
+        },
+      }),
+      isNull,
+    );
+  });
+
+  test('accepts the GP-Next 1.4.3 desktop fullscreen request on mobile',
+      () async {
+    expect(
+      await service.invoke({
+        'command': 'plugin:window|set_fullscreen',
+        'args': {'label': 'main', 'value': true},
+      }),
+      isNull,
+    );
+  });
+
+  test('accepts the GP-Next 1.4.3 desktop center request on mobile', () async {
+    expect(
+      await service.invoke({
+        'command': 'plugin:window|center',
+        'args': {'label': 'main'},
+      }),
+      isNull,
+    );
+  });
+
+  test('accepts the GP-Next 1.4.3 desktop close request on mobile', () async {
+    expect(
+      await service.invoke({
+        'command': 'plugin:window|close',
+        'args': {'label': 'main'},
+      }),
+      isNull,
+    );
+  });
+
+  test('accepts the GP-Next 1.4.3 developer tools request on mobile', () async {
+    expect(
+      await service.invoke({
+        'command': 'open_devtools',
+        'args': const <String, Object?>{},
+      }),
+      isNull,
+    );
+  });
+
   test('turns a GP-Next save command into a native export', () async {
     final path = await service.invoke({
       'command': 'plugin:dialog|save',

@@ -108,30 +108,38 @@ void main() {
     expect(result.isValid, isTrue);
   });
 
-  test('detects the supported GP-Next desktop build', () async {
-    await _writeGpNextResource(temp, version: '1.4.2');
+  test('detects a GP-Next desktop build without checking its version',
+      () async {
+    await _writeGpNextResource(temp, version: '9.9.9');
 
     final result = await validator.validate(temp);
 
     expect(result.isValid, isTrue);
     expect(result.detectedTitle, 'Cocos Creator | PvZ2_Gardendless');
     expect(result.buildProfile, ResourceBuildProfile.gpNext);
-    expect(result.gpNextVersion, '1.4.2');
+    expect(result.gpNextVersion, isNull);
     expect(result.gpNextCompatibilityError, isNull);
     expect(result.gpNextCompatible, isTrue);
   });
 
   test(
-    'keeps an unknown GP-Next build playable but disables its bridge',
+    'disables the GP-Next bridge when a required module is missing',
     () async {
-      await _writeGpNextResource(temp, version: '9.9.9');
+      await _writeGpNextResource(
+        temp,
+        version: '1.4.2',
+        includeJsModLoader: false,
+      );
 
       final result = await validator.validate(temp);
 
       expect(result.isValid, isTrue);
       expect(result.hasGpNext, isTrue);
       expect(result.gpNextCompatible, isFalse);
-      expect(result.gpNextCompatibilityError, '暂不支持 GP-Next 9.9.9');
+      expect(
+        result.gpNextCompatibilityError,
+        'GP-Next 缺少兼容模块：JS mod loader module',
+      );
     },
   );
 }
@@ -139,6 +147,7 @@ void main() {
 Future<void> _writeGpNextResource(
   Directory root, {
   required String version,
+  bool includeJsModLoader = true,
 }) async {
   await _writeValidResource(
     root,
@@ -155,7 +164,7 @@ window.gpNext = {};
 function loadAllPatches() {}
 import('./patcher-test.js');
 import('./file-loader-test.js');
-import('./js-mod-loader-test.js');
+${includeJsModLoader ? 'import(\'./js-mod-loader-test.js\');' : ''}
 import('./config-test.js');
 ''');
   await File(
