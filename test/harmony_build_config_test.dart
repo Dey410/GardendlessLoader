@@ -197,26 +197,33 @@ void main() {
       workflow,
       contains('cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml'),
     );
-    expect(workflow, contains('for TARGET_PLATFORM in ohos-arm64 ohos-x64'));
+    expect(workflow, contains('matrix:'));
+    expect(workflow, contains('target-platform: ohos-arm64'));
+    expect(workflow, contains('target-platform: ohos-x64'));
+    expect(workflow, contains('experimental: false'));
+    expect(workflow, contains('experimental: true'));
+    expect(
+      workflow,
+      contains(r'continue-on-error: ${{ matrix.experimental }}'),
+    );
     expect(
       workflow,
       contains(
-        'flutter build hap --release --target-platform "\$TARGET_PLATFORM"',
+        r'flutter build hap --release --target-platform "${{ matrix.target-platform }}"',
       ),
     );
+    expect(workflow, isNot(contains('set +e')));
+    expect(workflow, isNot(contains('FLUTTER_BUILD_STATUS')));
     expect(
       workflow,
       contains("find ohos/entry/build -type f -name '*unsigned*.hap'"),
     );
-    expect(workflow, contains('Upload unsigned HarmonyOS arm64 HAP'));
-    expect(workflow, contains('Upload unsigned HarmonyOS x64 HAP'));
+    expect(workflow, contains('Upload unsigned HarmonyOS HAP'));
     expect(
       workflow,
-      contains('build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap'),
-    );
-    expect(
-      workflow,
-      contains('build/ohos/unsigned/GardendlessLoader-unsigned-ohos-x64.hap'),
+      contains(
+        r'build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap',
+      ),
     );
   });
 }
