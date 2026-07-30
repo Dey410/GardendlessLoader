@@ -53,7 +53,6 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
   private var webView: WKWebView!
   private var scriptBridge: GameScriptBridge!
   private var navigationDelegate: GameNavigationDelegate!
-  private var menuController: GameMenuController!
   private var pendingExport: (id: String, file: URL)?
   private var chunkedExport: ChunkedExport?
   private var pendingGpNextImportId: String?
@@ -108,9 +107,11 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
     navigationDelegate = GameNavigationDelegate(session: session)
     navigationDelegate.owner = self
     webView.navigationDelegate = navigationDelegate
-    menuController = GameMenuController(webView: webView)
     let viewport = GameViewportView(webView: webView)
-    let edgeGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(openGameMenu))
+    let edgeGesture = UIScreenEdgePanGestureRecognizer(
+      target: self,
+      action: #selector(returnToLauncher)
+    )
     edgeGesture.edges = .left
     viewport.addGestureRecognizer(edgeGesture)
     view = viewport
@@ -126,8 +127,8 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
   override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
   override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
 
-  @objc private func openGameMenu() {
-    menuController.open()
+  @objc private func returnToLauncher() {
+    exit(reason: "userReturned", message: nil)
   }
 
   func bridgeRequestedReturnHome() {
@@ -481,16 +482,23 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
       "gpNextCompatible": session.gpNextCompatible,
       "gpNextVersion": session.gpNextVersion ?? NSNull(),
       "watermarkEnabled": session.watermarkEnabled,
+      "autoCollectSunEnabled": session.autoCollectSunEnabled,
       "gpNextBaseDirectory": session.appRoot.path,
     ]
     let configData = try! JSONSerialization.data(withJSONObject: config)
     var source = "window.__gardendlessHostConfig=" + String(data: configData, encoding: .utf8)! + ";"
-    var names = ["transport.js", "bootstrap.js", "touch_patch.js", "export_download_patch.js"]
+    var names = [
+      "transport.js",
+      "bootstrap.js",
+      "auto_sun.js",
+      "touch_patch.js",
+      "export_download_patch.js",
+    ]
     if session.hasGpNext && session.gpNextCompatible {
       names.append("gp_next_core.js")
       names.append("gp_next_compat_bridge.js")
     }
-    names.append(contentsOf: ["watermark.js", "game_menu.js"])
+    names.append("watermark.js")
     for name in names {
       guard let script = Self.loadFlutterAsset("assets/game_bridge/\(name)") else {
         preconditionFailure("Missing shared game bridge asset: \(name)")

@@ -34,7 +34,6 @@ class GameActivity : Activity() {
     private lateinit var session: NativeGameSession
     private lateinit var webView: WebView
     private lateinit var bridge: GameBridge
-    private lateinit var menuController: GameMenuController
     private lateinit var gpNextCore: GpNextNativeCore
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var pendingExport: PendingExport? = null
@@ -110,7 +109,6 @@ class GameActivity : Activity() {
             )
         }
         webView.webChromeClient = GameChromeClient(::openFileChooser)
-        menuController = GameMenuController(webView)
         val viewport = GameViewportLayout(this).apply {
             addView(webView)
         }
@@ -127,10 +125,12 @@ class GameActivity : Activity() {
             .put("gpNextCompatible", session.gpNextCompatible)
             .put("gpNextVersion", session.gpNextVersion ?: JSONObject.NULL)
             .put("watermarkEnabled", session.watermarkEnabled)
+            .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
             .put("gpNextBaseDirectory", session.appRoot)
         val names = buildList {
             add("transport.js")
             add("bootstrap.js")
+            add("auto_sun.js")
             add("touch_patch.js")
             add("export_download_patch.js")
             if (session.hasGpNext && session.gpNextCompatible) {
@@ -138,7 +138,6 @@ class GameActivity : Activity() {
                 add("gp_next_compat_bridge.js")
             }
             add("watermark.js")
-            add("game_menu.js")
         }
         return buildString {
             append("window.__gardendlessHostConfig=")
@@ -377,7 +376,7 @@ class GameActivity : Activity() {
 
     @Deprecated("Invoked by the Android framework")
     override fun onBackPressed() {
-        menuController.open()
+        returnToLauncher(GameExitReason.USER_RETURNED, null)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

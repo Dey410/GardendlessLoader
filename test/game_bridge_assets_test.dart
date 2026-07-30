@@ -11,7 +11,7 @@ void main() {
     'gp_next_core.js',
     'gp_next_compat_bridge.js',
     'watermark.js',
-    'game_menu.js',
+    'auto_sun.js',
   ];
 
   test('ships one platform-independent document-start script source', () {
@@ -23,7 +23,7 @@ void main() {
 
     expect(combined, contains('window.__gardendlessTransport'));
     expect(combined, contains('window.__gardendlessHost'));
-    expect(combined, contains('window.__gardendlessMenu'));
+    expect(combined, isNot(contains('window.__gardendlessMenu')));
     expect(combined, isNot(contains('flutter_inappwebview')));
     expect(
         combined,
@@ -84,5 +84,60 @@ void main() {
       reason: '${result.stdout}\n${result.stderr}',
     );
     expect(result.stdout, contains('touch patch input contract passes'));
+  });
+
+  test('legacy in-game menu is removed and native back paths return home', () {
+    final android = File(
+      'android/app/src/main/kotlin/io/github/dey410/'
+      'gardendlessloader/game/GameActivity.kt',
+    ).readAsStringSync();
+    final ios = File('ios/Runner/GameViewController.swift').readAsStringSync();
+    final iosProject =
+        File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+    final iosPackage = File('ios/Package.swift').readAsStringSync();
+    final ohos =
+        File('ohos/entry/src/main/ets/pages/GamePage.ets').readAsStringSync();
+
+    expect(File('assets/game_bridge/game_menu.js').existsSync(), isFalse);
+    expect(
+      File(
+        'android/app/src/main/kotlin/io/github/dey410/'
+        'gardendlessloader/game/GameMenuController.kt',
+      ).existsSync(),
+      isFalse,
+    );
+    expect(File('ios/Runner/GameMenuController.swift').existsSync(), isFalse);
+    expect(
+      File('ohos/entry/src/main/ets/game/GameMenu.ets').existsSync(),
+      isFalse,
+    );
+    expect(android, isNot(contains('GameMenuController')));
+    expect(android, isNot(contains('game_menu.js')));
+    expect(
+      android,
+      contains('returnToLauncher(GameExitReason.USER_RETURNED, null)'),
+    );
+    expect(ios, isNot(contains('GameMenuController')));
+    expect(ios, isNot(contains('game_menu.js')));
+    expect(iosProject, isNot(contains('GameMenuController.swift')));
+    expect(iosPackage, isNot(contains('GameMenuController.swift')));
+    expect(ios, contains('#selector(returnToLauncher)'));
+    expect(ohos, isNot(contains('GameMenu')));
+    expect(ohos, isNot(contains('game_menu.js')));
+    expect(ohos, contains("returnToLauncher('userReturned', null);"));
+  });
+
+  test('automatic sun collection passes executable behavior checks', () async {
+    final result = await Process.run(
+      'node',
+      const ['tool/check_auto_sun.mjs'],
+    );
+
+    expect(
+      result.exitCode,
+      0,
+      reason: '${result.stdout}\n${result.stderr}',
+    );
+    expect(result.stdout, contains('automatic sun collection contract passes'));
   });
 }

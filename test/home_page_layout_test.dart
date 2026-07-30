@@ -35,6 +35,7 @@ void main() {
         importerStarted = Completer<void>();
         releaseImporter = Completer<void>();
         root = await Directory.systemTemp.createTemp('gl_home_progress_');
+        await _writeValidResource(Directory(p.join(root.path, 'current')));
         controller = AppController(
           pathsService:
               AppPathsService(rootOverride: root, platformName: 'test'),
@@ -94,6 +95,21 @@ void main() {
         expect(find.text('步骤 2/4 · 正在解压资源'), findsOneWidget);
         expect(find.byKey(const ValueKey('resource-progress-details')),
             findsOneWidget);
+        final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
+        expect(autoCollect, findsOneWidget);
+        expect(
+          tester
+              .widget<Switch>(
+                find.byKey(
+                  const ValueKey('home-auto-collect-sun-switch'),
+                ),
+              )
+              .onChanged,
+          isNull,
+        );
+        await tester.tap(autoCollect);
+        await tester.pump();
+        expect(controller.autoCollectSunEnabled, isFalse);
 
         await tester
             .tap(find.byKey(const ValueKey('resource-progress-toggle')));
@@ -303,6 +319,66 @@ void main() {
         expect(rect.bottom, lessThanOrEqualTo(viewport.height),
             reason: entry.key);
       }
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
+
+  testWidgets(
+    'standard resources offer automatic sun collection above game start',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(915, 412);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = await _readyController(tester);
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+
+      final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
+      final startGame = find.byKey(const ValueKey('home-start-game-button'));
+
+      expect(autoCollect, findsOneWidget);
+      expect(find.text('自动收集'), findsOneWidget);
+      expect(tester.getRect(autoCollect).bottom, tester.getRect(startGame).top);
+
+      await tester.tap(autoCollect);
+      await tester.pump();
+
+      expect(controller.autoCollectSunEnabled, isTrue);
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('home-auto-collect-sun-switch')),
+            )
+            .value,
+        isTrue,
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
+
+  testWidgets(
+    'GP-Next resources hide Loader automatic sun collection',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(915, 412);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = await _readyController(tester, gpNext: true);
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+
+      expect(controller.hasGpNext, isTrue);
+      expect(
+        find.byKey(const ValueKey('home-auto-collect-sun')),
+        findsNothing,
+      );
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );
@@ -588,6 +664,10 @@ void main() {
       expect(find.text('需要导入资源'), findsOneWidget);
       expect(find.text('请先导入资源'), findsOneWidget);
       expect(
+        find.byKey(const ValueKey('home-auto-collect-sun')),
+        findsNothing,
+      );
+      expect(
         tester.getRect(find.byKey(const ValueKey('app-version-pill'))).right,
         lessThan(tester.getRect(find.text('需导入')).left),
       );
@@ -602,10 +682,30 @@ Future<AppController> _readyController(
   AnnouncementService? announcementService,
   AboutContentService? aboutContentService,
   DiagnosticsService? diagnosticsService,
+  bool gpNext = false,
 }) async {
   return (await tester.runAsync(() async {
     final root = await Directory.systemTemp.createTemp('gl_home_layout_');
-    await _writeValidResource(Directory(p.join(root.path, 'current')));
+    final resource = Directory(p.join(root.path, 'current'));
+    await _writeValidResource(resource);
+    if (gpNext) {
+      await File(p.join(resource.path, 'index.html')).writeAsString('''
+<html>
+  <head><title>Cocos Creator | PvZ2_Gardendless</title></head>
+  <body><script type="module" src="./assets/index-test.js"></script></body>
+</html>
+''');
+      await File(p.join(resource.path, 'assets', 'index-test.js'))
+          .writeAsString('''
+console.info('GP-Next loading...');
+window.gpNext = {};
+function loadAllPatches() {}
+import('./patcher-test.js');
+import('./file-loader-test.js');
+import('./js-mod-loader-test.js');
+import('./config-test.js');
+''');
+    }
 
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),

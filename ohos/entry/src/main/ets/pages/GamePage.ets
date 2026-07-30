@@ -4,7 +4,6 @@ import picker from '@ohos.file.picker';
 import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
 import { GameBridge } from '../game/GameBridge';
-import { GameMenu } from '../game/GameMenu';
 import { NativeGameResourceHandler } from '../game/NativeGameResourceHandler';
 import { GameSession } from '../game/GameSession';
 
@@ -19,7 +18,6 @@ struct GamePage {
   private session: GameSession | null = null;
   private resourceHandler: NativeGameResourceHandler | null = null;
   private bridge: GameBridge | null = null;
-  private menu: GameMenu | null = null;
   private documentStartScripts: Array<ScriptItem> = [];
   private exiting: boolean = false;
   @State private viewportWidth: string = '100%';
@@ -32,7 +30,6 @@ struct GamePage {
       this.bridge = new GameBridge(this.controller, this.context, this.session, (): void => {
         this.returnToLauncher('userReturned', null);
       });
-      this.menu = new GameMenu(this.controller);
       this.documentStartScripts = [{
         script: this.buildDocumentStartScript(this.session),
         scriptRules: [`${GameSession.ORIGIN}/*`],
@@ -132,7 +129,7 @@ struct GamePage {
   }
 
   onBackPress(): boolean {
-    this.menu?.open();
+    this.returnToLauncher('userReturned', null);
     return true;
   }
 
@@ -163,11 +160,13 @@ struct GamePage {
       gpNextCompatible: session.gpNextCompatible,
       gpNextVersion: session.gpNextVersion,
       watermarkEnabled: session.watermarkEnabled,
+      autoCollectSunEnabled: session.autoCollectSunEnabled,
       gpNextBaseDirectory: session.appRoot,
     });
     const names: string[] = [
       'transport.js',
       'bootstrap.js',
+      'auto_sun.js',
       'touch_patch.js',
       'export_download_patch.js',
     ];
@@ -175,7 +174,7 @@ struct GamePage {
       names.push('gp_next_core.js');
       names.push('gp_next_compat_bridge.js');
     }
-    names.push('watermark.js', 'game_menu.js');
+    names.push('watermark.js');
     let source = `window.__gardendlessHostConfig=${config};`;
     for (const name of names) {
       const bytes = this.context.resourceManager.getRawFileContentSync(

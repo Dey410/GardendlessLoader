@@ -98,6 +98,75 @@ void main() {
     expect(restartedController.watermarkEnabled, isTrue);
   });
 
+  test('remembers automatic sun collection across app restarts', () async {
+    final root = await Directory.systemTemp.createTemp('gl_auto_sun_saved_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+    final paths = await AppPathsService(
+      rootOverride: root,
+      platformName: 'test',
+    ).ensureInitialized();
+    await _writeValidResource(paths.slotADir);
+    await ManifestStore(paths.manifestFile).write(
+      ResourceManifest.initial().copyWith(
+        activeSlot: ResourceSlot.slotA,
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+
+    final firstController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await firstController.initialize();
+    await firstController.setAutoCollectSunEnabled(true);
+
+    final restartedController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await restartedController.initialize();
+
+    expect(restartedController.autoCollectSunEnabled, isTrue);
+  });
+
+  test('persists the latest automatic sun choice after rapid toggles',
+      () async {
+    final root = await Directory.systemTemp.createTemp('gl_auto_sun_rapid_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+    final paths = await AppPathsService(
+      rootOverride: root,
+      platformName: 'test',
+    ).ensureInitialized();
+    await _writeValidResource(paths.slotADir);
+    await ManifestStore(paths.manifestFile).write(
+      ResourceManifest.initial().copyWith(
+        activeSlot: ResourceSlot.slotA,
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+
+    final firstController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await firstController.initialize();
+    final enable = firstController.setAutoCollectSunEnabled(true);
+    final disable = firstController.setAutoCollectSunEnabled(false);
+    await Future.wait([enable, disable]);
+
+    final restartedController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await restartedController.initialize();
+
+    expect(restartedController.autoCollectSunEnabled, isFalse);
+  });
+
   test('cleans an interrupted import on startup without replacing current',
       () async {
     final root =

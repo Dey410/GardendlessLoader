@@ -45,6 +45,7 @@ class GameSession {
     required this.gpNextCompatible,
     required this.gpNextVersion,
     required this.watermarkEnabled,
+    this.autoCollectSunEnabled = false,
     required this.allowedRemoteHosts,
     required this.gpNextRoot,
     required this.exportTemporaryRoot,
@@ -76,6 +77,7 @@ class GameSession {
       gpNextCompatible: _requiredBool(json, 'gpNextCompatible'),
       gpNextVersion: json['gpNextVersion'] as String?,
       watermarkEnabled: _requiredBool(json, 'watermarkEnabled'),
+      autoCollectSunEnabled: json['autoCollectSunEnabled'] as bool? ?? false,
       allowedRemoteHosts: normalizedRemoteHosts,
       gpNextRoot: _requiredString(json, 'gpNextRoot'),
       exportTemporaryRoot: _requiredString(json, 'exportTemporaryRoot'),
@@ -93,6 +95,7 @@ class GameSession {
   final bool gpNextCompatible;
   final String? gpNextVersion;
   final bool watermarkEnabled;
+  final bool autoCollectSunEnabled;
   final List<String> allowedRemoteHosts;
   final String gpNextRoot;
   final String exportTemporaryRoot;
@@ -123,6 +126,7 @@ class GameSession {
       'gpNextCompatible': gpNextCompatible,
       'gpNextVersion': gpNextVersion,
       'watermarkEnabled': watermarkEnabled,
+      'autoCollectSunEnabled': autoCollectSunEnabled,
       'allowedRemoteHosts': normalizedRemoteHosts,
       'gpNextRoot': gpNextRoot,
       'exportTemporaryRoot': exportTemporaryRoot,
@@ -140,6 +144,7 @@ class GameSession {
       gpNextCompatible: gpNextCompatible,
       gpNextVersion: gpNextVersion,
       watermarkEnabled: watermarkEnabled,
+      autoCollectSunEnabled: autoCollectSunEnabled,
       allowedRemoteHosts: allowedRemoteHosts,
       gpNextRoot: gpNextRoot,
       exportTemporaryRoot: exportTemporaryRoot,
@@ -158,6 +163,7 @@ class GameSession {
         other.gpNextCompatible == gpNextCompatible &&
         other.gpNextVersion == gpNextVersion &&
         other.watermarkEnabled == watermarkEnabled &&
+        other.autoCollectSunEnabled == autoCollectSunEnabled &&
         _listEquals(other.allowedRemoteHosts, allowedRemoteHosts) &&
         other.gpNextRoot == gpNextRoot &&
         other.exportTemporaryRoot == exportTemporaryRoot;
@@ -174,6 +180,7 @@ class GameSession {
         gpNextCompatible,
         gpNextVersion,
         watermarkEnabled,
+        autoCollectSunEnabled,
         Object.hashAll(allowedRemoteHosts),
         gpNextRoot,
         exportTemporaryRoot,

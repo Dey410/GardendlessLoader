@@ -40,11 +40,13 @@ void main() {
       gameSessionIdFactory: () => 'session-42',
     );
     await controller.initialize();
+    await controller.setAutoCollectSunEnabled(true);
 
     await controller.startGame();
 
     expect(host.session?.sessionId, 'session-42');
     expect(host.session?.resourceRoot, paths.slotADir.path);
+    expect(host.session?.autoCollectSunEnabled, isTrue);
     expect(host.session?.entryUri.toString(),
         'https://appassets.androidplatform.net/index.html?generation=42');
     expect(
@@ -117,6 +119,42 @@ void main() {
     expect(await sessionStore.preparedSessionFile.exists(), isFalse);
     expect(await sessionStore.exitResultFile.exists(), isFalse);
   });
+
+  test('never enables Loader automatic collection for a GP-Next session',
+      () async {
+    final root = await Directory.systemTemp.createTemp('gl_gpnext_host_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+    final pathsService = AppPathsService(
+      rootOverride: root,
+      platformName: 'test',
+    );
+    final paths = await pathsService.ensureInitialized();
+    await _writeGpNextResource(paths.slotADir);
+    await ManifestStore(paths.manifestFile).write(
+      ResourceManifest.initial().copyWith(
+        activeSlot: ResourceSlot.slotA,
+        autoCollectSunEnabled: true,
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+    final host = _RecordingGameHost();
+    final controller = AppController(
+      pathsService: pathsService,
+      gameHost: host,
+      gameHostPlatform: GameHostPlatform.android,
+    );
+    await controller.initialize();
+
+    expect(controller.hasGpNext, isTrue);
+    await controller.startGame();
+
+    expect(host.session?.hasGpNext, isTrue);
+    expect(host.session?.autoCollectSunEnabled, isFalse);
+  });
 }
 
 class _RecordingGameHost implements GameHost {
@@ -140,4 +178,23 @@ Future<void> _writeValidResource(Directory root) async {
       .writeAsString('{"platform":"web-mobile"}');
   await File(p.join(root.path, 'src', 'import-map.json')).writeAsString('{}');
   await File(p.join(root.path, 'cocos-js', 'cc.js')).writeAsString('');
+}
+
+Future<void> _writeGpNextResource(Directory root) async {
+  await _writeValidResource(root);
+  await File(p.join(root.path, 'index.html')).writeAsString('''
+<html>
+  <head><title>Cocos Creator | PvZ2_Gardendless</title></head>
+  <body><script type="module" src="./assets/index-test.js"></script></body>
+</html>
+''');
+  await File(p.join(root.path, 'assets', 'index-test.js')).writeAsString('''
+console.info('GP-Next loading...');
+window.gpNext = {};
+function loadAllPatches() {}
+import('./patcher-test.js');
+import('./file-loader-test.js');
+import('./js-mod-loader-test.js');
+import('./config-test.js');
+''');
 }

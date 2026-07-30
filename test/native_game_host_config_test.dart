@@ -13,6 +13,9 @@ void main() {
     final viewport = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameViewportLayout.kt',
     ).readAsStringSync();
+    final session = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameSessionCodec.kt',
+    ).readAsStringSync();
 
     expect(activity, contains('class GameActivity : Activity()'));
     expect(activity, contains('setContentView(viewport)'));
@@ -20,6 +23,24 @@ void main() {
     expect(viewport, contains('17.0 / 9.0'));
     expect(activity, contains('addDocumentStartJavaScript'));
     expect(activity, contains('add("touch_patch.js")'));
+    expect(activity, contains('add("auto_sun.js")'));
+    expect(
+      activity.indexOf('add("bootstrap.js")'),
+      lessThan(activity.indexOf('add("auto_sun.js")')),
+    );
+    expect(
+      activity,
+      contains(
+        '.put("autoCollectSunEnabled", session.autoCollectSunEnabled)',
+      ),
+    );
+    expect(session, contains('val autoCollectSunEnabled: Boolean'));
+    expect(
+      session,
+      contains(
+        'autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled")',
+      ),
+    );
     expect(activity, contains('settings.allowFileAccess = false'));
     expect(bridge, contains('sourceOrigin.toString() != session.origin'));
     expect(bridge, contains('removeActive = false'));
@@ -42,6 +63,22 @@ void main() {
     expect(controller, contains('17.0 / 9.0'));
     expect(controller, contains('injectionTime: .atDocumentStart'));
     expect(controller, contains('"touch_patch.js"'));
+    expect(controller, contains('"auto_sun.js"'));
+    expect(
+      controller.indexOf('"bootstrap.js"'),
+      lessThan(controller.indexOf('"auto_sun.js"')),
+    );
+    expect(
+      controller,
+      contains('"autoCollectSunEnabled": session.autoCollectSunEnabled'),
+    );
+    expect(session, contains('let autoCollectSunEnabled: Bool'));
+    expect(
+      session,
+      contains(
+        'autoCollectSunEnabled = try json.requiredBool("autoCollectSunEnabled")',
+      ),
+    );
     expect(controller, contains('setURLSchemeHandler'));
     expect(handler, contains('WKURLSchemeHandler'));
     expect(handler, contains('attributes: .concurrent'));
@@ -69,9 +106,27 @@ void main() {
     final ability = File(
       'ohos/entry/src/main/ets/game/GameAbility.ets',
     ).readAsStringSync();
+    final session = File(
+      'ohos/entry/src/main/ets/game/GameSession.ets',
+    ).readAsStringSync();
 
     expect(page, contains('.javaScriptOnDocumentStart'));
     expect(page, contains("'touch_patch.js'"));
+    expect(page, contains("'auto_sun.js'"));
+    expect(
+      page.indexOf("'bootstrap.js'"),
+      lessThan(page.indexOf("'auto_sun.js'")),
+    );
+    expect(
+      page,
+      contains('autoCollectSunEnabled: session.autoCollectSunEnabled'),
+    );
+    expect(session, contains('autoCollectSunEnabled: boolean;'));
+    expect(session, contains('readonly autoCollectSunEnabled: boolean;'));
+    expect(
+      session,
+      contains('this.autoCollectSunEnabled = value.autoCollectSunEnabled;'),
+    );
     expect(page, contains('.fileAccess(false)'));
     expect(page, contains('const minimumAspectRatio = 16 / 10'));
     expect(page, contains('const maximumAspectRatio = 17 / 9'));

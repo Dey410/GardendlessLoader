@@ -16,7 +16,6 @@ let package = Package(
         "AppDelegate.swift",
         "Assets.xcassets",
         "Base.lproj",
-        "GameMenuController.swift",
         "GameNavigationDelegate.swift",
         "GameScriptBridge.swift",
         "GameViewController.swift",

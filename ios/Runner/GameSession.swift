@@ -12,6 +12,7 @@ struct NativeGameSession {
   let gpNextCompatible: Bool
   let gpNextVersion: String?
   let watermarkEnabled: Bool
+  let autoCollectSunEnabled: Bool
   let allowedRemoteHosts: Set<String>
   let gpNextRoot: URL
   let exportTemporaryRoot: URL
@@ -42,6 +43,7 @@ struct NativeGameSession {
     gpNextCompatible = try json.requiredBool("gpNextCompatible")
     gpNextVersion = json["gpNextVersion"] as? String
     watermarkEnabled = try json.requiredBool("watermarkEnabled")
+    autoCollectSunEnabled = try json.requiredBool("autoCollectSunEnabled")
     let hosts = json["allowedRemoteHosts"] as? [String] ?? []
     guard hosts.allSatisfy(Self.isValidRemoteHost) else {
       throw GameSessionError.invalid("Invalid remote host")

@@ -19,7 +19,7 @@
 - Web export uses the browser download flow.
 - Background/foreground preserves the native WebView session unless the renderer exits.
 - Renderer exit returns an explicit failure result and recreates the Flutter launcher.
-- Returning home asks for confirmation, destroys the native WebView, and recreates the Flutter launcher.
+- Android back, HarmonyOS back, and the iOS left-edge gesture destroy the native WebView and return directly to the Flutter launcher.
 - Relaunch validates the slot selected by `manifest.activeSlot`.
 - Reimport keeps the same per-platform origin and does not clear WebView localStorage/IndexedDB.
 - HarmonyOS CI exports unsigned arm64 and x64 HAP artifacts under `build/ohos/unsigned/` when the OpenHarmony Flutter and DevEco command-line toolchain is configured.
@@ -37,6 +37,20 @@
 - On Android, text inputs, selects, editable content, and GP-Next controls retain native touch behavior.
 - Repeat the complete touch-input matrix above on iOS WKWebView before release.
 - Repeat the complete touch-input matrix above on HarmonyOS ArkWeb before release.
+
+## Automatic sun collection
+
+- With a valid standard resource, a gray `自动收集` panel is attached directly above `开始游戏`; only the panel's top corners and the button's bottom corners are rounded.
+- The whole panel and its switch toggle the setting; the enabled switch uses the launcher's blue accent.
+- With no valid resource or any GP-Next resource, the panel is absent and the start button keeps all four rounded corners.
+- During an import over an existing standard resource, the panel remains visible at reduced opacity and cannot be changed.
+- Restarting the Loader preserves the current resource's choice; every successful import resets it to off, while failed or cancelled imports preserve it.
+- When enabled, continuously valid gameplay waits three seconds before sending `A` keydown, sends keyup after 50 ms, then repeats every three seconds.
+- Leaving gameplay, pausing, entering an air-raid/special stage, focusing a native input/select/editable element, backgrounding, or losing window focus cancels the pending cycle.
+- Returning to valid foreground gameplay starts a fresh three-second wait with no catch-up presses.
+- A GP-Next session never starts Loader automatic collection, even if a stale manifest value is present.
+- Failure to import the game-state modules disables automatic collection and logs the failure once without affecting gameplay.
+- The removed legacy in-game menu and its former 1.5-second unscoped collector are absent from Android, iOS, HarmonyOS, and shared assets.
 
 ## Failure paths
 

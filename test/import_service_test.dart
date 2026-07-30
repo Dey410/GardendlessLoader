@@ -77,6 +77,9 @@ void main() {
       manifestStore: manifestStore,
       target: target,
     );
+    await manifestStore.write(
+      (await manifestStore.read()).copyWith(autoCollectSunEnabled: true),
+    );
 
     target = await importService.beginImport(
       paths: paths,
@@ -96,6 +99,7 @@ void main() {
     expect(manifest.activeSlot, ResourceSlot.slotB);
     expect(manifest.gameVersion, '0.12.0');
     expect(manifest.transactionState, TransactionState.idle);
+    expect(manifest.autoCollectSunEnabled, isFalse);
     expect(await paths.slotADir.list().isEmpty, isTrue);
     expect(
       await File(p.join(paths.slotBDir.path, 'index.html')).exists(),
@@ -295,6 +299,7 @@ void main() {
         generation: 1,
         activeSlot: ResourceSlot.slotA,
         gameVersion: '0.11.0',
+        autoCollectSunEnabled: true,
         resourceStatus: ResourceStatus.ready,
       ),
     );
@@ -324,6 +329,7 @@ void main() {
     expect(manifest.activeSlot, ResourceSlot.slotA);
     expect(manifest.gameVersion, '0.11.0');
     expect(manifest.transactionState, TransactionState.idle);
+    expect(manifest.autoCollectSunEnabled, isTrue);
     expect(
       await File(p.join(paths.slotADir.path, 'index.html')).exists(),
       isTrue,

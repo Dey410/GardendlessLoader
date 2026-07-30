@@ -326,10 +326,9 @@ class _LauncherHome extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 20),
-                              _StartGameButton(
-                                enabled:
-                                    controller.canStartGame && !controller.busy,
-                                onPressed: onStartGame,
+                              _GameLaunchControls(
+                                controller: controller,
+                                onStartGame: onStartGame,
                               ),
                             ],
                           ),
@@ -1741,17 +1740,119 @@ class _HealthRow extends StatelessWidget {
   }
 }
 
+class _GameLaunchControls extends StatelessWidget {
+  const _GameLaunchControls({
+    required this.controller,
+    required this.onStartGame,
+  });
+
+  final AppController controller;
+  final Future<void> Function() onStartGame;
+
+  @override
+  Widget build(BuildContext context) {
+    final showAutoCollectSun =
+        controller.hasCurrentResource && !controller.hasGpNext;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showAutoCollectSun)
+          _AutoCollectSunControl(
+            enabled: !controller.busy,
+            value: controller.autoCollectSunEnabled,
+            onChanged: controller.setAutoCollectSunEnabled,
+          ),
+        _StartGameButton(
+          enabled: controller.canStartGame && !controller.busy,
+          joinedAtTop: showAutoCollectSun,
+          onPressed: onStartGame,
+        ),
+      ],
+    );
+  }
+}
+
+class _AutoCollectSunControl extends StatelessWidget {
+  const _AutoCollectSunControl({
+    required this.enabled,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final bool value;
+  final Future<void> Function(bool enabled) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const borderRadius = BorderRadius.vertical(top: Radius.circular(28));
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Material(
+        key: const ValueKey('home-auto-collect-sun'),
+        color: LauncherVisuals.separator(context).withValues(alpha: 0.64),
+        shape: const RoundedRectangleBorder(borderRadius: borderRadius),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: enabled ? () => unawaited(onChanged(!value)) : null,
+          child: SizedBox(
+            width: 272,
+            height: 54,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 17),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.wb_sunny_rounded,
+                    size: 23,
+                    color: LauncherVisuals.warning,
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      '自动收集',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: LauncherVisuals.primaryText(context),
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ),
+                  Switch(
+                    key: const ValueKey('home-auto-collect-sun-switch'),
+                    value: value,
+                    onChanged: enabled
+                        ? (nextValue) => unawaited(onChanged(nextValue))
+                        : null,
+                    activeTrackColor: LauncherVisuals.accentBlue,
+                    activeThumbColor: Colors.white,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StartGameButton extends StatelessWidget {
   const _StartGameButton({
     required this.enabled,
+    required this.joinedAtTop,
     required this.onPressed,
   });
 
   final bool enabled;
+  final bool joinedAtTop;
   final Future<void> Function() onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = joinedAtTop
+        ? const BorderRadius.vertical(bottom: Radius.circular(28))
+        : BorderRadius.circular(28);
     final button = FilledButton.icon(
       key: const ValueKey('home-start-game-button'),
       onPressed: enabled ? onPressed : null,
@@ -1765,7 +1866,7 @@ class _StartGameButton extends StatelessWidget {
         disabledBackgroundColor:
             LauncherVisuals.separator(context).withValues(alpha: 0.78),
         disabledForegroundColor: LauncherVisuals.secondaryText(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        shape: RoundedRectangleBorder(borderRadius: borderRadius),
         textStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
               letterSpacing: 0,
@@ -1777,7 +1878,7 @@ class _StartGameButton extends StatelessWidget {
     if (enabled) {
       return DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: borderRadius,
           boxShadow: [
             BoxShadow(
               color: LauncherVisuals.accentBlue.withValues(alpha: 0.28),

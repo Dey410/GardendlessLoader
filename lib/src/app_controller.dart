@@ -91,6 +91,7 @@ class AppController extends ChangeNotifier {
   Timer? _importCompletionTimer;
   Timer? _importProgressTickTimer;
   Future<void> _appSettingsWrite = Future<void>.value();
+  Future<void> _manifestPreferenceWrite = Future<void>.value();
 
   AppPaths? _paths;
   AppSettingsStore? _appSettingsStore;
@@ -140,6 +141,7 @@ class AppController extends ChangeNotifier {
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
   bool get watermarkEnabled => _watermarkEnabled;
+  bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
   GameHostPlatform get gameHostPlatform {
     final configured = _gameHostPlatform;
     if (configured != null) {
@@ -620,6 +622,7 @@ class AppController extends ChangeNotifier {
       gpNextCompatible: gpNextCompatible,
       gpNextVersion: gpNextVersion,
       watermarkEnabled: _watermarkEnabled,
+      autoCollectSunEnabled: !hasGpNext && _manifest.autoCollectSunEnabled,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -670,6 +673,27 @@ class AppController extends ChangeNotifier {
       await appSettingsStore.writeWatermarkEnabled(enabled);
     }();
     _appSettingsWrite = currentWrite;
+    await currentWrite;
+  }
+
+  Future<void> setAutoCollectSunEnabled(bool enabled) async {
+    if (_manifest.autoCollectSunEnabled == enabled) {
+      return;
+    }
+    final manifestStore = _requireManifestStore();
+    _manifest = _manifest.copyWith(autoCollectSunEnabled: enabled);
+    final manifest = _manifest;
+    notifyListeners();
+    final previousWrite = _manifestPreferenceWrite;
+    final currentWrite = () async {
+      try {
+        await previousWrite;
+      } catch (_) {
+        // A later choice must still be persisted after an earlier write fails.
+      }
+      await manifestStore.write(manifest);
+    }();
+    _manifestPreferenceWrite = currentWrite;
     await currentWrite;
   }
 

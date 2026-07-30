@@ -14,6 +14,7 @@ void main() {
     gpNextCompatible: true,
     gpNextVersion: '1.4.2',
     watermarkEnabled: false,
+    autoCollectSunEnabled: true,
     allowedRemoteHosts: ['api.github.com'],
     gpNextRoot: '/data/gp-next',
     exportTemporaryRoot: '/data/gp-next/.exports',
@@ -25,6 +26,7 @@ void main() {
     );
 
     expect(decoded, session);
+    expect(decoded.autoCollectSunEnabled, isTrue);
     expect(decoded.origin, 'https://appassets.androidplatform.net');
     expect(
       decoded.entryUri.toString(),

@@ -42,6 +42,19 @@ void main() {
     expect(restored.gameVersion, '0.12.0-next');
   });
 
+  test('persists automatic sun collection for the active resource', () async {
+    final temp = await Directory.systemTemp.createTemp('gl_manifest_');
+    addTearDown(() => temp.delete(recursive: true));
+    final store = ManifestStore(File(p.join(temp.path, 'manifest.json')));
+
+    await store.write(
+      ResourceManifest.initial().copyWith(autoCollectSunEnabled: true),
+    );
+
+    final restored = await store.read();
+    expect(restored.autoCollectSunEnabled, isTrue);
+  });
+
   test('persists GP-Next compatibility metadata', () async {
     final temp = await Directory.systemTemp.createTemp('gl_manifest_');
     addTearDown(() => temp.delete(recursive: true));

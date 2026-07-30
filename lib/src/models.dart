@@ -358,6 +358,7 @@ class ResourceManifest {
     this.buildProfile = ResourceBuildProfile.standardWeb,
     this.gpNextVersion,
     this.gpNextCompatibilityError,
+    this.autoCollectSunEnabled = false,
   });
 
   factory ResourceManifest.initial() {
@@ -379,6 +380,7 @@ class ResourceManifest {
       buildProfile: ResourceBuildProfile.standardWeb,
       gpNextVersion: null,
       gpNextCompatibilityError: null,
+      autoCollectSunEnabled: false,
     );
   }
 
@@ -399,6 +401,7 @@ class ResourceManifest {
   final ResourceBuildProfile buildProfile;
   final String? gpNextVersion;
   final String? gpNextCompatibilityError;
+  final bool autoCollectSunEnabled;
 
   bool get hasGpNext => buildProfile == ResourceBuildProfile.gpNext;
   bool get gpNextCompatible => hasGpNext && gpNextCompatibilityError == null;
@@ -420,6 +423,7 @@ class ResourceManifest {
     ResourceBuildProfile? buildProfile,
     String? gpNextVersion,
     String? gpNextCompatibilityError,
+    bool? autoCollectSunEnabled,
     bool clearError = false,
     bool clearGameVersion = false,
     bool clearActiveSlot = false,
@@ -450,6 +454,8 @@ class ResourceManifest {
       gpNextCompatibilityError: clearGpNextCompatibilityError
           ? null
           : gpNextCompatibilityError ?? this.gpNextCompatibilityError,
+      autoCollectSunEnabled:
+          autoCollectSunEnabled ?? this.autoCollectSunEnabled,
     );
   }
 
@@ -466,6 +472,7 @@ class ResourceManifest {
       'buildProfile': buildProfile.name,
       'gpNextVersion': gpNextVersion,
       'gpNextCompatibilityError': gpNextCompatibilityError,
+      'autoCollectSunEnabled': autoCollectSunEnabled,
       'resourceStatus': resourceStatus.name,
       'lastSelfCheckAt': lastSelfCheckAt?.toIso8601String(),
       'lastErrorCode': lastErrorCode,
