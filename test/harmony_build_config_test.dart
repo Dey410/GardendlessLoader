@@ -171,7 +171,12 @@ void main() {
     );
     expect(gamePage, contains('request.getRequestUrl()'));
     expect(gamePage, isNot(contains('event.request.getRequestUrl()')));
-    expect(gameHostPlugin, contains('call.args as Object'));
+    expect(gameHostPlugin, contains('interface GameSessionArguments'));
+    expect(gameHostPlugin, contains("call.argument('schemaVersion')"));
+    expect(gameHostPlugin, contains("call.argument('platform')"));
+    expect(gameHostPlugin, contains("call.argument('origin')"));
+    expect(gameHostPlugin, contains("call.argument('allowedRemoteHosts')"));
+    expect(gameHostPlugin, isNot(contains('call.args as Object')));
     expect(gameHostPlugin, isNot(contains('call.argument as Object')));
     expect(gameHostPlugin, isNot(contains('call.arguments')));
     expect(gpNextCore, contains('class GpNextDirectoryEntry'));

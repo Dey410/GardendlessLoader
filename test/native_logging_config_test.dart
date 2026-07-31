@@ -148,7 +148,7 @@ void main() {
     expect(plugin, contains('JSON.parse(eventJson) as AppLogEvent'));
   });
 
-  test('HarmonyOS game startup records pre-page diagnostic stages', () {
+  test('HarmonyOS game startup records pre-page stages without debug tags', () {
     final ability = File(
       'ohos/entry/src/main/ets/game/GameAbility.ets',
     ).readAsStringSync();
@@ -156,7 +156,7 @@ void main() {
       'ohos/entry/src/main/ets/pages/GamePage.ets',
     ).readAsStringSync();
 
-    expect(ability, contains('[DEBUG-OHOS-GAME-START]'));
+    expect('$ability\n$page', isNot(contains('[DEBUG-OHOS-GAME-START]')));
     expect(ability, contains('game_ability_stage_changed'));
     expect(ability, contains('game_ability_load_content_failed'));
     expect(page, contains('game_page_initialization_failed'));

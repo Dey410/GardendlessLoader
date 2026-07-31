@@ -51,7 +51,7 @@ struct GamePage {
         event: 'game_page_initialization_failed',
         outcome: 'failed',
         code: 'game_page_initialization_failed',
-        message: `[DEBUG-OHOS-GAME-START] ${launchError.message}`,
+        message: launchError.message,
         context: failureContext,
       };
       appLogStore.emit(failureEvent);

@@ -3,8 +3,6 @@ import { webview } from '@kit.ArkWeb';
 import window from '@ohos.window';
 import { appLogStore, AppLogContext, AppLogEvent } from '../logging/AppLogStore';
 
-const DEBUG_TAG = '[DEBUG-OHOS-GAME-START]';
-
 export default class GameAbility extends UIAbility {
   private sessionJson: string = '';
   private readonly storage: LocalStorage = new LocalStorage();
@@ -70,7 +68,7 @@ export default class GameAbility extends UIAbility {
       category: 'game.host',
       event: 'game_ability_stage_changed',
       outcome: 'observed',
-      message: `${DEBUG_TAG} ${stage}`,
+      message: stage,
       context: context,
     };
     appLogStore.emit(event);
@@ -85,7 +83,7 @@ export default class GameAbility extends UIAbility {
       event: code,
       outcome: 'failed',
       code: code,
-      message: `${DEBUG_TAG} ${error.message}`,
+      message: error.message,
       context: context,
     };
     appLogStore.emit(event);
