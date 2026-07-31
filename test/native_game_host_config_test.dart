@@ -114,6 +114,8 @@ void main() {
       page,
       contains('.runJavaScriptOnDocumentStart(this.documentStartScripts)'),
     );
+    expect(page, contains('scriptRules: [GameSession.ORIGIN]'));
+    expect(page, isNot(contains(r'`${GameSession.ORIGIN}/*`')));
     expect(page, isNot(contains('.javaScriptOnDocumentStart(')));
     expect(page, contains("'touch_patch.js'"));
     expect(page, contains("'auto_sun.js'"));
@@ -153,6 +155,7 @@ void main() {
       contains('}, false);'),
     );
     expect(page, isNot(contains('FlutterPage')));
+    expect('$page\n$handler', isNot(contains('[DEBUG-OHOS-')));
   });
 
   test('production graph has no Dart socket server or Flutter WebView package',

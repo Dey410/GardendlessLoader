@@ -1,6 +1,5 @@
 import fs from '@ohos.file.fs';
 import { webview, WebNetErrorList } from '@kit.ArkWeb';
-import { hilog } from '@kit.PerformanceAnalysisKit';
 import { GameSession } from './GameSession';
 import { appLogStore, AppLogContext, AppLogEvent } from '../logging/AppLogStore';
 
@@ -35,15 +34,12 @@ export class NativeGameResourceHandler {
       if (active != null) {
         active.cancelled = true;
       }
-      this.debugWebView(`request_stopped path=${this.safeDebugPath(request.getRequestUrl())}`);
     });
   }
 
   attach(controller: webview.WebviewController): void {
-    this.debugWebView('scheme_handler_attach_started');
     controller.setWebSchemeHandler('http', this.schemeHandler);
     controller.setWebSchemeHandler('https', this.schemeHandler);
-    this.debugWebView('scheme_handler_attach_finished');
   }
 
   destroy(): void {
@@ -58,10 +54,6 @@ export class NativeGameResourceHandler {
     handler: webview.WebResourceHandler,
   ): boolean {
     const url = request.getRequestUrl();
-    this.debugWebView(
-      `request_started main=${request.isMainFrame()} method=${request.getRequestMethod()} ` +
-      `path=${this.safeDebugPath(url)}`,
-    );
     if (!url.startsWith(`${GameSession.ORIGIN}/`) && url !== GameSession.ORIGIN) {
       const host = this.hostFromHttpsUrl(url);
       if (host != null && this.isAllowedRemoteHost(host)) {
@@ -130,14 +122,9 @@ export class NativeGameResourceHandler {
         mime,
         headers,
       );
-      this.debugWebView(
-        `response_started path=${relativePath} status=${range == null ? 200 : 206} ` +
-        `mime=${mime} length=${length}`,
-      );
       responseStarted = true;
       if (method === 'HEAD' || length === 0) {
         handler.didFinish();
-        this.debugWebView(`response_finished path=${relativePath} bytes=0`);
         return true;
       }
       const active = new ActiveRequest();
@@ -172,7 +159,6 @@ export class NativeGameResourceHandler {
   ): Promise<void> {
     let file: fs.File | null = null;
     try {
-      this.debugWebView(`stream_started path=${relativePath} length=${length}`);
       file = await fs.open(filePath, fs.OpenMode.READ_ONLY);
       let position = start;
       let remaining = length;
@@ -192,12 +178,8 @@ export class NativeGameResourceHandler {
       }
       if (!active.cancelled) {
         handler.didFinish();
-        this.debugWebView(`response_finished path=${relativePath} bytes=${length}`);
       }
     } catch (error) {
-      this.debugWebView(
-        `stream_failed path=${relativePath} error=${this.safeDebugText((error as Error).name)}`,
-      );
       this.logFailure(
         'resource_read_failed', relativePath, 500,
         undefined, undefined, undefined, (error as Error).name,
@@ -370,22 +352,6 @@ export class NativeGameResourceHandler {
 
   private isTextMime(mime: string): boolean {
     return mime.startsWith('text/') || mime === 'application/javascript' || mime === 'application/json';
-  }
-
-  private debugWebView(message: string): void {
-    hilog.info(0x0000, 'GardendlessDebug', '%{public}s', `[DEBUG-OHOS-WEBVIEW] ${message}`);
-  }
-
-  private safeDebugPath(url: string): string {
-    if (url === GameSession.ORIGIN || url.startsWith(`${GameSession.ORIGIN}/`)) {
-      return url.substring(GameSession.ORIGIN.length).split('?')[0].split('#')[0] || '/';
-    }
-    return '<external-url>';
-  }
-
-  private safeDebugText(value: string): string {
-    const singleLine = value.replace(/[\r\n]+/g, ' ');
-    return singleLine.length > 128 ? `${singleLine.substring(0, 128)}...[truncated]` : singleLine;
   }
 
   private logFailure(
