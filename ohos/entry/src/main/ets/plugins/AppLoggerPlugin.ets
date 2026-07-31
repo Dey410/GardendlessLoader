@@ -17,10 +17,6 @@ interface AppLoggerInitializeResult {
   appSessionId: string;
 }
 
-interface AppLoggerSnapshotArguments {
-  limit?: number;
-}
-
 export class AppLoggerPlugin implements FlutterPlugin, AbilityAware, MethodCallHandler {
   private channel: MethodChannel | null = null;
 
@@ -53,14 +49,21 @@ export class AppLoggerPlugin implements FlutterPlugin, AbilityAware, MethodCallH
       return;
     }
     if (call.method === 'emit') {
-      appLogStore.emit(call.args as AppLogEvent);
-      result.success(null);
+      try {
+        const eventJson = JSON.stringify(call.args as Object);
+        const event = JSON.parse(eventJson) as AppLogEvent;
+        appLogStore.emit(event);
+        result.success(null);
+      } catch (error) {
+        const message = (error as Error).message;
+        result.error('log_event_decode_failed', message, null);
+      }
       return;
     }
     if (call.method === 'snapshot') {
-      const args = call.args as AppLoggerSnapshotArguments;
+      const limit = call.argument('limit') as number | null;
       appLogStore.flush().then((): void => {
-        result.success(appLogStore.snapshot(args.limit ?? 500));
+        result.success(appLogStore.snapshot(limit ?? 500));
       });
       return;
     }

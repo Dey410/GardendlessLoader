@@ -136,4 +136,29 @@ void main() {
     expect(sources, isNot(contains(RegExp(r'\bdelete\s+'))));
     expect(sources, isNot(contains('...details')));
   });
+
+  test('HarmonyOS logger materializes MethodChannel event arguments', () {
+    final plugin = File(
+      'ohos/entry/src/main/ets/plugins/AppLoggerPlugin.ets',
+    ).readAsStringSync();
+
+    expect(
+        plugin, isNot(contains('appLogStore.emit(call.args as AppLogEvent)')));
+    expect(plugin, contains('JSON.stringify(call.args as Object)'));
+    expect(plugin, contains('JSON.parse(eventJson) as AppLogEvent'));
+  });
+
+  test('HarmonyOS game startup records pre-page diagnostic stages', () {
+    final ability = File(
+      'ohos/entry/src/main/ets/game/GameAbility.ets',
+    ).readAsStringSync();
+    final page = File(
+      'ohos/entry/src/main/ets/pages/GamePage.ets',
+    ).readAsStringSync();
+
+    expect(ability, contains('[DEBUG-OHOS-GAME-START]'));
+    expect(ability, contains('game_ability_stage_changed'));
+    expect(ability, contains('game_ability_load_content_failed'));
+    expect(page, contains('game_page_initialization_failed'));
+  });
 }

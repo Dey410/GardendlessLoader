@@ -42,7 +42,20 @@ struct GamePage {
         scriptRules: [`${GameSession.ORIGIN}/*`],
       }];
     } catch (error) {
-      this.writeLaunchFailure((error as Error).message);
+      const launchError = error as Error;
+      const failureContext: AppLogContext = { stage: 'game_page_about_to_appear' };
+      const failureEvent: AppLogEvent = {
+        source: 'ohos',
+        level: 'ERROR',
+        category: 'game.host',
+        event: 'game_page_initialization_failed',
+        outcome: 'failed',
+        code: 'game_page_initialization_failed',
+        message: `[DEBUG-OHOS-GAME-START] ${launchError.message}`,
+        context: failureContext,
+      };
+      appLogStore.emit(failureEvent);
+      this.writeLaunchFailure(launchError.message);
     }
   }
 
@@ -234,7 +247,7 @@ struct GamePage {
       }
     } catch (_error) {
     }
-    this.startLauncher();
+    appLogStore.flush().finally((): void => this.startLauncher());
   }
 
   private returnToLauncher(reason: string, message: string | null): void {
@@ -258,7 +271,7 @@ struct GamePage {
       this.writeExitResult(session.appRoot, session.sessionId, reason, message);
     }
     this.bridge?.destroy();
-    this.startLauncher();
+    appLogStore.flush().finally((): void => this.startLauncher());
   }
 
   private writeExitResult(
