@@ -154,7 +154,8 @@ void main() {
     );
     expect(gamePage, contains('request.getRequestUrl()'));
     expect(gamePage, isNot(contains('event.request.getRequestUrl()')));
-    expect(gameHostPlugin, contains('call.argument as Object'));
+    expect(gameHostPlugin, contains('call.args as Object'));
+    expect(gameHostPlugin, isNot(contains('call.argument as Object')));
     expect(gameHostPlugin, isNot(contains('call.arguments')));
     expect(gpNextCore, contains('class GpNextDirectoryEntry'));
     expect(arkTsSources, isNot(contains('writeTextSync')));

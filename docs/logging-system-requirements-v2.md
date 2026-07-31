@@ -208,7 +208,7 @@ observed
   "code": null,
   "appSessionId": "20260731-081200-a31f9c",
   "context": {
-    "appVersion": "0.6.4",
+    "appVersion": "0.7.0",
     "platform": "android",
     "osVersion": "<sanitized>"
   }
