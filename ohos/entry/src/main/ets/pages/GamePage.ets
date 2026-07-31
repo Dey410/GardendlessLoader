@@ -3,6 +3,7 @@ import fs from '@ohos.file.fs';
 import picker from '@ohos.file.picker';
 import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { GameBridge } from '../game/GameBridge';
 import { NativeGameResourceHandler } from '../game/NativeGameResourceHandler';
 import { GameSession } from '../game/GameSession';
@@ -87,7 +88,9 @@ struct GamePage {
             return;
           }
           try {
+            this.debugWebView(`controller_attached entry=${this.safeDebugUrl(session.entryUrl)}`);
             resourceHandler.attach(this.controller);
+            this.debugWebView('scheme_handlers_attached');
             const permission =
               '{"javascriptProxyPermission":{"urlPermissionList":[{"scheme":"https",' +
               '"host":"gardendless.invalid","port":"","path":""}]}}';
@@ -98,7 +101,9 @@ struct GamePage {
               [],
               permission,
             );
+            this.debugWebView('javascript_proxy_registered');
             this.controller.loadUrl(session.entryUrl);
+            this.debugWebView(`load_url_returned entry=${this.safeDebugUrl(session.entryUrl)}`);
             const loadStartedEvent: AppLogEvent = {
               source: 'ohos', level: 'INFO', category: 'game.webview',
               event: 'webview_page_load_started', outcome: 'started',
@@ -115,6 +120,34 @@ struct GamePage {
             appLogStore.emit(loadFailedEvent);
             this.returnToLauncher('launchFailed', (error as Error).message);
           }
+        })
+        .onPageBegin((event: OnPageBeginEvent): void => {
+          this.debugWebView(`page_begin url=${this.safeDebugUrl(event.url)}`);
+        })
+        .onPageEnd((event: OnPageEndEvent): void => {
+          this.debugWebView(`page_end url=${this.safeDebugUrl(event.url)}`);
+        })
+        .onFirstContentfulPaint((event: OnFirstContentfulPaintEvent): void => {
+          this.debugWebView(`first_contentful_paint ms=${event.firstContentfulPaintMs}`);
+        })
+        .onErrorReceive((event: OnErrorReceiveEvent): void => {
+          this.debugWebView(
+            `resource_error main=${event.request.isMainFrame()} ` +
+            `url=${this.safeDebugUrl(event.request.getRequestUrl())} ` +
+            `code=${event.error.getErrorCode()} info=${this.safeDebugText(event.error.getErrorInfo())}`,
+          );
+        })
+        .onHttpErrorReceive((event: OnHttpErrorReceiveEvent): void => {
+          this.debugWebView(
+            `http_error main=${event.request.isMainFrame()} ` +
+            `url=${this.safeDebugUrl(event.request.getRequestUrl())} ` +
+            `status=${event.response.getResponseCode()} ` +
+            `reason=${this.safeDebugText(event.response.getReasonMessage())}`,
+          );
+        })
+        .onConsole((event: OnConsoleEvent): boolean => {
+          this.debugWebView(`console message=${this.safeDebugText(event.message.getMessage())}`);
+          return false;
         })
         .onOverrideUrlLoading((request: WebResourceRequest): boolean => {
           if (request == null) {
@@ -199,6 +232,25 @@ struct GamePage {
     }
     this.viewportWidth = `${viewportWidth}vp`;
     this.viewportHeight = `${viewportHeight}vp`;
+  }
+
+  private debugWebView(message: string): void {
+    hilog.info(0x0000, 'GardendlessDebug', '%{public}s', `[DEBUG-OHOS-WEBVIEW] ${message}`);
+  }
+
+  private safeDebugUrl(url: string): string {
+    if (url === 'about:blank') {
+      return url;
+    }
+    if (url === GameSession.ORIGIN || url.startsWith(`${GameSession.ORIGIN}/`)) {
+      return url.substring(GameSession.ORIGIN.length).split('?')[0].split('#')[0] || '/';
+    }
+    return '<external-url>';
+  }
+
+  private safeDebugText(value: string): string {
+    const singleLine = value.replace(/[\r\n]+/g, ' ');
+    return singleLine.length > 256 ? `${singleLine.substring(0, 256)}...[truncated]` : singleLine;
   }
 
   private buildDocumentStartScript(session: GameSession): string {
