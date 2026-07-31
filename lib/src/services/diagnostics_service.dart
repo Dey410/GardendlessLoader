@@ -28,6 +28,10 @@ class DiagnosticsService {
       final installedVersion = await _appVersionLoader();
       if (installedVersion != null && installedVersion.trim().isNotEmpty) {
         _appVersion = _normalizeVersion(installedVersion);
+        _logger.setBaseContext(<String, Object?>{
+          'appVersion': _appVersion,
+          'operatingSystem': Platform.operatingSystem,
+        });
         _logger.info(
           'diagnostics.metadata',
           'Installed application version loaded',
@@ -52,6 +56,10 @@ class DiagnosticsService {
       );
     }
     _appVersion = _normalizeVersion(_fallbackAppVersion);
+    _logger.setBaseContext(<String, Object?>{
+      'appVersion': _appVersion,
+      'operatingSystem': Platform.operatingSystem,
+    });
   }
 
   DiagnosticSnapshot build({
@@ -143,13 +151,10 @@ class _LoggedDiagnosticSnapshot extends DiagnosticSnapshot {
     return <String>[
       super.toCopyText(),
       '',
-      'Logging session: ${logger.sessionId}',
-      'Persistent logging: ${logger.isPersistent}',
-      'Active log file: ${logger.activeLogPath ?? 'unavailable'}',
-      'Latest runtime error: ${latestError?.errorSummary ?? 'none'}',
+      ..._plainLoggingSummary(latestError),
       '',
       'Recent structured events:',
-      logger.diagnosticsText(limit: 120),
+      logger.diagnosticsText(limit: 200),
     ].join('\n');
   }
 
@@ -158,13 +163,52 @@ class _LoggedDiagnosticSnapshot extends DiagnosticSnapshot {
     final latestError = logger.latestError;
     return <String>[
       super.toLogText(),
-      '[INFO] logging.session id=${logger.sessionId} persistent=${logger.isPersistent}',
-      '[INFO] logging.file path="${logger.activeLogPath ?? '-'}"',
-      if (latestError != null)
-        '[ERROR] runtime.latest ${latestError.errorSummary}',
+      ..._structuredLoggingSummary(latestError),
       '',
       '--- recent structured events ---',
-      logger.diagnosticsText(limit: 120),
+      logger.diagnosticsText(limit: 200),
     ].join('\n');
+  }
+
+  List<String> _plainLoggingSummary(AppLogEntry? latestError) {
+    final stats = logger.statistics;
+    return <String>[
+      'Logging session: ${logger.sessionId}',
+      'Persistent logging: ${logger.isPersistent}',
+      'Log directory: ${logger.logDirectoryPath ?? 'unavailable'}',
+      'Active log file: ${logger.activeLogPath ?? 'unavailable'}',
+      'Minimum level: ${logger.minimumLevel.label}',
+      'Console minimum level: ${logger.consoleMinimumLevel.label}',
+      'Console enabled: ${logger.consoleEnabled}',
+      'File enabled: ${logger.fileEnabled}',
+      'Captured entries: ${stats.totalCaptured}',
+      'Entries in memory: ${stats.entriesInMemory}',
+      'Pending disk entries: ${stats.pendingDiskEntries}',
+      'Dropped entries: ${stats.droppedEntries}',
+      'Log sink failures: ${stats.sinkFailures}',
+      'Level counts: ${_levelCounts(stats)}',
+      'Category count: ${stats.byCategory.length}',
+      'Latest runtime error: ${latestError?.errorSummary ?? 'none'}',
+    ];
+  }
+
+  List<String> _structuredLoggingSummary(AppLogEntry? latestError) {
+    final stats = logger.statistics;
+    return <String>[
+      '[INFO] logging.session id=${logger.sessionId} persistent=${logger.isPersistent}',
+      '[INFO] logging.file directory="${logger.logDirectoryPath ?? '-'}" active="${logger.activeLogPath ?? '-'}"',
+      '[INFO] logging.configuration minimum=${logger.minimumLevel.label} consoleMinimum=${logger.consoleMinimumLevel.label} consoleEnabled=${logger.consoleEnabled} fileEnabled=${logger.fileEnabled}',
+      '[${stats.droppedEntries > 0 ? 'WARN' : 'INFO'}] logging.buffer captured=${stats.totalCaptured} memory=${stats.entriesInMemory} pending=${stats.pendingDiskEntries} dropped=${stats.droppedEntries}',
+      '[${stats.sinkFailures > 0 ? 'ERROR' : 'INFO'}] logging.sink failures=${stats.sinkFailures}',
+      '[INFO] logging.counts levels="${_levelCounts(stats)}" categories=${stats.byCategory.length}',
+      if (latestError != null)
+        '[ERROR] runtime.latest ${latestError.errorSummary}',
+    ];
+  }
+
+  String _levelCounts(AppLogStatistics stats) {
+    return AppLogLevel.values
+        .map((level) => '${level.label}:${stats.byLevel[level] ?? 0}')
+        .join(', ');
   }
 }
