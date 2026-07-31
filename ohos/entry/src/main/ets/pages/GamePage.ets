@@ -71,7 +71,7 @@ struct GamePage {
 
   build() {
     Stack() {
-      Web({ src: 'about:blank', controller: this.controller })
+      Web({ src: '', controller: this.controller })
         .width(this.viewportWidth)
         .height(this.viewportHeight)
         .backgroundColor(Color.Black)

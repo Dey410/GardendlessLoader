@@ -132,6 +132,12 @@ void main() {
     expect(page, contains('const maximumAspectRatio = 17 / 9'));
     expect(ability, contains('setWindowLayoutFullScreen(true)'));
     expect(ability, contains('setWindowSystemBarEnable([])'));
+    expect(page, contains("Web({ src: '', controller: this.controller })"));
+    expect(page, isNot(contains("Web({ src: 'about:blank'")));
+    expect(
+      page.indexOf('resourceHandler.attach(this.controller)'),
+      lessThan(page.indexOf('this.controller.loadUrl(session.entryUrl)')),
+    );
     expect(handler, contains("setWebSchemeHandler('http'"));
     expect(handler, contains("setWebSchemeHandler('https'"));
     expect(handler, contains('didReceiveResponseBody'));
