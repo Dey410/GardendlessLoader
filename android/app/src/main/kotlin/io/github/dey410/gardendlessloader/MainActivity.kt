@@ -1,6 +1,7 @@
 package io.github.dey410.gardendlessloader
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import io.github.dey410.gardendlessloader.game.GameActivity
@@ -93,27 +94,45 @@ class MainActivity : FlutterActivity() {
             pendingResult = result
             pendingTargetDirectory = targetDirectory
 
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/zip"
-                putExtra(
-                    Intent.EXTRA_MIME_TYPES,
-                    arrayOf(
-                        "application/zip",
-                        "application/x-zip-compressed",
-                        "application/octet-stream",
-                    ),
-                )
-            }
-
             try {
-                startActivityForResult(intent, pickZipRequestCode)
+                startActivityForResult(
+                    createZipPickerIntent(Intent.ACTION_OPEN_DOCUMENT),
+                    pickZipRequestCode,
+                )
+            } catch (error: ActivityNotFoundException) {
+                try {
+                    startActivityForResult(
+                        createZipPickerIntent(Intent.ACTION_GET_CONTENT),
+                        pickZipRequestCode,
+                    )
+                } catch (fallbackError: Exception) {
+                    failZipPicker(result, fallbackError)
+                }
             } catch (error: Exception) {
-                pendingResult = null
-                pendingTargetDirectory = null
-                result.error("zip_picker_failed", error.message, null)
+                failZipPicker(result, error)
             }
         }
+    }
+
+    private fun createZipPickerIntent(action: String): Intent {
+        return Intent(action).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "application/zip",
+                    "application/x-zip-compressed",
+                    "application/octet-stream",
+                ),
+            )
+        }
+    }
+
+    private fun failZipPicker(result: MethodChannel.Result, error: Exception) {
+        pendingResult = null
+        pendingTargetDirectory = null
+        result.error("zip_picker_failed", error.message ?: error.toString(), null)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

@@ -322,6 +322,37 @@ void main() {
     }
   });
 
+  test('shows feedback before opening the native ZIP picker', () async {
+    final root = await Directory.systemTemp.createTemp('gl_picker_feedback_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+
+    late final AppController controller;
+    controller = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      importAwakeModeGetter: () async => true,
+      importAwakeModeSetter: (_) async {},
+      resourcePickerService: ResourcePickerService(
+        platformName: 'android',
+        mobileZipImporter: ({
+          required targetDirectory,
+          onProgress,
+        }) async {
+          expect(controller.message, '正在打开系统文件选择器');
+          return null;
+        },
+      ),
+    );
+    await controller.initialize();
+
+    await controller.importResources();
+
+    expect(controller.message, '已取消选择 ZIP');
+  });
+
   test('keeps the screen awake only while an import is active', () async {
     final root = await Directory.systemTemp.createTemp('gl_controller_awake_');
     final awakeStates = <bool>[];

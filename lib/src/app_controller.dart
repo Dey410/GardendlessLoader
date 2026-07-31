@@ -450,6 +450,8 @@ class AppController extends ChangeNotifier {
         paths: paths,
         manifestStore: manifestStore,
       );
+      _message = '正在打开系统文件选择器';
+      notifyListeners();
       final selectedSource = await _resourcePickerService.pickAndExtractDocsZip(
         targetDirectory: importTarget.directory,
         onProgress: _updateImportProgress,

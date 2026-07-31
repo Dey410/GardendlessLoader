@@ -3,6 +3,19 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Android ZIP picker uses a custom-ROM-compatible MIME contract', () {
+    final activity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',
+    ).readAsStringSync();
+
+    expect(activity, contains('Intent.ACTION_OPEN_DOCUMENT'));
+    expect(activity, contains('Intent.EXTRA_MIME_TYPES'));
+    expect(activity, contains('type = "*/*"'));
+    expect(activity, isNot(contains('type = "application/zip"')));
+    expect(activity, contains('Intent.ACTION_GET_CONTENT'));
+    expect(activity, contains('ActivityNotFoundException'));
+  });
+
   test('Android streams ZIP import progress to Flutter', () {
     final activity = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',
