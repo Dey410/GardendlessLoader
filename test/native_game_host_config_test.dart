@@ -110,7 +110,11 @@ void main() {
       'ohos/entry/src/main/ets/game/GameSession.ets',
     ).readAsStringSync();
 
-    expect(page, contains('.javaScriptOnDocumentStart'));
+    expect(
+      page,
+      contains('.runJavaScriptOnDocumentStart(this.documentStartScripts)'),
+    );
+    expect(page, isNot(contains('.javaScriptOnDocumentStart(')));
     expect(page, contains("'touch_patch.js'"));
     expect(page, contains("'auto_sun.js'"));
     expect(

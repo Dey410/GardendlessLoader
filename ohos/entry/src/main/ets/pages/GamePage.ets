@@ -78,7 +78,7 @@ struct GamePage {
         .javaScriptAccess(true)
         .domStorageAccess(true)
         .fileAccess(false)
-        .javaScriptOnDocumentStart(this.documentStartScripts)
+        .runJavaScriptOnDocumentStart(this.documentStartScripts)
         .onControllerAttached((): void => {
           const session = this.session;
           const bridge = this.bridge;
