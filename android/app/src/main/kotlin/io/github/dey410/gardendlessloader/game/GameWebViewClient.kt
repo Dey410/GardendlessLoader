@@ -31,15 +31,37 @@ class GameWebViewClient(
                 requestHeaders = request.requestHeaders,
             )
             if (response.statusCode >= 400) {
+                val code = when (response.statusCode) {
+                    403 -> "resource_path_forbidden"
+                    404 -> "resource_file_not_found"
+                    405 -> "resource_method_not_allowed"
+                    else -> "resource_read_failed"
+                }
                 AppLogStore.emit(
                     source = "android",
                     level = if (response.statusCode == 404) "WARN" else "ERROR",
                     category = "game.resource",
                     event = "resource_request_failed",
                     outcome = "failed",
-                    code = if (response.statusCode == 404) "resource_file_not_found" else "resource_read_failed",
+                    code = code,
                     gameSessionId = session.sessionId,
                     context = mapOf("path" to url.path, "statusCode" to response.statusCode),
+                )
+            } else if (response.mimeType == "application/octet-stream") {
+                AppLogStore.emit(
+                    source = "android",
+                    level = "WARN",
+                    category = "game.resource",
+                    event = "resource_request_failed",
+                    outcome = "failed",
+                    code = "resource_mime_mismatch",
+                    gameSessionId = session.sessionId,
+                    context = mapOf(
+                        "path" to url.path,
+                        "statusCode" to response.statusCode,
+                        "expectedMime" to "known resource MIME",
+                        "actualMime" to response.mimeType,
+                    ),
                 )
             }
             return WebResourceResponse(
@@ -54,6 +76,15 @@ class GameWebViewClient(
         if (url.scheme == "https" && isAllowedRemoteHost(url.host)) {
             return null
         }
+        AppLogStore.emit(
+            source = "android",
+            level = "WARN",
+            category = "game.security",
+            event = "network_request_blocked",
+            outcome = "observed",
+            gameSessionId = session.sessionId,
+            context = mapOf("url" to "${url.scheme}://${url.host ?: ""}${url.path ?: ""}"),
+        )
         return WebResourceResponse(
             "text/plain",
             "UTF-8",

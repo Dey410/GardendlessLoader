@@ -75,19 +75,26 @@ export class GameBridge {
   }
 
   postMessage(message: string): void {
-    if (this.destroyed || message.length > 1024 * 1024 || !this.isTrustedFrame()) {
+    if (this.destroyed) {
+      return;
+    }
+    if (message.length > 1024 * 1024 || !this.isTrustedFrame()) {
+      this.logInvalid('origin_frame_or_size_rejected');
       return;
     }
     let request: BridgeRequest;
     try {
       request = JSON.parse(message) as BridgeRequest;
     } catch (_error) {
+      this.logInvalid('invalid_json');
       return;
     }
     if (request.id == null || request.id.length === 0 || request.command == null || request.command.length === 0) {
+      this.logInvalid('missing_id_or_command');
       return;
     }
     if (this.activeIds.has(request.id)) {
+      this.logInvalid('duplicate_request_id', request.command);
       this.respond({
         id: request.id,
         ok: false,
@@ -166,6 +173,7 @@ export class GameBridge {
         if (request.namespace === 'gp-next') {
           this.dispatchGpNext(request);
         } else {
+          this.logInvalid('unknown_command', request.command);
           this.fail(request.id, 'unknown_command', `Unsupported host command: ${request.command}`);
         }
     }
@@ -405,6 +413,23 @@ export class GameBridge {
       }
     }
     fs.renameSync(temporary, output);
+  }
+
+  private logInvalid(reason: string, command?: string): void {
+    const context: Record<string, Object> = { reason: reason };
+    if (command != null) {
+      context.command = command;
+    }
+    appLogStore.emit({
+      source: 'ohos',
+      level: 'WARN',
+      category: 'game.bridge',
+      event: 'bridge_message_invalid',
+      outcome: 'failed',
+      code: 'bridge_message_invalid',
+      gameSessionId: this.session.sessionId,
+      context: context,
+    });
   }
 
   private isAllowedRemoteUrl(url: string): boolean {

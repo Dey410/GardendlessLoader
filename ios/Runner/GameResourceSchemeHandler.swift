@@ -3,6 +3,7 @@ import WebKit
 
 final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   private let root: URL
+  private let onDiagnostic: ((String, String?, Int, [String: String]) -> Void)?
   private let queue = DispatchQueue(
     label: "io.github.dey410.gardendless.resource-stream",
     qos: .userInitiated,
@@ -12,12 +13,16 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   private var activeTasks = Set<ObjectIdentifier>()
   private var stoppedTasks = Set<ObjectIdentifier>()
 
-  init(resourceRoot: URL) throws {
+  init(
+    resourceRoot: URL,
+    onDiagnostic: ((String, String?, Int, [String: String]) -> Void)? = nil
+  ) throws {
     let values = try resourceRoot.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
     guard values.isDirectory == true, values.isSymbolicLink != true else {
       throw GameSessionError.invalid("Resource root is not a safe directory")
     }
     root = resourceRoot.resolvingSymlinksInPath().standardizedFileURL
+    self.onDiagnostic = onDiagnostic
   }
 
   func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
@@ -51,15 +56,18 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     guard !isStopped(identifier) else { return }
     guard let url = task.request.url,
           url.scheme == "gardendless-game", url.host == "localhost" else {
+      diagnose("resource_path_forbidden", path: task.request.url?.path, status: 403)
       sendError(task, status: 403, reason: "Forbidden")
       return
     }
     let method = task.request.httpMethod ?? "GET"
     guard method == "GET" || method == "HEAD" else {
+      diagnose("resource_method_not_allowed", path: url.path, status: 405, details: ["method": method])
       sendError(task, status: 405, reason: "Method Not Allowed", headers: ["Allow": "GET, HEAD"])
       return
     }
     guard let relativePath = decodePath(url), let file = resolveFile(relativePath) else {
+      diagnose("resource_file_not_found", path: url.path, status: 404)
       sendError(task, status: 404, reason: "Not Found")
       return
     }
@@ -80,6 +88,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       let rangeHeader = task.request.value(forHTTPHeaderField: "Range")
       let range = rangeHeader.flatMap { parseRange($0, length: length) }
       if rangeHeader != nil && range == nil {
+        diagnose("resource_read_failed", path: relativePath, status: 416)
         headers["Content-Range"] = "bytes */\(length)"
         sendError(task, status: 416, reason: "Range Not Satisfiable", headers: headers)
         return
@@ -87,7 +96,16 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       let start = range?.lowerBound ?? 0
       let end = range?.upperBound ?? max(0, length - 1)
       let responseLength = length == 0 ? 0 : end - start + 1
-      headers["Content-Type"] = mimeType(relativePath)
+      let contentType = mimeType(relativePath)
+      headers["Content-Type"] = contentType
+      if contentType == "application/octet-stream" {
+        diagnose(
+          "resource_mime_mismatch",
+          path: relativePath,
+          status: 200,
+          details: ["expectedMime": "known resource MIME", "actualMime": contentType]
+        )
+      }
       headers["Content-Length"] = String(responseLength)
       if range != nil {
         headers["Content-Range"] = "bytes \(start)-\(end)/\(length)"
@@ -116,6 +134,12 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
         task.didFinish()
       }
     } catch {
+      diagnose(
+        "resource_read_failed",
+        path: task.request.url?.path,
+        status: 500,
+        details: ["errorType": String(describing: type(of: error))]
+      )
       if !isStopped(identifier) { task.didFailWithError(error) }
     }
   }
@@ -236,6 +260,15 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
 
   private func isStopped(_ identifier: ObjectIdentifier) -> Bool {
     taskStateLock.synchronized { stoppedTasks.contains(identifier) }
+  }
+
+  private func diagnose(
+    _ code: String,
+    path: String?,
+    status: Int,
+    details: [String: String] = [:]
+  ) {
+    onDiagnostic?(code, path, status, details)
   }
 }
 

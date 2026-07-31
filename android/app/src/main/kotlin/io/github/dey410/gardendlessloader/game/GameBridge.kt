@@ -24,24 +24,35 @@ class GameBridge(
         isMainFrame: Boolean,
         replyProxy: JavaScriptReplyProxy,
     ) {
-        if (destroyed || !isMainFrame || sourceOrigin.toString() != session.origin) return
-        val raw = message.data ?: return
+        if (destroyed) return
+        if (!isMainFrame || sourceOrigin.toString() != session.origin) {
+            logInvalid("origin_or_frame_rejected")
+            return
+        }
+        val raw = message.data ?: run {
+            logInvalid("missing_message")
+            return
+        }
         if (raw.length > MAX_MESSAGE_SIZE) {
+            logInvalid("message_too_large")
             respond(null, false, error("message_too_large", "Bridge request is too large"))
             return
         }
         val request = runCatching { JSONObject(raw) }.getOrElse {
+            logInvalid("invalid_json")
             respond(null, false, error("invalid_message", "Bridge request is not valid JSON"))
             return
         }
         val id = request.optString("id")
         val command = request.optString("command")
         if (id.isBlank() || command.isBlank()) {
+            logInvalid("missing_id_or_command")
             respond(id.takeIf { it.isNotBlank() }, false, error("invalid_message", "Bridge id or command is empty"))
             return
         }
         synchronized(activeRequestIds) {
             if (!activeRequestIds.add(id)) {
+                logInvalid("duplicate_request_id", command)
                 respond(
                     id,
                     false,
@@ -104,6 +115,7 @@ class GameBridge(
                     if (request.optString("namespace") == "gp-next") {
                         activity.dispatchGpNext(id, request)
                     } else {
+                        logInvalid("unknown_command", command)
                         respond(id, false, error("unknown_command", "Unsupported host command: $command"))
                     }
                 }
@@ -135,6 +147,19 @@ class GameBridge(
         webView.evaluateJavascript(
             "window.__gardendlessTransport && window.__gardendlessTransport.rejectAll('host_destroyed','Game host was destroyed')",
             null,
+        )
+    }
+
+    private fun logInvalid(reason: String, command: String? = null) {
+        AppLogStore.emit(
+            source = "android",
+            level = "WARN",
+            category = "game.bridge",
+            event = "bridge_message_invalid",
+            outcome = "failed",
+            code = "bridge_message_invalid",
+            gameSessionId = session.sessionId,
+            context = mapOf("reason" to reason, "command" to command),
         )
     }
 

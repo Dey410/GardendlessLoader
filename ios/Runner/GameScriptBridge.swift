@@ -7,6 +7,7 @@ protocol GameScriptBridgeDelegate: AnyObject {
   func bridgeRequestedGpNext(id: String, request: [String: Any])
   func bridgeRequestedWatermark(_ enabled: Bool) throws
   func bridgeRequestedLog(id: String, arguments: [String: Any])
+  func bridgeRejectedMessage(reason: String, command: String?)
 }
 
 final class GameScriptBridge: NSObject, WKScriptMessageHandlerWithReply {
@@ -27,12 +28,16 @@ final class GameScriptBridge: NSObject, WKScriptMessageHandlerWithReply {
     didReceive message: WKScriptMessage,
     replyHandler: @escaping (Any?, String?) -> Void
   ) {
-    guard !destroyed,
-          message.frameInfo.isMainFrame,
+    guard !destroyed else {
+      replyHandler(nil, "Bridge is destroyed")
+      return
+    }
+    guard message.frameInfo.isMainFrame,
           message.frameInfo.securityOrigin.protocol == "gardendless-game",
           message.frameInfo.securityOrigin.host == "localhost",
           let raw = message.body as? String,
           raw.utf8.count <= Self.maxMessageSize else {
+      delegate?.bridgeRejectedMessage(reason: "origin_frame_or_size_rejected", command: nil)
       replyHandler(nil, "Rejected bridge message")
       return
     }
@@ -40,10 +45,12 @@ final class GameScriptBridge: NSObject, WKScriptMessageHandlerWithReply {
           let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let id = request["id"] as? String, !id.isEmpty,
           let command = request["command"] as? String, !command.isEmpty else {
+      delegate?.bridgeRejectedMessage(reason: "invalid_json_or_fields", command: nil)
       replyHandler(nil, "Invalid bridge request")
       return
     }
     guard activeRequestIds.insert(id).inserted else {
+      delegate?.bridgeRejectedMessage(reason: "duplicate_request_id", command: command)
       replyHandler(nil, "Duplicate bridge request id")
       respond(
         id: id,
@@ -81,6 +88,7 @@ final class GameScriptBridge: NSObject, WKScriptMessageHandlerWithReply {
         if request["namespace"] as? String == "gp-next" {
           delegate?.bridgeRequestedGpNext(id: id, request: request)
         } else {
+          delegate?.bridgeRejectedMessage(reason: "unknown_command", command: command)
           fail(id: id, code: "unknown_command", message: "Unsupported host command: \(command)")
         }
       }

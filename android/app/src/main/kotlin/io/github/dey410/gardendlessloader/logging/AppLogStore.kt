@@ -3,6 +3,7 @@ package io.github.dey410.gardendlessloader.logging
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import io.github.dey410.gardendlessloader.BuildConfig
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.io.BufferedWriter
@@ -111,11 +112,13 @@ object AppLogStore {
                     "outcome" to "started",
                     "context" to mapOf(
                         "platform" to "android",
+                        "appVersion" to BuildConfig.VERSION_NAME,
                         "osVersion" to Build.VERSION.RELEASE,
                     ),
                 ),
             )
             if (!previousSession.isNullOrBlank() && previousSession != appSessionId) {
+                val previousLast = readLastEvent(previousSession)
                 emitImmediate(
                     mutableMapOf(
                         "source" to "android",
@@ -124,7 +127,12 @@ object AppLogStore {
                         "event" to "previous_run_unclean_shutdown",
                         "outcome" to "observed",
                         "code" to "previous_run_unclean_shutdown",
-                        "context" to mapOf("previousAppSessionId" to previousSession),
+                        "context" to mapOf(
+                            "previousAppSessionId" to previousSession,
+                            "previousLastEvent" to previousLast?.optString("event"),
+                            "previousLastCode" to previousLast?.optString("code"),
+                            "previousLastTimestamp" to previousLast?.optString("timestampUtc"),
+                        ),
                     ),
                 )
             }
@@ -328,6 +336,15 @@ object AppLogStore {
 
     private fun readPreviousSession(): String? = runCatching {
         if (!markerFile.exists()) null else JSONObject(markerFile.readText()).optString("appSessionId").ifBlank { null }
+    }.getOrNull()
+
+    private fun readLastEvent(sessionId: String): JSONObject? = runCatching {
+        val file = logsDirectory.listFiles()
+            ?.filter { it.name.startsWith("app-$sessionId-") && it.name.endsWith(".jsonl") }
+            ?.maxByOrNull { it.name }
+            ?: return@runCatching null
+        val line = file.useLines { lines -> lines.filter { it.isNotBlank() }.lastOrNull() }
+        line?.let(::JSONObject)
     }.getOrNull()
 
     private fun writeMarker() {

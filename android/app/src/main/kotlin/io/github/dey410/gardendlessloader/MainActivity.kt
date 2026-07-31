@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var pendingTargetDirectory: String? = null
     private var lastImportProgressReportAt = 0L
+    private var transferringToGameHost = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -41,6 +42,7 @@ class MainActivity : FlutterActivity() {
                 return@setMethodCallHandler
             }
             try {
+                transferringToGameHost = true
                 startActivity(
                     Intent(this, GameActivity::class.java).putExtra(
                         GameActivity.EXTRA_SESSION,
@@ -50,6 +52,7 @@ class MainActivity : FlutterActivity() {
                 result.success(null)
                 window.decorView.post { finish() }
             } catch (error: Exception) {
+                transferringToGameHost = false
                 result.error("game_host_launch_failed", error.message, null)
             }
         }
@@ -114,6 +117,13 @@ class MainActivity : FlutterActivity() {
                 failZipPicker(result, error)
             }
         }
+    }
+
+    override fun onDestroy() {
+        if (isFinishing && !transferringToGameHost) {
+            AppLogStore.endSession()
+        }
+        super.onDestroy()
     }
 
     private fun createZipPickerIntent(action: String): Intent {

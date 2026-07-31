@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/logging/app_logger.dart';
+import 'package:gardendless_loader/src/logging/log_event_catalog.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
@@ -47,6 +48,12 @@ void main() {
           {
             'event': 'app_initialization_started',
             'outcome': 'started',
+            'code': null,
+            'operationId': 'app-initialize',
+          },
+          {
+            'event': 'app_initialization_stage_changed',
+            'outcome': 'observed',
             'code': null,
             'operationId': 'app-initialize',
           },
@@ -548,6 +555,11 @@ void main() {
 
   test('imports the docs directory extracted from the selected zip', () async {
     final root = await Directory.systemTemp.createTemp('gl_controller_paths_');
+    final logger = InMemoryAppLogger(
+      appSessionId: 'app-session-import',
+      source: LogSource.dart,
+      eventSchemas: defaultLogEventSchemas,
+    );
     String? extractionTarget;
     addTearDown(() async {
       if (await root.exists()) {
@@ -557,6 +569,7 @@ void main() {
 
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      appLogger: logger,
       resourcePickerService: ResourcePickerService(
         platformName: 'android',
         mobileZipImporter: ({
@@ -587,6 +600,26 @@ void main() {
     expect(diagnostics,
         contains('activeResourcePath: ${p.join(root.path, 'slot-a')}'));
     expect(diagnostics, contains('active slot validation: ready'));
+    final importEvents = logger.events
+        .where((event) => event.category.startsWith('resource.'))
+        .toList(growable: false);
+    expect(
+      importEvents.map((event) => event.event),
+      containsAll(<String>[
+        'resource_import_started',
+        'resource_import_picker_started',
+        'resource_import_picker_finished',
+        'resource_validation_started',
+        'resource_validation_finished',
+        'resource_slot_activated',
+        'resource_import_finished',
+      ]),
+    );
+    expect(
+      importEvents.map((event) => event.operationId).toSet(),
+      hasLength(1),
+    );
+    expect(importEvents.first.operationId, isNotNull);
   });
 }
 

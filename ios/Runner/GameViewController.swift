@@ -67,7 +67,24 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
     self.session = session
     self.networkRuleList = networkRuleList
     self.onExit = onExit
-    schemeHandler = try GameResourceSchemeHandler(resourceRoot: session.resourceRoot)
+    schemeHandler = try GameResourceSchemeHandler(
+      resourceRoot: session.resourceRoot,
+      onDiagnostic: { code, path, status, details in
+        var context: [String: Any] = ["status": status]
+        if let path { context["path"] = path }
+        details.forEach { context[$0.key] = $0.value }
+        AppLogStore.shared.emit([
+          "source": "ios",
+          "level": status >= 500 ? "ERROR" : "WARN",
+          "category": "resource.handler",
+          "event": "resource_request_failed",
+          "outcome": "failed",
+          "code": code,
+          "gameSessionId": session.sessionId,
+          "context": context,
+        ])
+      }
+    )
     gpNextCore = session.hasGpNext && session.gpNextCompatible
       ? try GpNextNativeCore(session: session)
       : nil
@@ -179,6 +196,21 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
       ],
     ])
     scriptBridge.complete(id: id, value: NSNull())
+  }
+
+  func bridgeRejectedMessage(reason: String, command: String?) {
+    var context: [String: Any] = ["reason": reason]
+    if let command { context["command"] = command }
+    AppLogStore.shared.emit([
+      "source": "ios",
+      "level": "WARN",
+      "category": "game.bridge",
+      "event": "bridge_message_invalid",
+      "outcome": "failed",
+      "code": "bridge_message_invalid",
+      "gameSessionId": session.sessionId,
+      "context": context,
+    ])
   }
 
   func bridgeRequestedExport(command: String, id: String, arguments: [String: Any]) {

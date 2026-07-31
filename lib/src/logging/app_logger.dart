@@ -68,7 +68,6 @@ class LogEvent {
   final String category;
   final String event;
   final LogOutcome outcome;
-  @override
   final String appSessionId;
   final String? code;
   final String? message;
@@ -207,6 +206,7 @@ class InMemoryAppLogger implements AppLogger {
     _monotonicOriginMs = _monotonicNowMs();
   }
 
+  @override
   final String appSessionId;
   final LogSource source;
   final String? appRoot;
@@ -225,6 +225,8 @@ class InMemoryAppLogger implements AppLogger {
 
   @override
   Future<AppLogSnapshot> loadSnapshot({int limit = 500}) async {
+    final safeLimit = limit.clamp(1, recentEventCapacity);
+    final first = (_events.length - safeLimit).clamp(0, _events.length);
     return AppLogSnapshot(
       appSessionId: appSessionId,
       persisting: false,
@@ -233,7 +235,10 @@ class InMemoryAppLogger implements AppLogger {
       totalBytes: 0,
       writeFailureCount: 0,
       droppedByLevel: const <String, int>{},
-      events: events.take(limit).map((event) => event.toJson()).toList(),
+      events: _events
+          .skip(first)
+          .map((event) => event.toJson())
+          .toList(growable: false),
     );
   }
 

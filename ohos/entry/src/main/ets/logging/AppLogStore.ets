@@ -54,11 +54,17 @@ export class AppLogStore {
       context: { platform: 'ohos' },
     });
     if (previous != null && previous !== this.appSessionId) {
+      const previousLast = this.readLastEvent(previous);
       this.emitImmediate({
         source: 'ohos', level: 'WARN', category: 'app.lifecycle',
         event: 'previous_run_unclean_shutdown', outcome: 'observed',
         code: 'previous_run_unclean_shutdown',
-        context: { previousAppSessionId: previous },
+        context: {
+          previousAppSessionId: previous,
+          previousLastEvent: previousLast?.['event'] ?? 'unknown',
+          previousLastCode: previousLast?.['code'] ?? 'none',
+          previousLastTimestamp: previousLast?.['timestampUtc'] ?? 'unknown',
+        },
       });
     }
   }
@@ -72,7 +78,8 @@ export class AppLogStore {
       return;
     }
     const level = this.level(event.level);
-    if (this.pending >= 1000 && level !== 'ERROR' && level !== 'FATAL') {
+    if (this.pending >= 1100 ||
+      (this.pending >= 1000 && level !== 'ERROR' && level !== 'FATAL')) {
       this.dropped[level] = (this.dropped[level] ?? 0) + 1;
       return;
     }
@@ -191,7 +198,21 @@ export class AppLogStore {
   }
 
   private cleanup(): void {
-    const names = fs.listFileSync(this.logsDirectory)
+    let names = fs.listFileSync(this.logsDirectory)
+      .filter((name: string): boolean => name.endsWith('.jsonl'))
+      .sort();
+    const cutoffMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const name of names) {
+      const path = `${this.logsDirectory}/${name}`;
+      const rawMtime = fs.statSync(path).mtime;
+      const modifiedMs = rawMtime > 100000000000000
+        ? rawMtime / 1000000
+        : rawMtime < 100000000000 ? rawMtime * 1000 : rawMtime;
+      if (modifiedMs < cutoffMs) {
+        try { fs.unlinkSync(path); } catch (_error) {}
+      }
+    }
+    names = fs.listFileSync(this.logsDirectory)
       .filter((name: string): boolean => name.endsWith('.jsonl'))
       .sort();
     const sessionPrefixes: string[] = [];
@@ -216,6 +237,22 @@ export class AppLogStore {
     try {
       const value = JSON.parse(fs.readTextSync(this.markerFile)) as Record<string, Object>;
       return value['appSessionId'] as string;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  private readLastEvent(sessionId: string): Record<string, Object> | null {
+    try {
+      const names = fs.listFileSync(this.logsDirectory)
+        .filter((name: string): boolean =>
+          name.startsWith(`app-${sessionId}-`) && name.endsWith('.jsonl'))
+        .sort();
+      if (names.length === 0) return null;
+      const text = fs.readTextSync(`${this.logsDirectory}/${names[names.length - 1]}`);
+      const lines = text.split('\n').filter((line: string): boolean => line.trim().length > 0);
+      if (lines.length === 0) return null;
+      return JSON.parse(lines[lines.length - 1]) as Record<string, Object>;
     } catch (_error) {
       return null;
     }

@@ -80,14 +80,24 @@ final class AppLogStore {
     emitImmediate([
       "source": "ios", "level": "INFO", "category": "app.lifecycle",
       "event": "app_session_started", "outcome": "started",
-      "context": ["platform": "ios", "osVersion": UIDevice.current.systemVersion],
+      "context": [
+        "platform": "ios",
+        "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+        "osVersion": UIDevice.current.systemVersion,
+      ],
     ])
     if let previous, previous != appSessionId {
+      let previousLast = readLastEvent(sessionId: previous)
       emitImmediate([
         "source": "ios", "level": "WARN", "category": "app.lifecycle",
         "event": "previous_run_unclean_shutdown", "outcome": "observed",
         "code": "previous_run_unclean_shutdown",
-        "context": ["previousAppSessionId": previous],
+        "context": [
+          "previousAppSessionId": previous,
+          "previousLastEvent": previousLast?["event"] as? String ?? "unknown",
+          "previousLastCode": previousLast?["code"] as? String ?? "none",
+          "previousLastTimestamp": previousLast?["timestampUtc"] as? String ?? "unknown",
+        ],
       ])
     }
   }
@@ -126,7 +136,8 @@ final class AppLogStore {
   func emit(_ event: [String: Any]) {
     let level = Self.level(event["level"] as? String)
     stateLock.lock()
-    if pending >= 1000 && level != "ERROR" && level != "FATAL" {
+    if pending >= 1100 ||
+       (pending >= 1000 && level != "ERROR" && level != "FATAL") {
       dropped[level, default: 0] += 1
       stateLock.unlock()
       return
@@ -285,6 +296,26 @@ final class AppLogStore {
     guard let data = try? Data(contentsOf: markerFile),
           let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
     return value["appSessionId"] as? String
+  }
+
+  private func readLastEvent(sessionId: String) -> [String: Any]? {
+    let files = (try? FileManager.default.contentsOfDirectory(
+      at: logsDirectory,
+      includingPropertiesForKeys: nil
+    )) ?? []
+    guard let file = files
+      .filter {
+        $0.lastPathComponent.hasPrefix("app-\(sessionId)-") &&
+          $0.pathExtension == "jsonl"
+      }
+      .max(by: { $0.lastPathComponent < $1.lastPathComponent }),
+      let data = try? Data(contentsOf: file),
+      let text = String(data: data, encoding: .utf8),
+      let line = text.split(whereSeparator: \.isNewline).last,
+      let lineData = String(line).data(using: .utf8),
+      let value = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+    else { return nil }
+    return value
   }
 
   private func markDegraded() {

@@ -238,4 +238,26 @@ void main() {
       },
     );
   });
+
+  test('snapshot limit returns the newest events', () async {
+    final logger = InMemoryAppLogger(
+      appSessionId: 'session-1',
+      source: LogSource.dart,
+    );
+    for (var index = 0; index < 4; index += 1) {
+      logger.emit(
+        level: LogLevel.info,
+        category: 'test',
+        event: 'event_$index',
+        outcome: LogOutcome.observed,
+      );
+    }
+
+    final snapshot = await logger.loadSnapshot(limit: 2);
+
+    expect(
+      snapshot.events.map((event) => event['event']),
+      <String>['event_2', 'event_3'],
+    );
+  });
 }

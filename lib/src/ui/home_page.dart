@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -8,6 +9,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../app_controller.dart';
 import '../constants.dart';
+import '../logging/app_logger.dart';
+import '../logging/log_event_catalog.dart';
 import '../models.dart';
 import '../services/game_update_check_service.dart';
 import '../services/update_check_service.dart';
@@ -677,6 +680,36 @@ class _DiagnosticsLogView extends StatefulWidget {
 class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
   String _minimumLevel = 'INFO';
   bool _errorsOnly = false;
+  String _operationFilter = 'all';
+
+  static const _levelRanks = <String, int>{
+    'DEBUG': 0,
+    'INFO': 1,
+    'WARN': 2,
+    'ERROR': 3,
+    'FATAL': 4,
+  };
+
+  List<Map<String, Object?>> _visibleEvents(AppLogSnapshot snapshot) {
+    final minimumRank = _levelRanks[_minimumLevel] ?? 1;
+    return snapshot.events.where((event) {
+      final level = event['level']?.toString().toUpperCase() ?? 'INFO';
+      if ((_levelRanks[level] ?? 1) < minimumRank) return false;
+      if (_errorsOnly && level != 'ERROR' && level != 'FATAL') return false;
+      return _operationFilter == 'all' ||
+          event['operationId']?.toString() == _operationFilter;
+    }).toList(growable: false);
+  }
+
+  Future<void> _copyEvent(Map<String, Object?> event) async {
+    await Clipboard.setData(
+      ClipboardData(text: const JsonEncoder.withIndent('  ').convert(event)),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('单条事件 JSON 已复制')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -685,6 +718,17 @@ class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
       minimumLevel: _minimumLevel,
       errorsOnly: _errorsOnly,
     );
+    final operations = (snapshot?.events
+                .map((event) => event['operationId']?.toString())
+                .whereType<String>()
+                .where((value) => value.isNotEmpty)
+                .toSet() ??
+            <String>{})
+        .toList(growable: false)
+      ..sort();
+    if (_operationFilter != 'all' && !operations.contains(_operationFilter)) {
+      _operationFilter = 'all';
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -730,8 +774,9 @@ class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
                           )
                           .toList(),
                       onChanged: (value) {
-                        if (value != null)
+                        if (value != null) {
                           setState(() => _minimumLevel = value);
+                        }
                       },
                     ),
                     FilterChip(
@@ -740,6 +785,40 @@ class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
                       selected: _errorsOnly,
                       onSelected: (selected) =>
                           setState(() => _errorsOnly = selected),
+                    ),
+                    if (operations.isNotEmpty)
+                      DropdownButton<String>(
+                        key: const ValueKey('log-operation-filter'),
+                        value: _operationFilter,
+                        items: <DropdownMenuItem<String>>[
+                          const DropdownMenuItem(
+                            value: 'all',
+                            child: Text('全部 Operation'),
+                          ),
+                          ...operations.map(
+                            (operationId) => DropdownMenuItem(
+                              value: operationId,
+                              child: Text(
+                                operationId,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _operationFilter = value);
+                          }
+                        },
+                      ),
+                    TextButton(
+                      key: const ValueKey('clear-log-view-filter'),
+                      onPressed: () => setState(() {
+                        _minimumLevel = 'INFO';
+                        _errorsOnly = false;
+                        _operationFilter = 'all';
+                      }),
+                      child: const Text('清空筛选'),
                     ),
                     IconButton(
                       tooltip: '刷新日志',
@@ -752,7 +831,15 @@ class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
                 ),
                 const SizedBox(height: 10),
                 Expanded(
-                  child: _DiagnosticsLogBox(text: text),
+                  child: snapshot == null
+                      ? _DiagnosticsLogBox(text: text)
+                      : _StructuredLogBrowser(
+                          controller: widget.controller,
+                          snapshot: snapshot,
+                          events: _visibleEvents(snapshot),
+                          technicalText: text,
+                          onCopyEvent: _copyEvent,
+                        ),
                 ),
               ],
             ),
@@ -773,7 +860,7 @@ class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
               key: const ValueKey('copy-diagnostics-button'),
               onPressed: widget.onCopyDiagnostics,
               icon: const Icon(Icons.copy_rounded),
-              label: const Text('复制诊断摘要'),
+              label: const Text('复制日志信息'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(178, 52),
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -790,6 +877,147 @@ class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+class _StructuredLogBrowser extends StatelessWidget {
+  const _StructuredLogBrowser({
+    required this.controller,
+    required this.snapshot,
+    required this.events,
+    required this.technicalText,
+    required this.onCopyEvent,
+  });
+
+  final AppController controller;
+  final AppLogSnapshot snapshot;
+  final List<Map<String, Object?>> events;
+  final String technicalText;
+  final Future<void> Function(Map<String, Object?> event) onCopyEvent;
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = <String, int>{};
+    String? gameSessionId;
+    Map<String, Object?>? recentError;
+    for (final event in snapshot.events) {
+      final level = event['level']?.toString().toUpperCase() ?? 'INFO';
+      counts[level] = (counts[level] ?? 0) + 1;
+      gameSessionId = event['gameSessionId']?.toString() ?? gameSessionId;
+      if (level == 'ERROR' || level == 'FATAL') recentError = event;
+    }
+    final recentErrorInfo = recentError == null
+        ? null
+        : userErrorCatalog[recentError['code']?.toString()];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 270,
+          child: ListView(
+            key: const ValueKey('log-overview'),
+            children: [
+              Text('当前会话', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              SelectableText(snapshot.appSessionId),
+              const SizedBox(height: 10),
+              Text('游戏会话：${gameSessionId ?? '无'}'),
+              Text(
+                '应用：v${controller.currentAppVersion} · '
+                '${controller.gameHostPlatform.wireName}',
+              ),
+              Text('日志占用：${snapshot.totalBytes} B'),
+              Text('写入失败：${snapshot.writeFailureCount}'),
+              Text('等级计数：${jsonEncode(counts)}'),
+              Text('丢弃计数：${jsonEncode(snapshot.droppedByLevel)}'),
+              const SizedBox(height: 10),
+              Text('最近错误', style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                recentError == null
+                    ? '无'
+                    : recentErrorInfo?.title ??
+                        '${recentError['code'] ?? recentError['event']}: '
+                            '${recentError['message'] ?? ''}',
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (recentErrorInfo != null)
+                Text(
+                  recentErrorInfo.action,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              const SizedBox(height: 8),
+              Material(
+                color: Colors.transparent,
+                child: ExpansionTile(
+                  key: const ValueKey('log-technical-details'),
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text('技术详情'),
+                  children: [
+                    SizedBox(
+                      height: 220,
+                      child: _DiagnosticsLogBox(text: technicalText),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const VerticalDivider(width: 24),
+        Expanded(
+          child: events.isEmpty
+              ? const Center(child: Text('当前筛选条件下没有事件'))
+              : ListView.builder(
+                  key: const ValueKey('structured-log-events'),
+                  itemCount: events.length,
+                  itemBuilder: (context, index) {
+                    final event = events[events.length - index - 1];
+                    final level = event['level']?.toString() ?? 'INFO';
+                    return Material(
+                      color: Colors.transparent,
+                      child: ExpansionTile(
+                        key: ValueKey(
+                          'log-event-${event['sequence'] ?? index}',
+                        ),
+                        leading: Text(level),
+                        title:
+                            Text(event['event']?.toString() ?? 'unknown_event'),
+                        subtitle: Text(
+                          [
+                            if (event['code'] != null) event['code'],
+                            if (event['operationId'] != null)
+                              'op=${event['operationId']}',
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: IconButton(
+                          tooltip: '复制单条事件 JSON',
+                          onPressed: () => onCopyEvent(event),
+                          icon: const Icon(Icons.copy_rounded, size: 18),
+                        ),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: SelectableText(
+                              const JsonEncoder.withIndent('  ').convert(event),
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );

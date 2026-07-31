@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/constants.dart';
+import 'package:gardendless_loader/src/logging/app_logger.dart';
+import 'package:gardendless_loader/src/logging/log_event_catalog.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/about_content_service.dart';
 import 'package:gardendless_loader/src/services/announcement_service.dart';
@@ -675,6 +677,77 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );
+
+  testWidgets(
+    'structured log view exposes overview operation filtering and event copy',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1180, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      String? copiedText;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText =
+              (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+
+      final logger = InMemoryAppLogger(
+        appSessionId: 'app-session-test',
+        source: LogSource.dart,
+        eventSchemas: defaultLogEventSchemas,
+      );
+      final controller = await _readyController(tester, appLogger: logger);
+      logger.emit(
+        level: LogLevel.error,
+        category: 'game.webview',
+        event: 'webview_page_load_failed',
+        outcome: LogOutcome.failed,
+        code: 'webview_page_load_failed',
+        gameSessionId: 'game-session-test',
+        operationId: 'launch-operation-test',
+        error: StateError('page failed'),
+        stackTrace: StackTrace.current,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+      await tester.tap(find.text('日志'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('log-overview')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('log-operation-filter')),
+        findsOneWidget,
+      );
+      expect(find.text('webview_page_load_failed'), findsOneWidget);
+      expect(find.text('游戏页面加载失败'), findsOneWidget);
+
+      final errorTile = find.ancestor(
+        of: find.text('webview_page_load_failed'),
+        matching: find.byType(ExpansionTile),
+      );
+      await tester.tap(
+        find.descendant(
+          of: errorTile,
+          matching: find.byTooltip('复制单条事件 JSON'),
+        ),
+      );
+      await tester.pump();
+      expect(copiedText, contains('webview_page_load_failed'));
+      expect(find.text('单条事件 JSON 已复制'), findsOneWidget);
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
 }
 
 Future<AppController> _readyController(
@@ -682,6 +755,7 @@ Future<AppController> _readyController(
   AnnouncementService? announcementService,
   AboutContentService? aboutContentService,
   DiagnosticsService? diagnosticsService,
+  AppLogger? appLogger,
   bool gpNext = false,
 }) async {
   return (await tester.runAsync(() async {
@@ -712,6 +786,7 @@ import('./config-test.js');
       announcementService: announcementService,
       aboutContentService: aboutContentService ?? _aboutContentService(),
       diagnosticsService: diagnosticsService,
+      appLogger: appLogger,
       updateCheckService: _noUpdateService(),
       gameUpdateCheckService: _noGameUpdateService(),
     );
