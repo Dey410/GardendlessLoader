@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../constants.dart';
 import '../models.dart';
+import 'app_logger.dart';
 
 typedef DiagnosticsAppVersionLoader = Future<String?> Function();
 
@@ -11,12 +12,15 @@ class DiagnosticsService {
   DiagnosticsService({
     String fallbackAppVersion = appVersion,
     DiagnosticsAppVersionLoader? appVersionLoader,
+    AppLogger? logger,
   })  : _fallbackAppVersion = fallbackAppVersion,
         _appVersionLoader = appVersionLoader ?? _loadInstalledVersion,
+        _logger = logger ?? AppLogger.instance,
         _appVersion = _normalizeVersion(fallbackAppVersion);
 
   final String _fallbackAppVersion;
   final DiagnosticsAppVersionLoader _appVersionLoader;
+  final AppLogger _logger;
   String _appVersion;
 
   Future<void> initialize() async {
@@ -24,11 +28,28 @@ class DiagnosticsService {
       final installedVersion = await _appVersionLoader();
       if (installedVersion != null && installedVersion.trim().isNotEmpty) {
         _appVersion = _normalizeVersion(installedVersion);
+        _logger.info(
+          'diagnostics.metadata',
+          'Installed application version loaded',
+          data: <String, Object?>{'version': _appVersion},
+        );
         return;
       }
-    } catch (_) {
-      // Fall back to the compile-time version when package metadata is
-      // unavailable, such as in unsupported test or platform environments.
+      _logger.warning(
+        'diagnostics.metadata',
+        'Installed application version was empty; using compile-time version',
+        code: 'app_version_empty',
+        data: <String, Object?>{'fallbackVersion': _fallbackAppVersion},
+      );
+    } catch (error, stackTrace) {
+      _logger.warning(
+        'diagnostics.metadata',
+        'Unable to load installed application version; using compile-time version',
+        code: 'app_version_unavailable',
+        error: error,
+        stackTrace: stackTrace,
+        data: <String, Object?>{'fallbackVersion': _fallbackAppVersion},
+      );
     }
     _appVersion = _normalizeVersion(_fallbackAppVersion);
   }
@@ -41,7 +62,8 @@ class DiagnosticsService {
     required ServerStatus serverStatus,
     String? webViewEngineVersion,
   }) {
-    return DiagnosticSnapshot(
+    return _LoggedDiagnosticSnapshot(
+      logger: _logger,
       appVersion: _appVersion,
       platform: Platform.operatingSystem,
       osVersion: Platform.operatingSystemVersion,
@@ -82,5 +104,67 @@ class DiagnosticsService {
         : trimmed;
     final withoutBuild = withoutPrefix.split('+').first;
     return withoutBuild.split('-').first;
+  }
+}
+
+class _LoggedDiagnosticSnapshot extends DiagnosticSnapshot {
+  const _LoggedDiagnosticSnapshot({
+    required this.logger,
+    required super.appVersion,
+    required super.platform,
+    required super.osVersion,
+    required super.webViewEngineVersion,
+    required super.resourceRoot,
+    required super.activeSlot,
+    required super.activeResourcePath,
+    required super.currentValidation,
+    required super.importValidation,
+    required super.lastImportAt,
+    required super.fileCount,
+    required super.totalBytes,
+    required super.detectedTitle,
+    required super.buildProfile,
+    required super.gpNextVersion,
+    required super.gpNextCompatibilityError,
+    required super.serverHost,
+    required super.serverPort,
+    required super.serverStatus,
+    required super.lastSelfCheckAt,
+    required super.lastErrorCode,
+    required super.lastErrorMessage,
+    required super.transactionState,
+  });
+
+  final AppLogger logger;
+
+  @override
+  String toCopyText() {
+    final latestError = logger.latestError;
+    return <String>[
+      super.toCopyText(),
+      '',
+      'Logging session: ${logger.sessionId}',
+      'Persistent logging: ${logger.isPersistent}',
+      'Active log file: ${logger.activeLogPath ?? 'unavailable'}',
+      'Latest runtime error: ${latestError?.errorSummary ?? 'none'}',
+      '',
+      'Recent structured events:',
+      logger.diagnosticsText(limit: 120),
+    ].join('\n');
+  }
+
+  @override
+  String toLogText() {
+    final latestError = logger.latestError;
+    return <String>[
+      super.toLogText(),
+      '[INFO] logging.session id=${logger.sessionId} persistent=${logger.isPersistent}',
+      '[INFO] logging.file path="${logger.activeLogPath ?? '-'}"',
+      if (latestError != null)
+        '[ERROR] runtime.latest ${latestError.errorSummary}',
+      '',
+      '--- recent structured events ---',
+      logger.diagnosticsText(limit: 120),
+    ].join('\n');
   }
 }
