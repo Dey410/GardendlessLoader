@@ -3,41 +3,13 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Android CI supplies a monotonic version code', () {
+  test('GitHub Actions only builds and directly uploads HarmonyOS ARM', () {
     final workflow =
         File('.github/workflows/build-mobile.yml').readAsStringSync();
 
-    final versionStep = _workflowStep(
-      workflow,
-      'Compute Android version code',
-    );
-    final buildStep = _workflowStep(workflow, 'Build release APK');
-
-    expect(versionStep, contains('100000 + GITHUB_RUN_NUMBER'));
-    expect(versionStep, contains('version_code='));
-    expect(versionStep, contains(r'$GITHUB_OUTPUT'));
-    expect(
-      buildStep,
-      contains(
-        r'--build-number "${{ steps.android_version.outputs.version_code }}"',
-      ),
-    );
-  });
-
-  test('GitHub Actions uploads single-file artifacts without ZIP wrapping', () {
-    final workflow =
-        File('.github/workflows/build-mobile.yml').readAsStringSync();
-
-    _expectDirectFileUpload(
-      workflow,
-      stepName: 'Upload APK',
-      path: 'build/app/outputs/flutter-apk/GardendlessLoader-android.apk',
-    );
-    _expectDirectFileUpload(
-      workflow,
-      stepName: 'Upload unsigned IPA',
-      path: 'build/ios/ipa/GardendlessLoader-unsigned.ipa',
-    );
+    expect(workflow, isNot(contains('\n  android:')));
+    expect(workflow, isNot(contains('\n  ios:')));
+    expect(workflow, contains('\n  harmonyos:'));
     _expectDirectFileUpload(
       workflow,
       stepName: 'Upload unsigned HarmonyOS HAP',
