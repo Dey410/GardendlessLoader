@@ -154,6 +154,11 @@ void main() {
     expect(handler, contains('private isAvif(filePath: string): boolean'));
     expect(handler, contains('bytes[4] !== 0x66'));
     expect(handler, contains('bytes[offset + 3] === 0x66'));
+    expect(handler, contains("return 'audio/mp4'"));
+    expect(handler, contains("return 'audio/aac'"));
+    expect(handler, contains('private sniffAudioMimeType('));
+    expect(handler, contains('bytes[0] === 0xff'));
+    expect(handler, contains('(bytes[1] & 0xf6) === 0xf0'));
     expect(plugin, contains('context.terminateSelf()'));
     expect(
       File('ohos/entry/src/main/ets/game/GameBridge.ets').readAsStringSync(),
