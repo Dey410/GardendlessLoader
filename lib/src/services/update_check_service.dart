@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../constants.dart';
+import 'app_logger.dart';
 
 const defaultLatestReleaseApiUrl =
     'https://api.github.com/repos/Dey410/GardendlessLoader/releases/latest';
@@ -57,13 +58,15 @@ class UpdateCheckService {
     int maxBytes = defaultUpdateCheckMaxBytes,
     UpdateCheckHttpLoader? loader,
     InstalledVersionLoader? installedVersionLoader,
+    AppLogger? logger,
   })  : _latestReleaseUri = Uri.parse(latestReleaseApiUrl),
         _currentVersion = currentVersion,
         _timeout = timeout,
         _maxBytes = maxBytes,
         _loader = loader ?? _loadWithHttpClient,
         _installedVersionLoader =
-            installedVersionLoader ?? _loadInstalledVersion;
+            installedVersionLoader ?? _loadInstalledVersion,
+        _logger = logger ?? AppLogger.instance;
 
   final Uri _latestReleaseUri;
   final String _currentVersion;
@@ -71,44 +74,96 @@ class UpdateCheckService {
   final int _maxBytes;
   final UpdateCheckHttpLoader _loader;
   final InstalledVersionLoader _installedVersionLoader;
+  final AppLogger _logger;
 
   Future<String> loadCurrentVersion() => _loadCurrentVersion();
 
   Future<UpdateInfo?> checkForUpdate() async {
-    final response =
-        await _loader(_latestReleaseUri, _timeout, _maxBytes).timeout(_timeout);
-    if (response.statusCode != HttpStatus.ok) {
-      throw const UpdateCheckException('GitHub release request failed');
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw const UpdateCheckException('GitHub release response is invalid');
-    }
-
-    final tagName = _requiredString(decoded['tag_name']);
-    final latestVersion = _normalizeVersion(tagName);
-    final releaseUrl = _requiredHttpsUrl(decoded['html_url']);
-    final releaseName = _optionalString(decoded['name']) ?? tagName;
-    final releaseNotes = _optionalString(decoded['body']) ?? '';
-    final publishedAt = DateTime.tryParse(
-      _optionalString(decoded['published_at']) ?? '',
+    final operation = _logger.beginOperation(
+      'network.app_update',
+      'Application update check',
+      data: <String, Object?>{
+        'uri': _latestReleaseUri,
+        'timeoutMs': _timeout.inMilliseconds,
+        'maxBytes': _maxBytes,
+      },
     );
-    final currentVersion = await _loadCurrentVersion();
+    try {
+      final response = await _loader(
+        _latestReleaseUri,
+        _timeout,
+        _maxBytes,
+      ).timeout(_timeout);
+      operation.step(
+        'Release response received',
+        data: <String, Object?>{
+          'statusCode': response.statusCode,
+          'bodyBytes': utf8.encode(response.body).length,
+        },
+      );
+      if (response.statusCode != HttpStatus.ok) {
+        throw UpdateCheckException(
+          'GitHub release request failed with HTTP ${response.statusCode}',
+        );
+      }
 
-    if (_compareVersions(latestVersion, currentVersion) <= 0) {
-      return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const UpdateCheckException(
+          'GitHub release response is invalid',
+        );
+      }
+
+      final tagName = _requiredString(decoded['tag_name']);
+      final latestVersion = _normalizeVersion(tagName);
+      final releaseUrl = _requiredHttpsUrl(decoded['html_url']);
+      final releaseName = _optionalString(decoded['name']) ?? tagName;
+      final releaseNotes = _optionalString(decoded['body']) ?? '';
+      final publishedAt = DateTime.tryParse(
+        _optionalString(decoded['published_at']) ?? '',
+      );
+      final currentVersion = await _loadCurrentVersion();
+      final comparison = _compareVersions(latestVersion, currentVersion);
+
+      if (comparison <= 0) {
+        operation.complete(
+          message: 'Application is up to date',
+          data: <String, Object?>{
+            'currentVersion': currentVersion,
+            'latestVersion': latestVersion,
+            'currentIsAhead': comparison < 0,
+          },
+        );
+        return null;
+      }
+
+      final update = UpdateInfo(
+        currentVersion: currentVersion,
+        latestVersion: latestVersion,
+        tagName: tagName,
+        releaseUrl: releaseUrl,
+        releaseName: releaseName,
+        releaseNotes: releaseNotes,
+        publishedAt: publishedAt,
+      );
+      operation.complete(
+        message: 'Application update is available',
+        data: <String, Object?>{
+          'currentVersion': currentVersion,
+          'latestVersion': latestVersion,
+          'tagName': tagName,
+          'publishedAt': publishedAt,
+        },
+      );
+      return update;
+    } catch (error, stackTrace) {
+      operation.fail(
+        error,
+        stackTrace,
+        code: 'app_update_check_failed',
+      );
+      rethrow;
     }
-
-    return UpdateInfo(
-      currentVersion: currentVersion,
-      latestVersion: latestVersion,
-      tagName: tagName,
-      releaseUrl: releaseUrl,
-      releaseName: releaseName,
-      releaseNotes: releaseNotes,
-      publishedAt: publishedAt,
-    );
   }
 
   static Future<UpdateCheckHttpResponse> _loadWithHttpClient(
@@ -155,11 +210,29 @@ class UpdateCheckService {
     try {
       final installedVersion = await _installedVersionLoader();
       if (installedVersion != null && installedVersion.trim().isNotEmpty) {
-        return _normalizeVersion(installedVersion);
+        final normalized = _normalizeVersion(installedVersion);
+        _logger.debug(
+          'app.metadata',
+          'Installed application version loaded',
+          data: <String, Object?>{'version': normalized},
+        );
+        return normalized;
       }
-    } catch (_) {
-      // Fall back to the compile-time version when a platform cannot provide
-      // package metadata.
+      _logger.warning(
+        'app.metadata',
+        'Installed application version was empty; compile-time fallback selected',
+        code: 'installed_version_empty',
+        data: <String, Object?>{'fallbackVersion': _currentVersion},
+      );
+    } catch (error, stackTrace) {
+      _logger.warning(
+        'app.metadata',
+        'Installed application version was unavailable; compile-time fallback selected',
+        code: 'installed_version_unavailable',
+        error: error,
+        stackTrace: stackTrace,
+        data: <String, Object?>{'fallbackVersion': _currentVersion},
+      );
     }
     return _normalizeVersion(_currentVersion);
   }
