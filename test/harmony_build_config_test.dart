@@ -199,20 +199,15 @@ void main() {
       workflow,
       contains('cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml'),
     );
-    expect(workflow, contains('matrix:'));
-    expect(workflow, contains('target-platform: ohos-arm64'));
-    expect(workflow, contains('target-platform: ohos-x64'));
-    expect(workflow, contains('experimental: false'));
-    expect(workflow, contains('experimental: true'));
+    expect(workflow, isNot(contains('target-platform: ohos-x64')));
+    expect(workflow, isNot(contains('matrix:')));
     expect(
       workflow,
-      contains(r'continue-on-error: ${{ matrix.experimental }}'),
+      contains('flutter build hap --release --target-platform ohos-arm64'),
     );
     expect(
       workflow,
-      contains(
-        r'flutter build hap --release --target-platform "${{ matrix.target-platform }}"',
-      ),
+      contains('GardendlessLoader-unsigned-ohos-arm64.hap'),
     );
     expect(workflow, contains('set +e'));
     expect(workflow, contains(r'FLUTTER_BUILD_STATUS="$?"'));
@@ -226,7 +221,7 @@ void main() {
     expect(
       workflow,
       contains(
-        r'build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap',
+        'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap',
       ),
     );
   });
