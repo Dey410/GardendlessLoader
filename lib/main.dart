@@ -1,19 +1,62 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'src/app_controller.dart';
+import 'src/services/app_logger.dart';
 import 'src/ui/home_page.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
-  runApp(const GardendlessLoaderApp());
+  runZonedGuarded(
+    () {
+      WidgetsFlutterBinding.ensureInitialized();
+      final logger = AppLogger.instance;
+      final previousFlutterErrorHandler = FlutterError.onError;
+      FlutterError.onError = (details) {
+        logger.fatal(
+          'runtime.flutter',
+          'Uncaught Flutter framework error',
+          code: 'flutter_uncaught_error',
+          error: details.exception,
+          stackTrace: details.stack,
+          data: <String, Object?>{
+            'library': details.library,
+            'context': details.context?.toDescription(),
+          },
+        );
+        previousFlutterErrorHandler?.call(details);
+      };
+      PlatformDispatcher.instance.onError = (error, stackTrace) {
+        logger.fatal(
+          'runtime.platform',
+          'Uncaught platform dispatcher error',
+          code: 'platform_uncaught_error',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return true;
+      };
+
+      logger.info('app.lifecycle', 'Application process started');
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      runApp(const GardendlessLoaderApp());
+    },
+    (error, stackTrace) {
+      AppLogger.instance.fatal(
+        'runtime.zone',
+        'Uncaught asynchronous error',
+        code: 'zone_uncaught_error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    },
+  );
 }
 
 class GardendlessLoaderApp extends StatefulWidget {
@@ -40,6 +83,8 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp> {
 
   @override
   void dispose() {
+    AppLogger.instance.info('app.lifecycle', 'Application widget disposed');
+    unawaited(AppLogger.instance.flush());
     _controller.dispose();
     super.dispose();
   }
