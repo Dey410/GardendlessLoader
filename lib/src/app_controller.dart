@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -94,6 +95,8 @@ class AppController extends ChangeNotifier {
   ImportProgressMeter? _importProgressMeter;
   Timer? _importCompletionTimer;
   Timer? _importProgressTickTimer;
+  String? _activeImportOperationId;
+  DateTime? _lastImportProgressLogAt;
   Future<void> _appSettingsWrite = Future<void>.value();
   Future<void> _manifestPreferenceWrite = Future<void>.value();
 
@@ -126,10 +129,14 @@ class AppController extends ChangeNotifier {
   bool _initialized = false;
   bool _busy = false;
   String? _message;
+  AppLogSnapshot? _logSnapshot;
+  bool _logSnapshotLoading = false;
 
   bool get initialized => _initialized;
   bool get busy => _busy;
   String? get message => _message;
+  AppLogSnapshot? get logSnapshot => _logSnapshot;
+  bool get logSnapshotLoading => _logSnapshotLoading;
   AppPaths? get paths => _paths;
   ResourceManifest get manifest => _manifest;
   ResourceValidationResult get currentValidation => _currentValidation;
@@ -461,6 +468,18 @@ class AppController extends ChangeNotifier {
     _startImportProgressTicker();
     notifyListeners();
 
+    final operationId = _newOperationId('resource-import');
+    _activeImportOperationId = operationId;
+    _lastImportProgressLogAt = null;
+    final importStopwatch = Stopwatch()..start();
+    _appLogger?.emit(
+      level: LogLevel.info,
+      category: 'resource.import',
+      event: 'resource_import_started',
+      outcome: LogOutcome.started,
+      operationId: operationId,
+    );
+
     var restoreAwakeModeAfterImport = false;
     ImportTarget? importTarget;
     try {
@@ -482,6 +501,15 @@ class AppController extends ChangeNotifier {
         );
         importTarget = null;
         _message = '已取消选择 ZIP';
+        _appLogger?.emit(
+          level: LogLevel.info,
+          category: 'resource.import',
+          event: 'resource_import_finished',
+          outcome: LogOutcome.cancelled,
+          operationId: operationId,
+          durationMs: importStopwatch.elapsedMilliseconds,
+          context: const <String, Object?>{'stage': 'picking'},
+        );
         return;
       }
 
@@ -509,6 +537,20 @@ class AppController extends ChangeNotifier {
       }
       await refresh();
       await _checkGameForUpdate(reuseLatestVersion: true);
+      _appLogger?.emit(
+        level: LogLevel.info,
+        category: 'resource.import',
+        event: 'resource_import_finished',
+        outcome: LogOutcome.succeeded,
+        operationId: operationId,
+        durationMs: importStopwatch.elapsedMilliseconds,
+        context: <String, Object?>{
+          'stage': 'completed',
+          'activeSlot': _manifest.activeSlot?.name ?? 'none',
+          'fileCount': _manifest.fileCount,
+          'totalBytes': _manifest.totalBytes,
+        },
+      );
     } on ResourcePickerFailure catch (failure) {
       if (importTarget != null) {
         _manifest = await _importService.abortImport(
@@ -521,9 +563,31 @@ class AppController extends ChangeNotifier {
       _updateImportProgress(
         ImportProgress(phase: ImportPhase.failed, message: failure.message),
       );
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'resource.import',
+        event: 'resource_import_finished',
+        outcome: LogOutcome.failed,
+        code: failure.code,
+        operationId: operationId,
+        durationMs: importStopwatch.elapsedMilliseconds,
+        error: failure,
+        stackTrace: StackTrace.current,
+      );
     } on ImportFailure catch (failure) {
       _message = failure.message;
       await refresh();
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'resource.import',
+        event: 'resource_import_finished',
+        outcome: LogOutcome.failed,
+        code: failure.code,
+        operationId: operationId,
+        durationMs: importStopwatch.elapsedMilliseconds,
+        error: failure,
+        stackTrace: StackTrace.current,
+      );
     } catch (error) {
       if (importTarget != null) {
         _manifest = await _importService.abortImport(
@@ -537,12 +601,24 @@ class AppController extends ChangeNotifier {
         ImportProgress(phase: ImportPhase.failed, message: _message),
       );
       await refresh();
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'resource.import',
+        event: 'resource_import_finished',
+        outcome: LogOutcome.failed,
+        code: 'import_extract_failed',
+        operationId: operationId,
+        durationMs: importStopwatch.elapsedMilliseconds,
+        error: error,
+        stackTrace: StackTrace.current,
+      );
     } finally {
       _importProgressTickTimer?.cancel();
       if (restoreAwakeModeAfterImport) {
         await _setImportAwakeMode(false);
       }
       _busy = false;
+      _activeImportOperationId = null;
       notifyListeners();
     }
   }
@@ -550,6 +626,26 @@ class AppController extends ChangeNotifier {
   void _updateImportProgress(ImportProgress progress) {
     final meter = _importProgressMeter ??= ImportProgressMeter();
     _importProgress = meter.measure(progress);
+    final now = DateTime.now();
+    final lastLogAt = _lastImportProgressLogAt;
+    if (lastLogAt == null ||
+        now.difference(lastLogAt) >= const Duration(seconds: 1)) {
+      _lastImportProgressLogAt = now;
+      _appLogger?.emit(
+        level: LogLevel.debug,
+        category: 'resource.import',
+        event: 'resource_import_progress',
+        outcome: LogOutcome.observed,
+        operationId: _activeImportOperationId,
+        context: <String, Object?>{
+          'stage': progress.phase.name,
+          'processedBytes': progress.copiedBytes,
+          'totalBytes': progress.totalBytes,
+          'processedFiles': progress.copiedFiles,
+          'totalFiles': progress.totalFiles,
+        },
+      );
+    }
     notifyListeners();
   }
 
@@ -629,6 +725,14 @@ class AppController extends ChangeNotifier {
     if (!_currentValidation.isValid) {
       _message = _currentValidation.errorMessage ?? '激活槽资源无效';
       notifyListeners();
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'game.host',
+        event: 'game_host_launch_finished',
+        outcome: LogOutcome.failed,
+        code: 'resource_validation_failed',
+        message: _message,
+      );
       throw StateError(_message!);
     }
     final exportRoot = Directory(p.join(paths.gpNextDir.path, '.exports'));
@@ -651,11 +755,30 @@ class AppController extends ChangeNotifier {
       exportTemporaryRoot: exportRoot.path,
     );
     final store = _gameSessionStore ??= GameSessionStore(paths.root);
-    await store.prepare(session);
-    _importCompletionTimer?.cancel();
-    _importProgressTickTimer?.cancel();
-    await _gameHost.launch(session);
+    Future<void> launch() async {
+      await store.prepare(session);
+      _importCompletionTimer?.cancel();
+      _importProgressTickTimer?.cancel();
+      await _gameHost.launch(session);
+    }
+
+    final operation = _appLogger?.startOperation(
+      operationId: _newOperationId('game-launch'),
+      category: 'game.host',
+      startedEvent: 'game_host_launch_started',
+      finishedEvent: 'game_host_launch_finished',
+      failureCode: 'game_host_launch_failed',
+      gameSessionId: session.sessionId,
+    );
+    if (operation == null) {
+      await launch();
+    } else {
+      await operation.run(launch);
+    }
   }
+
+  static String _newOperationId(String prefix) =>
+      '$prefix-${DateTime.now().toUtc().microsecondsSinceEpoch}';
 
   DiagnosticSnapshot diagnostics({String? webViewEngineVersion}) {
     return _diagnosticsService.build(
@@ -667,6 +790,69 @@ class AppController extends ChangeNotifier {
       webViewEngineVersion: webViewEngineVersion,
     );
   }
+
+  Future<void> refreshLogs() async {
+    final logger = _appLogger;
+    if (logger == null || _logSnapshotLoading) {
+      return;
+    }
+    _logSnapshotLoading = true;
+    notifyListeners();
+    try {
+      _logSnapshot = await logger.loadSnapshot();
+    } finally {
+      _logSnapshotLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteLogHistory() async {
+    final logger = _appLogger;
+    if (logger == null) {
+      return;
+    }
+    await logger.deleteHistory();
+    await refreshLogs();
+  }
+
+  String buildLogText({String minimumLevel = 'INFO', bool errorsOnly = false}) {
+    final snapshot = _logSnapshot;
+    final buffer = StringBuffer(diagnostics().toLogText());
+    if (snapshot == null) {
+      buffer.writeln('\nstructuredLogs: unavailable');
+      return buffer.toString();
+    }
+    buffer
+      ..writeln('\nappSessionId: ${snapshot.appSessionId}')
+      ..writeln('logPersisting: ${snapshot.persisting}')
+      ..writeln('logDegraded: ${snapshot.degraded}')
+      ..writeln('logDirectory: ${snapshot.logDirectory ?? 'unavailable'}')
+      ..writeln('logBytes: ${snapshot.totalBytes}')
+      ..writeln('logWriteFailures: ${snapshot.writeFailureCount}')
+      ..writeln('logDropped: ${jsonEncode(snapshot.droppedByLevel)}')
+      ..writeln('\nrecent events:');
+    const ranks = <String, int>{
+      'DEBUG': 0,
+      'INFO': 1,
+      'WARN': 2,
+      'ERROR': 3,
+      'FATAL': 4,
+    };
+    final minimumRank = ranks[minimumLevel] ?? 1;
+    for (final event in snapshot.events) {
+      final level = event['level']?.toString().toUpperCase() ?? 'INFO';
+      if ((ranks[level] ?? 1) < minimumRank) {
+        continue;
+      }
+      if (errorsOnly && level != 'ERROR' && level != 'FATAL') {
+        continue;
+      }
+      buffer.writeln(jsonEncode(event));
+    }
+    return buffer.toString();
+  }
+
+  String buildDiagnosticSummary() => buildLogText(minimumLevel: 'INFO');
 
   void clearMessage() {
     _message = null;

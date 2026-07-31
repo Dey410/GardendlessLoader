@@ -40,9 +40,15 @@ import zlib
     launcherEngine = engine
     window?.rootViewController = controller
     window?.makeKeyAndVisible()
+    AppLogStore.shared.install(messenger: controller.binaryMessenger)
     registerResourceZipImporter()
     registerGameHost()
     registerExternalBrowser()
+  }
+
+  override func applicationWillTerminate(_ application: UIApplication) {
+    AppLogStore.shared.endSession()
+    super.applicationWillTerminate(application)
   }
 
   private func registerExternalBrowser() {

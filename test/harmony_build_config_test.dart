@@ -125,6 +125,23 @@ void main() {
     expect(importer, contains("'totalFiles'"));
   });
 
+  test('OpenHarmony GameAbility owns LocalStorage before loading GamePage', () {
+    final ability = File(
+      'ohos/entry/src/main/ets/game/GameAbility.ets',
+    ).readAsStringSync();
+
+    expect(ability, contains('new LocalStorage'));
+    expect(ability, isNot(contains('LocalStorage.getShared()')));
+    expect(
+      ability,
+      contains("windowStage.loadContent('pages/GamePage', this.storage)"),
+    );
+    expect(
+      ability.indexOf('new LocalStorage'),
+      lessThan(ability.indexOf("windowStage.loadContent('pages/GamePage'")),
+    );
+  });
+
   test('OpenHarmony native GameHost avoids known ArkTS build blockers', () {
     final gamePage = File(
       'ohos/entry/src/main/ets/pages/GamePage.ets',

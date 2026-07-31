@@ -20,6 +20,7 @@
 		B41000000000000000000008 /* GameScriptBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000007 /* GameScriptBridge.swift */; };
 		B4100000000000000000000C /* GameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4100000000000000000000B /* GameViewController.swift */; };
 		B4100000000000000000000E /* GpNextNativeCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4100000000000000000000D /* GpNextNativeCore.swift */; };
+		B41000000000000000000010 /* AppLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4100000000000000000000F /* AppLogStore.swift */; };
 		ED3FF8138F7359FA8817FB0E /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1079332BB0326BDE69DB7A7 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
 
@@ -46,6 +47,7 @@
 		B41000000000000000000007 /* GameScriptBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameScriptBridge.swift; sourceTree = "<group>"; };
 		B4100000000000000000000B /* GameViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewController.swift; sourceTree = "<group>"; };
 		B4100000000000000000000D /* GpNextNativeCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpNextNativeCore.swift; sourceTree = "<group>"; };
+		B4100000000000000000000F /* AppLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogStore.swift; sourceTree = "<group>"; };
 		E1079332BB0326BDE69DB7A7 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -112,6 +114,7 @@
 				B41000000000000000000007 /* GameScriptBridge.swift */,
 				B4100000000000000000000B /* GameViewController.swift */,
 				B4100000000000000000000D /* GpNextNativeCore.swift */,
+				B4100000000000000000000F /* AppLogStore.swift */,
 				97C146FA1CF9000F007C117D /* Assets.xcassets */,
 				97C146F11CF9000F007C117D /* Main.storyboard */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
@@ -292,6 +295,7 @@
 				B41000000000000000000008 /* GameScriptBridge.swift in Sources */,
 				B4100000000000000000000C /* GameViewController.swift in Sources */,
 				B4100000000000000000000E /* GpNextNativeCore.swift in Sources */,
+				B41000000000000000000010 /* AppLogStore.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

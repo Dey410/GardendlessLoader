@@ -5,6 +5,7 @@ import android.webkit.WebView
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
+import io.github.dey410.gardendlessloader.logging.AppLogStore
 import org.json.JSONObject
 import java.io.File
 
@@ -61,6 +62,39 @@ class GameBridge(
                     activity.persistWatermark(enabled)
                     respond(id, true, JSONObject.NULL)
                 }
+                "host:log" -> {
+                    val args = request.optJSONObject("args") ?: JSONObject()
+                    val event = args.optString("event").takeIf {
+                        it in setOf(
+                            "javascript_uncaught_error",
+                            "javascript_unhandled_rejection",
+                            "javascript_console",
+                        )
+                    } ?: "javascript_console"
+                    AppLogStore.emit(
+                        mapOf(
+                            "source" to "javascript",
+                            "level" to args.optString("level", "ERROR"),
+                            "category" to "game.javascript",
+                            "event" to event,
+                            "outcome" to "failed",
+                            "code" to if (event == "javascript_console") null else event,
+                            "message" to args.optString("message"),
+                            "gameSessionId" to session.sessionId,
+                            "context" to mapOf(
+                                "page" to args.optString("page"),
+                                "line" to args.optInt("line"),
+                                "column" to args.optInt("column"),
+                            ),
+                            "error" to mapOf(
+                                "type" to "JavaScriptError",
+                                "message" to args.optString("message"),
+                                "stackTrace" to args.optString("stack"),
+                            ),
+                        ),
+                    )
+                    respond(id, true, JSONObject.NULL)
+                }
                 "host:export" -> activity.beginExport(id, request.optJSONObject("args") ?: JSONObject())
                 "host:exportBegin" -> activity.beginChunkedExport(id, request.optJSONObject("args") ?: JSONObject())
                 "host:exportChunk" -> activity.appendChunkedExport(id, request.optJSONObject("args") ?: JSONObject())
@@ -75,6 +109,17 @@ class GameBridge(
                 }
             }
         } catch (error: Exception) {
+            AppLogStore.emit(
+                source = "android",
+                level = "ERROR",
+                category = "game.bridge",
+                event = "bridge_call_failed",
+                outcome = "failed",
+                code = "bridge_call_failed",
+                gameSessionId = session.sessionId,
+                context = mapOf("command" to command),
+                error = error,
+            )
             respond(id, false, error("native_error", error.message ?: error.toString()))
         }
     }

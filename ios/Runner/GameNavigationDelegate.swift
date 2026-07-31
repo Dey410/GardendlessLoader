@@ -24,6 +24,7 @@ final class GameNavigationDelegate: NSObject, WKNavigationDelegate {
     }
     guard navigationAction.targetFrame?.isMainFrame != false,
           url.scheme == "https", isAllowedRemoteHost(url.host) else {
+      owner?.navigationWasBlocked()
       decisionHandler(.cancel)
       return
     }
@@ -33,6 +34,14 @@ final class GameNavigationDelegate: NSObject, WKNavigationDelegate {
 
   func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
     owner?.rendererDidTerminate()
+  }
+
+  func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    owner?.navigationDidStart()
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    owner?.navigationDidFinish()
   }
 
   func webView(

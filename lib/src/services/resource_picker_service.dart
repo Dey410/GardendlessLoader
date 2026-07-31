@@ -30,11 +30,15 @@ class ResourcePickerService {
     if (targetDirectory == null) {
       throw ResourcePickerFailure(
         'ZIP import requires an app-private target directory',
+        code: 'invalid_target_directory',
       );
     }
 
     if (!_isSupportedPlatform) {
-      throw ResourcePickerFailure('当前平台不支持 ZIP 导入：$_platformName');
+      throw ResourcePickerFailure(
+        '当前平台不支持 ZIP 导入：$_platformName',
+        code: 'platform_unsupported',
+      );
     }
 
     try {
@@ -46,6 +50,7 @@ class ResourcePickerService {
     } on PlatformException catch (error) {
       throw ResourcePickerFailure(
         error.message ?? '无法导入选择的 ZIP',
+        code: error.code,
       );
     }
   }
@@ -106,9 +111,10 @@ class ResourcePickerService {
 }
 
 class ResourcePickerFailure implements Exception {
-  ResourcePickerFailure(this.message);
+  ResourcePickerFailure(this.message, {this.code = 'import_extract_failed'});
 
   final String message;
+  final String code;
 
   @override
   String toString() => message;

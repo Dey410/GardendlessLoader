@@ -81,6 +81,7 @@ class _HomePageState extends State<HomePage> {
                 onOpenExternalUrl: _openExternalUrl,
                 onCopyResourceRoot: _copyResourceRoot,
                 onCopyDiagnostics: _copyDiagnostics,
+                onDeleteLogHistory: _deleteLogHistory,
                 importProgressExpanded: _importProgressExpanded,
                 onToggleImportProgress: _toggleImportProgress,
               ),
@@ -167,12 +168,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _showDiagnostics() async {
-    if (_selectedSection == _LauncherSection.diagnostics) {
-      return;
+    if (_selectedSection != _LauncherSection.diagnostics) {
+      setState(() {
+        _selectedSection = _LauncherSection.diagnostics;
+      });
     }
-    setState(() {
-      _selectedSection = _LauncherSection.diagnostics;
-    });
+    await widget.controller.refreshLogs();
   }
 
   Future<void> _showAbout() async {
@@ -192,7 +193,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _copyDiagnostics() async {
-    final text = widget.controller.diagnostics().toCopyText();
+    await widget.controller.refreshLogs();
+    final text = widget.controller.buildDiagnosticSummary();
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) {
       return;
@@ -200,6 +202,28 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('日志信息已复制')),
     );
+  }
+
+  Future<void> _deleteLogHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除历史日志？'),
+        content: const Text('只会删除已经结束的历史 Session，当前运行日志会保留。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.controller.deleteLogHistory();
   }
 
   Future<void> _copyResourceRoot() async {
@@ -232,6 +256,7 @@ class _LauncherHome extends StatelessWidget {
     required this.onOpenExternalUrl,
     required this.onCopyResourceRoot,
     required this.onCopyDiagnostics,
+    required this.onDeleteLogHistory,
     required this.importProgressExpanded,
     required this.onToggleImportProgress,
   });
@@ -251,6 +276,7 @@ class _LauncherHome extends StatelessWidget {
   final Future<void> Function(String url) onOpenExternalUrl;
   final Future<void> Function() onCopyResourceRoot;
   final Future<void> Function() onCopyDiagnostics;
+  final Future<void> Function() onDeleteLogHistory;
   final bool importProgressExpanded;
   final VoidCallback onToggleImportProgress;
 
@@ -341,6 +367,7 @@ class _LauncherHome extends StatelessWidget {
                           child: _DiagnosticsLogView(
                             controller: controller,
                             onCopyDiagnostics: onCopyDiagnostics,
+                            onDeleteLogHistory: onDeleteLogHistory,
                           ),
                         ),
                       ),
@@ -632,18 +659,32 @@ class _LauncherMainColumn extends StatelessWidget {
   }
 }
 
-class _DiagnosticsLogView extends StatelessWidget {
+class _DiagnosticsLogView extends StatefulWidget {
   const _DiagnosticsLogView({
     required this.controller,
     required this.onCopyDiagnostics,
+    required this.onDeleteLogHistory,
   });
 
   final AppController controller;
   final Future<void> Function() onCopyDiagnostics;
+  final Future<void> Function() onDeleteLogHistory;
+
+  @override
+  State<_DiagnosticsLogView> createState() => _DiagnosticsLogViewState();
+}
+
+class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
+  String _minimumLevel = 'INFO';
+  bool _errorsOnly = false;
 
   @override
   Widget build(BuildContext context) {
-    final diagnostics = controller.diagnostics();
+    final snapshot = widget.controller.logSnapshot;
+    final text = widget.controller.buildLogText(
+      minimumLevel: _minimumLevel,
+      errorsOnly: _errorsOnly,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -660,36 +701,95 @@ class _DiagnosticsLogView extends StatelessWidget {
                   label: '日志信息',
                 ),
                 const SizedBox(height: 14),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _StatusPill(
+                      label: snapshot == null
+                          ? '日志状态未知'
+                          : snapshot.persisting
+                              ? '持久化正常'
+                              : '内存降级',
+                      color: snapshot?.persisting == true
+                          ? LauncherVisuals.success
+                          : LauncherVisuals.warning,
+                    ),
+                    Text('占用 ${snapshot?.totalBytes ?? 0} B'),
+                    Text('写入失败 ${snapshot?.writeFailureCount ?? 0}'),
+                    DropdownButton<String>(
+                      key: const ValueKey('log-minimum-level-filter'),
+                      value: _minimumLevel,
+                      items: const ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL']
+                          .map(
+                            (level) => DropdownMenuItem(
+                              value: level,
+                              child: Text(level),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null)
+                          setState(() => _minimumLevel = value);
+                      },
+                    ),
+                    FilterChip(
+                      key: const ValueKey('log-errors-only-filter'),
+                      label: const Text('只看错误'),
+                      selected: _errorsOnly,
+                      onSelected: (selected) =>
+                          setState(() => _errorsOnly = selected),
+                    ),
+                    IconButton(
+                      tooltip: '刷新日志',
+                      onPressed: widget.controller.logSnapshotLoading
+                          ? null
+                          : widget.controller.refreshLogs,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Expanded(
-                  child: _DiagnosticsLogBox(text: diagnostics.toLogText()),
+                  child: _DiagnosticsLogBox(text: text),
                 ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 20),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            key: const ValueKey('copy-diagnostics-button'),
-            onPressed: onCopyDiagnostics,
-            icon: const Icon(Icons.copy_rounded),
-            label: const Text('复制日志信息'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(178, 52),
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              backgroundColor: LauncherVisuals.accentBlue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              textStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
-                  ),
-              elevation: 0,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            OutlinedButton.icon(
+              key: const ValueKey('delete-log-history-button'),
+              onPressed: widget.onDeleteLogHistory,
+              icon: const Icon(Icons.delete_outline_rounded),
+              label: const Text('删除历史日志'),
             ),
-          ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              key: const ValueKey('copy-diagnostics-button'),
+              onPressed: widget.onCopyDiagnostics,
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('复制诊断摘要'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(178, 52),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                backgroundColor: LauncherVisuals.accentBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                textStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                    ),
+                elevation: 0,
+              ),
+            ),
+          ],
         ),
       ],
     );

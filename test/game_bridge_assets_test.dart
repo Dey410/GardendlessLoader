@@ -6,6 +6,7 @@ void main() {
   const scripts = [
     'transport.js',
     'bootstrap.js',
+    'logging.js',
     'touch_patch.js',
     'export_download_patch.js',
     'gp_next_core.js',

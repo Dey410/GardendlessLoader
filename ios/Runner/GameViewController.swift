@@ -120,6 +120,11 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
 
   override func viewDidLoad() {
     super.viewDidLoad()
+    AppLogStore.shared.emit(
+      source: "ios", level: "INFO", category: "game.host",
+      event: "game_host_created", outcome: "succeeded",
+      gameSessionId: session.sessionId
+    )
     webView.load(URLRequest(url: session.entryURL, cachePolicy: .useProtocolCachePolicy))
   }
 
@@ -143,6 +148,37 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
       options: [.prettyPrinted, .sortedKeys]
     )
     try data.write(to: output, options: .atomic)
+  }
+
+  func bridgeRequestedLog(id: String, arguments: [String: Any]) {
+    let allowed = [
+      "javascript_uncaught_error",
+      "javascript_unhandled_rejection",
+      "javascript_console",
+    ]
+    let requested = arguments["event"] as? String ?? "javascript_console"
+    let event = allowed.contains(requested) ? requested : "javascript_console"
+    AppLogStore.shared.emit([
+      "source": "javascript",
+      "level": arguments["level"] as? String ?? "ERROR",
+      "category": "game.javascript",
+      "event": event,
+      "outcome": "failed",
+      "code": event == "javascript_console" ? NSNull() : event,
+      "message": arguments["message"] as? String ?? "",
+      "gameSessionId": session.sessionId,
+      "context": [
+        "page": arguments["page"] as? String ?? "",
+        "line": arguments["line"] as? Int ?? 0,
+        "column": arguments["column"] as? Int ?? 0,
+      ],
+      "error": [
+        "type": "JavaScriptError",
+        "message": arguments["message"] as? String ?? "",
+        "stackTrace": arguments["stack"] as? String ?? "",
+      ],
+    ])
+    scriptBridge.complete(id: id, value: NSNull())
   }
 
   func bridgeRequestedExport(command: String, id: String, arguments: [String: Any]) {
@@ -420,17 +456,61 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
   }
 
   func rendererDidTerminate() {
+    AppLogStore.shared.emit(
+      source: "ios", level: "ERROR", category: "game.webview",
+      event: "webview_render_process_gone", outcome: "failed",
+      code: "webview_render_process_gone", gameSessionId: session.sessionId
+    )
     exit(reason: "rendererGone", message: "iOS WebContent process terminated")
   }
 
   func navigationDidFail(_ error: Error) {
+    AppLogStore.shared.emit(
+      source: "ios", level: "ERROR", category: "game.webview",
+      event: "webview_page_load_finished", outcome: "failed",
+      code: "webview_page_load_failed", message: error.localizedDescription,
+      gameSessionId: session.sessionId, error: error
+    )
     guard webView.url == nil else { return }
     exit(reason: "launchFailed", message: error.localizedDescription)
+  }
+
+  func navigationDidStart() {
+    AppLogStore.shared.emit(
+      source: "ios", level: "INFO", category: "game.webview",
+      event: "webview_page_load_started", outcome: "started",
+      gameSessionId: session.sessionId
+    )
+  }
+
+  func navigationDidFinish() {
+    AppLogStore.shared.emit(
+      source: "ios", level: "INFO", category: "game.webview",
+      event: "webview_page_load_finished", outcome: "succeeded",
+      gameSessionId: session.sessionId
+    )
+  }
+
+  func navigationWasBlocked() {
+    AppLogStore.shared.emit(
+      source: "ios", level: "WARN", category: "game.security",
+      event: "navigation_blocked", outcome: "observed",
+      gameSessionId: session.sessionId
+    )
   }
 
   private func exit(reason: String, message: String?) {
     guard !exiting else { return }
     exiting = true
+    AppLogStore.shared.emit(
+      source: "ios",
+      level: reason == "rendererGone" || reason == "launchFailed" ? "ERROR" : "INFO",
+      category: "game.host", event: "game_host_finished",
+      outcome: reason == "rendererGone" || reason == "launchFailed" ? "failed" : "succeeded",
+      message: message, gameSessionId: session.sessionId,
+      context: ["reason": reason]
+    )
+    _ = AppLogStore.shared.flush(timeout: 0.5)
     writeExitResult(reason: reason, message: message)
     cleanupWebView()
     onExit()
@@ -491,6 +571,7 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
     var names = [
       "transport.js",
       "bootstrap.js",
+      "logging.js",
       "auto_sun.js",
       "touch_patch.js",
       "export_download_patch.js",

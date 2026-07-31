@@ -6,6 +6,7 @@ protocol GameScriptBridgeDelegate: AnyObject {
   func bridgeRequestedExport(command: String, id: String, arguments: [String: Any])
   func bridgeRequestedGpNext(id: String, request: [String: Any])
   func bridgeRequestedWatermark(_ enabled: Bool) throws
+  func bridgeRequestedLog(id: String, arguments: [String: Any])
 }
 
 final class GameScriptBridge: NSObject, WKScriptMessageHandlerWithReply {
@@ -65,6 +66,11 @@ final class GameScriptBridge: NSObject, WKScriptMessageHandlerWithReply {
         let arguments = request["args"] as? [String: Any]
         try delegate?.bridgeRequestedWatermark(arguments?["enabled"] as? Bool ?? true)
         complete(id: id, value: NSNull())
+      case "host:log":
+        delegate?.bridgeRequestedLog(
+          id: id,
+          arguments: request["args"] as? [String: Any] ?? [:]
+        )
       case "host:export", "host:exportBegin", "host:exportChunk", "host:exportCommit", "host:exportAbort":
         delegate?.bridgeRequestedExport(
           command: command,

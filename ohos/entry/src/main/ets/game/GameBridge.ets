@@ -4,6 +4,7 @@ import picker from '@ohos.file.picker';
 import { promptAction } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
+import { appLogStore } from '../logging/AppLogStore';
 import { GameSession } from './GameSession';
 import { GpNextNativeCore, GpNextValue } from './GpNextNativeCore';
 
@@ -25,6 +26,13 @@ interface BridgeArguments {
   index?: number;
   data?: string;
   totalBytes?: number;
+  event?: string;
+  level?: string;
+  message?: string;
+  stack?: string;
+  page?: string;
+  line?: number;
+  column?: number;
 }
 
 interface BridgeError {
@@ -104,6 +112,39 @@ export class GameBridge {
           this.complete(request.id, null);
         } catch (error) {
           this.fail(request.id, 'native_error', (error as Error).message);
+        }
+        break;
+      case 'host:log':
+        {
+          const args = request.args ?? {};
+          const requested = args.event ?? 'javascript_console';
+          const allowed = [
+            'javascript_uncaught_error',
+            'javascript_unhandled_rejection',
+            'javascript_console',
+          ];
+          const event = allowed.includes(requested) ? requested : 'javascript_console';
+          appLogStore.emit({
+            source: 'javascript',
+            level: args.level ?? 'ERROR',
+            category: 'game.javascript',
+            event: event,
+            outcome: 'failed',
+            code: event === 'javascript_console' ? undefined : event,
+            message: args.message ?? '',
+            gameSessionId: this.session.sessionId,
+            context: {
+              page: args.page ?? '',
+              line: args.line ?? 0,
+              column: args.column ?? 0,
+            },
+            error: {
+              type: 'JavaScriptError',
+              message: args.message ?? '',
+              stackTrace: args.stack ?? '',
+            },
+          });
+          this.complete(request.id, null);
         }
         break;
       case 'host:export':

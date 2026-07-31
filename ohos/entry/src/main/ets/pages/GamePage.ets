@@ -6,6 +6,7 @@ import { webview } from '@kit.ArkWeb';
 import { GameBridge } from '../game/GameBridge';
 import { NativeGameResourceHandler } from '../game/NativeGameResourceHandler';
 import { GameSession } from '../game/GameSession';
+import { appLogStore } from '../logging/AppLogStore';
 
 let storage = LocalStorage.getShared();
 
@@ -26,6 +27,11 @@ struct GamePage {
   aboutToAppear(): void {
     try {
       this.session = new GameSession(this.sessionJson);
+      appLogStore.emit({
+        source: 'ohos', level: 'INFO', category: 'game.host',
+        event: 'game_host_created', outcome: 'succeeded',
+        gameSessionId: this.session.sessionId,
+      });
       this.resourceHandler = new NativeGameResourceHandler(this.session);
       this.bridge = new GameBridge(this.controller, this.context, this.session, (): void => {
         this.returnToLauncher('userReturned', null);
@@ -79,7 +85,18 @@ struct GamePage {
               permission,
             );
             this.controller.loadUrl(session.entryUrl);
+            appLogStore.emit({
+              source: 'ohos', level: 'INFO', category: 'game.webview',
+              event: 'webview_page_load_started', outcome: 'started',
+              gameSessionId: session.sessionId,
+            });
           } catch (error) {
+            appLogStore.emit({
+              source: 'ohos', level: 'ERROR', category: 'game.webview',
+              event: 'webview_page_load_finished', outcome: 'failed',
+              code: 'webview_page_load_failed', message: (error as Error).message,
+              gameSessionId: session.sessionId,
+            });
             this.returnToLauncher('launchFailed', (error as Error).message);
           }
         })
@@ -94,6 +111,13 @@ struct GamePage {
           if (url.startsWith('https://')) {
             this.context.startAbility({ action: 'ohos.want.action.viewData', uri: url })
               .catch((_error: Error): void => {});
+          }
+          if (this.session != null) {
+            appLogStore.emit({
+              source: 'ohos', level: 'WARN', category: 'game.security',
+              event: 'navigation_blocked', outcome: 'observed',
+              gameSessionId: this.session.sessionId,
+            });
           }
           return true;
         })
@@ -113,6 +137,14 @@ struct GamePage {
           const message = event == null
             ? 'ArkWeb renderer exited'
             : `ArkWeb renderer exited: ${event.renderExitReason}`;
+          if (this.session != null) {
+            appLogStore.emit({
+              source: 'ohos', level: 'ERROR', category: 'game.webview',
+              event: 'webview_render_process_gone', outcome: 'failed',
+              code: 'webview_render_process_gone', message: message,
+              gameSessionId: this.session.sessionId,
+            });
+          }
           this.returnToLauncher('rendererGone', message);
         });
     }
@@ -166,6 +198,7 @@ struct GamePage {
     const names: string[] = [
       'transport.js',
       'bootstrap.js',
+      'logging.js',
       'auto_sun.js',
       'touch_patch.js',
       'export_download_patch.js',
@@ -206,6 +239,14 @@ struct GamePage {
     this.exiting = true;
     const session = this.session;
     if (session != null) {
+      appLogStore.emit({
+        source: 'ohos',
+        level: reason === 'rendererGone' || reason === 'launchFailed' ? 'ERROR' : 'INFO',
+        category: 'game.host', event: 'game_host_finished',
+        outcome: reason === 'rendererGone' || reason === 'launchFailed' ? 'failed' : 'succeeded',
+        message: message ?? undefined, gameSessionId: session.sessionId,
+        context: { reason: reason },
+      });
       this.writeExitResult(session.appRoot, session.sessionId, reason, message);
     }
     this.bridge?.destroy();

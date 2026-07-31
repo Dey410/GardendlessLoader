@@ -20,6 +20,7 @@ import android.webkit.WebView
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import io.github.dey410.gardendlessloader.MainActivity
+import io.github.dey410.gardendlessloader.logging.AppLogStore
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -49,8 +50,18 @@ class GameActivity : Activity() {
         val rawSession = intent.getStringExtra(EXTRA_SESSION)
         try {
             session = GameSessionCodec.decode(requireNotNull(rawSession) { "Missing game session" })
+            AppLogStore.emit(
+                source = "android", level = "INFO", category = "game.host",
+                event = "game_host_created", outcome = "succeeded",
+                gameSessionId = session.sessionId,
+            )
             configureWebView()
         } catch (error: Exception) {
+            AppLogStore.emit(
+                source = "android", level = "ERROR", category = "game.host",
+                event = "game_host_launch_finished", outcome = "failed",
+                code = "game_host_launch_failed", error = error,
+            )
             writeExitResult(
                 rawSession?.let { runCatching { JSONObject(it).optString("sessionId") }.getOrNull() }
                     ?: "unknown",
@@ -130,6 +141,7 @@ class GameActivity : Activity() {
         val names = buildList {
             add("transport.js")
             add("bootstrap.js")
+            add("logging.js")
             add("auto_sun.js")
             add("touch_patch.js")
             add("export_download_patch.js")
@@ -387,6 +399,18 @@ class GameActivity : Activity() {
     fun returnToLauncher(reason: GameExitReason, message: String?) {
         if (returning) return
         returning = true
+        AppLogStore.emit(
+            source = "android",
+            level = if (reason == GameExitReason.RENDERER_GONE || reason == GameExitReason.LAUNCH_FAILED) "ERROR" else "INFO",
+            category = "game.host",
+            event = "game_host_finished",
+            outcome = if (reason == GameExitReason.RENDERER_GONE || reason == GameExitReason.LAUNCH_FAILED) "failed" else "succeeded",
+            code = if (reason == GameExitReason.RENDERER_GONE) "webview_render_process_gone" else null,
+            message = message,
+            gameSessionId = session.sessionId,
+            context = mapOf("reason" to reason.wireName),
+        )
+        AppLogStore.flush(500)
         writeExitResult(session.sessionId, reason, message, session.resourceRoot)
         startActivity(Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)

@@ -14,6 +14,7 @@ let package = Package(
       path: "Runner",
       exclude: [
         "AppDelegate.swift",
+        "AppLogStore.swift",
         "Assets.xcassets",
         "Base.lproj",
         "GameNavigationDelegate.swift",

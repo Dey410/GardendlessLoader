@@ -14,7 +14,7 @@ enum LogOutcome {
   observed,
 }
 
-enum LogContextValueType { text, path, url }
+enum LogContextValueType { text, path, url, integer, boolean }
 
 class LogEventSchema {
   const LogEventSchema({required this.contextFields});
@@ -32,6 +32,12 @@ class LogEventError {
   final String type;
   final String message;
   final String stackTrace;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'type': type,
+        'message': message,
+        'stackTrace': stackTrace,
+      };
 }
 
 class LogEvent {
@@ -46,6 +52,8 @@ class LogEvent {
     required this.outcome,
     required this.appSessionId,
     this.code,
+    this.message,
+    this.gameSessionId,
     this.operationId,
     this.durationMs,
     this.context,
@@ -60,12 +68,88 @@ class LogEvent {
   final String category;
   final String event;
   final LogOutcome outcome;
+  @override
   final String appSessionId;
   final String? code;
+  final String? message;
+  final String? gameSessionId;
   final String? operationId;
   final int? durationMs;
   final Map<String, Object?>? context;
   final LogEventError? error;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'schemaVersion': 1,
+        'timestampUtc': timestampUtc.toIso8601String(),
+        'monotonicMs': monotonicMs,
+        'sequence': sequence,
+        'level': level.name.toUpperCase(),
+        'source': source.name,
+        'category': category,
+        'event': event,
+        'outcome': outcome.name,
+        'appSessionId': appSessionId,
+        if (code != null) 'code': code,
+        if (message != null) 'message': message,
+        if (gameSessionId != null) 'gameSessionId': gameSessionId,
+        if (operationId != null) 'operationId': operationId,
+        if (durationMs != null) 'durationMs': durationMs,
+        if (context != null) 'context': context,
+        if (error != null) 'error': error!.toJson(),
+      };
+}
+
+class AppLogSnapshot {
+  const AppLogSnapshot({
+    required this.appSessionId,
+    required this.persisting,
+    required this.degraded,
+    required this.logDirectory,
+    required this.totalBytes,
+    required this.writeFailureCount,
+    required this.droppedByLevel,
+    required this.events,
+  });
+
+  factory AppLogSnapshot.fromMap(Map<Object?, Object?> map) {
+    final rawEvents = map['events'];
+    final rawDropped = map['droppedByLevel'];
+    return AppLogSnapshot(
+      appSessionId: map['appSessionId'] as String? ?? 'unavailable',
+      persisting: map['persisting'] as bool? ?? false,
+      degraded: map['degraded'] as bool? ?? true,
+      logDirectory: map['logDirectory'] as String?,
+      totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
+      writeFailureCount: (map['writeFailureCount'] as num?)?.toInt() ?? 0,
+      droppedByLevel: rawDropped is Map
+          ? rawDropped.map(
+              (key, value) => MapEntry(
+                key.toString(),
+                (value as num?)?.toInt() ?? 0,
+              ),
+            )
+          : const <String, int>{},
+      events: rawEvents is List
+          ? rawEvents
+              .whereType<Map>()
+              .map(
+                (event) => Map<String, Object?>.unmodifiable(
+                  event.map((key, value) => MapEntry(key.toString(), value)),
+                ),
+              )
+              .toList(growable: false)
+          : const <Map<String, Object?>>[],
+    );
+  }
+
+  final String appSessionId;
+  final bool persisting;
+  final bool degraded;
+  final String? logDirectory;
+  final int totalBytes;
+  final int writeFailureCount;
+  final Map<String, int> droppedByLevel;
+  final List<Map<String, Object?>> events;
 }
 
 abstract interface class LogOperation {
@@ -75,12 +159,16 @@ abstract interface class LogOperation {
 }
 
 abstract interface class AppLogger {
+  String get appSessionId;
+
   void emit({
     required LogLevel level,
     required String category,
     required String event,
     required LogOutcome outcome,
     String? code,
+    String? message,
+    String? gameSessionId,
     String? operationId,
     int? durationMs,
     Map<String, Object?>? context,
@@ -94,7 +182,14 @@ abstract interface class AppLogger {
     required String startedEvent,
     required String finishedEvent,
     String? failureCode,
+    String? gameSessionId,
   });
+
+  Future<AppLogSnapshot> loadSnapshot({int limit = 500});
+
+  Future<void> flush({Duration timeout = const Duration(milliseconds: 500)});
+
+  Future<void> deleteHistory();
 }
 
 class InMemoryAppLogger implements AppLogger {
@@ -104,6 +199,7 @@ class InMemoryAppLogger implements AppLogger {
     this.appRoot,
     this.eventSchemas = const <String, LogEventSchema>{},
     this.recentEventCapacity = 500,
+    this.onEvent,
     int Function()? monotonicNowMs,
   }) : assert(recentEventCapacity > 0) {
     _stopwatch.start();
@@ -116,6 +212,7 @@ class InMemoryAppLogger implements AppLogger {
   final String? appRoot;
   final Map<String, LogEventSchema> eventSchemas;
   final int recentEventCapacity;
+  final void Function(LogEvent event)? onEvent;
   final Stopwatch _stopwatch = Stopwatch();
   late final int Function() _monotonicNowMs;
   late final int _monotonicOriginMs;
@@ -127,47 +224,74 @@ class InMemoryAppLogger implements AppLogger {
   int get _elapsedMs => _monotonicNowMs() - _monotonicOriginMs;
 
   @override
+  Future<AppLogSnapshot> loadSnapshot({int limit = 500}) async {
+    return AppLogSnapshot(
+      appSessionId: appSessionId,
+      persisting: false,
+      degraded: false,
+      logDirectory: null,
+      totalBytes: 0,
+      writeFailureCount: 0,
+      droppedByLevel: const <String, int>{},
+      events: events.take(limit).map((event) => event.toJson()).toList(),
+    );
+  }
+
+  @override
+  Future<void> flush(
+      {Duration timeout = const Duration(milliseconds: 500)}) async {}
+
+  @override
+  Future<void> deleteHistory() async {
+    _events.clear();
+  }
+
+  @override
   void emit({
     required LogLevel level,
     required String category,
     required String event,
     required LogOutcome outcome,
     String? code,
+    String? message,
+    String? gameSessionId,
     String? operationId,
     int? durationMs,
     Map<String, Object?>? context,
     Object? error,
     StackTrace? stackTrace,
   }) {
-    _events.add(
-      LogEvent(
-        timestampUtc: DateTime.now().toUtc(),
-        monotonicMs: _elapsedMs,
-        sequence: _nextSequence,
-        level: level,
-        source: source,
-        category: category,
-        event: event,
-        outcome: outcome,
-        appSessionId: appSessionId,
-        code: code,
-        operationId: operationId,
-        durationMs: durationMs,
-        context: _sanitizeContext(event, context),
-        error: error == null
-            ? null
-            : LogEventError(
-                type: error.runtimeType.toString(),
-                message: error.toString(),
-                stackTrace: stackTrace?.toString() ?? '',
-              ),
-      ),
+    final logEvent = LogEvent(
+      timestampUtc: DateTime.now().toUtc(),
+      monotonicMs: _elapsedMs,
+      sequence: _nextSequence,
+      level: level,
+      source: source,
+      category: category,
+      event: event,
+      outcome: outcome,
+      appSessionId: appSessionId,
+      code: code,
+      message: message == null ? null : _sanitizeText(message, 2048),
+      gameSessionId: gameSessionId,
+      operationId: operationId,
+      durationMs: durationMs,
+      context: _sanitizeContext(event, context),
+      error: error == null
+          ? null
+          : LogEventError(
+              type: error.runtimeType.toString(),
+              message: _sanitizeText(error.toString(), 4096),
+              stackTrace: _sanitizeText(stackTrace?.toString() ?? '', 8192),
+            ),
     );
+    _events.add(logEvent);
     _nextSequence += 1;
     if (_events.length > recentEventCapacity) {
       _events.removeAt(0);
       evictedRecentEventCount += 1;
     }
+    onEvent?.call(logEvent);
   }
 
   @override
@@ -177,6 +301,7 @@ class InMemoryAppLogger implements AppLogger {
     required String startedEvent,
     required String finishedEvent,
     String? failureCode,
+    String? gameSessionId,
   }) {
     final startedAtMs = _elapsedMs;
     emit(
@@ -192,6 +317,7 @@ class InMemoryAppLogger implements AppLogger {
       category: category,
       finishedEvent: finishedEvent,
       failureCode: failureCode,
+      gameSessionId: gameSessionId,
       startedAtMs: startedAtMs,
     );
   }
@@ -207,14 +333,18 @@ class InMemoryAppLogger implements AppLogger {
     final sanitized = <String, Object?>{};
     for (final field in schema.contextFields.entries) {
       final value = context[field.key];
-      if (value is! String) {
-        continue;
-      }
-      sanitized[field.key] = switch (field.value) {
-        LogContextValueType.text => value,
-        LogContextValueType.path => _sanitizePath(value),
-        LogContextValueType.url => _sanitizeUrl(value),
+      final sanitizedValue = switch (field.value) {
+        LogContextValueType.text when value is String =>
+          _sanitizeText(value, 2048),
+        LogContextValueType.path when value is String => _sanitizePath(value),
+        LogContextValueType.url when value is String => _sanitizeUrl(value),
+        LogContextValueType.integer when value is int => value,
+        LogContextValueType.boolean when value is bool => value,
+        _ => null,
       };
+      if (sanitizedValue != null) {
+        sanitized[field.key] = sanitizedValue;
+      }
     }
     return Map<String, Object?>.unmodifiable(sanitized);
   }
@@ -250,6 +380,23 @@ class InMemoryAppLogger implements AppLogger {
       path: uri.path,
     ).toString();
   }
+
+  String _sanitizeText(String value, int maxLength) {
+    var sanitized = value
+        .replaceAllMapped(
+          RegExp(
+            r'(token|authorization|cookie|password|passwd|secret|apiKey)\s*[:=]\s*[^\s,;]+',
+            caseSensitive: false,
+          ),
+          (match) => '${match.group(1)}=<redacted>',
+        )
+        .replaceAll(RegExp(r'[A-Za-z]:\\Users\\[^\\\s]+'), '<user-home>')
+        .replaceAll(RegExp(r'/(Users|home)/[^/\s]+'), '/<user-home>');
+    if (sanitized.length > maxLength) {
+      sanitized = '${sanitized.substring(0, maxLength)}...[truncated]';
+    }
+    return sanitized;
+  }
 }
 
 class _InMemoryLogOperation implements LogOperation {
@@ -259,6 +406,7 @@ class _InMemoryLogOperation implements LogOperation {
     required this.category,
     required this.finishedEvent,
     required this.failureCode,
+    required this.gameSessionId,
     required this.startedAtMs,
   });
 
@@ -270,6 +418,7 @@ class _InMemoryLogOperation implements LogOperation {
   final String category;
   final String finishedEvent;
   final String? failureCode;
+  final String? gameSessionId;
   final int startedAtMs;
 
   @override
@@ -281,6 +430,7 @@ class _InMemoryLogOperation implements LogOperation {
         category: category,
         event: finishedEvent,
         outcome: LogOutcome.succeeded,
+        gameSessionId: gameSessionId,
         operationId: operationId,
         durationMs: logger._elapsedMs - startedAtMs,
       );
@@ -292,6 +442,7 @@ class _InMemoryLogOperation implements LogOperation {
         event: finishedEvent,
         outcome: LogOutcome.failed,
         code: failureCode,
+        gameSessionId: gameSessionId,
         operationId: operationId,
         durationMs: logger._elapsedMs - startedAtMs,
         error: error,
