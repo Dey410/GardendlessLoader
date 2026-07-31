@@ -80,6 +80,7 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
 
   override func loadView() {
     let configuration = WKWebViewConfiguration()
+    _ = GDLDisableWebKit60FPSPreference(configuration)
     configuration.websiteDataStore = .default()
     configuration.defaultWebpagePreferences.allowsContentJavaScript = true
     configuration.mediaTypesRequiringUserActionForPlayback = []

@@ -25,6 +25,7 @@ let package = Package(
         "Info.plist",
         "Runner-Bridging-Header.h",
         "SceneDelegate.swift",
+        "WebKitHighRefreshRate.h",
       ],
       sources: [
         "GameResourceSchemeHandler.swift",
