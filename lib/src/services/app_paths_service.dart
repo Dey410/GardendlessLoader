@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../constants.dart';
 import '../models.dart';
+import 'app_logger.dart';
 
 const _androidMediaIgnoreFileName = '.nomedia';
 
@@ -17,36 +18,88 @@ class AppPathsService {
     String? platformName,
     DirectoryProvider? documentsDirectoryProvider,
     NullableDirectoryProvider? externalStorageDirectoryProvider,
+    AppLogger? logger,
   })  : _rootOverride = rootOverride,
         _platformName = platformName ?? Platform.operatingSystem,
         _documentsDirectoryProvider =
             documentsDirectoryProvider ?? getApplicationDocumentsDirectory,
         _externalStorageDirectoryProvider =
-            externalStorageDirectoryProvider ?? getExternalStorageDirectory;
+            externalStorageDirectoryProvider ?? getExternalStorageDirectory,
+        _logger = logger ?? AppLogger.instance;
 
   final Directory? _rootOverride;
   final String _platformName;
   final DirectoryProvider _documentsDirectoryProvider;
   final NullableDirectoryProvider _externalStorageDirectoryProvider;
+  final AppLogger _logger;
 
   Future<AppPaths> ensureInitialized() async {
+    final operationId = _logger.nextOperationId('paths-initialize');
+    _logger.info(
+      'paths.initialize',
+      'Initializing application directories',
+      operationId: operationId,
+      data: <String, Object?>{
+        'platform': _platformName,
+        'hasRootOverride': _rootOverride != null,
+      },
+    );
+
     if (_rootOverride != null) {
       final paths = _buildPaths(_rootOverride);
       await _createPaths(paths);
+      await _initializePersistentLogging(paths);
+      _logger.info(
+        'paths.initialize',
+        'Application directories initialized from override',
+        operationId: operationId,
+        data: <String, Object?>{'root': paths.root.path},
+      );
       return paths;
     }
 
     Object? lastError;
-    for (final root in await _defaultRoots()) {
+    StackTrace? lastStackTrace;
+    final roots = await _defaultRoots();
+    for (final root in roots) {
       final paths = _buildPaths(root);
       try {
         await _createPaths(paths);
+        await _initializePersistentLogging(paths);
+        _logger.info(
+          'paths.initialize',
+          'Application directories initialized',
+          operationId: operationId,
+          data: <String, Object?>{'root': paths.root.path},
+        );
         return paths;
-      } catch (error) {
+      } catch (error, stackTrace) {
         lastError = error;
+        lastStackTrace = stackTrace;
+        _logger.warning(
+          'paths.initialize',
+          'Application directory candidate failed',
+          operationId: operationId,
+          code: 'path_candidate_failed',
+          error: error,
+          stackTrace: stackTrace,
+          data: <String, Object?>{'root': root.path},
+        );
       }
     }
 
+    _logger.error(
+      'paths.initialize',
+      'All application directory candidates failed',
+      operationId: operationId,
+      code: 'path_initialization_failed',
+      error: lastError,
+      stackTrace: lastStackTrace,
+      data: <String, Object?>{
+        'candidateCount': roots.length,
+        'platform': _platformName,
+      },
+    );
     throw StateError('Unable to initialize app directories: $lastError');
   }
 
@@ -66,6 +119,12 @@ class AppPathsService {
     await paths.slotBDir.create(recursive: true);
     await paths.gpNextPacksDir.create(recursive: true);
     await paths.gpNextPatchesDir.create(recursive: true);
+  }
+
+  Future<void> _initializePersistentLogging(AppPaths paths) {
+    return _logger.initialize(
+      directory: Directory(p.join(paths.root.path, 'logs')),
+    );
   }
 
   Future<List<Directory>> _defaultRoots() async {
