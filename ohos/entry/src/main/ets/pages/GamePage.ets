@@ -38,10 +38,24 @@ struct GamePage {
       this.bridge = new GameBridge(this.controller, this.context, this.session, (): void => {
         this.returnToLauncher('userReturned', null);
       });
-      this.documentStartScripts = [{
-        script: this.buildDocumentStartScript(this.session),
-        scriptRules: [`${GameSession.ORIGIN}/*`],
-      }];
+      this.documentStartScripts = [
+        {
+          script: 'console.info("[DEBUG-OHOS-SCRIPT-RULE] all")',
+          scriptRules: ['*'],
+        },
+        {
+          script: 'console.info("[DEBUG-OHOS-SCRIPT-RULE] exact")',
+          scriptRules: [this.session.entryUrl],
+        },
+        {
+          script: 'console.info("[DEBUG-OHOS-SCRIPT-RULE] origin")',
+          scriptRules: [GameSession.ORIGIN],
+        },
+        {
+          script: this.buildDocumentStartScript(this.session),
+          scriptRules: [`${GameSession.ORIGIN}/*`],
+        },
+      ];
     } catch (error) {
       const launchError = error as Error;
       const failureContext: AppLogContext = { stage: 'game_page_about_to_appear' };
@@ -88,7 +102,10 @@ struct GamePage {
             return;
           }
           try {
-            this.debugWebView(`controller_attached entry=${this.safeDebugUrl(session.entryUrl)}`);
+            this.debugWebView(
+              `controller_attached entry=${this.safeDebugUrl(session.entryUrl)} ` +
+              `document_start_scripts=${this.documentStartScripts.length}`,
+            );
             resourceHandler.attach(this.controller);
             this.debugWebView('scheme_handlers_attached');
             const permission =
