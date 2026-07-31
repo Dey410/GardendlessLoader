@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
+import 'package:gardendless_loader/src/logging/app_logger.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
@@ -13,6 +14,53 @@ import 'package:gardendless_loader/src/services/resource_validator.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test('initialization failure keeps user feedback and records diagnostics',
+      () async {
+    final logger = InMemoryAppLogger(
+      appSessionId: 'app-session-1',
+      source: LogSource.dart,
+    );
+    final controller = AppController(
+      pathsService: AppPathsService(platformName: 'unsupported'),
+      appLogger: logger,
+    );
+
+    await controller.initialize();
+
+    expect(
+      <String, Object?>{
+        'showsFailure': controller.message?.startsWith('启动失败：') ?? false,
+        'events': logger.events
+            .map(
+              (event) => <String, Object?>{
+                'event': event.event,
+                'outcome': event.outcome.name,
+                'code': event.code,
+                'operationId': event.operationId,
+              },
+            )
+            .toList(),
+      },
+      <String, Object?>{
+        'showsFailure': true,
+        'events': <Map<String, Object?>>[
+          {
+            'event': 'app_initialization_started',
+            'outcome': 'started',
+            'code': null,
+            'operationId': 'app-initialize',
+          },
+          {
+            'event': 'app_initialization_finished',
+            'outcome': 'failed',
+            'code': 'app_initialization_failed',
+            'operationId': 'app-initialize',
+          },
+        ],
+      },
+    );
+  });
+
   test('enables the game watermark by default', () async {
     final root = await Directory.systemTemp.createTemp('gl_settings_default_');
     addTearDown(() async {

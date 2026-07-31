@@ -8,6 +8,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'constants.dart';
 import 'game_host/game_host.dart';
 import 'game_host/game_session_store.dart';
+import 'logging/app_logger.dart';
 import 'models.dart';
 import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
@@ -34,6 +35,7 @@ class AppController extends ChangeNotifier {
     GameHost? gameHost,
     GameHostPlatform? gameHostPlatform,
     String Function()? gameSessionIdFactory,
+    AppLogger? appLogger,
     DiagnosticsService? diagnosticsService,
     AnnouncementService? announcementService,
     AboutContentService? aboutContentService,
@@ -49,6 +51,7 @@ class AppController extends ChangeNotifier {
         _gameHost = gameHost ?? GameHostRouter.platformChannel(),
         _gameHostPlatform = gameHostPlatform,
         _gameSessionIdFactory = gameSessionIdFactory ?? _newGameSessionId,
+        _appLogger = appLogger,
         _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
         _announcementService = announcementService ?? AnnouncementService(),
         _aboutContentService = aboutContentService ?? AboutContentService(),
@@ -76,6 +79,7 @@ class AppController extends ChangeNotifier {
   final GameHost _gameHost;
   final GameHostPlatform? _gameHostPlatform;
   final String Function() _gameSessionIdFactory;
+  final AppLogger? _appLogger;
   final DiagnosticsService _diagnosticsService;
   final AnnouncementService _announcementService;
   final AboutContentService _aboutContentService;
@@ -208,32 +212,47 @@ class AppController extends ChangeNotifier {
     _busy = true;
     notifyListeners();
     try {
-      _paths = await _pathsService.ensureInitialized();
-      _gameSessionStore = GameSessionStore(_paths!.root);
-      final exitResult = await _gameSessionStore!.consumeExitResult();
-      _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
-      _watermarkEnabled = await _appSettingsStore!.readWatermarkEnabled();
-      _manifestStore = ManifestStore(_paths!.manifestFile);
-      _manifest = await _manifestStore!.read();
-      final interruptedTransaction =
-          _manifest.transactionState != TransactionState.idle;
-      _manifest = await _importService.recoverStartupTransaction(
-        paths: _paths!,
-        manifestStore: _manifestStore!,
-      );
-      await _diagnosticsService.initialize();
-      await _loadCurrentAppVersion();
-      await refresh();
-      if (_manifest.transactionState == TransactionState.cleaningOldSlot) {
-        _message = '游戏资源可用，旧槽清理将在下次启动重试';
-      } else if (interruptedTransaction) {
-        _message = '上次导入意外中断，已清理未完成文件';
-      } else if (exitResult?.reason == GameExitReason.rendererGone) {
-        _message = exitResult?.message ?? '游戏渲染进程已退出';
-      } else if (exitResult?.reason == GameExitReason.launchFailed) {
-        _message = exitResult?.message ?? '原生游戏宿主启动失败';
+      Future<void> initializeCore() async {
+        _paths = await _pathsService.ensureInitialized();
+        _gameSessionStore = GameSessionStore(_paths!.root);
+        final exitResult = await _gameSessionStore!.consumeExitResult();
+        _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
+        _watermarkEnabled = await _appSettingsStore!.readWatermarkEnabled();
+        _manifestStore = ManifestStore(_paths!.manifestFile);
+        _manifest = await _manifestStore!.read();
+        final interruptedTransaction =
+            _manifest.transactionState != TransactionState.idle;
+        _manifest = await _importService.recoverStartupTransaction(
+          paths: _paths!,
+          manifestStore: _manifestStore!,
+        );
+        await _diagnosticsService.initialize();
+        await _loadCurrentAppVersion();
+        await refresh();
+        if (_manifest.transactionState == TransactionState.cleaningOldSlot) {
+          _message = '游戏资源可用，旧槽清理将在下次启动重试';
+        } else if (interruptedTransaction) {
+          _message = '上次导入意外中断，已清理未完成文件';
+        } else if (exitResult?.reason == GameExitReason.rendererGone) {
+          _message = exitResult?.message ?? '游戏渲染进程已退出';
+        } else if (exitResult?.reason == GameExitReason.launchFailed) {
+          _message = exitResult?.message ?? '原生游戏宿主启动失败';
+        }
+        _initialized = true;
       }
-      _initialized = true;
+
+      final operation = _appLogger?.startOperation(
+        operationId: 'app-initialize',
+        category: 'app.lifecycle',
+        startedEvent: 'app_initialization_started',
+        finishedEvent: 'app_initialization_finished',
+        failureCode: 'app_initialization_failed',
+      );
+      if (operation == null) {
+        await initializeCore();
+      } else {
+        await operation.run(initializeCore);
+      }
     } catch (error) {
       _message = '启动失败：$error';
     } finally {
