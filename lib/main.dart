@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'src/app_controller.dart';
-import 'src/logging_app_controller.dart';
+import 'src/persistent_logging_app_controller.dart';
 import 'src/services/app_logger.dart';
 import 'src/ui/home_page.dart';
 
@@ -42,7 +42,7 @@ void main() {
       };
 
       logger.setBaseContext(<String, Object?>{
-        'platform': PlatformDispatcher.instance.locale.toLanguageTag(),
+        'locale': PlatformDispatcher.instance.locale.toLanguageTag(),
       });
       logger.info('app.lifecycle', 'Application process started');
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -77,7 +77,7 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp> {
   @override
   void initState() {
     super.initState();
-    _controller = LoggingAppController();
+    _controller = PersistentLoggingAppController();
     unawaited(_controller.initialize().then((_) {
       if (mounted && _controller.initialized) {
         unawaited(_controller.refreshAboutContent());
