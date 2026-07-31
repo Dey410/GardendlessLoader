@@ -2,6 +2,130 @@ const gardendlessExportDownloadHandlerName = 'gardendlessDownloadExport';
 
 const gardendlessExportDownloadPatchSource = r'''
 (function () {
+  const runtimeInstalledKey = "__gardendlessLoaderRuntimeLoggingInstalled";
+  if (!window[runtimeInstalledKey]) {
+    Object.defineProperty(window, runtimeInstalledKey, {
+      value: true,
+      configurable: false,
+      enumerable: false,
+      writable: false
+    });
+
+    const runtimeLogEndpoint = "/__gardendless/runtime-log";
+    const maxTextLength = 4000;
+    let reportingRuntimeLog = false;
+
+    function limitedText(value) {
+      let text;
+      try {
+        if (value instanceof Error) {
+          text = value.stack || value.message || String(value);
+        } else if (typeof value === "string") {
+          text = value;
+        } else {
+          text = JSON.stringify(value);
+        }
+      } catch (_) {
+        try {
+          text = String(value);
+        } catch (_) {
+          text = "<unprintable>";
+        }
+      }
+      if (typeof text !== "string") {
+        text = String(text);
+      }
+      return text.length <= maxTextLength
+        ? text
+        : text.slice(0, maxTextLength) + "…";
+    }
+
+    function reportRuntimeLog(payload) {
+      if (reportingRuntimeLog || !payload) {
+        return;
+      }
+      reportingRuntimeLog = true;
+      try {
+        const normalized = {
+          level: limitedText(payload.level || "ERROR"),
+          type: limitedText(payload.type || "runtime"),
+          message: limitedText(payload.message || "Web runtime event"),
+          source: limitedText(payload.source || location.pathname || "-"),
+          line: Number.isFinite(payload.line) ? payload.line : null,
+          column: Number.isFinite(payload.column) ? payload.column : null,
+          stack: payload.stack ? limitedText(payload.stack) : null,
+          page: limitedText(location.pathname || "/")
+        };
+        fetch(runtimeLogEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(normalized),
+          cache: "no-store",
+          credentials: "same-origin",
+          keepalive: true
+        }).catch(function () {});
+      } catch (_) {
+        // Logging must never break the game runtime.
+      } finally {
+        reportingRuntimeLog = false;
+      }
+    }
+
+    window.addEventListener("error", function (event) {
+      const target = event.target;
+      const isResourceError = target && target !== window;
+      reportRuntimeLog({
+        level: "ERROR",
+        type: isResourceError ? "resource-error" : "javascript-error",
+        message: isResourceError
+          ? "Failed to load " + limitedText(target.src || target.href || target.tagName)
+          : limitedText(event.message || event.error || "Unknown JavaScript error"),
+        source: event.filename || (target && (target.src || target.href)) || location.pathname,
+        line: event.lineno,
+        column: event.colno,
+        stack: event.error && event.error.stack
+      });
+    }, true);
+
+    window.addEventListener("unhandledrejection", function (event) {
+      const reason = event.reason;
+      reportRuntimeLog({
+        level: "ERROR",
+        type: "unhandled-promise-rejection",
+        message: limitedText(reason || "Unhandled Promise rejection"),
+        source: location.pathname,
+        stack: reason && reason.stack
+      });
+    });
+
+    if (window.console) {
+      ["warn", "error"].forEach(function (method) {
+        const original = window.console[method];
+        if (typeof original !== "function") {
+          return;
+        }
+        window.console[method] = function () {
+          const args = Array.prototype.slice.call(arguments);
+          reportRuntimeLog({
+            level: method === "error" ? "ERROR" : "WARN",
+            type: "console-" + method,
+            message: args.map(limitedText).join(" "),
+            source: location.pathname,
+            stack: method === "error" ? (new Error()).stack : null
+          });
+          return original.apply(this, arguments);
+        };
+      });
+    }
+
+    reportRuntimeLog({
+      level: "INFO",
+      type: "runtime-logging-ready",
+      message: "Web runtime logging installed",
+      source: location.pathname
+    });
+  }
+
   const installedKey = "__gardendlessLoaderExportDownloadPatchInstalled";
   if (window[installedKey]) {
     return;
