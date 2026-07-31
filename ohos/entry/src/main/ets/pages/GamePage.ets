@@ -6,7 +6,7 @@ import { webview } from '@kit.ArkWeb';
 import { GameBridge } from '../game/GameBridge';
 import { NativeGameResourceHandler } from '../game/NativeGameResourceHandler';
 import { GameSession } from '../game/GameSession';
-import { appLogStore } from '../logging/AppLogStore';
+import { appLogStore, AppLogContext, AppLogEvent } from '../logging/AppLogStore';
 
 let storage = LocalStorage.getShared();
 
@@ -27,11 +27,12 @@ struct GamePage {
   aboutToAppear(): void {
     try {
       this.session = new GameSession(this.sessionJson);
-      appLogStore.emit({
+      const createdEvent: AppLogEvent = {
         source: 'ohos', level: 'INFO', category: 'game.host',
         event: 'game_host_created', outcome: 'succeeded',
         gameSessionId: this.session.sessionId,
-      });
+      };
+      appLogStore.emit(createdEvent);
       this.resourceHandler = new NativeGameResourceHandler(this.session);
       this.bridge = new GameBridge(this.controller, this.context, this.session, (): void => {
         this.returnToLauncher('userReturned', null);
@@ -85,18 +86,20 @@ struct GamePage {
               permission,
             );
             this.controller.loadUrl(session.entryUrl);
-            appLogStore.emit({
+            const loadStartedEvent: AppLogEvent = {
               source: 'ohos', level: 'INFO', category: 'game.webview',
               event: 'webview_page_load_started', outcome: 'started',
               gameSessionId: session.sessionId,
-            });
+            };
+            appLogStore.emit(loadStartedEvent);
           } catch (error) {
-            appLogStore.emit({
+            const loadFailedEvent: AppLogEvent = {
               source: 'ohos', level: 'ERROR', category: 'game.webview',
               event: 'webview_page_load_finished', outcome: 'failed',
               code: 'webview_page_load_failed', message: (error as Error).message,
               gameSessionId: session.sessionId,
-            });
+            };
+            appLogStore.emit(loadFailedEvent);
             this.returnToLauncher('launchFailed', (error as Error).message);
           }
         })
@@ -113,11 +116,12 @@ struct GamePage {
               .catch((_error: Error): void => {});
           }
           if (this.session != null) {
-            appLogStore.emit({
+            const navigationEvent: AppLogEvent = {
               source: 'ohos', level: 'WARN', category: 'game.security',
               event: 'navigation_blocked', outcome: 'observed',
               gameSessionId: this.session.sessionId,
-            });
+            };
+            appLogStore.emit(navigationEvent);
           }
           return true;
         })
@@ -138,12 +142,13 @@ struct GamePage {
             ? 'ArkWeb renderer exited'
             : `ArkWeb renderer exited: ${event.renderExitReason}`;
           if (this.session != null) {
-            appLogStore.emit({
+            const renderExitEvent: AppLogEvent = {
               source: 'ohos', level: 'ERROR', category: 'game.webview',
               event: 'webview_render_process_gone', outcome: 'failed',
               code: 'webview_render_process_gone', message: message,
               gameSessionId: this.session.sessionId,
-            });
+            };
+            appLogStore.emit(renderExitEvent);
           }
           this.returnToLauncher('rendererGone', message);
         });
@@ -239,14 +244,17 @@ struct GamePage {
     this.exiting = true;
     const session = this.session;
     if (session != null) {
-      appLogStore.emit({
+      const context: AppLogContext = { reason: reason };
+      const finishedEvent: AppLogEvent = {
         source: 'ohos',
         level: reason === 'rendererGone' || reason === 'launchFailed' ? 'ERROR' : 'INFO',
         category: 'game.host', event: 'game_host_finished',
         outcome: reason === 'rendererGone' || reason === 'launchFailed' ? 'failed' : 'succeeded',
-        message: message ?? undefined, gameSessionId: session.sessionId,
-        context: { reason: reason },
-      });
+        gameSessionId: session.sessionId,
+        context: context,
+      };
+      if (message != null) finishedEvent.message = message;
+      appLogStore.emit(finishedEvent);
       this.writeExitResult(session.appRoot, session.sessionId, reason, message);
     }
     this.bridge?.destroy();

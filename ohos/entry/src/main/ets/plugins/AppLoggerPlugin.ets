@@ -13,6 +13,14 @@ import { appLogStore, AppLogEvent } from '../logging/AppLogStore';
 
 const CHANNEL_NAME = 'io.github.dey410.gardendlessloader/app_logger';
 
+interface AppLoggerInitializeResult {
+  appSessionId: string;
+}
+
+interface AppLoggerSnapshotArguments {
+  limit?: number;
+}
+
 export class AppLoggerPlugin implements FlutterPlugin, AbilityAware, MethodCallHandler {
   private channel: MethodChannel | null = null;
 
@@ -38,7 +46,10 @@ export class AppLoggerPlugin implements FlutterPlugin, AbilityAware, MethodCallH
 
   onMethodCall(call: MethodCall, result: MethodResult): void {
     if (call.method === 'initialize') {
-      result.success({ appSessionId: appLogStore.getSessionId() });
+      const value: AppLoggerInitializeResult = {
+        appSessionId: appLogStore.getSessionId(),
+      };
+      result.success(value);
       return;
     }
     if (call.method === 'emit') {
@@ -47,9 +58,9 @@ export class AppLoggerPlugin implements FlutterPlugin, AbilityAware, MethodCallH
       return;
     }
     if (call.method === 'snapshot') {
-      const args = call.args as Record<string, Object>;
+      const args = call.args as AppLoggerSnapshotArguments;
       appLogStore.flush().then((): void => {
-        result.success(appLogStore.snapshot((args['limit'] as number) ?? 500));
+        result.success(appLogStore.snapshot(args.limit ?? 500));
       });
       return;
     }

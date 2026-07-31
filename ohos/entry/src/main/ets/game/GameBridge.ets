@@ -4,7 +4,7 @@ import picker from '@ohos.file.picker';
 import { promptAction } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
-import { appLogStore } from '../logging/AppLogStore';
+import { appLogStore, AppLogContext, AppLogError, AppLogEvent } from '../logging/AppLogStore';
 import { GameSession } from './GameSession';
 import { GpNextNativeCore, GpNextValue } from './GpNextNativeCore';
 
@@ -131,7 +131,17 @@ export class GameBridge {
             'javascript_console',
           ];
           const event = allowed.includes(requested) ? requested : 'javascript_console';
-          appLogStore.emit({
+          const context: AppLogContext = {
+            page: args.page ?? '',
+            line: args.line ?? 0,
+            column: args.column ?? 0,
+          };
+          const logError: AppLogError = {
+            type: 'JavaScriptError',
+            message: args.message ?? '',
+            stackTrace: args.stack ?? '',
+          };
+          const logEvent: AppLogEvent = {
             source: 'javascript',
             level: args.level ?? 'ERROR',
             category: 'game.javascript',
@@ -140,17 +150,10 @@ export class GameBridge {
             code: event === 'javascript_console' ? undefined : event,
             message: args.message ?? '',
             gameSessionId: this.session.sessionId,
-            context: {
-              page: args.page ?? '',
-              line: args.line ?? 0,
-              column: args.column ?? 0,
-            },
-            error: {
-              type: 'JavaScriptError',
-              message: args.message ?? '',
-              stackTrace: args.stack ?? '',
-            },
-          });
+            context: context,
+            error: logError,
+          };
+          appLogStore.emit(logEvent);
           this.complete(request.id, null);
         }
         break;
@@ -416,11 +419,11 @@ export class GameBridge {
   }
 
   private logInvalid(reason: string, command?: string): void {
-    const context: Record<string, Object> = { reason: reason };
+    const context: AppLogContext = { reason: reason };
     if (command != null) {
       context.command = command;
     }
-    appLogStore.emit({
+    const event: AppLogEvent = {
       source: 'ohos',
       level: 'WARN',
       category: 'game.bridge',
@@ -429,7 +432,8 @@ export class GameBridge {
       code: 'bridge_message_invalid',
       gameSessionId: this.session.sessionId,
       context: context,
-    });
+    };
+    appLogStore.emit(event);
   }
 
   private isAllowedRemoteUrl(url: string): boolean {

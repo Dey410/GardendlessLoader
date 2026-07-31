@@ -303,12 +303,13 @@ final class AppLogStore {
       at: logsDirectory,
       includingPropertiesForKeys: nil
     )) ?? []
-    guard let file = files
-      .filter {
-        $0.lastPathComponent.hasPrefix("app-\(sessionId)-") &&
-          $0.pathExtension == "jsonl"
-      }
-      .max(by: { $0.lastPathComponent < $1.lastPathComponent }),
+    let candidates = files.filter { file in
+      file.lastPathComponent.hasPrefix("app-\(sessionId)-") &&
+        file.pathExtension == "jsonl"
+    }
+    guard let file = candidates.max(by: {
+      $0.lastPathComponent < $1.lastPathComponent
+    }),
       let data = try? Data(contentsOf: file),
       let text = String(data: data, encoding: .utf8),
       let line = text.split(whereSeparator: \.isNewline).last,

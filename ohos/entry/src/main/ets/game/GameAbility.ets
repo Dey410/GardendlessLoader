@@ -5,9 +5,7 @@ import { appLogStore } from '../logging/AppLogStore';
 
 export default class GameAbility extends UIAbility {
   private sessionJson: string = '';
-  private readonly storage: LocalStorage = new LocalStorage({
-    gameSession: '',
-  });
+  private readonly storage: LocalStorage = new LocalStorage();
 
   onCreate(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     appLogStore.initialize(this.context);

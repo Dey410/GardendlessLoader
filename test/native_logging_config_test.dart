@@ -93,4 +93,38 @@ void main() {
       expect(source, contains('resource_mime_mismatch'));
     }
   });
+
+  test('Android logger does not depend on disabled BuildConfig generation', () {
+    final source = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/logging/AppLogStore.kt',
+    ).readAsStringSync();
+
+    expect(source, isNot(contains('BuildConfig')));
+    expect(source, contains('packageManager'));
+  });
+
+  test('iOS previous-session parsing keeps collection chains out of guard', () {
+    final source = File('ios/Runner/AppLogStore.swift').readAsStringSync();
+
+    expect(source, contains('let candidates = files.filter'));
+    expect(source, contains('guard let file = candidates.max'));
+  });
+
+  test('HarmonyOS logging uses strict ArkTS-compatible data shapes', () {
+    final logStore = File('ohos/entry/src/main/ets/logging/AppLogStore.ets')
+        .readAsStringSync();
+    final sources = <String>[
+      logStore,
+      File('ohos/entry/src/main/ets/game/GameBridge.ets').readAsStringSync(),
+      File('ohos/entry/src/main/ets/game/NativeGameResourceHandler.ets')
+          .readAsStringSync(),
+      File('ohos/entry/src/main/ets/pages/GamePage.ets').readAsStringSync(),
+    ].join('\n');
+
+    expect(sources, contains('interface AppLogContext'));
+    expect(logStore, isNot(contains('Record<string, Object>')));
+    expect(sources, isNot(contains('appLogStore.emit({')));
+    expect(sources, isNot(contains(RegExp(r'\bdelete\s+'))));
+    expect(sources, isNot(contains('...details')));
+  });
 }

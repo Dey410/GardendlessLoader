@@ -1,7 +1,7 @@
 import fs from '@ohos.file.fs';
 import { webview, WebNetErrorList } from '@kit.ArkWeb';
 import { GameSession } from './GameSession';
-import { appLogStore } from '../logging/AppLogStore';
+import { appLogStore, AppLogContext, AppLogEvent } from '../logging/AppLogStore';
 
 interface ByteRange {
   start: number;
@@ -65,7 +65,7 @@ export class NativeGameResourceHandler {
     }
     const method = request.getRequestMethod();
     if (method !== 'GET' && method !== 'HEAD') {
-      this.logFailure('resource_method_not_allowed', url, 405, { method: method });
+      this.logFailure('resource_method_not_allowed', url, 405, method);
       this.sendEmpty(handler, 405, 'Method Not Allowed', new Map([['Allow', 'GET, HEAD']]));
       return true;
     }
@@ -106,10 +106,14 @@ export class NativeGameResourceHandler {
       }
       const mime = this.mimeType(relativePath);
       if (mime === 'application/octet-stream') {
-        this.logFailure('resource_mime_mismatch', relativePath, 200, {
-          expectedMime: 'known resource MIME',
-          actualMime: mime,
-        });
+        this.logFailure(
+          'resource_mime_mismatch',
+          relativePath,
+          200,
+          undefined,
+          'known resource MIME',
+          mime,
+        );
       }
       this.sendHeaders(
         handler,
@@ -128,9 +132,10 @@ export class NativeGameResourceHandler {
       this.streamBody(request, handler, filePath, relativePath, start, length, active)
         .catch((_error: Error): void => {});
     } catch (error) {
-      this.logFailure('resource_read_failed', relativePath, 500, {
-        errorType: (error as Error).name,
-      });
+      this.logFailure(
+        'resource_read_failed', relativePath, 500,
+        undefined, undefined, undefined, (error as Error).name,
+      );
       if (!responseStarted) {
         this.sendEmpty(handler, 500, 'Internal Server Error');
       } else {
@@ -175,9 +180,10 @@ export class NativeGameResourceHandler {
         handler.didFinish();
       }
     } catch (error) {
-      this.logFailure('resource_read_failed', relativePath, 500, {
-        errorType: (error as Error).name,
-      });
+      this.logFailure(
+        'resource_read_failed', relativePath, 500,
+        undefined, undefined, undefined, (error as Error).name,
+      );
       if (!active.cancelled) {
         try {
           handler.didFail(WebNetErrorList.ERR_FAILED);
@@ -352,17 +358,23 @@ export class NativeGameResourceHandler {
     code: string,
     path: string,
     status: number,
-    details: Record<string, Object> = {},
+    method?: string,
+    expectedMime?: string,
+    actualMime?: string,
+    errorType?: string,
   ): void {
     const safePath = path.startsWith(GameSession.ORIGIN)
       ? path.substring(GameSession.ORIGIN.length).split('?')[0].split('#')[0]
       : path.startsWith('/') ? path : '<external-url>';
-    const context: Record<string, Object> = {
+    const context: AppLogContext = {
       path: safePath,
       status: status,
-      ...details,
     };
-    appLogStore.emit({
+    context.command = method;
+    context.expectedMime = expectedMime;
+    context.actualMime = actualMime;
+    context.errorType = errorType;
+    const event: AppLogEvent = {
       source: 'ohos',
       level: status >= 500 ? 'ERROR' : 'WARN',
       category: 'resource.handler',
@@ -371,6 +383,7 @@ export class NativeGameResourceHandler {
       code: code,
       gameSessionId: this.session.sessionId,
       context: context,
-    });
+    };
+    appLogStore.emit(event);
   }
 }

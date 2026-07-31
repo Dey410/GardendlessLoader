@@ -3,7 +3,6 @@ package io.github.dey410.gardendlessloader.logging
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
-import io.github.dey410.gardendlessloader.BuildConfig
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.io.BufferedWriter
@@ -112,7 +111,7 @@ object AppLogStore {
                     "outcome" to "started",
                     "context" to mapOf(
                         "platform" to "android",
-                        "appVersion" to BuildConfig.VERSION_NAME,
+                        "appVersion" to appVersion(context),
                         "osVersion" to Build.VERSION.RELEASE,
                     ),
                 ),
@@ -423,4 +422,12 @@ object AppLogStore {
             .format(Instant.now())
         return "$timestamp-${UUID.randomUUID().toString().take(6)}"
     }
+
+    @Suppress("DEPRECATION")
+    private fun appVersion(context: Context): String = runCatching {
+        context.packageManager
+            .getPackageInfo(context.packageName, 0)
+            .versionName
+            ?: "unknown"
+    }.getOrDefault("unknown")
 }

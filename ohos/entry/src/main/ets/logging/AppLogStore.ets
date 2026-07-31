@@ -1,6 +1,51 @@
 import common from '@ohos.app.ability.common';
 import fs from '@ohos.file.fs';
 
+export interface AppLogContext {
+  platform?: string;
+  appVersion?: string;
+  osVersion?: string;
+  state?: string;
+  stage?: string;
+  transactionState?: string;
+  targetSlot?: string;
+  recoveryAction?: string;
+  activeSlot?: string;
+  currentResourceUsable?: boolean;
+  processedBytes?: number;
+  totalBytes?: number;
+  processedFiles?: number;
+  totalFiles?: number;
+  fileCount?: number;
+  buildProfile?: string;
+  gpNextVersion?: string;
+  cleanupDeferred?: boolean;
+  gameVersion?: string;
+  previousAppSessionId?: string;
+  previousLastEvent?: string;
+  previousLastCode?: string;
+  previousLastTimestamp?: string;
+  reason?: string;
+  command?: string;
+  page?: string;
+  line?: number;
+  column?: number;
+  path?: string;
+  status?: number;
+  statusCode?: number;
+  expectedMime?: string;
+  actualMime?: string;
+  errorType?: string;
+  crashed?: boolean;
+  url?: string;
+}
+
+export interface AppLogError {
+  type?: string;
+  message?: string;
+  stackTrace?: string;
+}
+
 export interface AppLogEvent {
   source: string;
   level: string;
@@ -12,8 +57,51 @@ export interface AppLogEvent {
   gameSessionId?: string;
   operationId?: string;
   durationMs?: number;
-  context?: Record<string, Object>;
-  error?: Record<string, Object>;
+  context?: AppLogContext;
+  error?: AppLogError;
+}
+
+export interface SerializedLogEvent {
+  schemaVersion: number;
+  timestampUtc: string;
+  monotonicMs: number;
+  sequence: number;
+  level: string;
+  source: string;
+  category: string;
+  event: string;
+  outcome: string;
+  appSessionId: string;
+  code?: string;
+  message?: string;
+  gameSessionId?: string;
+  operationId?: string;
+  durationMs?: number;
+  context?: AppLogContext;
+  error?: AppLogError;
+}
+
+export interface AppLogDroppedCounts {
+  DEBUG: number;
+  INFO: number;
+  WARN: number;
+  ERROR: number;
+  FATAL: number;
+}
+
+export interface AppLogSnapshot {
+  appSessionId: string;
+  persisting: boolean;
+  degraded: boolean;
+  logDirectory: string;
+  totalBytes: number;
+  writeFailureCount: number;
+  droppedByLevel: AppLogDroppedCounts;
+  events: Array<SerializedLogEvent>;
+}
+
+interface AppSessionMarker {
+  appSessionId: string;
 }
 
 export class AppLogStore {
@@ -24,8 +112,14 @@ export class AppLogStore {
   private startedAt: number = 0;
   private sequence: number = 0;
   private segment: number = 0;
-  private recent: Array<Record<string, Object>> = [];
-  private dropped: Record<string, number> = {};
+  private recent: Array<SerializedLogEvent> = [];
+  private dropped: AppLogDroppedCounts = {
+    DEBUG: 0,
+    INFO: 0,
+    WARN: 0,
+    ERROR: 0,
+    FATAL: 0,
+  };
   private writeFailureCount: number = 0;
   private degraded: boolean = false;
   private pending: number = 0;
@@ -43,29 +137,34 @@ export class AppLogStore {
     this.startedAt = Date.now();
     try {
       this.ensureDirectory(this.logsDirectory);
-      this.writeText(this.markerFile, JSON.stringify({ appSessionId: this.appSessionId }));
+      const marker: AppSessionMarker = { appSessionId: this.appSessionId };
+      this.writeText(this.markerFile, JSON.stringify(marker));
       this.cleanup();
     } catch (_error) {
       this.markDegraded();
     }
-    this.emitImmediate({
+    const sessionContext: AppLogContext = { platform: 'ohos' };
+    const sessionStarted: AppLogEvent = {
       source: 'ohos', level: 'INFO', category: 'app.lifecycle',
       event: 'app_session_started', outcome: 'started',
-      context: { platform: 'ohos' },
-    });
+      context: sessionContext,
+    };
+    this.emitImmediate(sessionStarted);
     if (previous != null && previous !== this.appSessionId) {
       const previousLast = this.readLastEvent(previous);
-      this.emitImmediate({
+      const previousContext: AppLogContext = {
+        previousAppSessionId: previous,
+        previousLastEvent: previousLast?.event ?? 'unknown',
+        previousLastCode: previousLast?.code ?? 'none',
+        previousLastTimestamp: previousLast?.timestampUtc ?? 'unknown',
+      };
+      const uncleanShutdown: AppLogEvent = {
         source: 'ohos', level: 'WARN', category: 'app.lifecycle',
         event: 'previous_run_unclean_shutdown', outcome: 'observed',
         code: 'previous_run_unclean_shutdown',
-        context: {
-          previousAppSessionId: previous,
-          previousLastEvent: previousLast?.['event'] ?? 'unknown',
-          previousLastCode: previousLast?.['code'] ?? 'none',
-          previousLastTimestamp: previousLast?.['timestampUtc'] ?? 'unknown',
-        },
-      });
+        context: previousContext,
+      };
+      this.emitImmediate(uncleanShutdown);
     }
   }
 
@@ -80,7 +179,7 @@ export class AppLogStore {
     const level = this.level(event.level);
     if (this.pending >= 1100 ||
       (this.pending >= 1000 && level !== 'ERROR' && level !== 'FATAL')) {
-      this.dropped[level] = (this.dropped[level] ?? 0) + 1;
+      this.incrementDropped(level);
       return;
     }
     this.pending += 1;
@@ -98,16 +197,17 @@ export class AppLogStore {
   }
 
   endSession(): Promise<void> {
-    this.emit({
+    const ended: AppLogEvent = {
       source: 'ohos', level: 'INFO', category: 'app.lifecycle',
       event: 'app_session_ended', outcome: 'succeeded',
-    });
+    };
+    this.emit(ended);
     return this.flush().then((): void => {
       try { fs.unlinkSync(this.markerFile); } catch (_error) {}
     });
   }
 
-  snapshot(limit: number): Record<string, Object> {
+  snapshot(limit: number): AppLogSnapshot {
     const count = Math.max(1, Math.min(500, limit));
     let totalBytes = 0;
     try {
@@ -115,7 +215,7 @@ export class AppLogStore {
         totalBytes += fs.statSync(`${this.logsDirectory}/${name}`).size;
       }
     } catch (_error) {}
-    return {
+    const snapshot: AppLogSnapshot = {
       appSessionId: this.appSessionId,
       persisting: !this.degraded,
       degraded: this.degraded,
@@ -125,6 +225,7 @@ export class AppLogStore {
       droppedByLevel: this.dropped,
       events: this.recent.slice(Math.max(0, this.recent.length - count)),
     };
+    return snapshot;
   }
 
   deleteHistory(): Promise<void> {
@@ -142,7 +243,7 @@ export class AppLogStore {
 
   private emitImmediate(input: AppLogEvent): void {
     this.sequence += 1;
-    const value: Record<string, Object> = {
+    const value: SerializedLogEvent = {
       schemaVersion: 1,
       timestampUtc: new Date().toISOString(),
       monotonicMs: Date.now() - this.startedAt,
@@ -154,17 +255,18 @@ export class AppLogStore {
       outcome: this.identifier(input.outcome, 'observed'),
       appSessionId: this.appSessionId,
     };
-    this.copyText(input.code, value, 'code', 256);
-    this.copyText(input.message, value, 'message', 2048);
-    this.copyText(input.gameSessionId, value, 'gameSessionId', 256);
-    this.copyText(input.operationId, value, 'operationId', 256);
-    if (input.durationMs != null) value['durationMs'] = input.durationMs;
-    if (input.context != null) value['context'] = this.sanitizeMap(input.context);
-    if (input.error != null) value['error'] = this.sanitizeMap(input.error);
+    if (input.code != null) value.code = this.sanitize(input.code, 256);
+    if (input.message != null) value.message = this.sanitize(input.message, 2048);
+    if (input.gameSessionId != null) value.gameSessionId = this.sanitize(input.gameSessionId, 256);
+    if (input.operationId != null) value.operationId = this.sanitize(input.operationId, 256);
+    if (input.durationMs != null) value.durationMs = input.durationMs;
+    if (input.context != null) value.context = this.sanitizeContext(input.context);
+    if (input.error != null) value.error = this.sanitizeError(input.error);
     let line = JSON.stringify(value);
     if (line.length > 16 * 1024) {
-      delete value['context'];
-      value['message'] = 'Log event exceeded 16 KB and was truncated';
+      const emptyContext: AppLogContext = {};
+      value.context = emptyContext;
+      value.message = 'Log event exceeded 16 KB and was truncated';
       line = JSON.stringify(value);
     }
     this.recent.push(value);
@@ -174,8 +276,11 @@ export class AppLogStore {
       const path = this.segmentPath(line.length + 1);
       let file: fs.File | null = null;
       try {
-        file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE);
-        fs.writeSync(file.fd, `${line}\n`, { offset: fs.statSync(path).size });
+        file = fs.openSync(
+          path,
+          fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.APPEND,
+        );
+        fs.writeSync(file.fd, `${line}\n`);
       } finally {
         if (file != null) fs.closeSync(file.fd);
       }
@@ -235,14 +340,14 @@ export class AppLogStore {
 
   private readPreviousSession(): string | null {
     try {
-      const value = JSON.parse(fs.readTextSync(this.markerFile)) as Record<string, Object>;
-      return value['appSessionId'] as string;
+      const value = JSON.parse(fs.readTextSync(this.markerFile)) as AppSessionMarker;
+      return value.appSessionId;
     } catch (_error) {
       return null;
     }
   }
 
-  private readLastEvent(sessionId: string): Record<string, Object> | null {
+  private readLastEvent(sessionId: string): SerializedLogEvent | null {
     try {
       const names = fs.listFileSync(this.logsDirectory)
         .filter((name: string): boolean =>
@@ -252,7 +357,7 @@ export class AppLogStore {
       const text = fs.readTextSync(`${this.logsDirectory}/${names[names.length - 1]}`);
       const lines = text.split('\n').filter((line: string): boolean => line.trim().length > 0);
       if (lines.length === 0) return null;
-      return JSON.parse(lines[lines.length - 1]) as Record<string, Object>;
+      return JSON.parse(lines[lines.length - 1]) as SerializedLogEvent;
     } catch (_error) {
       return null;
     }
@@ -275,20 +380,67 @@ export class AppLogStore {
     }
   }
 
-  private sanitizeMap(value: Record<string, Object>): Record<string, Object> {
-    const result: Record<string, Object> = {};
-    const forbidden = /password|passwd|secret|token|authorization|cookie|api.?key|private.?key/i;
-    for (const key of Object.keys(value).slice(0, 32)) {
-      if (forbidden.test(key)) continue;
-      const item = value[key];
-      if (typeof item === 'string') result[key] = this.sanitize(item, 4096);
-      else if (typeof item === 'number' || typeof item === 'boolean') result[key] = item;
-    }
+  private sanitizeContext(value: AppLogContext): AppLogContext {
+    const result: AppLogContext = {};
+    result.platform = this.sanitizeOptional(value.platform);
+    result.appVersion = this.sanitizeOptional(value.appVersion);
+    result.osVersion = this.sanitizeOptional(value.osVersion);
+    result.state = this.sanitizeOptional(value.state);
+    result.stage = this.sanitizeOptional(value.stage);
+    result.transactionState = this.sanitizeOptional(value.transactionState);
+    result.targetSlot = this.sanitizeOptional(value.targetSlot);
+    result.recoveryAction = this.sanitizeOptional(value.recoveryAction);
+    result.activeSlot = this.sanitizeOptional(value.activeSlot);
+    result.currentResourceUsable = value.currentResourceUsable;
+    result.processedBytes = value.processedBytes;
+    result.totalBytes = value.totalBytes;
+    result.processedFiles = value.processedFiles;
+    result.totalFiles = value.totalFiles;
+    result.fileCount = value.fileCount;
+    result.buildProfile = this.sanitizeOptional(value.buildProfile);
+    result.gpNextVersion = this.sanitizeOptional(value.gpNextVersion);
+    result.cleanupDeferred = value.cleanupDeferred;
+    result.gameVersion = this.sanitizeOptional(value.gameVersion);
+    result.previousAppSessionId = this.sanitizeOptional(value.previousAppSessionId);
+    result.previousLastEvent = this.sanitizeOptional(value.previousLastEvent);
+    result.previousLastCode = this.sanitizeOptional(value.previousLastCode);
+    result.previousLastTimestamp = this.sanitizeOptional(value.previousLastTimestamp);
+    result.reason = this.sanitizeOptional(value.reason);
+    result.command = this.sanitizeOptional(value.command);
+    result.page = this.sanitizeOptional(value.page);
+    result.line = value.line;
+    result.column = value.column;
+    result.path = this.sanitizeOptional(value.path);
+    result.status = value.status;
+    result.statusCode = value.statusCode;
+    result.expectedMime = this.sanitizeOptional(value.expectedMime);
+    result.actualMime = this.sanitizeOptional(value.actualMime);
+    result.errorType = this.sanitizeOptional(value.errorType);
+    result.crashed = value.crashed;
+    result.url = this.sanitizeOptional(value.url);
     return result;
   }
 
-  private copyText(value: string | undefined, target: Record<string, Object>, key: string, limit: number): void {
-    if (value != null) target[key] = this.sanitize(value, limit);
+  private sanitizeError(value: AppLogError): AppLogError {
+    const result: AppLogError = {};
+    result.type = this.sanitizeOptional(value.type);
+    if (value.message != null) result.message = this.sanitize(value.message, 4096);
+    if (value.stackTrace != null) result.stackTrace = this.sanitize(value.stackTrace, 8192);
+    return result;
+  }
+
+  private sanitizeOptional(value: string | undefined): string | undefined {
+    return value == null ? undefined : this.sanitize(value, 4096);
+  }
+
+  private incrementDropped(level: string): void {
+    switch (level) {
+      case 'DEBUG': this.dropped.DEBUG += 1; break;
+      case 'WARN': this.dropped.WARN += 1; break;
+      case 'ERROR': this.dropped.ERROR += 1; break;
+      case 'FATAL': this.dropped.FATAL += 1; break;
+      default: this.dropped.INFO += 1;
+    }
   }
 
   private sanitize(value: string, limit: number): string {
