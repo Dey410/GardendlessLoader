@@ -41,8 +41,7 @@ void main() {
     _expectDirectFileUpload(
       workflow,
       stepName: 'Upload unsigned HarmonyOS HAP',
-      path:
-          r'build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap',
+      path: 'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap',
     );
   });
 }
