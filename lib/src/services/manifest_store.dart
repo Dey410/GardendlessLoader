@@ -2,57 +2,175 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models.dart';
+import 'app_logger.dart';
 
 class ManifestStore {
-  ManifestStore(this._file);
+  ManifestStore(this._file, {AppLogger? logger})
+      : _logger = logger ?? AppLogger.instance;
 
   final File _file;
+  final AppLogger _logger;
 
   File get _temporaryFile => File('${_file.path}.tmp');
 
   Future<ResourceManifest> read() async {
-    final mainExists = await _file.exists();
-    final temporaryExists = await _temporaryFile.exists();
-    if (!mainExists && !temporaryExists) {
-      return ResourceManifest.initial();
-    }
+    final operation = _logger.beginOperation(
+      'manifest.storage',
+      'Manifest read',
+      data: <String, Object?>{'path': _file.path},
+    );
+    try {
+      final mainExists = await _file.exists();
+      final temporaryExists = await _temporaryFile.exists();
+      if (!mainExists && !temporaryExists) {
+        operation.complete(
+          message: 'Manifest does not exist; initial state selected',
+          data: const <String, Object?>{
+            'mainExists': false,
+            'temporaryExists': false,
+            'generation': 0,
+          },
+        );
+        return ResourceManifest.initial();
+      }
 
-    final main = mainExists ? await _tryRead(_file) : null;
-    final temporary = temporaryExists ? await _tryRead(_temporaryFile) : null;
-    final useTemporary = temporary != null &&
-        (main == null || temporary.generation > main.generation);
-    final selected = useTemporary ? temporary : main;
-    if (selected == null) {
-      return ResourceManifest.initial().copyWith(
-        resourceStatus: ResourceStatus.invalid,
-        lastErrorCode: 'manifest_unreadable',
-        lastErrorMessage: 'manifest.json 无法读取或不是有效 JSON',
+      final main = mainExists
+          ? await _tryRead(_file, temporary: false)
+          : null;
+      final temporary = temporaryExists
+          ? await _tryRead(_temporaryFile, temporary: true)
+          : null;
+      final useTemporary = temporary != null &&
+          (main == null || temporary.generation > main.generation);
+      final selected = useTemporary ? temporary : main;
+      if (selected == null) {
+        final invalid = ResourceManifest.initial().copyWith(
+          resourceStatus: ResourceStatus.invalid,
+          lastErrorCode: 'manifest_unreadable',
+          lastErrorMessage: 'manifest.json 无法读取或不是有效 JSON',
+        );
+        operation.fail(
+          const FormatException('No readable manifest candidate'),
+          StackTrace.current,
+          code: 'manifest_unreadable',
+          data: <String, Object?>{
+            'mainExists': mainExists,
+            'temporaryExists': temporaryExists,
+          },
+        );
+        return invalid;
+      }
+
+      if (useTemporary) {
+        try {
+          if (await _file.exists()) {
+            await _file.delete();
+          }
+          await _temporaryFile.rename(_file.path);
+          _logger.warning(
+            'manifest.storage',
+            'Manifest recovered from newer temporary file',
+            operationId: operation.operationId,
+            code: 'manifest_recovered_from_temp',
+            data: <String, Object?>{
+              'generation': selected.generation,
+              'path': _file.path,
+            },
+          );
+        } catch (error, stackTrace) {
+          _logger.error(
+            'manifest.storage',
+            'Newer temporary manifest could not be promoted',
+            operationId: operation.operationId,
+            code: 'manifest_temp_promotion_failed',
+            error: error,
+            stackTrace: stackTrace,
+            data: <String, Object?>{
+              'generation': selected.generation,
+              'temporaryPath': _temporaryFile.path,
+            },
+          );
+          rethrow;
+        }
+      } else if (temporaryExists) {
+        try {
+          await _temporaryFile.delete();
+          _logger.warning(
+            'manifest.storage',
+            'Stale manifest temporary file removed',
+            operationId: operation.operationId,
+            code: 'manifest_stale_temp_removed',
+            data: <String, Object?>{'path': _temporaryFile.path},
+          );
+        } catch (error, stackTrace) {
+          _logger.warning(
+            'manifest.storage',
+            'Unable to remove stale manifest temporary file',
+            operationId: operation.operationId,
+            code: 'manifest_stale_temp_delete_failed',
+            error: error,
+            stackTrace: stackTrace,
+            data: <String, Object?>{'path': _temporaryFile.path},
+          );
+        }
+      }
+      operation.complete(
+        data: <String, Object?>{
+          'generation': selected.generation,
+          'activeSlot': selected.activeSlot?.name,
+          'transactionSlot': selected.transactionSlot?.name,
+          'transactionState': selected.transactionState.name,
+          'resourceStatus': selected.resourceStatus.name,
+          'selectedTemporary': useTemporary,
+        },
       );
+      return selected;
+    } catch (error, stackTrace) {
+      operation.fail(error, stackTrace, code: 'manifest_read_failed');
+      rethrow;
     }
-
-    if (useTemporary) {
-      await _temporaryFile.rename(_file.path);
-    } else if (temporaryExists) {
-      await _temporaryFile.delete();
-    }
-    return selected;
   }
 
   Future<void> write(ResourceManifest manifest) async {
-    await _file.parent.create(recursive: true);
-    const encoder = JsonEncoder.withIndent('  ');
-    await _temporaryFile.writeAsString(
-      '${encoder.convert(manifest.toJson())}\n',
-      flush: true,
+    final operation = _logger.beginOperation(
+      'manifest.storage',
+      'Manifest write',
+      data: <String, Object?>{
+        'path': _file.path,
+        'generation': manifest.generation,
+        'activeSlot': manifest.activeSlot?.name,
+        'transactionSlot': manifest.transactionSlot?.name,
+        'transactionState': manifest.transactionState.name,
+        'resourceStatus': manifest.resourceStatus.name,
+        'lastErrorCode': manifest.lastErrorCode,
+      },
     );
-    await _temporaryFile.rename(_file.path);
+    try {
+      await _file.parent.create(recursive: true);
+      const encoder = JsonEncoder.withIndent('  ');
+      await _temporaryFile.writeAsString(
+        '${encoder.convert(manifest.toJson())}\n',
+        flush: true,
+      );
+      if (await _file.exists()) {
+        await _file.delete();
+      }
+      await _temporaryFile.rename(_file.path);
+      operation.complete();
+    } catch (error, stackTrace) {
+      operation.fail(error, stackTrace, code: 'manifest_write_failed');
+      rethrow;
+    }
   }
 
-  Future<ResourceManifest?> _tryRead(File file) async {
+  Future<ResourceManifest?> _tryRead(
+    File file, {
+    required bool temporary,
+  }) async {
     try {
       final json =
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      return ResourceManifest(
+      final manifest = ResourceManifest(
         schemaVersion: ResourceManifest.initial().schemaVersion,
         generation: json['generation'] as int? ?? 0,
         activeSlot: _parseResourceSlot(json['activeSlot']),
@@ -75,7 +193,31 @@ class ManifestStore {
           (json['transaction'] as Map?)?['state'],
         ),
       );
-    } catch (_) {
+      _logger.debug(
+        'manifest.storage',
+        'Manifest candidate parsed',
+        data: <String, Object?>{
+          'path': file.path,
+          'temporary': temporary,
+          'generation': manifest.generation,
+          'transactionState': manifest.transactionState.name,
+        },
+      );
+      return manifest;
+    } catch (error, stackTrace) {
+      _logger.warning(
+        'manifest.storage',
+        'Manifest candidate was unreadable',
+        code: temporary
+            ? 'manifest_temp_unreadable'
+            : 'manifest_main_unreadable',
+        error: error,
+        stackTrace: stackTrace,
+        data: <String, Object?>{
+          'path': file.path,
+          'temporary': temporary,
+        },
+      );
       return null;
     }
   }
