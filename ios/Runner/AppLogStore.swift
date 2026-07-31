@@ -265,31 +265,76 @@ final class AppLogStore {
 
   private func cleanup() {
     let manager = FileManager.default
-    var files = (try? manager.contentsOfDirectory(
+    let discovered: [URL] = (try? manager.contentsOfDirectory(
       at: logsDirectory, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]
-    ))?.filter { $0.pathExtension == "jsonl" } ?? []
+    )) ?? []
+    var files: [URL] = discovered.filter { file in
+      file.pathExtension == "jsonl"
+    }
     let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
-    for file in files where ((try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantFuture) < cutoff {
+    for file in files where modificationDate(file, fallback: .distantFuture) < cutoff {
       try? manager.removeItem(at: file)
     }
-    files = files.filter { manager.fileExists(atPath: $0.path) }
-    let groups = Dictionary(grouping: files) {
-      $0.lastPathComponent.replacingOccurrences(of: "-\\d{3}\\.jsonl$", with: "", options: .regularExpression)
-    }.values.sorted {
-      ($0.map { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast }.max() ?? .distantPast) >
-      ($1.map { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast }.max() ?? .distantPast)
+    files = files.filter { file in
+      manager.fileExists(atPath: file.path)
     }
-    for group in groups.dropFirst(5) { group.forEach { try? manager.removeItem(at: $0) } }
-    var remaining = files.filter { manager.fileExists(atPath: $0.path) }.sorted {
-      ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) <
-      ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+    let groupedFiles: [String: [URL]] = Dictionary(grouping: files) { file in
+      cleanupGroupKey(file)
     }
-    var total = remaining.reduce(0) { $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+    let groups: [[URL]] = groupedFiles.values.sorted { first, second in
+      latestModificationDate(first) > latestModificationDate(second)
+    }
+    for group in groups.dropFirst(5) {
+      for file in group {
+        try? manager.removeItem(at: file)
+      }
+    }
+    var remaining: [URL] = files.filter { file in
+      manager.fileExists(atPath: file.path)
+    }
+    remaining.sort { first, second in
+      modificationDate(first, fallback: .distantPast) <
+        modificationDate(second, fallback: .distantPast)
+    }
+    var total: Int = remaining.reduce(0) { value, file in
+      value + fileSize(file)
+    }
     while total > 10 * 1024 * 1024, let file = remaining.first {
-      total -= (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+      total -= fileSize(file)
       try? manager.removeItem(at: file)
       remaining.removeFirst()
     }
+  }
+
+  private func cleanupGroupKey(_ file: URL) -> String {
+    file.lastPathComponent.replacingOccurrences(
+      of: "-\\d{3}\\.jsonl$",
+      with: "",
+      options: .regularExpression
+    )
+  }
+
+  private func modificationDate(_ file: URL, fallback: Date) -> Date {
+    guard let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+          let date = values.contentModificationDate else {
+      return fallback
+    }
+    return date
+  }
+
+  private func latestModificationDate(_ files: [URL]) -> Date {
+    var latest = Date.distantPast
+    for file in files {
+      latest = max(latest, modificationDate(file, fallback: .distantPast))
+    }
+    return latest
+  }
+
+  private func fileSize(_ file: URL) -> Int {
+    guard let values = try? file.resourceValues(forKeys: [.fileSizeKey]) else {
+      return 0
+    }
+    return values.fileSize ?? 0
   }
 
   private func readPreviousSession() -> String? {

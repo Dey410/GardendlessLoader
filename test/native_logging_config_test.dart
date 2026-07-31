@@ -110,6 +110,15 @@ void main() {
     expect(source, contains('guard let file = candidates.max'));
   });
 
+  test('iOS log cleanup uses explicit types and small metadata helpers', () {
+    final source = File('ios/Runner/AppLogStore.swift').readAsStringSync();
+
+    expect(source, contains('let discovered: [URL]'));
+    expect(source, contains('let groupedFiles: [String: [URL]]'));
+    expect(source, contains('private func modificationDate('));
+    expect(source, contains('private func fileSize('));
+  });
+
   test('HarmonyOS logging uses strict ArkTS-compatible data shapes', () {
     final logStore = File('ohos/entry/src/main/ets/logging/AppLogStore.ets')
         .readAsStringSync();
