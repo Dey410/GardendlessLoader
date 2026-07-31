@@ -149,6 +149,11 @@ void main() {
     expect(handler, contains('didReceiveResponseBody'));
     expect(handler, contains('await fs.read'));
     expect(handler, contains('active.cancelled = true'));
+    expect(handler, contains('mimeType(relativePath, filePath)'));
+    expect(handler, contains("return 'image/avif'"));
+    expect(handler, contains('private isAvif(filePath: string): boolean'));
+    expect(handler, contains('bytes[4] !== 0x66'));
+    expect(handler, contains('bytes[offset + 3] === 0x66'));
     expect(plugin, contains('context.terminateSelf()'));
     expect(
       File('ohos/entry/src/main/ets/game/GameBridge.ets').readAsStringSync(),
