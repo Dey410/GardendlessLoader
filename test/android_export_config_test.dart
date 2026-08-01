@@ -53,4 +53,52 @@ void main() {
     expect(activity, contains('Intent.ACTION_OPEN_DOCUMENT'));
     expect(activity, contains('Intent.EXTRA_ALLOW_MULTIPLE'));
   });
+
+  test('Android document pickers leave the game landscape lock', () {
+    final activity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
+    ).readAsStringSync();
+
+    expect(activity, contains('private fun launchDocumentPicker('));
+    expect(
+      activity,
+      contains(
+        'requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT',
+      ),
+    );
+    expect(activity, contains('private fun restoreGameOrientation()'));
+    expect(
+      activity,
+      contains(
+        'requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE',
+      ),
+    );
+    expect(
+      activity,
+      matches(RegExp(r'restoreGameOrientation\(\)\s+}\s+when \(requestCode\)')),
+    );
+    expect(
+      'startActivityForResult('.allMatches(activity),
+      hasLength(1),
+      reason: 'Every document picker should use launchDocumentPicker',
+    );
+  });
+
+  test('Android exports reconcile MIME type with the suggested filename', () {
+    final activity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
+    ).readAsStringSync();
+    final contract = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/ExportDocumentSpec.kt',
+    ).readAsStringSync();
+
+    expect(activity,
+        contains('type = exportMimeType(export.fileName, export.mimeType)'));
+    expect(activity, isNot(contains('type = export.mimeType')));
+    expect(activity,
+        contains('MimeTypeMap.getSingleton().getMimeTypeFromExtension'));
+    expect(contract, contains('application/vnd.gardendless.export'));
+    expect(contract, contains('it != "text/plain"'));
+    expect(contract, contains('it != "application/octet-stream"'));
+  });
 }

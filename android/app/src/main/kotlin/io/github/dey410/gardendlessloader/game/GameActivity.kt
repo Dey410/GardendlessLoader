@@ -13,6 +13,7 @@ import android.util.Base64
 import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.MimeTypeMap
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -167,7 +168,7 @@ class GameActivity : Activity() {
     private fun openFileChooser(intent: Intent, callback: ValueCallback<Array<Uri>>) {
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = callback
-        runCatching { startActivityForResult(intent, REQUEST_FILE_CHOOSER) }.onFailure {
+        launchDocumentPicker(intent, REQUEST_FILE_CHOOSER) {
             fileChooserCallback = null
             callback.onReceiveValue(null)
         }
@@ -240,10 +241,10 @@ class GameActivity : Activity() {
         pendingExport = PendingExport(requestId, export.file)
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = export.mimeType
+            type = exportMimeType(export.fileName, export.mimeType)
             putExtra(Intent.EXTRA_TITLE, export.fileName)
         }
-        runCatching { startActivityForResult(intent, REQUEST_EXPORT) }.onFailure {
+        launchDocumentPicker(intent, REQUEST_EXPORT) {
             pendingExport = null
             export.file.delete()
             bridge.fail(requestId, "export_picker_failed", it.message ?: it.toString())
@@ -298,7 +299,7 @@ class GameActivity : Activity() {
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
             putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/json", "text/plain"))
         }
-        runCatching { startActivityForResult(intent, REQUEST_GP_NEXT_IMPORT) }.onFailure {
+        launchDocumentPicker(intent, REQUEST_GP_NEXT_IMPORT) {
             pendingGpImportRequestId = null
             bridge.fail(requestId, "gp_next_picker_failed", it.message ?: it.toString())
         }
@@ -312,10 +313,10 @@ class GameActivity : Activity() {
         pendingExport = PendingExport(requestId, file)
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/json"
+            type = exportMimeType(file.name, "application/json")
             putExtra(Intent.EXTRA_TITLE, file.name)
         }
-        runCatching { startActivityForResult(intent, REQUEST_EXPORT) }.onFailure {
+        launchDocumentPicker(intent, REQUEST_EXPORT) {
             pendingExport = null
             bridge.fail(requestId, "export_picker_failed", it.message ?: it.toString())
         }
@@ -329,6 +330,12 @@ class GameActivity : Activity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_FILE_CHOOSER ||
+            requestCode == REQUEST_EXPORT ||
+            requestCode == REQUEST_GP_NEXT_IMPORT
+        ) {
+            restoreGameOrientation()
+        }
         when (requestCode) {
             REQUEST_GP_NEXT_IMPORT -> {
                 val requestId = pendingGpImportRequestId
@@ -447,6 +454,27 @@ class GameActivity : Activity() {
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             )
     }
+
+    private fun launchDocumentPicker(
+        intent: Intent,
+        requestCode: Int,
+        onFailure: (Throwable) -> Unit,
+    ) {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        runCatching { startActivityForResult(intent, requestCode) }.onFailure {
+            restoreGameOrientation()
+            onFailure(it)
+        }
+    }
+
+    private fun restoreGameOrientation() {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    private fun exportMimeType(fileName: String, declaredMimeType: String): String =
+        ExportDocumentSpec.resolveMimeType(fileName, declaredMimeType) { extension ->
+            MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+        }
 
     private fun safeFileName(value: String): String {
         val cleaned = File(value.replace('\\', '/')).name
