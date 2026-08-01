@@ -219,7 +219,7 @@ void main() {
     expect(workflow, contains(r'exit "$FLUTTER_BUILD_STATUS"'));
     expect(workflow, contains('Unsigned HAP recovered'));
     expect(
-      workflow,
+      workflow.replaceAll(RegExp(r'\\\r?\n\s*'), ''),
       contains("find ohos/entry/build -type f -name '*unsigned*.hap'"),
     );
     expect(workflow, contains('Upload unsigned HarmonyOS HAP'));

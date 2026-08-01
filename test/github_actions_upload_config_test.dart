@@ -3,13 +3,54 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('GitHub Actions only builds and directly uploads HarmonyOS ARM', () {
+  test('Android CI supplies a monotonic version code', () {
     final workflow =
         File('.github/workflows/build-mobile.yml').readAsStringSync();
 
-    expect(workflow, isNot(contains('\n  android:')));
-    expect(workflow, isNot(contains('\n  ios:')));
+    final versionStep = _workflowStep(
+      workflow,
+      'Compute Android version code',
+    );
+    final buildStep = _workflowStep(workflow, 'Build release APK');
+
+    expect(versionStep, contains('100000 + GITHUB_RUN_NUMBER'));
+    expect(versionStep, contains('version_code='));
+    expect(versionStep, contains(r'$GITHUB_OUTPUT'));
+    expect(
+      buildStep,
+      contains(
+        r'--build-number "${{ steps.android_version.outputs.version_code }}"',
+      ),
+    );
+  });
+
+  test('GitHub Actions builds and directly uploads maintained platforms', () {
+    final workflow =
+        File('.github/workflows/build-mobile.yml').readAsStringSync();
+
+    expect(workflow, contains('\n  android:'));
+    expect(workflow, contains('\n  ios:'));
     expect(workflow, contains('\n  harmonyos:'));
+    expect(
+      workflow,
+      contains('Build unsigned HarmonyOS HAP (ohos-arm64)'),
+    );
+    expect(
+      workflow,
+      contains('flutter build hap --release --target-platform ohos-arm64'),
+    );
+    expect(workflow, isNot(contains('target-platform: ohos-x64')));
+
+    _expectDirectFileUpload(
+      workflow,
+      stepName: 'Upload APK',
+      path: 'build/app/outputs/flutter-apk/GardendlessLoader-android.apk',
+    );
+    _expectDirectFileUpload(
+      workflow,
+      stepName: 'Upload unsigned IPA',
+      path: 'build/ios/ipa/GardendlessLoader-unsigned.ipa',
+    );
     _expectDirectFileUpload(
       workflow,
       stepName: 'Upload unsigned HarmonyOS HAP',
