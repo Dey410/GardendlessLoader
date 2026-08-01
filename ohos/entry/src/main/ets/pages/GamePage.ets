@@ -217,7 +217,6 @@ struct GamePage {
       'transport.js',
       'bootstrap.js',
       'logging.js',
-      'ohos_avif_probe.js',
       'auto_sun.js',
       'touch_patch.js',
       'export_download_patch.js',

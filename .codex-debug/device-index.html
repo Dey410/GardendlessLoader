@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+
+  <title>Cocos Creator | PvZ2_Gardendless</title>
+
+  <!--http://www.html5rocks.com/en/mobile/mobifying/-->
+  <meta name="viewport"
+    content="width=device-width,user-scalable=no,initial-scale=1,minimum-scale=1,maximum-scale=1,minimal-ui=true" />
+
+  <!--https://developer.apple.com/library/safari/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/MetaTags.html-->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
+
+  <!-- force webkit on 360 -->
+  <meta name="renderer" content="webkit" />
+  <meta name="force-rendering" content="webkit" />
+  <!-- force edge on IE -->
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="msapplication-tap-highlight" content="no">
+
+  <!-- force full screen on some browser -->
+  <meta name="full-screen" content="yes" />
+  <meta name="x5-fullscreen" content="true" />
+  <meta name="360-fullscreen" content="true" />
+
+  <!--fix fireball/issues/3568 -->
+  <!--<meta name="browsermode" content="application">-->
+  <meta name="x5-page-mode" content="app">
+
+  <!--<link rel="apple-touch-icon" href=".png" />-->
+  <!--<link rel="apple-touch-icon-precomposed" href=".png" />-->
+
+  <link rel="stylesheet" type="text/css" href="style.css" />
+
+  <script type="module" crossorigin src="/assets/index-Dke0_sjp.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/logger-_0kcFG-y.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-zJ_50EbN.js">
+  <link rel="modulepreload" crossorigin href="/assets/core-w4ZWUd33.js">
+  <link rel="modulepreload" crossorigin href="/assets/event-BfHUMTdO.js">
+  <link rel="modulepreload" crossorigin href="/assets/dist-js-BfJhZoDA.js">
+  <link rel="modulepreload" crossorigin href="/assets/tmpPatch-BM8HzqNi.js">
+  <link rel="modulepreload" crossorigin href="/assets/dist-js-0iP-ySAk.js">
+  <link rel="modulepreload" crossorigin href="/assets/dist-js-BGE0QZXM.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-DKoImUbw.js">
+  <link rel="modulepreload" crossorigin href="/assets/file-loader-C1d_eAqK.js">
+  <link rel="modulepreload" crossorigin href="/assets/engine-CCevNuAZ.js">
+  <link rel="modulepreload" crossorigin href="/assets/isolation-DLKV_2pB.js">
+  <link rel="modulepreload" crossorigin href="/assets/settings-store-ClY3sNI-.js">
+  <link rel="modulepreload" crossorigin href="/assets/components-CBbpXSWx.js">
+  <link rel="modulepreload" crossorigin href="/assets/i18n-CtLjZ535.js">
+  <link rel="modulepreload" crossorigin href="/assets/toast-CnLSOsm-.js">
+  <link rel="modulepreload" crossorigin href="/assets/data-drawer-_m_J4ofg.js">
+  <link rel="modulepreload" crossorigin href="/assets/overlay-11tH1t76.js">
+</head>
+
+<body>
+  <div id="GameDiv" cc_exact_fit_screen="true">
+    <div id="Cocos3dGameContainer">
+      <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="99"></canvas>
+    </div>
+  </div>
+
+
+  <!-- Polyfills bundle. -->
+
+  <script src="src/polyfills.bundle.js" charset="utf-8"> </script>
+
+
+  <!-- SystemJS support. -->
+  <script src="src/system.bundle.js" charset="utf-8"> </script>
+
+  <!-- Import map -->
+  <script src="src/import-map.json" type="systemjs-importmap" charset="utf-8"> </script>
+
+  <!-- <script src="addon/patcher.js" type="module"></script> -->
+</body>
+
+</html>
