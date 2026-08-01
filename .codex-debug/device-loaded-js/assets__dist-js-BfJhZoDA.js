@@ -1,1 +1,0 @@
-import{r as e}from"./core-w4ZWUd33.js";async function t(t,n){await e(`plugin:opener|open_url`,{url:t,with:n})}async function n(t,n){await e(`plugin:opener|open_path`,{path:t,with:n})}export{t as n,n as t};

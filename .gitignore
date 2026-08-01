@@ -9,6 +9,8 @@ build/
 coverage/
 .codex/
 .codex-flutter/
+.codex-debug/
+.tmp-gardendless-*
 .idea/
 .vscode/
 .idea/workspace.xml

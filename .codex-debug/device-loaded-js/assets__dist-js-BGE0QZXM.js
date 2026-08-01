@@ -1,1 +1,0 @@
-import{r as e}from"./core-w4ZWUd33.js";async function t(t={}){return typeof t==`object`&&Object.freeze(t),await e(`plugin:dialog|save`,{options:t})}export{t};

@@ -1,7 +1,0 @@
-var e=`
-.ge-toast{background:rgba(18,18,18,0.92);color:#e8e8e8;padding:10px 14px;border-radius:6px;font-size:13px;font-family:'Segoe UI',system-ui,sans-serif;
-  box-shadow:0 4px 16px rgba(0,0,0,.5);opacity:0;transform:translateX(20px);transition:opacity .2s,transform .2s;border-left:3px solid #4a9eff;max-width:260px;word-break:break-all;line-height:1.4;cursor:pointer;}
-.ge-toast.ge-show{opacity:1;transform:translateX(0);}
-.ge-toast.ge-success{border-left-color:#4caf50;}
-.ge-toast.ge-error{border-left-color:#f44336;}
-`,t=null,n=!1;function r(){if(n)return;n=!0;let r=document.createElement(`style`);r.id=`gp-next-toast-styles`,r.textContent=e,document.head.appendChild(r),t=document.createElement(`div`),t.id=`ge-toast-wrap`,t.style.cssText=`position:fixed;top:16px;right:16px;z-index:2147483647;display:flex;flex-direction:column;gap:8px;pointer-events:none;`,document.body.appendChild(t)}function i(e,i=``,a=3500){n||r();let o=document.createElement(`div`);for(o.className=`ge-toast${i?` ge-`+i:``}`,o.textContent=e,o.style.pointerEvents=`auto`,o.addEventListener(`click`,()=>{o.classList.remove(`ge-show`),setTimeout(()=>o.remove(),250)}),t.appendChild(o),requestAnimationFrame(()=>o.classList.add(`ge-show`)),setTimeout(()=>{o.classList.remove(`ge-show`),setTimeout(()=>o.remove(),250)},a);t.children.length>5;)t.firstChild.remove()}export{i as n,r as t};
