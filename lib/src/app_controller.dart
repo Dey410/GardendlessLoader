@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,9 @@ import 'package:path/path.dart' as p;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'constants.dart';
+import 'game_host/game_host.dart';
+import 'game_host/game_session_store.dart';
+import 'logging/app_logger.dart';
 import 'models.dart';
 import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
@@ -15,7 +19,6 @@ import 'services/diagnostics_service.dart';
 import 'services/game_update_check_service.dart';
 import 'services/import_service.dart';
 import 'services/import_progress_meter.dart';
-import 'services/local_game_server.dart';
 import 'services/manifest_store.dart';
 import 'services/resource_validator.dart';
 import 'services/resource_picker_service.dart';
@@ -29,8 +32,11 @@ class AppController extends ChangeNotifier {
   AppController({
     AppPathsService? pathsService,
     ResourceValidator? validator,
-    LocalGameServer? server,
     ImportService? importService,
+    GameHost? gameHost,
+    GameHostPlatform? gameHostPlatform,
+    String Function()? gameSessionIdFactory,
+    AppLogger? appLogger,
     DiagnosticsService? diagnosticsService,
     AnnouncementService? announcementService,
     AboutContentService? aboutContentService,
@@ -43,7 +49,10 @@ class AppController extends ChangeNotifier {
     Duration importProgressTickInterval = const Duration(seconds: 1),
   })  : _pathsService = pathsService ?? AppPathsService(),
         _validator = validator ?? ResourceValidator(),
-        _server = server ?? LocalGameServer(),
+        _gameHost = gameHost ?? GameHostRouter.platformChannel(),
+        _gameHostPlatform = gameHostPlatform,
+        _gameSessionIdFactory = gameSessionIdFactory ?? _newGameSessionId,
+        _appLogger = appLogger,
         _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
         _announcementService = announcementService ?? AnnouncementService(),
         _aboutContentService = aboutContentService ?? AboutContentService(),
@@ -62,14 +71,16 @@ class AppController extends ChangeNotifier {
     _importService = importService ??
         ImportService(
           validator: _validator,
-          server: _server,
           gameUpdateCheckService: _gameUpdateCheckService,
         );
   }
 
   final AppPathsService _pathsService;
   final ResourceValidator _validator;
-  final LocalGameServer _server;
+  final GameHost _gameHost;
+  final GameHostPlatform? _gameHostPlatform;
+  final String Function() _gameSessionIdFactory;
+  final AppLogger? _appLogger;
   final DiagnosticsService _diagnosticsService;
   final AnnouncementService _announcementService;
   final AboutContentService _aboutContentService;
@@ -84,11 +95,15 @@ class AppController extends ChangeNotifier {
   ImportProgressMeter? _importProgressMeter;
   Timer? _importCompletionTimer;
   Timer? _importProgressTickTimer;
+  String? _activeImportOperationId;
+  DateTime? _lastImportProgressLogAt;
   Future<void> _appSettingsWrite = Future<void>.value();
+  Future<void> _manifestPreferenceWrite = Future<void>.value();
 
   AppPaths? _paths;
   AppSettingsStore? _appSettingsStore;
   ManifestStore? _manifestStore;
+  GameSessionStore? _gameSessionStore;
   ResourceManifest _manifest = ResourceManifest.initial();
   ResourceValidationResult _currentValidation =
       ResourceValidationResult.missing('尚未检查激活槽');
@@ -114,10 +129,14 @@ class AppController extends ChangeNotifier {
   bool _initialized = false;
   bool _busy = false;
   String? _message;
+  AppLogSnapshot? _logSnapshot;
+  bool _logSnapshotLoading = false;
 
   bool get initialized => _initialized;
   bool get busy => _busy;
   String? get message => _message;
+  AppLogSnapshot? get logSnapshot => _logSnapshot;
+  bool get logSnapshotLoading => _logSnapshotLoading;
   AppPaths? get paths => _paths;
   ResourceManifest get manifest => _manifest;
   ResourceValidationResult get currentValidation => _currentValidation;
@@ -133,7 +152,27 @@ class AppController extends ChangeNotifier {
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
   bool get watermarkEnabled => _watermarkEnabled;
-  ServerStatus get serverStatus => _server.status;
+  bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
+  GameHostPlatform get gameHostPlatform {
+    final configured = _gameHostPlatform;
+    if (configured != null) {
+      return configured;
+    }
+    try {
+      return GameHostPlatform.current();
+    } on UnsupportedError {
+      GameHostPlatform? testFallback;
+      assert(() {
+        testFallback = GameHostPlatform.android;
+        return true;
+      }());
+      if (testFallback != null) {
+        return testFallback!;
+      }
+      rethrow;
+    }
+  }
+
   bool get isImporting =>
       _importProgress.phase != ImportPhase.idle &&
       _importProgress.phase != ImportPhase.completed &&
@@ -180,26 +219,99 @@ class AppController extends ChangeNotifier {
     _busy = true;
     notifyListeners();
     try {
-      _paths = await _pathsService.ensureInitialized();
-      _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
-      _watermarkEnabled = await _appSettingsStore!.readWatermarkEnabled();
-      _manifestStore = ManifestStore(_paths!.manifestFile);
-      _manifest = await _manifestStore!.read();
-      final interruptedTransaction =
-          _manifest.transactionState != TransactionState.idle;
-      _manifest = await _importService.recoverStartupTransaction(
-        paths: _paths!,
-        manifestStore: _manifestStore!,
-      );
-      await _diagnosticsService.initialize();
-      await _loadCurrentAppVersion();
-      await refresh();
-      if (_manifest.transactionState == TransactionState.cleaningOldSlot) {
-        _message = '游戏资源可用，旧槽清理将在下次启动重试';
-      } else if (interruptedTransaction) {
-        _message = '上次导入意外中断，已清理未完成文件';
+      Future<void> initializeCore() async {
+        _emitInitializationStage('paths');
+        _paths = await _pathsService.ensureInitialized();
+        _emitInitializationStage('game_session_recovery');
+        _gameSessionStore = GameSessionStore(_paths!.root);
+        final exitResult = await _gameSessionStore!.consumeExitResult();
+        _emitInitializationStage('settings');
+        _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
+        _watermarkEnabled = await _appSettingsStore!.readWatermarkEnabled();
+        _emitInitializationStage('manifest');
+        _manifestStore = ManifestStore(_paths!.manifestFile);
+        _manifest = await _manifestStore!.read();
+        final interruptedTransaction =
+            _manifest.transactionState != TransactionState.idle;
+        final recoveryOperationId =
+            interruptedTransaction ? _newOperationId('import-recovery') : null;
+        if (interruptedTransaction) {
+          _appLogger?.emit(
+            level: LogLevel.warn,
+            category: 'resource.import',
+            event: 'import_transaction_recovery_started',
+            outcome: LogOutcome.started,
+            operationId: recoveryOperationId,
+            context: <String, Object?>{
+              'transactionState': _manifest.transactionState.name,
+              'targetSlot': _manifest.transactionSlot?.name ?? 'none',
+            },
+          );
+        }
+        try {
+          _manifest = await _importService.recoverStartupTransaction(
+            paths: _paths!,
+            manifestStore: _manifestStore!,
+          );
+          if (interruptedTransaction) {
+            _appLogger?.emit(
+              level: LogLevel.info,
+              category: 'resource.import',
+              event: 'import_transaction_recovery_finished',
+              outcome: LogOutcome.succeeded,
+              operationId: recoveryOperationId,
+              context: <String, Object?>{
+                'recoveryAction': _manifest.transactionState ==
+                        TransactionState.cleaningOldSlot
+                    ? 'cleanup_deferred'
+                    : 'transaction_reconciled',
+                'activeSlot': _manifest.activeSlot?.name ?? 'none',
+                'currentResourceUsable': _manifest.activeSlot != null,
+              },
+            );
+          }
+        } catch (error, stackTrace) {
+          _appLogger?.emit(
+            level: LogLevel.error,
+            category: 'resource.import',
+            event: 'import_transaction_recovery_finished',
+            outcome: LogOutcome.failed,
+            code: 'import_transaction_recovery_failed',
+            operationId: recoveryOperationId,
+            error: error,
+            stackTrace: stackTrace,
+          );
+          rethrow;
+        }
+        _emitInitializationStage('diagnostics');
+        await _diagnosticsService.initialize();
+        await _loadCurrentAppVersion();
+        _emitInitializationStage('resource_validation');
+        await refresh();
+        if (_manifest.transactionState == TransactionState.cleaningOldSlot) {
+          _message = '游戏资源可用，旧槽清理将在下次启动重试';
+        } else if (interruptedTransaction) {
+          _message = '上次导入意外中断，已清理未完成文件';
+        } else if (exitResult?.reason == GameExitReason.rendererGone) {
+          _message = exitResult?.message ?? '游戏渲染进程已退出';
+        } else if (exitResult?.reason == GameExitReason.launchFailed) {
+          _message = exitResult?.message ?? '原生游戏宿主启动失败';
+        }
+        _initialized = true;
       }
-      _initialized = true;
+
+      final operation = _appLogger?.startOperation(
+        operationId: 'app-initialize',
+        category: 'app.lifecycle',
+        startedEvent: 'app_initialization_started',
+        finishedEvent: 'app_initialization_finished',
+        failureCode: 'app_initialization_failed',
+      );
+      if (operation == null) {
+        await initializeCore();
+      } else {
+        await operation.run(initializeCore);
+      }
     } catch (error) {
       _message = '启动失败：$error';
     } finally {
@@ -408,6 +520,18 @@ class AppController extends ChangeNotifier {
     _startImportProgressTicker();
     notifyListeners();
 
+    final operationId = _newOperationId('resource-import');
+    _activeImportOperationId = operationId;
+    _lastImportProgressLogAt = null;
+    final importStopwatch = Stopwatch()..start();
+    _appLogger?.emit(
+      level: LogLevel.info,
+      category: 'resource.import',
+      event: 'resource_import_started',
+      outcome: LogOutcome.started,
+      operationId: operationId,
+    );
+
     var restoreAwakeModeAfterImport = false;
     ImportTarget? importTarget;
     try {
@@ -416,24 +540,74 @@ class AppController extends ChangeNotifier {
         paths: paths,
         manifestStore: manifestStore,
       );
+      _appLogger?.emit(
+        level: LogLevel.info,
+        category: 'resource.import',
+        event: 'resource_import_target_prepared',
+        outcome: LogOutcome.succeeded,
+        operationId: operationId,
+        context: <String, Object?>{'targetSlot': importTarget.slot.name},
+      );
+      _message = '正在打开系统文件选择器';
+      notifyListeners();
+      _appLogger?.emit(
+        level: LogLevel.info,
+        category: 'resource.import',
+        event: 'resource_import_picker_started',
+        outcome: LogOutcome.started,
+        operationId: operationId,
+      );
       final selectedSource = await _resourcePickerService.pickAndExtractDocsZip(
         targetDirectory: importTarget.directory,
         onProgress: _updateImportProgress,
       );
       if (selectedSource == null) {
+        _appLogger?.emit(
+          level: LogLevel.info,
+          category: 'resource.import',
+          event: 'resource_import_picker_finished',
+          outcome: LogOutcome.cancelled,
+          operationId: operationId,
+          context: const <String, Object?>{'stage': 'cancelled'},
+        );
         _manifest = await _importService.abortImport(
           paths: paths,
           manifestStore: manifestStore,
         );
         importTarget = null;
         _message = '已取消选择 ZIP';
+        _appLogger?.emit(
+          level: LogLevel.info,
+          category: 'resource.import',
+          event: 'resource_import_finished',
+          outcome: LogOutcome.cancelled,
+          operationId: operationId,
+          durationMs: importStopwatch.elapsedMilliseconds,
+          context: const <String, Object?>{'stage': 'picking'},
+        );
         return;
       }
+
+      _appLogger?.emit(
+        level: LogLevel.info,
+        category: 'resource.import',
+        event: 'resource_import_picker_finished',
+        outcome: LogOutcome.succeeded,
+        operationId: operationId,
+        context: const <String, Object?>{'stage': 'extracted'},
+      );
 
       _selectedImportSource = selectedSource;
       _importValidation = ResourceValidationResult.missing('正在校验 docs');
       _updateImportProgress(
         const ImportProgress(phase: ImportPhase.validating, message: '正在校验资源'),
+      );
+      _appLogger?.emit(
+        level: LogLevel.info,
+        category: 'resource.validation',
+        event: 'resource_validation_started',
+        outcome: LogOutcome.started,
+        operationId: operationId,
       );
 
       _manifest = await _importService.completeImport(
@@ -443,6 +617,31 @@ class AppController extends ChangeNotifier {
         onProgress: _updateImportProgress,
       );
       importTarget = null;
+      _appLogger?.emit(
+        level: LogLevel.info,
+        category: 'resource.validation',
+        event: 'resource_validation_finished',
+        outcome: LogOutcome.succeeded,
+        operationId: operationId,
+        context: <String, Object?>{
+          'fileCount': _manifest.fileCount,
+          'totalBytes': _manifest.totalBytes,
+          'buildProfile': _manifest.buildProfile.name,
+          'gpNextVersion': _manifest.gpNextVersion ?? 'none',
+        },
+      );
+      _appLogger?.emit(
+        level: LogLevel.info,
+        category: 'resource.import',
+        event: 'resource_slot_activated',
+        outcome: LogOutcome.succeeded,
+        operationId: operationId,
+        context: <String, Object?>{
+          'activeSlot': _manifest.activeSlot?.name ?? 'none',
+          'cleanupDeferred':
+              _manifest.transactionState == TransactionState.cleaningOldSlot,
+        },
+      );
       _message = _manifest.transactionState == TransactionState.cleaningOldSlot
           ? '导入成功，旧槽清理将在下次启动重试'
           : '导入成功';
@@ -454,7 +653,31 @@ class AppController extends ChangeNotifier {
       }
       await refresh();
       await _checkGameForUpdate(reuseLatestVersion: true);
+      _appLogger?.emit(
+        level: LogLevel.info,
+        category: 'resource.import',
+        event: 'resource_import_finished',
+        outcome: LogOutcome.succeeded,
+        operationId: operationId,
+        durationMs: importStopwatch.elapsedMilliseconds,
+        context: <String, Object?>{
+          'stage': 'completed',
+          'activeSlot': _manifest.activeSlot?.name ?? 'none',
+          'fileCount': _manifest.fileCount,
+          'totalBytes': _manifest.totalBytes,
+        },
+      );
     } on ResourcePickerFailure catch (failure) {
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'resource.import',
+        event: 'resource_import_picker_finished',
+        outcome: LogOutcome.failed,
+        code: failure.code,
+        operationId: operationId,
+        error: failure,
+        stackTrace: StackTrace.current,
+      );
       if (importTarget != null) {
         _manifest = await _importService.abortImport(
           paths: paths,
@@ -466,9 +689,42 @@ class AppController extends ChangeNotifier {
       _updateImportProgress(
         ImportProgress(phase: ImportPhase.failed, message: failure.message),
       );
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'resource.import',
+        event: 'resource_import_finished',
+        outcome: LogOutcome.failed,
+        code: failure.code,
+        operationId: operationId,
+        durationMs: importStopwatch.elapsedMilliseconds,
+        error: failure,
+        stackTrace: StackTrace.current,
+      );
     } on ImportFailure catch (failure) {
       _message = failure.message;
       await refresh();
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'resource.validation',
+        event: 'resource_validation_finished',
+        outcome: LogOutcome.failed,
+        code: failure.code,
+        operationId: operationId,
+        context: <String, Object?>{'stage': _importProgress.phase.name},
+        error: failure,
+        stackTrace: StackTrace.current,
+      );
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'resource.import',
+        event: 'resource_import_finished',
+        outcome: LogOutcome.failed,
+        code: failure.code,
+        operationId: operationId,
+        durationMs: importStopwatch.elapsedMilliseconds,
+        error: failure,
+        stackTrace: StackTrace.current,
+      );
     } catch (error) {
       if (importTarget != null) {
         _manifest = await _importService.abortImport(
@@ -482,12 +738,24 @@ class AppController extends ChangeNotifier {
         ImportProgress(phase: ImportPhase.failed, message: _message),
       );
       await refresh();
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'resource.import',
+        event: 'resource_import_finished',
+        outcome: LogOutcome.failed,
+        code: 'import_extract_failed',
+        operationId: operationId,
+        durationMs: importStopwatch.elapsedMilliseconds,
+        error: error,
+        stackTrace: StackTrace.current,
+      );
     } finally {
       _importProgressTickTimer?.cancel();
       if (restoreAwakeModeAfterImport) {
         await _setImportAwakeMode(false);
       }
       _busy = false;
+      _activeImportOperationId = null;
       notifyListeners();
     }
   }
@@ -495,6 +763,26 @@ class AppController extends ChangeNotifier {
   void _updateImportProgress(ImportProgress progress) {
     final meter = _importProgressMeter ??= ImportProgressMeter();
     _importProgress = meter.measure(progress);
+    final now = DateTime.now();
+    final lastLogAt = _lastImportProgressLogAt;
+    if (lastLogAt == null ||
+        now.difference(lastLogAt) >= const Duration(seconds: 1)) {
+      _lastImportProgressLogAt = now;
+      _appLogger?.emit(
+        level: LogLevel.debug,
+        category: 'resource.import',
+        event: 'resource_import_progress',
+        outcome: LogOutcome.observed,
+        operationId: _activeImportOperationId,
+        context: <String, Object?>{
+          'stage': progress.phase.name,
+          'processedBytes': progress.copiedBytes,
+          'totalBytes': progress.totalBytes,
+          'processedFiles': progress.copiedFiles,
+          'totalFiles': progress.totalFiles,
+        },
+      );
+    }
     notifyListeners();
   }
 
@@ -574,32 +862,70 @@ class AppController extends ChangeNotifier {
     if (!_currentValidation.isValid) {
       _message = _currentValidation.errorMessage ?? '激活槽资源无效';
       notifyListeners();
+      _appLogger?.emit(
+        level: LogLevel.error,
+        category: 'game.host',
+        event: 'game_host_launch_finished',
+        outcome: LogOutcome.failed,
+        code: 'resource_validation_failed',
+        message: _message,
+      );
       throw StateError(_message!);
     }
-    await _server.start(root: activeDirectory!);
-    notifyListeners();
+    final exportRoot = Directory(p.join(paths.gpNextDir.path, '.exports'));
+    await exportRoot.create(recursive: true);
+    final session = GameSession(
+      sessionId: _gameSessionIdFactory(),
+      resourceRoot: activeDirectory!.path,
+      platform: gameHostPlatform,
+      entryPath: 'index.html',
+      activationGeneration: _manifest.generation,
+      hasGpNext: hasGpNext,
+      gpNextCompatible: gpNextCompatible,
+      gpNextVersion: gpNextVersion,
+      watermarkEnabled: _watermarkEnabled,
+      autoCollectSunEnabled: !hasGpNext && _manifest.autoCollectSunEnabled,
+      allowedRemoteHosts: hasGpNext
+          ? const ['pvzge.com', 'github.com', 'discord.gg']
+          : const [],
+      gpNextRoot: paths.gpNextDir.path,
+      exportTemporaryRoot: exportRoot.path,
+    );
+    final store = _gameSessionStore ??= GameSessionStore(paths.root);
+    Future<void> launch() async {
+      await store.prepare(session);
+      _importCompletionTimer?.cancel();
+      _importProgressTickTimer?.cancel();
+      await _gameHost.launch(session);
+    }
+
+    final operation = _appLogger?.startOperation(
+      operationId: _newOperationId('game-launch'),
+      category: 'game.host',
+      startedEvent: 'game_host_launch_started',
+      finishedEvent: 'game_host_launch_finished',
+      failureCode: 'game_host_launch_failed',
+      gameSessionId: session.sessionId,
+    );
+    if (operation == null) {
+      await launch();
+    } else {
+      await operation.run(launch);
+    }
   }
 
-  Future<void> stopGame() async {
-    await _server.stop();
-    notifyListeners();
-  }
+  static String _newOperationId(String prefix) =>
+      '$prefix-${DateTime.now().toUtc().microsecondsSinceEpoch}';
 
-  Future<bool> ensureServerAfterResume() async {
-    if (_server.isRunning) {
-      return false;
-    }
-    if (!canStartGame) {
-      return false;
-    }
-    final paths = _requirePaths();
-    final activeDirectory = _importService.activeDirectory(paths, _manifest);
-    if (activeDirectory == null) {
-      return false;
-    }
-    await _server.start(root: activeDirectory);
-    notifyListeners();
-    return true;
+  void _emitInitializationStage(String stage) {
+    _appLogger?.emit(
+      level: LogLevel.debug,
+      category: 'app.lifecycle',
+      event: 'app_initialization_stage_changed',
+      outcome: LogOutcome.observed,
+      operationId: 'app-initialize',
+      context: <String, Object?>{'stage': stage},
+    );
   }
 
   DiagnosticSnapshot diagnostics({String? webViewEngineVersion}) {
@@ -608,9 +934,89 @@ class AppController extends ChangeNotifier {
       currentValidation: _currentValidation,
       importValidation: _importValidation,
       manifest: _manifest,
-      serverStatus: _server.status,
+      gameHostPlatform: gameHostPlatform,
       webViewEngineVersion: webViewEngineVersion,
     );
+  }
+
+  Future<void> refreshLogs() async {
+    final logger = _appLogger;
+    if (logger == null || _logSnapshotLoading) {
+      return;
+    }
+    _logSnapshotLoading = true;
+    notifyListeners();
+    try {
+      _logSnapshot = await logger.loadSnapshot();
+    } finally {
+      _logSnapshotLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteLogHistory() async {
+    final logger = _appLogger;
+    if (logger == null) {
+      return;
+    }
+    await logger.deleteHistory();
+    await refreshLogs();
+  }
+
+  String buildLogText({String minimumLevel = 'INFO', bool errorsOnly = false}) {
+    final snapshot = _logSnapshot;
+    final buffer = StringBuffer(diagnostics().toLogText());
+    if (snapshot == null) {
+      buffer.writeln('\nstructuredLogs: unavailable');
+      return buffer.toString();
+    }
+    buffer
+      ..writeln('\nappSessionId: ${snapshot.appSessionId}')
+      ..writeln('logPersisting: ${snapshot.persisting}')
+      ..writeln('logDegraded: ${snapshot.degraded}')
+      ..writeln('logDirectory: ${snapshot.logDirectory ?? 'unavailable'}')
+      ..writeln('logBytes: ${snapshot.totalBytes}')
+      ..writeln('logWriteFailures: ${snapshot.writeFailureCount}')
+      ..writeln('logDropped: ${jsonEncode(snapshot.droppedByLevel)}')
+      ..writeln('\nrecent events:');
+    const ranks = <String, int>{
+      'DEBUG': 0,
+      'INFO': 1,
+      'WARN': 2,
+      'ERROR': 3,
+      'FATAL': 4,
+    };
+    final minimumRank = ranks[minimumLevel] ?? 1;
+    for (final event in snapshot.events) {
+      final level = event['level']?.toString().toUpperCase() ?? 'INFO';
+      if ((ranks[level] ?? 1) < minimumRank) {
+        continue;
+      }
+      if (errorsOnly && level != 'ERROR' && level != 'FATAL') {
+        continue;
+      }
+      buffer.writeln(jsonEncode(event));
+    }
+    return buffer.toString();
+  }
+
+  String buildDiagnosticSummary() {
+    final buffer = StringBuffer(diagnostics().toCopyText());
+    final snapshot = _logSnapshot;
+    if (snapshot == null) {
+      return buffer.toString();
+    }
+    buffer
+      ..writeln()
+      ..writeln('Structured logs:')
+      ..writeln('appSessionId: ${snapshot.appSessionId}')
+      ..writeln('persisting: ${snapshot.persisting}')
+      ..writeln('degraded: ${snapshot.degraded}')
+      ..writeln('writeFailures: ${snapshot.writeFailureCount}');
+    for (final event in snapshot.events) {
+      buffer.writeln(jsonEncode(event));
+    }
+    return buffer.toString();
   }
 
   void clearMessage() {
@@ -642,6 +1048,27 @@ class AppController extends ChangeNotifier {
     await currentWrite;
   }
 
+  Future<void> setAutoCollectSunEnabled(bool enabled) async {
+    if (_manifest.autoCollectSunEnabled == enabled) {
+      return;
+    }
+    final manifestStore = _requireManifestStore();
+    _manifest = _manifest.copyWith(autoCollectSunEnabled: enabled);
+    final manifest = _manifest;
+    notifyListeners();
+    final previousWrite = _manifestPreferenceWrite;
+    final currentWrite = () async {
+      try {
+        await previousWrite;
+      } catch (_) {
+        // A later choice must still be persisted after an earlier write fails.
+      }
+      await manifestStore.write(manifest);
+    }();
+    _manifestPreferenceWrite = currentWrite;
+    await currentWrite;
+  }
+
   AppPaths _requirePaths() {
     final paths = _paths;
     if (paths == null) {
@@ -657,4 +1084,8 @@ class AppController extends ChangeNotifier {
     }
     return manifestStore;
   }
+}
+
+String _newGameSessionId() {
+  return '${DateTime.now().toUtc().microsecondsSinceEpoch}-${pid.toRadixString(16)}';
 }

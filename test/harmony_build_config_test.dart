@@ -3,15 +3,12 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('OpenHarmony override uses compatible plugin forks', () {
+  test('OpenHarmony override no longer carries a Flutter WebView plugin', () {
     final pubspec = File('pubspec_overrides.ohos.yaml').readAsStringSync();
 
     expect(pubspec, contains('openharmony-tpc/flutter_packages.git'));
     expect(pubspec, contains('packages/path_provider/path_provider'));
-    expect(pubspec, contains('openharmony-sig/flutter_inappwebview.git'));
-    expect(pubspec, contains('br_v6.1.5_ohos'));
-    expect(pubspec, contains('flutter_inappwebview'));
-    expect(pubspec, contains('flutter_inappwebview_platform_interface'));
+    expect(pubspec, isNot(contains('flutter_inappwebview')));
     expect(pubspec, contains('openharmony-sig/fluttertpc_wakelock_plus.git'));
     expect(pubspec, contains('wakelock_plus'));
     expect(pubspec, contains('wakelock_plus_platform_interface: 1.3.0'));
@@ -128,53 +125,63 @@ void main() {
     expect(importer, contains("'totalFiles'"));
   });
 
-  test('OpenHarmony registers a game save exporter', () {
+  test('OpenHarmony GameAbility owns LocalStorage before loading GamePage', () {
     final ability = File(
-      'ohos/entry/src/main/ets/entryability/EntryAbility.ets',
-    ).readAsStringSync();
-    final exporter = File(
-      'ohos/entry/src/main/ets/plugins/GameFileExporterPlugin.ets',
+      'ohos/entry/src/main/ets/game/GameAbility.ets',
     ).readAsStringSync();
 
-    expect(ability, contains('GameFileExporterPlugin'));
-    expect(ability, contains('addPlugin(new GameFileExporterPlugin())'));
+    expect(ability, contains('new LocalStorage'));
+    expect(ability, isNot(contains('LocalStorage.getShared()')));
     expect(
-      exporter,
-      contains('io.github.dey410.gardendlessloader/game_file_exporter'),
+      ability,
+      contains("windowStage.loadContent('pages/GamePage', this.storage)"),
     );
-    expect(exporter, contains('exportFile'));
-    expect(exporter, contains('DocumentSaveOptions'));
-    expect(exporter, contains('DocumentViewPicker'));
-    expect(exporter, contains('documentViewPicker.save'));
     expect(
-      exporter,
-      contains('fs.openSync(targetUri, fs.OpenMode.READ_WRITE)'),
+      ability.indexOf('new LocalStorage'),
+      lessThan(ability.indexOf("windowStage.loadContent('pages/GamePage'")),
     );
-    expect(exporter, contains('fs.copyFileSync(input.fd, output.fd)'));
-    expect(exporter, contains('fs.closeSync(output.fd)'));
-    expect(exporter, contains('isCancelledError'));
-    expect(exporter, contains("result.error('export_cancelled'"));
-    expect(exporter, contains("message.toLowerCase().includes('cancel')"));
-    expect(exporter, contains("message.includes('取消')"));
   });
 
-  test('OpenHarmony registers the GP-Next package picker', () {
-    final ability = File(
-      'ohos/entry/src/main/ets/entryability/EntryAbility.ets',
+  test('OpenHarmony native GameHost avoids known ArkTS build blockers', () {
+    final gamePage = File(
+      'ohos/entry/src/main/ets/pages/GamePage.ets',
     ).readAsStringSync();
-    final importer = File(
-      'ohos/entry/src/main/ets/plugins/GpNextFileImporterPlugin.ets',
+    final gameBridge = File(
+      'ohos/entry/src/main/ets/game/GameBridge.ets',
     ).readAsStringSync();
+    final gpNextCore = File(
+      'ohos/entry/src/main/ets/game/GpNextNativeCore.ets',
+    ).readAsStringSync();
+    final gameHostPlugin = File(
+      'ohos/entry/src/main/ets/plugins/GameHostPlugin.ets',
+    ).readAsStringSync();
+    final arkTsSources = [
+      gamePage,
+      gameBridge,
+      gpNextCore,
+      gameHostPlugin,
+    ].join('\n');
 
-    expect(ability, contains('GpNextFileImporterPlugin'));
-    expect(ability, contains('addPlugin(new GpNextFileImporterPlugin())'));
+    expect(gamePage, contains('Stack() {'));
     expect(
-      importer,
-      contains('io.github.dey410.gardendlessloader/gp_next_file_importer'),
+      gamePage,
+      contains(
+        '.onOverrideUrlLoading((request: WebResourceRequest): boolean =>',
+      ),
     );
-    expect(importer, contains('pickAndCopyFiles'));
-    expect(importer, contains("['.zip', '.json', '.json5']"));
-    expect(importer, contains('fs.copyFileSync(input.fd, destination)'));
+    expect(gamePage, contains('request.getRequestUrl()'));
+    expect(gamePage, isNot(contains('event.request.getRequestUrl()')));
+    expect(gameHostPlugin, contains('interface GameSessionArguments'));
+    expect(gameHostPlugin, contains("call.argument('schemaVersion')"));
+    expect(gameHostPlugin, contains("call.argument('platform')"));
+    expect(gameHostPlugin, contains("call.argument('origin')"));
+    expect(gameHostPlugin, contains("call.argument('allowedRemoteHosts')"));
+    expect(gameHostPlugin, isNot(contains('call.args as Object')));
+    expect(gameHostPlugin, isNot(contains('call.argument as Object')));
+    expect(gameHostPlugin, isNot(contains('call.arguments')));
+    expect(gpNextCore, contains('class GpNextDirectoryEntry'));
+    expect(arkTsSources, isNot(contains('writeTextSync')));
+    expect(arkTsSources, isNot(contains('throw error;')));
   });
 
   test('GitHub Actions exports a HAP artifact', () {
@@ -197,34 +204,29 @@ void main() {
       workflow,
       contains('cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml'),
     );
-    expect(workflow, contains('matrix:'));
-    expect(workflow, contains('target-platform: ohos-arm64'));
-    expect(workflow, contains('target-platform: ohos-x64'));
-    expect(workflow, contains('experimental: false'));
-    expect(workflow, contains('experimental: true'));
+    expect(workflow, isNot(contains('target-platform: ohos-x64')));
+    expect(workflow, isNot(contains('matrix:')));
     expect(
       workflow,
-      contains(r'continue-on-error: ${{ matrix.experimental }}'),
+      contains('flutter build hap --release --target-platform ohos-arm64'),
     );
     expect(
       workflow,
-      contains(
-        r'flutter build hap --release --target-platform "${{ matrix.target-platform }}"',
-      ),
+      contains('GardendlessLoader-unsigned-ohos-arm64.hap'),
     );
     expect(workflow, contains('set +e'));
     expect(workflow, contains(r'FLUTTER_BUILD_STATUS="$?"'));
     expect(workflow, contains(r'exit "$FLUTTER_BUILD_STATUS"'));
     expect(workflow, contains('Unsigned HAP recovered'));
     expect(
-      workflow,
+      workflow.replaceAll(RegExp(r'\\\r?\n\s*'), ''),
       contains("find ohos/entry/build -type f -name '*unsigned*.hap'"),
     );
     expect(workflow, contains('Upload unsigned HarmonyOS HAP'));
     expect(
       workflow,
       contains(
-        r'build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap',
+        'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap',
       ),
     );
   });

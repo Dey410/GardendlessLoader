@@ -3,15 +3,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
-import 'package:gardendless_loader/src/services/local_game_server.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
+import 'package:gardendless_loader/src/services/resource_self_check.dart';
 import 'package:gardendless_loader/src/services/resource_validator.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
   late Directory temp;
   late AppPaths paths;
-  late LocalGameServer server;
   late ImportService importService;
   late ManifestStore manifestStore;
 
@@ -31,9 +30,7 @@ void main() {
     ]) {
       await directory.create(recursive: true);
     }
-    server = LocalGameServer();
-    importService =
-        ImportService(validator: ResourceValidator(), server: server);
+    importService = ImportService(validator: ResourceValidator());
     manifestStore = ManifestStore(paths.manifestFile);
   });
 
@@ -80,6 +77,9 @@ void main() {
       manifestStore: manifestStore,
       target: target,
     );
+    await manifestStore.write(
+      (await manifestStore.read()).copyWith(autoCollectSunEnabled: true),
+    );
 
     target = await importService.beginImport(
       paths: paths,
@@ -99,6 +99,7 @@ void main() {
     expect(manifest.activeSlot, ResourceSlot.slotB);
     expect(manifest.gameVersion, '0.12.0');
     expect(manifest.transactionState, TransactionState.idle);
+    expect(manifest.autoCollectSunEnabled, isFalse);
     expect(await paths.slotADir.list().isEmpty, isTrue);
     expect(
       await File(p.join(paths.slotBDir.path, 'index.html')).exists(),
@@ -223,7 +224,6 @@ void main() {
     );
     importService = ImportService(
       validator: ResourceValidator(),
-      server: server,
       oldSlotCleaner: (_) async {
         throw const FileSystemException('slot is busy');
       },
@@ -299,13 +299,13 @@ void main() {
         generation: 1,
         activeSlot: ResourceSlot.slotA,
         gameVersion: '0.11.0',
+        autoCollectSunEnabled: true,
         resourceStatus: ResourceStatus.ready,
       ),
     );
-    server = _FailingSelfCheckServer();
     importService = ImportService(
       validator: ResourceValidator(),
-      server: server,
+      selfCheck: _FailingSelfCheck(),
     );
     final target = await importService.beginImport(
       paths: paths,
@@ -329,6 +329,7 @@ void main() {
     expect(manifest.activeSlot, ResourceSlot.slotA);
     expect(manifest.gameVersion, '0.11.0');
     expect(manifest.transactionState, TransactionState.idle);
+    expect(manifest.autoCollectSunEnabled, isTrue);
     expect(
       await File(p.join(paths.slotADir.path, 'index.html')).exists(),
       isTrue,
@@ -382,7 +383,6 @@ void main() {
     );
     importService = ImportService(
       validator: ResourceValidator(),
-      server: server,
       oldSlotCleaner: (_) async {
         throw const FileSystemException('slot is still busy');
       },
@@ -420,7 +420,6 @@ void main() {
 
     importService = ImportService(
       validator: ResourceValidator(),
-      server: server,
       oldSlotCleaner: (_) async {
         throw const FileSystemException('keep both slots for recovery');
       },
@@ -442,7 +441,6 @@ void main() {
 
     importService = ImportService(
       validator: ResourceValidator(),
-      server: server,
     );
     final recovered = await importService.recoverStartupTransaction(
       paths: paths,
@@ -518,7 +516,6 @@ void main() {
   });
 
   tearDown(() async {
-    await server.stop();
     if (await temp.exists()) {
       await temp.delete(recursive: true);
     }
@@ -545,9 +542,9 @@ Future<void> _writeValidResource(
   }
 }
 
-class _FailingSelfCheckServer extends LocalGameServer {
+class _FailingSelfCheck implements ResourceSelfCheck {
   @override
-  Future<void> selfCheck({required Directory root}) async {
+  Future<void> validate(Directory root) async {
     throw StateError('self check failed');
   }
 }

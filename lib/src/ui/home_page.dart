@@ -1,18 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../app_controller.dart';
 import '../constants.dart';
+import '../logging/app_logger.dart';
+import '../logging/log_event_catalog.dart';
 import '../models.dart';
 import '../services/game_update_check_service.dart';
 import '../services/update_check_service.dart';
-import 'game_page.dart';
 import 'launcher_visuals.dart';
 
 enum _LauncherSection { resources, diagnostics }
@@ -83,6 +84,7 @@ class _HomePageState extends State<HomePage> {
                 onOpenExternalUrl: _openExternalUrl,
                 onCopyResourceRoot: _copyResourceRoot,
                 onCopyDiagnostics: _copyDiagnostics,
+                onDeleteLogHistory: _deleteLogHistory,
                 importProgressExpanded: _importProgressExpanded,
                 onToggleImportProgress: _toggleImportProgress,
               ),
@@ -137,26 +139,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openRelease(UpdateInfo update) async {
-    final browser = ChromeSafariBrowser();
-    await browser.open(url: WebUri(update.releaseUrl));
+    await _openExternalUrl(update.releaseUrl);
   }
 
   Future<void> _openExternalUrl(String url) async {
-    final browser = ChromeSafariBrowser();
-    await browser.open(url: WebUri(url));
+    await const MethodChannel(
+      'io.github.dey410.gardendlessloader/external_browser',
+    ).invokeMethod<void>('open', <String, Object?>{'url': url});
   }
 
   Future<void> _startGame() async {
     try {
       await widget.controller.startGame();
-      if (!mounted) {
-        return;
-      }
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => GamePage(controller: widget.controller),
-        ),
-      );
     } catch (error) {
       if (!mounted) {
         return;
@@ -177,12 +171,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _showDiagnostics() async {
-    if (_selectedSection == _LauncherSection.diagnostics) {
-      return;
+    if (_selectedSection != _LauncherSection.diagnostics) {
+      setState(() {
+        _selectedSection = _LauncherSection.diagnostics;
+      });
     }
-    setState(() {
-      _selectedSection = _LauncherSection.diagnostics;
-    });
+    await widget.controller.refreshLogs();
   }
 
   Future<void> _showAbout() async {
@@ -202,7 +196,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _copyDiagnostics() async {
-    final text = widget.controller.diagnostics().toCopyText();
+    await widget.controller.refreshLogs();
+    final text = widget.controller.buildDiagnosticSummary();
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) {
       return;
@@ -210,6 +205,28 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('日志信息已复制')),
     );
+  }
+
+  Future<void> _deleteLogHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除历史日志？'),
+        content: const Text('只会删除已经结束的历史 Session，当前运行日志会保留。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.controller.deleteLogHistory();
   }
 
   Future<void> _copyResourceRoot() async {
@@ -242,6 +259,7 @@ class _LauncherHome extends StatelessWidget {
     required this.onOpenExternalUrl,
     required this.onCopyResourceRoot,
     required this.onCopyDiagnostics,
+    required this.onDeleteLogHistory,
     required this.importProgressExpanded,
     required this.onToggleImportProgress,
   });
@@ -261,6 +279,7 @@ class _LauncherHome extends StatelessWidget {
   final Future<void> Function(String url) onOpenExternalUrl;
   final Future<void> Function() onCopyResourceRoot;
   final Future<void> Function() onCopyDiagnostics;
+  final Future<void> Function() onDeleteLogHistory;
   final bool importProgressExpanded;
   final VoidCallback onToggleImportProgress;
 
@@ -336,10 +355,9 @@ class _LauncherHome extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 20),
-                              _StartGameButton(
-                                enabled:
-                                    controller.canStartGame && !controller.busy,
-                                onPressed: onStartGame,
+                              _GameLaunchControls(
+                                controller: controller,
+                                onStartGame: onStartGame,
                               ),
                             ],
                           ),
@@ -352,6 +370,7 @@ class _LauncherHome extends StatelessWidget {
                           child: _DiagnosticsLogView(
                             controller: controller,
                             onCopyDiagnostics: onCopyDiagnostics,
+                            onDeleteLogHistory: onDeleteLogHistory,
                           ),
                         ),
                       ),
@@ -643,18 +662,73 @@ class _LauncherMainColumn extends StatelessWidget {
   }
 }
 
-class _DiagnosticsLogView extends StatelessWidget {
+class _DiagnosticsLogView extends StatefulWidget {
   const _DiagnosticsLogView({
     required this.controller,
     required this.onCopyDiagnostics,
+    required this.onDeleteLogHistory,
   });
 
   final AppController controller;
   final Future<void> Function() onCopyDiagnostics;
+  final Future<void> Function() onDeleteLogHistory;
+
+  @override
+  State<_DiagnosticsLogView> createState() => _DiagnosticsLogViewState();
+}
+
+class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
+  String _minimumLevel = 'INFO';
+  bool _errorsOnly = false;
+  String _operationFilter = 'all';
+
+  static const _levelRanks = <String, int>{
+    'DEBUG': 0,
+    'INFO': 1,
+    'WARN': 2,
+    'ERROR': 3,
+    'FATAL': 4,
+  };
+
+  List<Map<String, Object?>> _visibleEvents(AppLogSnapshot snapshot) {
+    final minimumRank = _levelRanks[_minimumLevel] ?? 1;
+    return snapshot.events.where((event) {
+      final level = event['level']?.toString().toUpperCase() ?? 'INFO';
+      if ((_levelRanks[level] ?? 1) < minimumRank) return false;
+      if (_errorsOnly && level != 'ERROR' && level != 'FATAL') return false;
+      return _operationFilter == 'all' ||
+          event['operationId']?.toString() == _operationFilter;
+    }).toList(growable: false);
+  }
+
+  Future<void> _copyEvent(Map<String, Object?> event) async {
+    await Clipboard.setData(
+      ClipboardData(text: const JsonEncoder.withIndent('  ').convert(event)),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('单条事件 JSON 已复制')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final diagnostics = controller.diagnostics();
+    final snapshot = widget.controller.logSnapshot;
+    final text = widget.controller.buildLogText(
+      minimumLevel: _minimumLevel,
+      errorsOnly: _errorsOnly,
+    );
+    final operations = (snapshot?.events
+                .map((event) => event['operationId']?.toString())
+                .whereType<String>()
+                .where((value) => value.isNotEmpty)
+                .toSet() ??
+            <String>{})
+        .toList(growable: false)
+      ..sort();
+    if (_operationFilter != 'all' && !operations.contains(_operationFilter)) {
+      _operationFilter = 'all';
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -671,36 +745,279 @@ class _DiagnosticsLogView extends StatelessWidget {
                   label: '日志信息',
                 ),
                 const SizedBox(height: 14),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _StatusPill(
+                      label: snapshot == null
+                          ? '日志状态未知'
+                          : snapshot.persisting
+                              ? '持久化正常'
+                              : '内存降级',
+                      color: snapshot?.persisting == true
+                          ? LauncherVisuals.success
+                          : LauncherVisuals.warning,
+                    ),
+                    Text('占用 ${snapshot?.totalBytes ?? 0} B'),
+                    Text('写入失败 ${snapshot?.writeFailureCount ?? 0}'),
+                    DropdownButton<String>(
+                      key: const ValueKey('log-minimum-level-filter'),
+                      value: _minimumLevel,
+                      items: const ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL']
+                          .map(
+                            (level) => DropdownMenuItem(
+                              value: level,
+                              child: Text(level),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _minimumLevel = value);
+                        }
+                      },
+                    ),
+                    FilterChip(
+                      key: const ValueKey('log-errors-only-filter'),
+                      label: const Text('只看错误'),
+                      selected: _errorsOnly,
+                      onSelected: (selected) =>
+                          setState(() => _errorsOnly = selected),
+                    ),
+                    if (operations.isNotEmpty)
+                      DropdownButton<String>(
+                        key: const ValueKey('log-operation-filter'),
+                        value: _operationFilter,
+                        items: <DropdownMenuItem<String>>[
+                          const DropdownMenuItem(
+                            value: 'all',
+                            child: Text('全部 Operation'),
+                          ),
+                          ...operations.map(
+                            (operationId) => DropdownMenuItem(
+                              value: operationId,
+                              child: Text(
+                                operationId,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _operationFilter = value);
+                          }
+                        },
+                      ),
+                    TextButton(
+                      key: const ValueKey('clear-log-view-filter'),
+                      onPressed: () => setState(() {
+                        _minimumLevel = 'INFO';
+                        _errorsOnly = false;
+                        _operationFilter = 'all';
+                      }),
+                      child: const Text('清空筛选'),
+                    ),
+                    IconButton(
+                      tooltip: '刷新日志',
+                      onPressed: widget.controller.logSnapshotLoading
+                          ? null
+                          : widget.controller.refreshLogs,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Expanded(
-                  child: _DiagnosticsLogBox(text: diagnostics.toLogText()),
+                  child: snapshot == null
+                      ? _DiagnosticsLogBox(text: text)
+                      : _StructuredLogBrowser(
+                          controller: widget.controller,
+                          snapshot: snapshot,
+                          events: _visibleEvents(snapshot),
+                          technicalText: text,
+                          onCopyEvent: _copyEvent,
+                        ),
                 ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 20),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            key: const ValueKey('copy-diagnostics-button'),
-            onPressed: onCopyDiagnostics,
-            icon: const Icon(Icons.copy_rounded),
-            label: const Text('复制日志信息'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(178, 52),
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              backgroundColor: LauncherVisuals.accentBlue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              textStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0,
-                  ),
-              elevation: 0,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            OutlinedButton.icon(
+              key: const ValueKey('delete-log-history-button'),
+              onPressed: widget.onDeleteLogHistory,
+              icon: const Icon(Icons.delete_outline_rounded),
+              label: const Text('删除历史日志'),
             ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              key: const ValueKey('copy-diagnostics-button'),
+              onPressed: widget.onCopyDiagnostics,
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('复制日志信息'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(178, 52),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                backgroundColor: LauncherVisuals.accentBlue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                textStyle: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                    ),
+                elevation: 0,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _StructuredLogBrowser extends StatelessWidget {
+  const _StructuredLogBrowser({
+    required this.controller,
+    required this.snapshot,
+    required this.events,
+    required this.technicalText,
+    required this.onCopyEvent,
+  });
+
+  final AppController controller;
+  final AppLogSnapshot snapshot;
+  final List<Map<String, Object?>> events;
+  final String technicalText;
+  final Future<void> Function(Map<String, Object?> event) onCopyEvent;
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = <String, int>{};
+    String? gameSessionId;
+    Map<String, Object?>? recentError;
+    for (final event in snapshot.events) {
+      final level = event['level']?.toString().toUpperCase() ?? 'INFO';
+      counts[level] = (counts[level] ?? 0) + 1;
+      gameSessionId = event['gameSessionId']?.toString() ?? gameSessionId;
+      if (level == 'ERROR' || level == 'FATAL') recentError = event;
+    }
+    final recentErrorInfo = recentError == null
+        ? null
+        : userErrorCatalog[recentError['code']?.toString()];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: 270,
+          child: ListView(
+            key: const ValueKey('log-overview'),
+            children: [
+              Text('当前会话', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              SelectableText(snapshot.appSessionId),
+              const SizedBox(height: 10),
+              Text('游戏会话：${gameSessionId ?? '无'}'),
+              Text(
+                '应用：v${controller.currentAppVersion} · '
+                '${controller.gameHostPlatform.wireName}',
+              ),
+              Text('日志占用：${snapshot.totalBytes} B'),
+              Text('写入失败：${snapshot.writeFailureCount}'),
+              Text('等级计数：${jsonEncode(counts)}'),
+              Text('丢弃计数：${jsonEncode(snapshot.droppedByLevel)}'),
+              const SizedBox(height: 10),
+              Text('最近错误', style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                recentError == null
+                    ? '无'
+                    : recentErrorInfo?.title ??
+                        '${recentError['code'] ?? recentError['event']}: '
+                            '${recentError['message'] ?? ''}',
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (recentErrorInfo != null)
+                Text(
+                  recentErrorInfo.action,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              const SizedBox(height: 8),
+              Material(
+                color: Colors.transparent,
+                child: ExpansionTile(
+                  key: const ValueKey('log-technical-details'),
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text('技术详情'),
+                  children: [
+                    SizedBox(
+                      height: 220,
+                      child: _DiagnosticsLogBox(text: technicalText),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+        ),
+        const VerticalDivider(width: 24),
+        Expanded(
+          child: events.isEmpty
+              ? const Center(child: Text('当前筛选条件下没有事件'))
+              : ListView.builder(
+                  key: const ValueKey('structured-log-events'),
+                  itemCount: events.length,
+                  itemBuilder: (context, index) {
+                    final event = events[events.length - index - 1];
+                    final level = event['level']?.toString() ?? 'INFO';
+                    return Material(
+                      color: Colors.transparent,
+                      child: ExpansionTile(
+                        key: ValueKey(
+                          'log-event-${event['sequence'] ?? index}',
+                        ),
+                        leading: Text(level),
+                        title:
+                            Text(event['event']?.toString() ?? 'unknown_event'),
+                        subtitle: Text(
+                          [
+                            if (event['code'] != null) event['code'],
+                            if (event['operationId'] != null)
+                              'op=${event['operationId']}',
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: IconButton(
+                          tooltip: '复制单条事件 JSON',
+                          onPressed: () => onCopyEvent(event),
+                          icon: const Icon(Icons.copy_rounded, size: 18),
+                        ),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: SelectableText(
+                              const JsonEncoder.withIndent('  ').convert(event),
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -1276,18 +1593,9 @@ class _ResourceDetailsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final validationStatus = controller.hasCurrentResource ? '校验通过' : '等待导入';
-    final serverStatus = switch (controller.serverStatus) {
-      ServerStatus.running => '运行中',
-      ServerStatus.starting => '启动中',
-      ServerStatus.failed => '异常',
-      ServerStatus.stopped => controller.hasCurrentResource ? '待启动' : '未启动',
-    };
     final validationColor = controller.hasCurrentResource
         ? LauncherVisuals.success
         : LauncherVisuals.warning;
-    final serverColor = controller.serverStatus == ServerStatus.failed
-        ? LauncherVisuals.danger
-        : LauncherVisuals.service;
 
     return _GroupedPanel(
       title: '资源信息',
@@ -1321,12 +1629,12 @@ class _ResourceDetailsCard extends StatelessWidget {
           statusColor: validationColor,
         ),
         _InfoRow(
-          icon: Icons.settings_ethernet_rounded,
-          iconColor: serverColor,
-          label: '本地服务',
-          value: '$localServerHost:$localServerPort',
-          detail: serverStatus,
-          statusColor: serverColor,
+          icon: Icons.rocket_launch_rounded,
+          iconColor: LauncherVisuals.service,
+          label: '游戏宿主',
+          value: controller.gameHostPlatform.nativeHostName,
+          detail: '无 HTTP Server',
+          statusColor: LauncherVisuals.service,
         ),
       ],
     );
@@ -1760,17 +2068,119 @@ class _HealthRow extends StatelessWidget {
   }
 }
 
+class _GameLaunchControls extends StatelessWidget {
+  const _GameLaunchControls({
+    required this.controller,
+    required this.onStartGame,
+  });
+
+  final AppController controller;
+  final Future<void> Function() onStartGame;
+
+  @override
+  Widget build(BuildContext context) {
+    final showAutoCollectSun =
+        controller.hasCurrentResource && !controller.hasGpNext;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showAutoCollectSun)
+          _AutoCollectSunControl(
+            enabled: !controller.busy,
+            value: controller.autoCollectSunEnabled,
+            onChanged: controller.setAutoCollectSunEnabled,
+          ),
+        _StartGameButton(
+          enabled: controller.canStartGame && !controller.busy,
+          joinedAtTop: showAutoCollectSun,
+          onPressed: onStartGame,
+        ),
+      ],
+    );
+  }
+}
+
+class _AutoCollectSunControl extends StatelessWidget {
+  const _AutoCollectSunControl({
+    required this.enabled,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final bool value;
+  final Future<void> Function(bool enabled) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const borderRadius = BorderRadius.vertical(top: Radius.circular(28));
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Material(
+        key: const ValueKey('home-auto-collect-sun'),
+        color: LauncherVisuals.separator(context).withValues(alpha: 0.64),
+        shape: const RoundedRectangleBorder(borderRadius: borderRadius),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: enabled ? () => unawaited(onChanged(!value)) : null,
+          child: SizedBox(
+            width: 272,
+            height: 54,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 17),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.wb_sunny_rounded,
+                    size: 23,
+                    color: LauncherVisuals.warning,
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      '自动收集',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: LauncherVisuals.primaryText(context),
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ),
+                  Switch(
+                    key: const ValueKey('home-auto-collect-sun-switch'),
+                    value: value,
+                    onChanged: enabled
+                        ? (nextValue) => unawaited(onChanged(nextValue))
+                        : null,
+                    activeTrackColor: LauncherVisuals.accentBlue,
+                    activeThumbColor: Colors.white,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StartGameButton extends StatelessWidget {
   const _StartGameButton({
     required this.enabled,
+    required this.joinedAtTop,
     required this.onPressed,
   });
 
   final bool enabled;
+  final bool joinedAtTop;
   final Future<void> Function() onPressed;
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = joinedAtTop
+        ? const BorderRadius.vertical(bottom: Radius.circular(28))
+        : BorderRadius.circular(28);
     final button = FilledButton.icon(
       key: const ValueKey('home-start-game-button'),
       onPressed: enabled ? onPressed : null,
@@ -1784,7 +2194,7 @@ class _StartGameButton extends StatelessWidget {
         disabledBackgroundColor:
             LauncherVisuals.separator(context).withValues(alpha: 0.78),
         disabledForegroundColor: LauncherVisuals.secondaryText(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        shape: RoundedRectangleBorder(borderRadius: borderRadius),
         textStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
               letterSpacing: 0,
@@ -1796,7 +2206,7 @@ class _StartGameButton extends StatelessWidget {
     if (enabled) {
       return DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: borderRadius,
           boxShadow: [
             BoxShadow(
               color: LauncherVisuals.accentBlue.withValues(alpha: 0.28),

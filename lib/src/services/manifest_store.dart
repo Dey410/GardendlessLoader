@@ -67,6 +67,7 @@ class ManifestStore {
         buildProfile: _parseBuildProfile(json['buildProfile']),
         gpNextVersion: json['gpNextVersion'] as String?,
         gpNextCompatibilityError: json['gpNextCompatibilityError'] as String?,
+        autoCollectSunEnabled: json['autoCollectSunEnabled'] as bool? ?? false,
         resourceStatus: _parseResourceStatus(json['resourceStatus']),
         lastSelfCheckAt: _parseDate(json['lastSelfCheckAt']),
         lastErrorCode: json['lastErrorCode'] as String?,

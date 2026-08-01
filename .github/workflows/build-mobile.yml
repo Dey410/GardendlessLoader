@@ -78,7 +78,10 @@ jobs:
             --build-number "${{ steps.android_version.outputs.version_code }}"
 
       - name: Stage APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/GardendlessLoader-android.apk
+        run: |
+          cp \
+            build/app/outputs/flutter-apk/app-release.apk \
+            build/app/outputs/flutter-apk/GardendlessLoader-android.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
@@ -139,18 +142,8 @@ jobs:
           archive: false
 
   harmonyos:
-    name: Build unsigned HarmonyOS HAP (${{ matrix.target-platform }})
+    name: Build unsigned HarmonyOS HAP (ohos-arm64)
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.experimental }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target-platform: ohos-arm64
-            experimental: false
-          - target-platform: ohos-x64
-            experimental: true
 
     env:
       OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-tpc/flutter_flutter.git
@@ -184,7 +177,11 @@ jobs:
         run: |
           FLUTTER_OHOS_DIR="$RUNNER_TEMP/flutter_ohos_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
 
-          git clone --branch "$OHOS_FLUTTER_SDK_REF" "$OHOS_FLUTTER_SDK_REPOSITORY" "$FLUTTER_OHOS_DIR"
+          git clone \
+            --branch "$OHOS_FLUTTER_SDK_REF" \
+            "$OHOS_FLUTTER_SDK_REPOSITORY" \
+            "$FLUTTER_OHOS_DIR"
+
           cd "$FLUTTER_OHOS_DIR"
 
           git fetch --tags --force
@@ -205,7 +202,10 @@ jobs:
           flutter --version
           dart --version
 
-          dart_version="$(dart --version 2>&1 | sed -E 's/.*Dart SDK version: ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+          dart_version="$(
+            dart --version 2>&1 |
+              sed -E 's/.*Dart SDK version: ([0-9]+\.[0-9]+\.[0-9]+).*/\1/'
+          )"
 
           if [ -z "$dart_version" ]; then
             echo "Could not determine Dart version from OpenHarmony Flutter SDK."
@@ -226,24 +226,50 @@ jobs:
           DEVECO_DIR="$RUNNER_TEMP/deveco_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
 
           mkdir -p "$DEVECO_DIR"
-          curl -L "$OHOS_COMMANDLINE_TOOLS_URL" -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
+
+          curl -L \
+            "$OHOS_COMMANDLINE_TOOLS_URL" \
+            -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
 
           if [ ! -s "$RUNNER_TEMP/deveco-commandline-tools.zip" ]; then
             echo "Downloaded OpenHarmony command-line tools archive is empty."
             exit 1
           fi
 
-          unzip -q "$RUNNER_TEMP/deveco-commandline-tools.zip" -d "$DEVECO_DIR"
+          unzip -q \
+            "$RUNNER_TEMP/deveco-commandline-tools.zip" \
+            -d "$DEVECO_DIR"
 
-          TOOL_HOME="$(find "$DEVECO_DIR" -type d -name command-line-tools -print -quit)"
+          TOOL_HOME="$(
+            find "$DEVECO_DIR" \
+              -type d \
+              -name command-line-tools \
+              -print \
+              -quit
+          )"
+
           if [ -z "$TOOL_HOME" ]; then
             echo "Could not locate command-line-tools in downloaded archive."
             find "$DEVECO_DIR" -maxdepth 4 -type d | sort
             exit 1
           fi
 
-          OHPM_BIN="$(find "$TOOL_HOME" -type f -name ohpm -print -quit)"
-          HVIGOR_BIN="$(find "$TOOL_HOME" -type f \( -name hvigor -o -name hvigorw \) -print -quit)"
+          OHPM_BIN="$(
+            find "$TOOL_HOME" \
+              -type f \
+              -name ohpm \
+              -print \
+              -quit
+          )"
+
+          HVIGOR_BIN="$(
+            find "$TOOL_HOME" \
+              -type f \
+              \( -name hvigor -o -name hvigorw \) \
+              -print \
+              -quit
+          )"
+
           NODE_BIN="$(command -v node || true)"
 
           if [ -z "$OHPM_BIN" ]; then
@@ -325,24 +351,37 @@ jobs:
         run: |
           mkdir -p build/ohos/unsigned
 
-          echo "Building unsigned HAP for ${{ matrix.target-platform }}"
-          BUILD_MARKER="$RUNNER_TEMP/hap-build-${{ matrix.target-platform }}.marker"
+          echo "Building unsigned HAP for ohos-arm64"
+
+          BUILD_MARKER="$RUNNER_TEMP/hap-build-ohos-arm64.marker"
           touch "$BUILD_MARKER"
 
           set +e
-          flutter build hap --release --target-platform "${{ matrix.target-platform }}"
+          flutter build hap --release --target-platform ohos-arm64
           FLUTTER_BUILD_STATUS="$?"
           set -e
 
-          UNSIGNED_HAP="$(find ohos/entry/build -type f -name '*unsigned*.hap' -newer "$BUILD_MARKER" -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2- || true)"
+          UNSIGNED_HAP="$(
+            find ohos/entry/build \
+              -type f \
+              -name '*unsigned*.hap' \
+              -newer "$BUILD_MARKER" \
+              -printf '%T@ %p\n' |
+              sort -nr |
+              head -n 1 |
+              cut -d' ' -f2- ||
+              true
+          )"
 
           if [ -z "$UNSIGNED_HAP" ]; then
-            echo "Unsigned HAP was not generated for ${{ matrix.target-platform }}."
+            echo "Unsigned HAP was not generated for ohos-arm64."
             echo "Available HAP outputs:"
             find ohos/entry/build -type f -name '*.hap' -print || true
+
             if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
               exit "$FLUTTER_BUILD_STATUS"
             fi
+
             exit 1
           fi
 
@@ -350,13 +389,16 @@ jobs:
             echo "::notice title=Unsigned HAP recovered::Flutter exited with status $FLUTTER_BUILD_STATUS because no signing configuration is available; the generated unsigned HAP will be uploaded."
           fi
 
-          cp "$UNSIGNED_HAP" "build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap"
-          echo "Unsigned HAP (${{ matrix.target-platform }}): $UNSIGNED_HAP"
+          cp \
+            "$UNSIGNED_HAP" \
+            "build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap"
+
+          echo "Unsigned HAP (ohos-arm64): $UNSIGNED_HAP"
 
       - name: Upload unsigned HarmonyOS HAP
         if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
-          path: build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap
+          path: build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap
           if-no-files-found: error
           archive: false

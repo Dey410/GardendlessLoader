@@ -9,8 +9,9 @@
 `GardendlessLoader` 是一个 Flutter 本地加载器，用来在 Android、iOS 和 HarmonyOS/OpenHarmony 上加载用户自行提供的
 [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) 网页资源包。
 
-App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构建目录，完成结构校验后通过本地 HTTP
-服务提供文件，再用应用内 WebView 打开游戏。
+App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构建目录。Flutter 只负责导入、双槽事务、
+更新、设置和诊断；开始游戏后由独立的 Android WebView、iOS WKWebView 或 HarmonyOS ArkWeb 原生页面
+直接流式读取激活资源槽，不启动本地 HTTP 服务，也不保留 Flutter 游戏页面。
 
 > [!IMPORTANT]
 > 本项目不内置、下载、更新或再分发 `PvZ2 Gardendless` 游戏资源。用户需要自行获取资源 ZIP，并在本地导入。
@@ -19,12 +20,12 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 
 - 从 ZIP 中自动查找并解压有效的 `docs` 资源目录。
 - 校验 `PvZ2 Gardendless` Cocos Web 构建结构、标题和指纹。
-- 使用 `http://127.0.0.1:26410` 提供本地静态资源服务。
-- 游戏页固定横屏、沉浸式显示，并默认拦截非本地请求。
+- 原生 GameHost 直接拦截固定合成 Origin 的资源请求，支持 Range、ETag、MIME 和分块读取，不创建 socket。
+- 游戏页由平台 WebView 全屏、横屏和沉浸式承载；启动器 FlutterEngine 在游戏期间释放，非白名单远程请求默认阻止。
 - 自动识别 GP-Next 1.4.2 桌面构建，在不修改游戏资源的前提下注入移动端兼容桥，并在游戏菜单显示“打开 GP-Next”。
 - 导入过程带进度显示；新资源直接写入空闲槽，失败时继续使用原激活槽，启动时恢复未完成事务。
-- 提供可复制的诊断信息，方便排查资源、平台、WebView 和本地 server 状态。
-- 游戏画面在 `16:10～17:9` 之间自适应屏幕，并支持首页公告、加载器与游戏资源双更新检查和自动收集阳光。
+- 提供可复制的诊断信息，显示原生 GameHost、合成 Origin 和 `resourceServer: none`。
+- 游戏输入直接交给平台 WebView，并支持首页公告、加载器与游戏资源双更新检查和自动收集阳光。
 - 从资源页面标题识别本地游戏版本，以 [`pvzg_site` 稳定版 tags](https://github.com/Gzh0821/pvzg_site/tags) 检查游戏更新；发现更新时提供游戏 GitHub 与共享网盘入口。
 - GitHub Actions 可产出 Android、iOS 和 HarmonyOS/OpenHarmony 产物。
 
@@ -33,7 +34,11 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 1. 从上游项目或可信来源获取 `PvZ2 Gardendless` 资源 ZIP。
 2. 打开 `GardendlessLoader`，点击“选择 ZIP 导入”。
 3. App 会在 ZIP 根目录或嵌套目录中查找有效的 `docs`，并直接解压到空闲资源槽。
-4. 导入成功后点击“开始游戏”，游戏将从本地地址加载。
+4. 导入成功后点击“开始游戏”，Flutter 启动器退出，平台原生 GameHost 从激活槽加载游戏。
+
+固定 Origin 分别为 Android `https://appassets.androidplatform.net`、iOS
+`gardendless-game://localhost`、HarmonyOS/OpenHarmony `https://gardendless.invalid`。
+资源代数只写入入口查询参数 `?generation=N`，同一平台的 Origin 不随资源更新变化。
 
 ### 游戏内触摸操作
 
@@ -57,7 +62,7 @@ GardendlessLoader/
   manifest.json    # 激活槽、事务状态、资源统计和本地游戏版本
 ```
 
-常态下只有激活槽包含游戏文件，另一个槽为空；更新期间旧激活槽和新候选槽最多各保留一份资源。新槽通过校验和本地自检后，manifest 才会切换激活槽，随后清空旧槽。资源根目录位置会因平台不同而不同，App 首页和诊断日志会显示当前设备上的完整路径及激活槽。
+常态下只有激活槽包含游戏文件，另一个槽为空；更新期间旧激活槽和新候选槽最多各保留一份资源。新槽通过校验和文件系统自检后，manifest 才会切换激活槽，随后清空旧槽。资源根目录位置会因平台不同而不同，App 首页和诊断日志会显示当前设备上的完整路径及激活槽。
 
 ## 资源要求
 
@@ -104,17 +109,18 @@ flutter run
 
 | 路径 | 用途 |
 | --- | --- |
-| `lib/src/app_controller.dart` | App 状态、导入流程、server 生命周期、公告和更新检查编排 |
+| `lib/src/app_controller.dart` | App 状态、导入流程、原生 GameHost 启动、公告和更新检查编排 |
 | `lib/src/services/resource_picker_service.dart` | ZIP 选择、路径安全检查、`docs` 自动定位和解压 |
 | `lib/src/services/import_service.dart` | 双槽导入、原子激活、旧结构迁移和启动恢复 |
-| `lib/src/services/local_game_server.dart` | 本地 HTTP server、MIME 处理和自检 |
+| `lib/src/services/resource_self_check.dart` | 候选槽文件系统自检，不启动网络服务 |
 | `lib/src/services/resource_validator.dart` | 资源结构、标题和 Cocos 配置校验 |
 | `lib/src/services/game_update_check_service.dart` | 本地游戏版本识别、稳定 tag 选择和版本比较 |
-| `lib/src/services/gp_next_bridge_service.dart` | GP-Next 1.4.2 Tauri 文件、对话框和 opener 兼容层 |
-| `lib/src/services/gp_next_package_importer.dart` | GP-Next 补丁选择、校验和事务替换 |
+| `lib/src/game_host/` | 持久化 GameSession、平台路由和退出结果契约 |
 | `lib/src/ui/home_page.dart` | 导入、状态、公告、更新和诊断 UI |
-| `lib/src/ui/game_page.dart` | 横屏 WebView 游戏页、菜单和游戏辅助开关 |
-| `lib/src/web/touch_patch.dart` | 单指左键、双指右键/滚轮和触摸取消状态机 |
+| `assets/game_bridge/` | 三平台共享的 document-start Transport、GP-Next、触摸、导出、水印和菜单脚本 |
+| `android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/` | Android 原生 WebView GameHost |
+| `ios/Runner/GameViewController.swift` | iOS 原生 WKWebView GameHost |
+| `ohos/entry/src/main/ets/game/` | HarmonyOS/OpenHarmony ArkWeb GameHost 边界实现 |
 | `announcements.json` | 远程公告配置 |
 
 ## 构建

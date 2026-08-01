@@ -3,10 +3,11 @@
 ## Project Structure & Module Organization
 
 - `lib/main.dart` starts the app.
-- `lib/src/app_controller.dart` coordinates state, imports, server lifecycle, announcements, and update checks.
-- `lib/src/services/` holds resource validation, ZIP import, manifest storage, diagnostics, and the local HTTP server.
-- `lib/src/ui/` contains screens: `home_page.dart` and `game_page.dart`.
-- `lib/src/web/` contains scripts injected into the mobile game WebView.
+- `lib/src/app_controller.dart` coordinates state, imports, native GameHost launch, announcements, and update checks.
+- `lib/src/services/` holds resource validation, ZIP import, manifest storage, diagnostics, and filesystem self-checks.
+- `lib/src/game_host/` defines the durable native GameSession and platform-channel launch contract.
+- `lib/src/ui/` contains the Flutter launcher screen in `home_page.dart`.
+- `assets/game_bridge/` contains the shared document-start scripts injected by every native GameHost.
 - `test/` contains unit and widget tests named `*_test.dart`.
 - Maintained platform folders are `android/`, `ios/`, and `ohos/`. Generated folders for retired platforms remain in the repository but are unsupported.
 - `announcements.json` is the remote announcement payload; `docs/acceptance-checklist.md` records manual release checks.
@@ -29,7 +30,7 @@ This project uses `package:flutter_lints/flutter.yaml` plus `prefer_single_quote
 
 ## Testing Guidelines
 
-Use `flutter_test`. Add or update tests for resource import, validation, manifest state, local server behavior, update checks, and UI workflows when touched. Keep files in `test/` with the `*_test.dart` suffix. Prefer service tests for domain logic and widget tests for visible UI behavior.
+Use `flutter_test`. Add or update tests for resource import, validation, manifest state, native resource-handler contracts, update checks, and UI workflows when touched. Keep files in `test/` with the `*_test.dart` suffix. Prefer service tests for domain logic and widget tests for visible UI behavior.
 
 ## Commit & Pull Request Guidelines
 
@@ -37,7 +38,7 @@ Recent history uses short prefixes such as `Fix:`, `Update:`, and `Modify:`. Fol
 
 ## Security & Configuration Tips
 
-Do not commit bundled game resources, signing files, generated archives, or `.DS_Store` files. Keep Android signing values in CI secrets. Preserve local-only serving and non-local WebView request blocking.
+Do not commit bundled game resources, signing files, generated archives, or `.DS_Store` files. Keep Android signing values in CI secrets. Preserve active-slot path confinement and non-allowlisted WebView request blocking.
 
 ## Agent skills
 

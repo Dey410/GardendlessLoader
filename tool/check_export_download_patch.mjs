@@ -2,25 +2,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const dartSource = fs.readFileSync(
-  new URL('../lib/src/web/export_download_patch.dart', import.meta.url),
+const source = fs.readFileSync(
+  new URL('../assets/game_bridge/export_download_patch.js', import.meta.url),
   'utf8',
 );
-const sourceMatch = dartSource.match(
-  /const gardendlessExportDownloadPatchSource = r'''([\s\S]*?)''';/,
-);
-assert(sourceMatch, 'download patch source constant was not found');
 
 let originalAnchorClicks = 0;
 let objectUrlCounter = 0;
 const revokedUrls = new Set();
 const listeners = new Map();
-const receivedPayloads = [];
-
-function receiveFromBridge(name, payload) {
-  receivedPayloads.push({name, payload});
-  return Promise.resolve({accepted: true});
-}
+const invocations = [];
 
 function browserSetTimeout(callback, delay, ...args) {
   const timer = setTimeout(callback, delay, ...args);
@@ -30,17 +21,19 @@ function browserSetTimeout(callback, delay, ...args) {
 
 class FakeBlob {
   constructor(parts, options = {}) {
-    this.text = parts.join('');
+    this.bytes = Buffer.from(parts.join(''));
+    this.size = this.bytes.length;
     this.type = options.type || '';
   }
-}
 
-class FakeFileReader {
-  readAsDataURL(blob) {
-    queueMicrotask(() => {
-      this.result = `data:${blob.type || 'application/octet-stream'};base64,${Buffer.from(blob.text).toString('base64')}`;
-      this.onloadend?.();
-    });
+  slice(start, end) {
+    const bytes = this.bytes.subarray(start, end);
+    return {
+      arrayBuffer: async () => bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      ),
+    };
   }
 }
 
@@ -78,7 +71,7 @@ class FakeAnchor {
 const fakeUrl = {
   createObjectURL() {
     objectUrlCounter += 1;
-    return `blob:http://127.0.0.1:26410/export-${objectUrlCounter}`;
+    return `blob:https://appassets.androidplatform.net/export-${objectUrlCounter}`;
   },
   revokeObjectURL(url) {
     revokedUrls.add(url);
@@ -88,11 +81,14 @@ const fakeUrl = {
 const context = {
   Blob: FakeBlob,
   Error,
-  FileReader: FakeFileReader,
   HTMLAnchorElement: FakeAnchor,
   Map,
   Promise,
   String,
+  Uint8Array,
+  btoa(value) {
+    return Buffer.from(value, 'binary').toString('base64');
+  },
   console,
   document: {
     addEventListener(type, listener) {
@@ -104,6 +100,13 @@ const context = {
   window: {
     URL: fakeUrl,
     webkitURL: null,
+    __gardendlessTransport: {
+      async invoke(command, payload) {
+        invocations.push({command, payload});
+        if (command === 'host:exportBegin') return 'export-token';
+        return null;
+      },
+    },
     addEventListener(type, listener) {
       listeners.set(type, listener);
     },
@@ -112,7 +115,7 @@ const context = {
 context.globalThis = context;
 
 vm.createContext(context);
-vm.runInContext(sourceMatch[1], context);
+vm.runInContext(source, context);
 
 const blob = new context.Blob(['{"coins":1}'], {
   type: 'application/json',
@@ -125,26 +128,20 @@ anchor.setAttribute('download', 'save.json');
 anchor.click();
 context.window.URL.revokeObjectURL(url);
 
-await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+await new Promise((resolve) => setImmediate(resolve));
 
 assert.equal(originalAnchorClicks, 0, 'native anchor click should be bypassed');
 assert(revokedUrls.has(url), 'original revokeObjectURL should still run');
-assert.equal(receivedPayloads.length, 0, 'payload should wait for the bridge');
+assert.deepEqual(
+  invocations.map((entry) => entry.command),
+  ['host:exportBegin', 'host:exportChunk', 'host:exportCommit'],
+);
+assert.equal(invocations[0].payload.suggestedFilename, 'save.json');
+assert.equal(invocations[0].payload.mimeType, 'application/json');
+assert.equal(invocations[0].payload.totalBytes, Buffer.byteLength('{"coins":1}'));
+assert.equal(invocations[1].payload.token, 'export-token');
+assert.equal(invocations[1].payload.index, 0);
+assert.equal(Buffer.from(invocations[1].payload.data, 'base64').toString('utf8'), '{"coins":1}');
+assert.equal(invocations[2].payload.token, 'export-token');
 
-context.window.flutter_inappwebview = {
-  callHandler: receiveFromBridge,
-};
-listeners.get('flutterInAppWebViewPlatformReady')?.();
-await Promise.resolve();
-
-assert.equal(receivedPayloads.length, 1, 'one export payload should be sent');
-assert.equal(receivedPayloads[0].name, 'gardendlessDownloadExport');
-assert.equal(receivedPayloads[0].payload.url, url);
-assert.equal(receivedPayloads[0].payload.suggestedFilename, 'save.json');
-assert.equal(receivedPayloads[0].payload.mimeType, 'application/json');
-assert.equal(receivedPayloads[0].payload.source, 'anchor-blob');
-
-const encoded = receivedPayloads[0].payload.dataUrl.split(',')[1];
-assert.equal(Buffer.from(encoded, 'base64').toString('utf8'), '{"coins":1}');
-
-console.log('export download patch captures revoked Blob anchor downloads');
+console.log('export download patch streams revoked Blob downloads through native chunks');

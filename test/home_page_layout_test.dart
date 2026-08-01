@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/constants.dart';
+import 'package:gardendless_loader/src/logging/app_logger.dart';
+import 'package:gardendless_loader/src/logging/log_event_catalog.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/about_content_service.dart';
 import 'package:gardendless_loader/src/services/announcement_service.dart';
@@ -35,6 +37,7 @@ void main() {
         importerStarted = Completer<void>();
         releaseImporter = Completer<void>();
         root = await Directory.systemTemp.createTemp('gl_home_progress_');
+        await _writeValidResource(Directory(p.join(root.path, 'current')));
         controller = AppController(
           pathsService:
               AppPathsService(rootOverride: root, platformName: 'test'),
@@ -94,6 +97,21 @@ void main() {
         expect(find.text('步骤 2/4 · 正在解压资源'), findsOneWidget);
         expect(find.byKey(const ValueKey('resource-progress-details')),
             findsOneWidget);
+        final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
+        expect(autoCollect, findsOneWidget);
+        expect(
+          tester
+              .widget<Switch>(
+                find.byKey(
+                  const ValueKey('home-auto-collect-sun-switch'),
+                ),
+              )
+              .onChanged,
+          isNull,
+        );
+        await tester.tap(autoCollect);
+        await tester.pump();
+        expect(controller.autoCollectSunEnabled, isFalse);
 
         await tester
             .tap(find.byKey(const ValueKey('resource-progress-toggle')));
@@ -190,7 +208,8 @@ void main() {
       expect(find.text('资源根目录'), findsOneWidget);
       expect(find.text('复制'), findsOneWidget);
       expect(find.text('资源校验'), findsOneWidget);
-      expect(find.text('本地服务'), findsOneWidget);
+      expect(find.text('游戏宿主'), findsOneWidget);
+      expect(find.text('无 HTTP Server'), findsOneWidget);
       expect(find.text('诊断摘要'), findsOneWidget);
       expect(find.text('上次自检'), findsOneWidget);
       expect(find.text('最近错误'), findsOneWidget);
@@ -307,6 +326,66 @@ void main() {
   );
 
   testWidgets(
+    'standard resources offer automatic sun collection above game start',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(915, 412);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = await _readyController(tester);
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+
+      final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
+      final startGame = find.byKey(const ValueKey('home-start-game-button'));
+
+      expect(autoCollect, findsOneWidget);
+      expect(find.text('自动收集'), findsOneWidget);
+      expect(tester.getRect(autoCollect).bottom, tester.getRect(startGame).top);
+
+      await tester.tap(autoCollect);
+      await tester.pump();
+
+      expect(controller.autoCollectSunEnabled, isTrue);
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('home-auto-collect-sun-switch')),
+            )
+            .value,
+        isTrue,
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
+
+  testWidgets(
+    'GP-Next resources hide Loader automatic sun collection',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(915, 412);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final controller = await _readyController(tester, gpNext: true);
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+
+      expect(controller.hasGpNext, isTrue);
+      expect(
+        find.byKey(const ValueKey('home-auto-collect-sun')),
+        findsNothing,
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
+
+  testWidgets(
     'home page renders announcements inline without disclaimer controls',
     (tester) async {
       tester.view.devicePixelRatio = 1;
@@ -404,7 +483,7 @@ void main() {
       expect(find.text('资源信息'), findsOneWidget);
       expect(find.text('资源根目录'), findsOneWidget);
       expect(find.text('资源校验'), findsOneWidget);
-      expect(find.text('本地服务'), findsOneWidget);
+      expect(find.text('游戏宿主'), findsOneWidget);
       expect(find.text('快捷操作'), findsOneWidget);
 
       final resourceInfoTop = tester.getTopLeft(find.text('资源信息')).dy;
@@ -521,7 +600,7 @@ void main() {
 
       expect(copiedText, contains('App version:'));
       expect(copiedText, contains('active slot validation:'));
-      expect(copiedText, contains('serverStatus:'));
+      expect(copiedText, contains('resourceServer: none'));
       expect(find.text('日志信息已复制'), findsOneWidget);
     },
     timeout: const Timeout(Duration(seconds: 5)),
@@ -587,10 +666,85 @@ void main() {
       expect(find.text('需要导入资源'), findsOneWidget);
       expect(find.text('请先导入资源'), findsOneWidget);
       expect(
+        find.byKey(const ValueKey('home-auto-collect-sun')),
+        findsNothing,
+      );
+      expect(
         tester.getRect(find.byKey(const ValueKey('app-version-pill'))).right,
         lessThan(tester.getRect(find.text('需导入')).left),
       );
       expect(startButton.onPressed, isNull);
+    },
+    timeout: const Timeout(Duration(seconds: 5)),
+  );
+
+  testWidgets(
+    'structured log view exposes overview operation filtering and event copy',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1180, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      String? copiedText;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText =
+              (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      });
+      addTearDown(() {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, null);
+      });
+
+      final logger = InMemoryAppLogger(
+        appSessionId: 'app-session-test',
+        source: LogSource.dart,
+        eventSchemas: defaultLogEventSchemas,
+      );
+      final controller = await _readyController(tester, appLogger: logger);
+      logger.emit(
+        level: LogLevel.error,
+        category: 'game.webview',
+        event: 'webview_page_load_failed',
+        outcome: LogOutcome.failed,
+        code: 'webview_page_load_failed',
+        gameSessionId: 'game-session-test',
+        operationId: 'launch-operation-test',
+        error: StateError('page failed'),
+        stackTrace: StackTrace.current,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pump();
+      await tester.tap(find.text('日志'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('log-overview')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('log-operation-filter')),
+        findsOneWidget,
+      );
+      expect(find.text('webview_page_load_failed'), findsOneWidget);
+      expect(find.text('游戏页面加载失败'), findsOneWidget);
+
+      final errorTile = find.ancestor(
+        of: find.text('webview_page_load_failed'),
+        matching: find.byType(ExpansionTile),
+      );
+      await tester.tap(
+        find.descendant(
+          of: errorTile,
+          matching: find.byTooltip('复制单条事件 JSON'),
+        ),
+      );
+      await tester.pump();
+      expect(copiedText, contains('webview_page_load_failed'));
+      expect(find.text('单条事件 JSON 已复制'), findsOneWidget);
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );
@@ -601,16 +755,38 @@ Future<AppController> _readyController(
   AnnouncementService? announcementService,
   AboutContentService? aboutContentService,
   DiagnosticsService? diagnosticsService,
+  AppLogger? appLogger,
+  bool gpNext = false,
 }) async {
   return (await tester.runAsync(() async {
     final root = await Directory.systemTemp.createTemp('gl_home_layout_');
-    await _writeValidResource(Directory(p.join(root.path, 'current')));
+    final resource = Directory(p.join(root.path, 'current'));
+    await _writeValidResource(resource);
+    if (gpNext) {
+      await File(p.join(resource.path, 'index.html')).writeAsString('''
+<html>
+  <head><title>Cocos Creator | PvZ2_Gardendless</title></head>
+  <body><script type="module" src="./assets/index-test.js"></script></body>
+</html>
+''');
+      await File(p.join(resource.path, 'assets', 'index-test.js'))
+          .writeAsString('''
+console.info('GP-Next loading...');
+window.gpNext = {};
+function loadAllPatches() {}
+import('./patcher-test.js');
+import('./file-loader-test.js');
+import('./js-mod-loader-test.js');
+import('./config-test.js');
+''');
+    }
 
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       announcementService: announcementService,
       aboutContentService: aboutContentService ?? _aboutContentService(),
       diagnosticsService: diagnosticsService,
+      appLogger: appLogger,
       updateCheckService: _noUpdateService(),
       gameUpdateCheckService: _noGameUpdateService(),
     );

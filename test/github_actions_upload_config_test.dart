@@ -24,9 +24,22 @@ void main() {
     );
   });
 
-  test('GitHub Actions uploads single-file artifacts without ZIP wrapping', () {
+  test('GitHub Actions builds and directly uploads maintained platforms', () {
     final workflow =
         File('.github/workflows/build-mobile.yml').readAsStringSync();
+
+    expect(workflow, contains('\n  android:'));
+    expect(workflow, contains('\n  ios:'));
+    expect(workflow, contains('\n  harmonyos:'));
+    expect(
+      workflow,
+      contains('Build unsigned HarmonyOS HAP (ohos-arm64)'),
+    );
+    expect(
+      workflow,
+      contains('flutter build hap --release --target-platform ohos-arm64'),
+    );
+    expect(workflow, isNot(contains('target-platform: ohos-x64')));
 
     _expectDirectFileUpload(
       workflow,
@@ -41,8 +54,7 @@ void main() {
     _expectDirectFileUpload(
       workflow,
       stepName: 'Upload unsigned HarmonyOS HAP',
-      path:
-          r'build/ohos/unsigned/GardendlessLoader-unsigned-${{ matrix.target-platform }}.hap',
+      path: 'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap',
     );
   });
 }

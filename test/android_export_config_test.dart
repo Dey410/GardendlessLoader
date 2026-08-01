@@ -3,6 +3,19 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Android ZIP picker uses a custom-ROM-compatible MIME contract', () {
+    final activity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',
+    ).readAsStringSync();
+
+    expect(activity, contains('Intent.ACTION_OPEN_DOCUMENT'));
+    expect(activity, contains('Intent.EXTRA_MIME_TYPES'));
+    expect(activity, contains('type = "*/*"'));
+    expect(activity, isNot(contains('type = "application/zip"')));
+    expect(activity, contains('Intent.ACTION_GET_CONTENT'));
+    expect(activity, contains('ActivityNotFoundException'));
+  });
+
   test('Android streams ZIP import progress to Flutter', () {
     final activity = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',
@@ -18,47 +31,74 @@ void main() {
     expect(activity, contains('"totalFiles"'));
   });
 
-  test('Android registers a native game save exporter', () {
+  test('Android native game host owns save export and GP-Next picking', () {
     final activity = File(
-      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
     ).readAsStringSync();
     final manifest = File(
       'android/app/src/main/AndroidManifest.xml',
     ).readAsStringSync();
-    final build = File('android/app/build.gradle.kts').readAsStringSync();
+    final build = File('android/app/build.gradle').readAsStringSync();
 
     expect(build, contains('namespace = "io.github.dey410.gardendlessloader"'));
-    expect(manifest, contains('android:name=".MainActivity"'));
-    expect(
-      activity,
-      contains('io.github.dey410.gardendlessloader/game_file_exporter'),
-    );
-    expect(activity, contains('exportFile'));
+    expect(manifest, contains('android:name=".game.GameActivity"'));
+    expect(manifest, contains('android:exported="false"'));
+    expect(activity, contains('beginChunkedExport'));
     expect(activity, contains('Intent.ACTION_CREATE_DOCUMENT'));
-    expect(activity, contains('Intent.CATEGORY_OPENABLE'));
-    expect(activity, contains('Intent.EXTRA_TITLE'));
-    expect(activity, contains('type = mimeType'));
-    expect(activity, contains('exportFileRequestCode'));
-    expect(activity, contains('openOutputStream(uri, "w")'));
-    expect(activity, contains('copyFileToUri'));
+    expect(activity, contains('input.copyTo(output, 128 * 1024)'));
     expect(activity, contains('export_in_progress'));
     expect(activity, contains('export_picker_failed'));
     expect(activity, contains('export_cancelled'));
-  });
-
-  test('Android registers the GP-Next package picker', () {
-    final activity = File(
-      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',
-    ).readAsStringSync();
-
-    expect(
-      activity,
-      contains('io.github.dey410.gardendlessloader/gp_next_file_importer'),
-    );
-    expect(activity, contains('pickAndCopyFiles'));
+    expect(activity, contains('beginGpNextPackageImport'));
     expect(activity, contains('Intent.ACTION_OPEN_DOCUMENT'));
     expect(activity, contains('Intent.EXTRA_ALLOW_MULTIPLE'));
-    expect(activity, contains('application/zip'));
-    expect(activity, contains('application/json'));
+  });
+
+  test('Android document pickers leave the game landscape lock', () {
+    final activity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
+    ).readAsStringSync();
+
+    expect(activity, contains('private fun launchDocumentPicker('));
+    expect(
+      activity,
+      contains(
+        'requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT',
+      ),
+    );
+    expect(activity, contains('private fun restoreGameOrientation()'));
+    expect(
+      activity,
+      contains(
+        'requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE',
+      ),
+    );
+    expect(
+      activity,
+      matches(RegExp(r'restoreGameOrientation\(\)\s+}\s+when \(requestCode\)')),
+    );
+    expect(
+      'startActivityForResult('.allMatches(activity),
+      hasLength(1),
+      reason: 'Every document picker should use launchDocumentPicker',
+    );
+  });
+
+  test('Android exports reconcile MIME type with the suggested filename', () {
+    final activity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
+    ).readAsStringSync();
+    final contract = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/ExportDocumentSpec.kt',
+    ).readAsStringSync();
+
+    expect(activity,
+        contains('type = exportMimeType(export.fileName, export.mimeType)'));
+    expect(activity, isNot(contains('type = export.mimeType')));
+    expect(activity,
+        contains('MimeTypeMap.getSingleton().getMimeTypeFromExtension'));
+    expect(contract, contains('application/vnd.gardendless.export'));
+    expect(contract, contains('it != "text/plain"'));
+    expect(contract, contains('it != "application/octet-stream"'));
   });
 }

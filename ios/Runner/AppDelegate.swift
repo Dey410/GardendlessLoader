@@ -7,28 +7,143 @@ import zlib
 @objc class AppDelegate: FlutterAppDelegate {
   private let resourceZipImporterChannelName =
     "io.github.dey410.gardendlessloader/resource_zip_importer"
-  private let gameFileExporterChannelName =
-    "io.github.dey410.gardendlessloader/game_file_exporter"
-  private let gpNextFileImporterChannelName =
-    "io.github.dey410.gardendlessloader/gp_next_file_importer"
+  private let gameHostChannelName =
+    "io.github.dey410.gardendlessloader/game_host"
+  private let externalBrowserChannelName =
+    "io.github.dey410.gardendlessloader/external_browser"
+  private var launcherEngine: FlutterEngine?
+  private var gameHostChannel: FlutterMethodChannel?
   private var resourceZipImporterChannel: FlutterMethodChannel?
   private var lastImportProgressReportAt: UInt64 = 0
   private var pendingImportResult: FlutterResult?
   private var pendingImportTargetDirectory: String?
   private var zipImportInProgress = false
-  private var pendingExportResult: FlutterResult?
-  private var pendingGpNextImportResult: FlutterResult?
-  private var pendingGpNextImportTargetDirectory: String?
+  private var gameLaunchInProgress = false
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GeneratedPluginRegistrant.register(with: self)
+    let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    showLauncher()
+    return launched
+  }
+
+  private func showLauncher() {
+    if window == nil {
+      window = UIWindow(frame: UIScreen.main.bounds)
+    }
+    let engine = FlutterEngine(name: "gardendless-launcher-\(UUID().uuidString)")
+    guard engine.run() else { return }
+    GeneratedPluginRegistrant.register(with: engine)
+    let controller = FlutterViewController(engine: engine, nibName: nil, bundle: nil)
+    launcherEngine = engine
+    window?.rootViewController = controller
+    window?.makeKeyAndVisible()
+    AppLogStore.shared.install(messenger: controller.binaryMessenger)
     registerResourceZipImporter()
-    registerGameFileExporter()
-    registerGpNextFileImporter()
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    registerGameHost()
+    registerExternalBrowser()
+  }
+
+  override func applicationWillTerminate(_ application: UIApplication) {
+    AppLogStore.shared.endSession()
+    super.applicationWillTerminate(application)
+  }
+
+  private func registerExternalBrowser() {
+    guard let controller = window?.rootViewController as? FlutterViewController else { return }
+    let channel = FlutterMethodChannel(
+      name: externalBrowserChannelName,
+      binaryMessenger: controller.binaryMessenger
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "open" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard let arguments = call.arguments as? [String: Any],
+            let raw = arguments["url"] as? String,
+            let url = URL(string: raw),
+            url.scheme == "https" || url.scheme == "http" else {
+        result(FlutterError(code: "invalid_external_url", message: "Only HTTP(S) URLs are allowed", details: nil))
+        return
+      }
+      UIApplication.shared.open(url) { opened in
+        if opened {
+          result(nil)
+        } else {
+          result(FlutterError(code: "external_open_failed", message: "No application can open this URL", details: nil))
+        }
+      }
+    }
+  }
+
+  private func registerGameHost() {
+    guard let controller = window?.rootViewController as? FlutterViewController else { return }
+    let channel = FlutterMethodChannel(
+      name: gameHostChannelName,
+      binaryMessenger: controller.binaryMessenger
+    )
+    gameHostChannel = channel
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "launch" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      guard let self else {
+        result(FlutterError(code: "game_host_unavailable", message: "App delegate released", details: nil))
+        return
+      }
+      guard !self.gameLaunchInProgress else {
+        result(FlutterError(code: "game_host_launch_busy", message: "Native GameHost is launching", details: nil))
+        return
+      }
+      do {
+        let session = try NativeGameSession(arguments: call.arguments)
+        self.gameLaunchInProgress = true
+        NativeGameNetworkPolicy.load(for: session) { [weak self] policyResult in
+          DispatchQueue.main.async {
+            guard let self else {
+              result(FlutterError(code: "game_host_unavailable", message: "App delegate released", details: nil))
+              return
+            }
+            self.gameLaunchInProgress = false
+            do {
+              let policy = try policyResult.get()
+              let gameController = try GameViewController(
+                session: session,
+                networkRuleList: policy
+              ) { [weak self] in
+                self?.showLauncher()
+              }
+              let engine = self.launcherEngine
+              self.launcherEngine = nil
+              self.resourceZipImporterChannel?.setMethodCallHandler(nil)
+              self.gameHostChannel?.setMethodCallHandler(nil)
+              result(nil)
+              self.window?.rootViewController = gameController
+              self.window?.makeKeyAndVisible()
+              DispatchQueue.main.async {
+                engine?.destroyContext()
+              }
+            } catch {
+              result(FlutterError(
+                code: "game_host_launch_failed",
+                message: error.localizedDescription,
+                details: nil
+              ))
+            }
+          }
+        }
+      } catch {
+        result(FlutterError(
+          code: "game_host_launch_failed",
+          message: error.localizedDescription,
+          details: nil
+        ))
+      }
+    }
   }
 
   private func registerResourceZipImporter() {
@@ -47,124 +162,6 @@ import zlib
         return
       }
       self?.pickAndExtractDocsZip(call: call, result: result)
-    }
-  }
-
-  private func registerGameFileExporter() {
-    guard let controller = window?.rootViewController as? FlutterViewController else {
-      return
-    }
-
-    let channel = FlutterMethodChannel(
-      name: gameFileExporterChannelName,
-      binaryMessenger: controller.binaryMessenger
-    )
-    channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "exportFile" else {
-        result(FlutterMethodNotImplemented)
-        return
-      }
-      self?.exportFile(call: call, result: result)
-    }
-  }
-
-  private func registerGpNextFileImporter() {
-    guard let controller = window?.rootViewController as? FlutterViewController else {
-      return
-    }
-    let channel = FlutterMethodChannel(
-      name: gpNextFileImporterChannelName,
-      binaryMessenger: controller.binaryMessenger
-    )
-    channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "pickAndCopyFiles" else {
-        result(FlutterMethodNotImplemented)
-        return
-      }
-      self?.pickGpNextFiles(call: call, result: result)
-    }
-  }
-
-  private func pickGpNextFiles(call: FlutterMethodCall, result: @escaping FlutterResult) {
-    guard let args = call.arguments as? [String: Any],
-          let targetDirectory = args["targetDirectory"] as? String,
-          !targetDirectory.isEmpty else {
-      result(FlutterError(
-        code: "invalid_target_directory",
-        message: "Missing GP-Next import staging directory",
-        details: nil
-      ))
-      return
-    }
-    DispatchQueue.main.async { [weak self] in
-      guard let self, let rootController = self.topViewController() else {
-        result(FlutterError(
-          code: "missing_view_controller",
-          message: "Unable to present GP-Next file picker",
-          details: nil
-        ))
-        return
-      }
-      if self.pendingGpNextImportResult != nil || self.pendingImportResult != nil {
-        result(FlutterError(
-          code: "gp_next_import_busy",
-          message: "Another file import is already in progress",
-          details: nil
-        ))
-        return
-      }
-      let picker: UIDocumentPickerViewController
-      if #available(iOS 14.0, *) {
-        picker = UIDocumentPickerViewController(
-          forOpeningContentTypes: [.zip, .json, .plainText, .data],
-          asCopy: true
-        )
-      } else {
-        picker = UIDocumentPickerViewController(
-          documentTypes: [
-            "public.zip-archive",
-            "public.json",
-            "public.plain-text",
-            "public.data",
-          ],
-          in: .import
-        )
-      }
-      picker.delegate = self
-      picker.allowsMultipleSelection = true
-      picker.modalPresentationStyle = .formSheet
-      self.pendingGpNextImportResult = result
-      self.pendingGpNextImportTargetDirectory = targetDirectory
-      rootController.present(picker, animated: true)
-    }
-  }
-
-  private func copyGpNextFiles(_ urls: [URL], to targetDirectory: String) throws -> [String] {
-    let manager = FileManager.default
-    let target = URL(fileURLWithPath: targetDirectory, isDirectory: true)
-    try manager.createDirectory(at: target, withIntermediateDirectories: true)
-    return try urls.map { source in
-      let accessed = source.startAccessingSecurityScopedResource()
-      defer {
-        if accessed {
-          source.stopAccessingSecurityScopedResource()
-        }
-      }
-      let unsafe = source.lastPathComponent
-      let safe = unsafe
-        .replacingOccurrences(of: "/", with: "_")
-        .replacingOccurrences(of: "\\", with: "_")
-      var destination = target.appendingPathComponent(safe.isEmpty ? "gp-next-file" : safe)
-      var suffix = 1
-      while manager.fileExists(atPath: destination.path) {
-        let stem = destination.deletingPathExtension().lastPathComponent
-        let ext = destination.pathExtension
-        let name = ext.isEmpty ? "\(stem)-\(suffix)" : "\(stem)-\(suffix).\(ext)"
-        destination = target.appendingPathComponent(name)
-        suffix += 1
-      }
-      try manager.copyItem(at: source, to: destination)
-      return destination.path
     }
   }
 
@@ -281,90 +278,6 @@ import zlib
         }
       }
     }
-  }
-
-  private func exportFile(call: FlutterMethodCall, result: @escaping FlutterResult) {
-    guard let args = call.arguments as? [String: Any],
-          let path = args["path"] as? String else {
-      result(FlutterError(
-        code: "invalid_arguments",
-        message: "Missing export file path",
-        details: nil
-      ))
-      return
-    }
-
-    let fileUrl = URL(fileURLWithPath: path)
-    guard FileManager.default.fileExists(atPath: fileUrl.path) else {
-      result(FlutterError(
-        code: "file_not_found",
-        message: "Export file does not exist",
-        details: path
-      ))
-      return
-    }
-
-    DispatchQueue.main.async { [weak self] in
-      guard let rootController = self?.topViewController() else {
-        result(FlutterError(
-          code: "missing_view_controller",
-          message: "Unable to present export sheet",
-          details: nil
-        ))
-        return
-      }
-
-      if self?.pendingExportResult != nil {
-        result(FlutterError(
-          code: "export_in_progress",
-          message: "Another export is already in progress",
-          details: nil
-        ))
-        return
-      }
-
-      let documentPicker = self?.makeDocumentPicker(for: fileUrl)
-      guard let documentPicker else {
-        result(FlutterError(
-          code: "missing_document_picker",
-          message: "Unable to create export picker",
-          details: nil
-        ))
-        return
-      }
-      documentPicker.delegate = self
-      documentPicker.modalPresentationStyle = .formSheet
-      if let popover = documentPicker.popoverPresentationController {
-        let fallbackRect = CGRect(x: 1, y: 1, width: 1, height: 1)
-        popover.sourceView = rootController.view
-        popover.sourceRect = self?.sourceRect(from: args) ?? fallbackRect
-        popover.permittedArrowDirections = []
-      }
-
-      self?.pendingExportResult = result
-      rootController.present(documentPicker, animated: true)
-    }
-  }
-
-  private func makeDocumentPicker(for fileUrl: URL) -> UIDocumentPickerViewController {
-    if #available(iOS 14.0, *) {
-      return UIDocumentPickerViewController(
-        forExporting: [fileUrl],
-        asCopy: true
-      )
-    }
-    return UIDocumentPickerViewController(
-      url: fileUrl,
-      in: .exportToService
-    )
-  }
-
-  private func sourceRect(from args: [String: Any]) -> CGRect {
-    let x = args["originX"] as? Double ?? 1
-    let y = args["originY"] as? Double ?? 1
-    let width = max(args["originWidth"] as? Double ?? 1, 1)
-    let height = max(args["originHeight"] as? Double ?? 1, 1)
-    return CGRect(x: x, y: y, width: width, height: height)
   }
 
   private func extractDocsZip(from zipUrl: URL, to targetDirectory: URL) throws {
@@ -940,19 +853,6 @@ extension AppDelegate: UIDocumentPickerDelegate {
       return
     }
 
-    if let pendingGpNextImportResult {
-      pendingGpNextImportResult(nil)
-      self.pendingGpNextImportResult = nil
-      pendingGpNextImportTargetDirectory = nil
-      return
-    }
-
-    pendingExportResult?(FlutterError(
-      code: "export_cancelled",
-      message: "Export was cancelled",
-      details: nil
-    ))
-    pendingExportResult = nil
   }
 
   func documentPicker(
@@ -977,36 +877,6 @@ extension AppDelegate: UIDocumentPickerDelegate {
       )
       return
     }
-
-
-    if let pendingGpNextImportResult {
-      let targetDirectory = pendingGpNextImportTargetDirectory
-      self.pendingGpNextImportResult = nil
-      pendingGpNextImportTargetDirectory = nil
-      guard let targetDirectory else {
-        pendingGpNextImportResult(nil)
-        return
-      }
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-        do {
-          guard let self else { return }
-          let copied = try self.copyGpNextFiles(urls, to: targetDirectory)
-          DispatchQueue.main.async { pendingGpNextImportResult(copied) }
-        } catch {
-          DispatchQueue.main.async {
-            pendingGpNextImportResult(FlutterError(
-              code: "gp_next_import_failed",
-              message: "Unable to import GP-Next files: \(error.localizedDescription)",
-              details: nil
-            ))
-          }
-        }
-      }
-      return
-    }
-
-    pendingExportResult?(nil)
-    pendingExportResult = nil
   }
 }
 

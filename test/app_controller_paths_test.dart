@@ -4,16 +4,70 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
+import 'package:gardendless_loader/src/logging/app_logger.dart';
+import 'package:gardendless_loader/src/logging/log_event_catalog.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
-import 'package:gardendless_loader/src/services/local_game_server.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
 import 'package:gardendless_loader/src/services/resource_picker_service.dart';
 import 'package:gardendless_loader/src/services/resource_validator.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test('initialization failure keeps user feedback and records diagnostics',
+      () async {
+    final logger = InMemoryAppLogger(
+      appSessionId: 'app-session-1',
+      source: LogSource.dart,
+    );
+    final controller = AppController(
+      pathsService: AppPathsService(platformName: 'unsupported'),
+      appLogger: logger,
+    );
+
+    await controller.initialize();
+
+    expect(
+      <String, Object?>{
+        'showsFailure': controller.message?.startsWith('启动失败：') ?? false,
+        'events': logger.events
+            .map(
+              (event) => <String, Object?>{
+                'event': event.event,
+                'outcome': event.outcome.name,
+                'code': event.code,
+                'operationId': event.operationId,
+              },
+            )
+            .toList(),
+      },
+      <String, Object?>{
+        'showsFailure': true,
+        'events': <Map<String, Object?>>[
+          {
+            'event': 'app_initialization_started',
+            'outcome': 'started',
+            'code': null,
+            'operationId': 'app-initialize',
+          },
+          {
+            'event': 'app_initialization_stage_changed',
+            'outcome': 'observed',
+            'code': null,
+            'operationId': 'app-initialize',
+          },
+          {
+            'event': 'app_initialization_finished',
+            'outcome': 'failed',
+            'code': 'app_initialization_failed',
+            'operationId': 'app-initialize',
+          },
+        ],
+      },
+    );
+  });
+
   test('enables the game watermark by default', () async {
     final root = await Directory.systemTemp.createTemp('gl_settings_default_');
     addTearDown(() async {
@@ -99,6 +153,75 @@ void main() {
     expect(restartedController.watermarkEnabled, isTrue);
   });
 
+  test('remembers automatic sun collection across app restarts', () async {
+    final root = await Directory.systemTemp.createTemp('gl_auto_sun_saved_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+    final paths = await AppPathsService(
+      rootOverride: root,
+      platformName: 'test',
+    ).ensureInitialized();
+    await _writeValidResource(paths.slotADir);
+    await ManifestStore(paths.manifestFile).write(
+      ResourceManifest.initial().copyWith(
+        activeSlot: ResourceSlot.slotA,
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+
+    final firstController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await firstController.initialize();
+    await firstController.setAutoCollectSunEnabled(true);
+
+    final restartedController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await restartedController.initialize();
+
+    expect(restartedController.autoCollectSunEnabled, isTrue);
+  });
+
+  test('persists the latest automatic sun choice after rapid toggles',
+      () async {
+    final root = await Directory.systemTemp.createTemp('gl_auto_sun_rapid_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+    final paths = await AppPathsService(
+      rootOverride: root,
+      platformName: 'test',
+    ).ensureInitialized();
+    await _writeValidResource(paths.slotADir);
+    await ManifestStore(paths.manifestFile).write(
+      ResourceManifest.initial().copyWith(
+        activeSlot: ResourceSlot.slotA,
+        resourceStatus: ResourceStatus.ready,
+      ),
+    );
+
+    final firstController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await firstController.initialize();
+    final enable = firstController.setAutoCollectSunEnabled(true);
+    final disable = firstController.setAutoCollectSunEnabled(false);
+    await Future.wait([enable, disable]);
+
+    final restartedController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await restartedController.initialize();
+
+    expect(restartedController.autoCollectSunEnabled, isFalse);
+  });
+
   test('cleans an interrupted import on startup without replacing current',
       () async {
     final root =
@@ -161,13 +284,10 @@ void main() {
         resourceStatus: ResourceStatus.ready,
       ),
     );
-    final importServer = LocalGameServer();
-    addTearDown(importServer.stop);
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       importService: ImportService(
         validator: ResourceValidator(),
-        server: importServer,
         oldSlotCleaner: (_) async {
           throw const FileSystemException('slot is busy');
         },
@@ -255,6 +375,37 @@ void main() {
       releaseImporter.complete();
       await importFuture;
     }
+  });
+
+  test('shows feedback before opening the native ZIP picker', () async {
+    final root = await Directory.systemTemp.createTemp('gl_picker_feedback_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+
+    late final AppController controller;
+    controller = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      importAwakeModeGetter: () async => true,
+      importAwakeModeSetter: (_) async {},
+      resourcePickerService: ResourcePickerService(
+        platformName: 'android',
+        mobileZipImporter: ({
+          required targetDirectory,
+          onProgress,
+        }) async {
+          expect(controller.message, '正在打开系统文件选择器');
+          return null;
+        },
+      ),
+    );
+    await controller.initialize();
+
+    await controller.importResources();
+
+    expect(controller.message, '已取消选择 ZIP');
   });
 
   test('keeps the screen awake only while an import is active', () async {
@@ -404,6 +555,11 @@ void main() {
 
   test('imports the docs directory extracted from the selected zip', () async {
     final root = await Directory.systemTemp.createTemp('gl_controller_paths_');
+    final logger = InMemoryAppLogger(
+      appSessionId: 'app-session-import',
+      source: LogSource.dart,
+      eventSchemas: defaultLogEventSchemas,
+    );
     String? extractionTarget;
     addTearDown(() async {
       if (await root.exists()) {
@@ -413,6 +569,7 @@ void main() {
 
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      appLogger: logger,
       resourcePickerService: ResourcePickerService(
         platformName: 'android',
         mobileZipImporter: ({
@@ -443,6 +600,26 @@ void main() {
     expect(diagnostics,
         contains('activeResourcePath: ${p.join(root.path, 'slot-a')}'));
     expect(diagnostics, contains('active slot validation: ready'));
+    final importEvents = logger.events
+        .where((event) => event.category.startsWith('resource.'))
+        .toList(growable: false);
+    expect(
+      importEvents.map((event) => event.event),
+      containsAll(<String>[
+        'resource_import_started',
+        'resource_import_picker_started',
+        'resource_import_picker_finished',
+        'resource_validation_started',
+        'resource_validation_finished',
+        'resource_slot_activated',
+        'resource_import_finished',
+      ]),
+    );
+    expect(
+      importEvents.map((event) => event.operationId).toSet(),
+      hasLength(1),
+    );
+    expect(importEvents.first.operationId, isNotNull);
   });
 }
 

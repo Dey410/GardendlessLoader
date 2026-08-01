@@ -11,8 +11,10 @@
 packages on Android, iOS, and HarmonyOS/OpenHarmony.
 
 The app lets users select a resource ZIP, extracts and locates the bundled
-`docs` web build, validates it, serves it from a local HTTP server, and opens
-the game in an in-app WebView.
+`docs` web build, and validates it. Flutter only owns import, two-slot
+transactions, updates, settings, and diagnostics. Gameplay runs in a separate
+native Android WebView, iOS WKWebView, or HarmonyOS ArkWeb page that streams the
+active slot directly, without a local HTTP server or a Flutter game page.
 
 > [!IMPORTANT]
 > This project does not bundle, download, update, or redistribute
@@ -23,12 +25,12 @@ the game in an in-app WebView.
 
 - Finds and extracts a valid `docs` resource directory from a selected ZIP.
 - Validates the expected `PvZ2 Gardendless` Cocos web build shape, title, and fingerprints.
-- Serves static files from `http://127.0.0.1:26410`.
-- Uses a landscape, immersive WebView and blocks non-local requests by default.
+- Native GameHosts intercept a fixed synthetic origin and stream Range/ETag/MIME responses without opening a socket.
+- Gameplay uses a full-screen, landscape native WebView; the launcher FlutterEngine is released while the game runs, and non-allowlisted remote requests are blocked.
 - Detects the GP-Next 1.4.2 desktop build, injects a mobile compatibility bridge without modifying game resources, and conditionally exposes `Open GP-Next` in the game menu.
 - Shows import progress, extracts directly into the inactive slot, keeps the active slot on failure, and recovers unfinished transactions at startup.
-- Provides copyable diagnostics for resource, platform, WebView, and local server state.
-- Adapts the game viewport between `16:10` and `17:9`, and supports inline home-page announcements, independent loader/game update checks, and auto sunlight collection.
+- Provides copyable diagnostics containing the native GameHost, synthetic origin, and `resourceServer: none`.
+- Sends game input directly to the platform WebView and supports home-page announcements, independent loader/game update checks, and auto sunlight collection.
 - Detects the imported game version from the page title and checks it against stable [`pvzg_site` tags](https://github.com/Gzh0821/pvzg_site/tags); available updates link to the game repository and the shared cloud drive.
 - Builds Android, iOS, and HarmonyOS/OpenHarmony artifacts in GitHub Actions.
 
@@ -37,7 +39,12 @@ the game in an in-app WebView.
 1. Get a `PvZ2 Gardendless` resource ZIP from the upstream project or another trusted source.
 2. Open `GardendlessLoader` and choose `Select ZIP to import`.
 3. The app searches the ZIP root and nested directories for a valid `docs` and extracts it directly into the inactive resource slot.
-4. After import succeeds, start the game. It loads from the local origin.
+4. After import succeeds, start the game. The Flutter launcher exits and the platform-native GameHost loads the active slot.
+
+The fixed per-platform origins are Android `https://appassets.androidplatform.net`,
+iOS `gardendless-game://localhost`, and HarmonyOS/OpenHarmony
+`https://gardendless.invalid`. Resource generations only change the entry query
+`?generation=N`; each platform keeps its origin stable across updates.
 
 ### In-game touch controls
 
@@ -63,7 +70,7 @@ GardendlessLoader/
 
 At rest, only the active slot contains game files and the other slot is empty.
 During an update, at most the old active resource and the new candidate coexist.
-The manifest switches only after validation and the local self-check succeed,
+The manifest switches only after validation and the filesystem self-check succeeds,
 then the old slot is cleared. The home screen and diagnostics show the resource
 root and active slot for the current device.
 
@@ -114,17 +121,18 @@ Useful project files:
 
 | Path | Purpose |
 | --- | --- |
-| `lib/src/app_controller.dart` | App state, import flow, server lifecycle, announcements, and update checks |
+| `lib/src/app_controller.dart` | App state, import flow, native GameHost launch, announcements, and update checks |
 | `lib/src/services/resource_picker_service.dart` | ZIP picking, path safety, `docs` discovery, and extraction |
 | `lib/src/services/import_service.dart` | Two-slot import, atomic activation, legacy migration, and startup recovery |
-| `lib/src/services/local_game_server.dart` | Local HTTP server, MIME handling, and self-checks |
+| `lib/src/services/resource_self_check.dart` | Candidate-slot filesystem self-check without a network service |
 | `lib/src/services/resource_validator.dart` | Resource shape, title, and Cocos config validation |
 | `lib/src/services/game_update_check_service.dart` | Local game version detection, stable tag selection, and version comparison |
-| `lib/src/services/gp_next_bridge_service.dart` | GP-Next 1.4.2 Tauri file, dialog, and opener compatibility |
-| `lib/src/services/gp_next_package_importer.dart` | GP-Next package validation and transactional replacement |
+| `lib/src/game_host/` | Durable GameSession, platform routing, and exit-result contract |
 | `lib/src/ui/home_page.dart` | Import, status, announcement, update, and diagnostics UI |
-| `lib/src/ui/game_page.dart` | Landscape WebView shell, menu, and helper toggles |
-| `lib/src/web/touch_patch.dart` | Single-finger left click, two-finger right click/wheel, and cancellation state machine |
+| `assets/game_bridge/` | Shared document-start transport, GP-Next, touch, export, watermark, and menu scripts |
+| `android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/` | Android native WebView GameHost |
+| `ios/Runner/GameViewController.swift` | iOS native WKWebView GameHost |
+| `ohos/entry/src/main/ets/game/` | HarmonyOS/OpenHarmony ArkWeb GameHost boundaries |
 | `announcements.json` | Remote announcement payload |
 
 ## Build
