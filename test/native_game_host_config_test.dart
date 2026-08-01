@@ -110,7 +110,13 @@ void main() {
       'ohos/entry/src/main/ets/game/GameSession.ets',
     ).readAsStringSync();
 
-    expect(page, contains('.javaScriptOnDocumentStart'));
+    expect(
+      page,
+      contains('.runJavaScriptOnDocumentStart(this.documentStartScripts)'),
+    );
+    expect(page, contains('scriptRules: [GameSession.ORIGIN]'));
+    expect(page, isNot(contains(r'`${GameSession.ORIGIN}/*`')));
+    expect(page, isNot(contains('.javaScriptOnDocumentStart(')));
     expect(page, contains("'touch_patch.js'"));
     expect(page, contains("'auto_sun.js'"));
     expect(
@@ -132,17 +138,34 @@ void main() {
     expect(page, contains('const maximumAspectRatio = 17 / 9'));
     expect(ability, contains('setWindowLayoutFullScreen(true)'));
     expect(ability, contains('setWindowSystemBarEnable([])'));
+    expect(page, contains("Web({ src: '', controller: this.controller })"));
+    expect(page, isNot(contains("Web({ src: 'about:blank'")));
+    expect(
+      page.indexOf('resourceHandler.attach(this.controller)'),
+      lessThan(page.indexOf('this.controller.loadUrl(session.entryUrl)')),
+    );
     expect(handler, contains("setWebSchemeHandler('http'"));
     expect(handler, contains("setWebSchemeHandler('https'"));
     expect(handler, contains('didReceiveResponseBody'));
     expect(handler, contains('await fs.read'));
     expect(handler, contains('active.cancelled = true'));
+    expect(handler, contains('mimeType(relativePath, filePath)'));
+    expect(handler, contains("return 'image/avif'"));
+    expect(handler, contains('private isAvif(filePath: string): boolean'));
+    expect(handler, contains('bytes[4] !== 0x66'));
+    expect(handler, contains('bytes[offset + 3] === 0x66'));
+    expect(handler, contains("return 'audio/mp4'"));
+    expect(handler, contains("return 'audio/aac'"));
+    expect(handler, contains('private sniffAudioMimeType('));
+    expect(handler, contains('bytes[0] === 0xff'));
+    expect(handler, contains('(bytes[1] & 0xf6) === 0xf0'));
     expect(plugin, contains('context.terminateSelf()'));
     expect(
       File('ohos/entry/src/main/ets/game/GameBridge.ets').readAsStringSync(),
       contains('}, false);'),
     );
     expect(page, isNot(contains('FlutterPage')));
+    expect('$page\n$handler', isNot(contains('[DEBUG-OHOS-')));
   });
 
   test('production graph has no Dart socket server or Flutter WebView package',

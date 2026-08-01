@@ -104,7 +104,7 @@ export class NativeGameResourceHandler {
       if (range != null) {
         headers.set('Content-Range', `bytes ${start}-${end}/${stat.size}`);
       }
-      const mime = this.mimeType(relativePath);
+      const mime = this.mimeType(relativePath, filePath);
       if (mime === 'application/octet-stream') {
         this.logFailure(
           'resource_mime_mismatch',
@@ -332,22 +332,80 @@ export class NativeGameResourceHandler {
       return 'public, max-age=31536000, immutable';
     }
     const extension = name.includes('.') ? name.substring(name.lastIndexOf('.') + 1).toLowerCase() : '';
-    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp3', 'ogg', 'wav', 'mp4', 'webm', 'wasm', 'bin']
+    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp3', 'm4a', 'aac', 'ogg', 'wav', 'mp4',
+      'webm', 'wasm', 'bin']
       .includes(extension) ? 'public, max-age=86400' : 'no-cache';
   }
 
-  private mimeType(path: string): string {
+  private mimeType(path: string, filePath: string): string {
     const extension = path.includes('.') ? path.substring(path.lastIndexOf('.') + 1).toLowerCase() : '';
+    if (['png', 'jpg', 'jpeg', 'webp'].includes(extension) && this.isAvif(filePath)) {
+      return 'image/avif';
+    }
+    if (extension === 'mp3') {
+      const audioMime = this.sniffAudioMimeType(filePath);
+      if (audioMime != null) return audioMime;
+    }
     const types = new Map<string, string>([
       ['html', 'text/html'], ['htm', 'text/html'], ['js', 'application/javascript'],
       ['mjs', 'application/javascript'], ['css', 'text/css'], ['json', 'application/json'],
       ['json5', 'application/json'], ['wasm', 'application/wasm'], ['svg', 'image/svg+xml'],
       ['png', 'image/png'], ['jpg', 'image/jpeg'], ['jpeg', 'image/jpeg'], ['gif', 'image/gif'],
-      ['webp', 'image/webp'], ['mp3', 'audio/mpeg'], ['ogg', 'audio/ogg'], ['wav', 'audio/wav'],
+      ['webp', 'image/webp'], ['avif', 'image/avif'], ['mp3', 'audio/mpeg'],
+      ['m4a', 'audio/mp4'], ['aac', 'audio/aac'], ['ogg', 'audio/ogg'], ['wav', 'audio/wav'],
       ['mp4', 'video/mp4'], ['webm', 'video/webm'], ['woff', 'font/woff'],
       ['woff2', 'font/woff2'], ['ttf', 'font/ttf'],
     ]);
     return types.get(extension) ?? 'application/octet-stream';
+  }
+
+  private isAvif(filePath: string): boolean {
+    let file: fs.File | null = null;
+    try {
+      file = fs.openSync(filePath, fs.OpenMode.READ_ONLY);
+      const buffer = new ArrayBuffer(64);
+      const count = fs.readSync(file.fd, buffer, { offset: 0, length: 64 });
+      if (count < 12) return false;
+      const bytes = new Uint8Array(buffer, 0, count);
+      if (bytes[4] !== 0x66 || bytes[5] !== 0x74 ||
+        bytes[6] !== 0x79 || bytes[7] !== 0x70) {
+        return false;
+      }
+      for (let offset = 8; offset + 3 < count; offset += 4) {
+        const isAvifBrand = bytes[offset] === 0x61 && bytes[offset + 1] === 0x76 &&
+          bytes[offset + 2] === 0x69 &&
+          (bytes[offset + 3] === 0x66 || bytes[offset + 3] === 0x73);
+        if (isAvifBrand) return true;
+      }
+      return false;
+    } catch (_error) {
+      return false;
+    } finally {
+      if (file != null) fs.closeSync(file.fd);
+    }
+  }
+
+  private sniffAudioMimeType(filePath: string): string | null {
+    let file: fs.File | null = null;
+    try {
+      file = fs.openSync(filePath, fs.OpenMode.READ_ONLY);
+      const buffer = new ArrayBuffer(64);
+      const count = fs.readSync(file.fd, buffer, { offset: 0, length: 64 });
+      if (count < 2) return null;
+      const bytes = new Uint8Array(buffer, 0, count);
+      if (bytes[0] === 0xff && (bytes[1] & 0xf6) === 0xf0) {
+        return 'audio/aac';
+      }
+      if (count >= 12 && bytes[4] === 0x66 && bytes[5] === 0x74 &&
+        bytes[6] === 0x79 && bytes[7] === 0x70) {
+        return 'audio/mp4';
+      }
+      return null;
+    } catch (_error) {
+      return null;
+    } finally {
+      if (file != null) fs.closeSync(file.fd);
+    }
   }
 
   private isTextMime(mime: string): boolean {
