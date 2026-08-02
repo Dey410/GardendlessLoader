@@ -63,11 +63,7 @@ void main() {
     expect(controller, contains('17.0 / 9.0'));
     expect(controller, contains('injectionTime: .atDocumentStart'));
     expect(controller, contains('"touch_patch.js"'));
-    expect(controller, contains('"auto_sun.js"'));
-    expect(
-      controller.indexOf('"bootstrap.js"'),
-      lessThan(controller.indexOf('"auto_sun.js"')),
-    );
+    expect(controller, isNot(contains('"auto_sun.js"')));
     expect(
       controller,
       contains('"autoCollectSunEnabled": session.autoCollectSunEnabled'),

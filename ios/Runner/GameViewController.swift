@@ -603,7 +603,6 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
       "transport.js",
       "bootstrap.js",
       "logging.js",
-      "auto_sun.js",
       "touch_patch.js",
       "export_download_patch.js",
     ]
