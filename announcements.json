@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "announcement": {
-    "id": "2026-07-18-v0.5.2",
-    "title": "v0.5.2 更新重点",
-    "message": "GardendlessLoader v0.6.2 已发布：支持gp-next，注意网盘中0.11.4为gpnext版本，需要更新v0.6.2方可使用",
+    "id": "2026-08-02-v0.7.1",
+    "title": "v0.7.1 更新重点",
+    "message": "GardendlessLoader v0.7.1 已发布：游戏运行升级为 Android、iOS 和 HarmonyOS/OpenHarmony 原生 GameHost；新增跨平台结构化日志；重做自动收集与触控；扩展 GP-Next 1.4.3 兼容；修复 Android ZIP 与导出选择器及 HarmonyOS 资源加载问题。重要：新版更换了 WebView Origin，旧版 localStorage 和 IndexedDB 数据不会自动迁移，请在升级前先导出重要存档。",
     "links": [
       {
         "label": "GitHub",
