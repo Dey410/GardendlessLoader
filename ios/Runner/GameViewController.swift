@@ -97,6 +97,7 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
 
   override func loadView() {
     let configuration = WKWebViewConfiguration()
+    _ = GDLDisableWebKit60FPSPreference(configuration)
     configuration.websiteDataStore = .default()
     configuration.defaultWebpagePreferences.allowsContentJavaScript = true
     configuration.mediaTypesRequiringUserActionForPlayback = []
@@ -603,6 +604,7 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
       "transport.js",
       "bootstrap.js",
       "logging.js",
+      "auto_sun.js",
       "touch_patch.js",
       "export_download_patch.js",
     ]

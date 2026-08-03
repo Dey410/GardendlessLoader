@@ -34,10 +34,13 @@ function createHarness({
   enabled = true,
   hasGpNext = false,
   gaming = true,
-  importFailure = null,
+  modulesAvailable = true,
+  unexpectedExports = false,
 } = {}) {
   let now = 0;
   let nextTimerId = 1;
+  let modulesReady = modulesAvailable;
+  let getCount = 0;
   let importCount = 0;
   const timers = new Map();
   const errors = [];
@@ -74,12 +77,17 @@ function createHarness({
     config: {autoCollectSunEnabled: enabled, hasGpNext},
   };
   window.System = {
-    async import(path) {
-      importCount += 1;
-      if (importFailure) throw importFailure;
+    get(path) {
+      getCount += 1;
+      if (!modulesReady) return undefined;
+      if (unexpectedExports) return {};
       if (path.endsWith('levelController.ts')) return {levelController};
       if (path.endsWith('UI.ts')) return {UI};
       throw new Error(`Unexpected module: ${path}`);
+    },
+    async import() {
+      importCount += 1;
+      throw new Error('early System.import poisons cold game startup');
     },
   };
 
@@ -153,6 +161,9 @@ function createHarness({
     document,
     errors,
     flushMicrotasks,
+    get getCount() {
+      return getCount;
+    },
     get importCount() {
       return importCount;
     },
@@ -167,6 +178,9 @@ function createHarness({
       document.hidden = hidden;
       document.dispatchEvent(new Event('visibilitychange'));
     },
+    setModulesAvailable(available) {
+      modulesReady = available;
+    },
     window,
   };
 }
@@ -178,6 +192,7 @@ for (const options of [
   const harness = createHarness(options);
   await harness.flushMicrotasks();
   await harness.advance(10000);
+  assert.equal(harness.getCount, 0);
   assert.equal(harness.importCount, 0);
   assert.deepEqual(harness.keyboardEvents, []);
 }
@@ -185,7 +200,8 @@ for (const options of [
 {
   const harness = createHarness();
   await harness.flushMicrotasks();
-  assert.equal(harness.importCount, 2);
+  assert.equal(harness.getCount, 2);
+  assert.equal(harness.importCount, 0);
 
   await harness.advance(2999);
   assert.deepEqual(harness.keyboardEvents, []);
@@ -215,6 +231,25 @@ for (const options of [
   await harness.advance(2950);
   assert.equal(harness.keyboardEvents[2].type, 'keydown');
   assert.equal(harness.keyboardEvents[2].at, 6000);
+}
+
+{
+  const harness = createHarness({modulesAvailable: false});
+  await harness.flushMicrotasks();
+  await harness.advance(1000);
+  assert.equal(harness.importCount, 0);
+  assert.deepEqual(harness.errors, []);
+  assert.deepEqual(harness.keyboardEvents, []);
+
+  harness.setModulesAvailable(true);
+  await harness.advance(249);
+  assert.deepEqual(harness.keyboardEvents, []);
+  await harness.advance(1);
+  assert.equal(harness.importCount, 0);
+  await harness.advance(2999);
+  assert.deepEqual(harness.keyboardEvents, []);
+  await harness.advance(1);
+  assert.equal(harness.keyboardEvents[0].type, 'keydown');
 }
 
 {
@@ -285,7 +320,7 @@ for (const invalidate of [
 }
 
 {
-  const harness = createHarness({importFailure: new Error('module missing')});
+  const harness = createHarness({unexpectedExports: true});
   await harness.flushMicrotasks();
   await harness.advance(10000);
   harness.rerun();

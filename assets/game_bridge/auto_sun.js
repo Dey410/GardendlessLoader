@@ -11,9 +11,13 @@
   const checkIntervalMs = 250;
   const collectIntervalMs = 3000;
   const keyHoldMs = 50;
+  const levelControllerModuleId =
+    "chunks:///_virtual/levelController.ts";
+  const uiModuleId = "chunks:///_virtual/UI.ts";
   let levelController = null;
   let gameUI = null;
   let eligibleSince = null;
+  let moduleCheckTimer = null;
   let checkTimer = null;
   let keyUpTimer = null;
   let keyTarget = null;
@@ -146,17 +150,32 @@
     return module ? module.default : null;
   }
 
-  async function start() {
+  function scheduleModuleCheck() {
+    if (stopped || moduleCheckTimer !== null) return;
+    moduleCheckTimer = setTimeout(findGameModules, checkIntervalMs);
+  }
+
+  function findGameModules() {
+    moduleCheckTimer = null;
     try {
-      if (!window.System || typeof window.System.import !== "function") {
-        throw new Error("System.import is unavailable");
+      const system = window.System;
+      if (!system || typeof system.get !== "function") {
+        scheduleModuleCheck();
+        return;
       }
-      const modules = await Promise.all([
-        window.System.import("chunks:///_virtual/levelController.ts"),
-        window.System.import("chunks:///_virtual/UI.ts")
-      ]);
-      levelController = moduleValue(modules[0], "levelController");
-      gameUI = moduleValue(modules[1], "UI");
+
+      const levelControllerModule = system.get(levelControllerModuleId);
+      const uiModule = system.get(uiModuleId);
+      if (!levelControllerModule || !uiModule) {
+        scheduleModuleCheck();
+        return;
+      }
+
+      levelController = moduleValue(
+        levelControllerModule,
+        "levelController"
+      );
+      gameUI = moduleValue(uiModule, "UI");
       if (!levelController || !gameUI) {
         throw new Error("Game state modules have unexpected exports");
       }
@@ -170,6 +189,10 @@
 
   function stop() {
     stopped = true;
+    if (moduleCheckTimer !== null) {
+      clearTimeout(moduleCheckTimer);
+      moduleCheckTimer = null;
+    }
     if (checkTimer !== null) {
       clearTimeout(checkTimer);
       checkTimer = null;
@@ -193,8 +216,8 @@
   window.addEventListener("pagehide", stop, { once: true });
 
   if (document.readyState === "complete") {
-    start();
+    findGameModules();
   } else {
-    window.addEventListener("load", start, { once: true });
+    window.addEventListener("load", findGameModules, { once: true });
   }
 })();

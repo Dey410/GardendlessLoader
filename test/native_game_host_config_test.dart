@@ -55,15 +55,35 @@ void main() {
     final handler =
         File('ios/Runner/GameResourceSchemeHandler.swift').readAsStringSync();
     final session = File('ios/Runner/GameSession.swift').readAsStringSync();
+    final bridgingHeader =
+        File('ios/Runner/Runner-Bridging-Header.h').readAsStringSync();
+    final highRefreshHeader =
+        File('ios/Runner/WebKitHighRefreshRate.h').readAsStringSync();
 
     expect(delegate, contains('engine?.destroyContext()'));
+    expect(
+      controller,
+      contains('_ = GDLDisableWebKit60FPSPreference(configuration)'),
+    );
+    expect(
+      bridgingHeader,
+      contains('#import "WebKitHighRefreshRate.h"'),
+    );
+    expect(
+      highRefreshHeader,
+      contains('PreferPageRenderingUpdatesNear60FPSEnabled'),
+    );
     expect(controller, contains('WKUserScript('));
     expect(controller, contains('GameViewportView(webView: webView)'));
     expect(controller, contains('16.0 / 10.0'));
     expect(controller, contains('17.0 / 9.0'));
     expect(controller, contains('injectionTime: .atDocumentStart'));
     expect(controller, contains('"touch_patch.js"'));
-    expect(controller, isNot(contains('"auto_sun.js"')));
+    expect(controller, contains('"auto_sun.js"'));
+    expect(
+      controller.indexOf('"bootstrap.js"'),
+      lessThan(controller.indexOf('"auto_sun.js"')),
+    );
     expect(
       controller,
       contains('"autoCollectSunEnabled": session.autoCollectSunEnabled'),
