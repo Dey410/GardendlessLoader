@@ -6,6 +6,7 @@
 
   const touchActionStyleId = "gardendless-touch-action";
   const touchMoveThreshold = 20;
+  const twoFingerMoveThresholdPhysicalPixels = 20;
   const touchWheelMultiplier = -4.5;
   const gpNextBackdropTapMaxDuration = 250;
   const gpNextBackdropDoubleTapMaxDelay = 300;
@@ -94,6 +95,11 @@
       clientX: clientX / count,
       clientY: clientY / count
     };
+  }
+
+  function physicalPixelRatio() {
+    const ratio = Number(window.devicePixelRatio);
+    return Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
   }
 
   function touchTarget(touch) {
@@ -429,9 +435,9 @@
       const point = averageTouchPoint(event.touches);
       lastTouchPoint = point;
       if (twoFingerStartPoint) {
-        const deltaX = point.clientX - twoFingerStartPoint.clientX;
         const deltaY = point.clientY - twoFingerStartPoint.clientY;
-        if (Math.hypot(deltaX, deltaY) > touchMoveThreshold) {
+        if (Math.abs(deltaY) * physicalPixelRatio() >
+            twoFingerMoveThresholdPhysicalPixels) {
           twoFingerMoved = true;
         }
       }
@@ -523,15 +529,17 @@
     lastTouchPoint = point;
     lastWheelY = null;
     releaseLeftMouse(point);
-    if (event.touches.length === 0 &&
-        twoFingerStartPoint &&
-        !twoFingerMoved) {
-      const target = twoFingerTarget || targetAtPoint(twoFingerStartPoint);
-      dispatchMouse(target, "mousemove", twoFingerStartPoint, 0, 0);
-      dispatchMouse(target, "mousedown", twoFingerStartPoint, 2, 2);
-      dispatchMouse(target, "mouseup", twoFingerStartPoint, 2, 0);
-    }
-    if (event.touches.length === 0) {
+    if (event.touches.length <= 1 && twoFingerStartPoint) {
+      if (!twoFingerMoved) {
+        const target = document.getElementById("GameCanvas");
+        if (target) {
+          dispatchMouse(target, "mousemove", twoFingerStartPoint, 0, 0);
+          dispatchMouse(target, "mousedown", twoFingerStartPoint, 2, 2);
+          dispatchMouse(target, "mouseup", twoFingerStartPoint, 2, 0);
+        }
+      }
+      resetTwoFingerGesture();
+    } else if (event.touches.length === 0) {
       resetTwoFingerGesture();
     }
     event.preventDefault();

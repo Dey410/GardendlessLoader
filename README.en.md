@@ -54,7 +54,7 @@ iOS `gardendless-game://localhost`, and HarmonyOS/OpenHarmony
 - Three or more touches: no mouse mapping; the current touch gesture is cancelled.
 - Physical mice and keyboards continue through the platform WebView unchanged.
 
-A two-finger tap must finish within 250 milliseconds without moving its center more than 14 CSS pixels. When enabled in the game menu, auto sunlight collection simulates one `A` key press every 1.5 seconds. The game watermark is enabled by default, can be disabled from the menu, and remembers the last choice.
+If the center of a two-finger gesture moves no more than 20 physical pixels vertically, lifting the first finger sends one right click to `GameCanvas`; horizontal movement does not cancel the candidate. When enabled in the game menu, auto sunlight collection simulates one `A` key press every 1.5 seconds. The game watermark is enabled by default, can be disabled from the menu, and remembers the last choice.
 
 Imported resources are stored under an app-created `GardendlessLoader` directory:
 
