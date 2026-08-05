@@ -32,7 +32,7 @@ final class NativeSfxEngine: NSObject {
     let volume: Float
   }
 
-  private let engine = AVAudioEngine()
+  private var engine: AVAudioEngine?
   private let locator: GameResourceLocator
   private let decodeQueue: OperationQueue = {
     let queue = OperationQueue()
@@ -68,9 +68,6 @@ final class NativeSfxEngine: NSObject {
     self.locator = locator
     self.onMetric = onMetric
     super.init()
-    configureNodes()
-    observeLifecycle()
-    stateQueue.async { [weak self] in self?.startEngine() }
   }
 
   func register(_ url: URL) {
@@ -124,15 +121,18 @@ final class NativeSfxEngine: NSObject {
       stopAllLocked(notifyEnded: false)
       buffers.removeAll()
       cacheBytes = 0
-      engine.stop()
-      for node in availableNodes { engine.detach(node) }
+      engine?.stop()
+      if let engine {
+        for node in availableNodes { engine.detach(node) }
+      }
       availableNodes.removeAll()
+      engine = nil
       for file in aliasFiles.values { try? FileManager.default.removeItem(at: file) }
       aliasFiles.removeAll()
     }
   }
 
-  private func configureNodes() {
+  private func configureNodes(_ engine: AVAudioEngine) {
     for _ in 0..<nodeCount {
       let node = AVAudioPlayerNode()
       engine.attach(node)
@@ -152,12 +152,15 @@ final class NativeSfxEngine: NSObject {
   @objc private func didEnterBackground() {
     stateQueue.async { [weak self] in
       self?.stopAllLocked(notifyEnded: false)
-      self?.engine.pause()
+      self?.engine?.pause()
     }
   }
 
   @objc private func willEnterForeground() {
-    stateQueue.async { [weak self] in self?.startEngine() }
+    stateQueue.async { [weak self] in
+      guard self?.engine != nil else { return }
+      _ = self?.ensureEngineRunning()
+    }
   }
 
   @objc private func audioInterrupted(_ notification: Notification) {
@@ -165,12 +168,13 @@ final class NativeSfxEngine: NSObject {
     if raw == AVAudioSession.InterruptionType.began.rawValue {
       stateQueue.async { [weak self] in
         self?.stopAllLocked(notifyEnded: false)
-        self?.engine.pause()
+        self?.engine?.pause()
       }
     } else {
       stateQueue.async { [weak self] in
-        self?.engine.stop()
-        self?.startEngine()
+        guard self?.engine != nil else { return }
+        self?.engine?.stop()
+        _ = self?.ensureEngineRunning()
       }
     }
   }
@@ -178,21 +182,32 @@ final class NativeSfxEngine: NSObject {
   @objc private func audioRouteChanged() {
     stateQueue.async { [weak self] in
       guard let self else { return }
+      guard engine != nil else { return }
       stopAllLocked(notifyEnded: false)
-      engine.stop()
-      startEngine()
+      engine?.stop()
+      _ = ensureEngineRunning()
     }
   }
 
-  private func startEngine() {
-    guard !stopped, !engine.isRunning else { return }
+  private func ensureEngineRunning() -> AVAudioEngine? {
+    guard !stopped else { return nil }
+    if let engine, engine.isRunning { return engine }
     do {
       let session = AVAudioSession.sharedInstance()
       try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
       try session.setActive(true)
+      if engine == nil {
+        let preparedEngine = AVAudioEngine()
+        configureNodes(preparedEngine)
+        engine = preparedEngine
+        observeLifecycle()
+      }
+      guard let engine else { return nil }
       try engine.start()
+      return engine
     } catch {
       metric("native_sfx_fallback", details: ["reason": "engine_start_failed"])
+      return nil
     }
   }
 
@@ -348,8 +363,7 @@ final class NativeSfxEngine: NSObject {
       fallback(request, reason: "buffer_missing")
       return
     }
-    startEngine()
-    guard engine.isRunning else {
+    guard let engine = ensureEngineRunning(), engine.isRunning else {
       fallback(request, reason: "engine_unavailable")
       return
     }

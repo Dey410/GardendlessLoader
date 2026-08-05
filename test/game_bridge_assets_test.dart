@@ -116,6 +116,28 @@ void main() {
     );
   });
 
+  test('iOS native sound graph is initialized lazily after audio session', () {
+    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
+    final initializer = engine.substring(
+      engine.indexOf('  init('),
+      engine.indexOf('  func register('),
+    );
+
+    expect(initializer, isNot(contains('AVAudioEngine()')));
+    expect(initializer, isNot(contains('configureNodes')));
+    expect(initializer, isNot(contains('observeLifecycle')));
+    expect(initializer, isNot(contains('ensureEngineRunning')));
+    expect(engine, contains('private var engine: AVAudioEngine?'));
+    final preparation = engine.substring(
+      engine.indexOf('  private func ensureEngineRunning()'),
+      engine.indexOf('  private func enqueue('),
+    );
+    expect(
+      preparation.indexOf('try session.setActive(true)'),
+      lessThan(preparation.indexOf('configureNodes(preparedEngine)')),
+    );
+  });
+
   test('legacy in-game menu is removed and native back paths return home', () {
     final android = File(
       'android/app/src/main/kotlin/io/github/dey410/'
