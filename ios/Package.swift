@@ -34,6 +34,7 @@ let package = Package(
         "GameResourceLocator.swift",
         "GameResourceSchemeHandler.swift",
         "GameSession.swift",
+        "JavaScriptArgumentEncoder.swift",
       ]
     ),
     .testTarget(

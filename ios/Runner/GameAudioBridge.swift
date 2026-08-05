@@ -58,8 +58,7 @@ final class GameAudioBridge: NSObject, WKScriptMessageHandler, NativeSfxEngineDe
       function = "__gardendlessNativeAudioFallback"
       elementId = id
     }
-    guard let encoded = try? JSONSerialization.data(withJSONObject: elementId),
-          let argument = String(data: encoded, encoding: .utf8) else { return }
+    guard let argument = JavaScriptArgumentEncoder.string(elementId) else { return }
     DispatchQueue.main.async { [weak self] in
       self?.webViewProvider()?.evaluateJavaScript("window.\(function)(\(argument));")
     }

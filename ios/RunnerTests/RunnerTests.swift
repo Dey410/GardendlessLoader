@@ -6,6 +6,13 @@ import XCTest
 final class RunnerTests: XCTestCase {
   private var root: URL!
 
+  func testJavaScriptStringArgumentAllowsTopLevelScalarAndEscapesContent() {
+    XCTAssertEqual(
+      JavaScriptArgumentEncoder.string("native-\"audio\\element"),
+      "\"native-\\\"audio\\\\element\""
+    )
+  }
+
   func testGameViewportLimitsSquareAndUltrawideWindows() {
     XCTAssertEqual(
       GameViewportSize.fit(CGSize(width: 1600, height: 1200)),
