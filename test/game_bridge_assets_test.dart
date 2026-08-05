@@ -134,7 +134,7 @@ void main() {
     );
     expect(
       preparation.indexOf('try session.setActive(true)'),
-      lessThan(preparation.indexOf('configureNodes(preparedEngine)')),
+      lessThan(preparation.indexOf('configureNodes(newEngine)')),
     );
   });
 

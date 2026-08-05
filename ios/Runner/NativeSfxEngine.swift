@@ -195,19 +195,43 @@ final class NativeSfxEngine: NSObject {
       let session = AVAudioSession.sharedInstance()
       try session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
       try session.setActive(true)
-      if engine == nil {
-        let preparedEngine = AVAudioEngine()
-        configureNodes(preparedEngine)
-        engine = preparedEngine
+      let preparedEngine: AVAudioEngine
+      if let engine {
+        preparedEngine = engine
+      } else {
+        let newEngine = AVAudioEngine()
+        configureNodes(newEngine)
+        engine = newEngine
         observeLifecycle()
+        preparedEngine = newEngine
       }
-      guard let engine else { return nil }
-      try engine.start()
-      return engine
+      // AVAudioEngine creates its output node lazily. Touching the main mixer
+      // before start() prevents AVAudioEngineGraph::Initialize from raising
+      // "required condition is false: inputNode != nullptr || outputNode != nullptr".
+      _ = preparedEngine.mainMixerNode
+      guard startEngineSafely(preparedEngine) else {
+        metric("native_sfx_fallback", details: ["reason": "engine_start_failed"])
+        return nil
+      }
+      return preparedEngine
     } catch {
       metric("native_sfx_fallback", details: ["reason": "engine_start_failed"])
       return nil
     }
+  }
+
+  private func startEngineSafely(_ engine: AVAudioEngine) -> Bool {
+    let exceptionReason = NativeSfxExceptionGuard.runBlock {
+      try? engine.start()
+    }
+    if let exceptionReason {
+      metric("native_sfx_fallback", details: [
+        "reason": "engine_start_exception",
+        "exception": String(exceptionReason),
+      ])
+      return false
+    }
+    return engine.isRunning
   }
 
   private func enqueue(_ request: PlayRequest) {
@@ -371,20 +395,37 @@ final class NativeSfxEngine: NSObject {
       delegate?.nativeSfxEngineDidProduce(.ended(request.elementId))
       return
     }
-    engine.disconnectNodeOutput(node)
-    engine.connect(node, to: engine.mainMixerNode, format: cached.buffer.format)
-    cached.retainCount += 1
-    buffers[relativePath] = cached
-    activeVoices[request.elementId] = Voice(
-      node: node,
-      relativePath: relativePath,
-      volume: request.volume
-    )
-    node.volume = request.volume * masterVolume
-    node.scheduleBuffer(cached.buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-      self?.stateQueue.async { [weak self] in self?.completeVoice(elementId: request.elementId) }
+    let exceptionReason = NativeSfxExceptionGuard.runBlock {
+      engine.disconnectNodeOutput(node)
+      engine.connect(node, to: engine.mainMixerNode, format: cached.buffer.format)
+      cached.retainCount += 1
+      buffers[relativePath] = cached
+      activeVoices[request.elementId] = Voice(
+        node: node,
+        relativePath: relativePath,
+        volume: request.volume
+      )
+      node.volume = request.volume * masterVolume
+      node.scheduleBuffer(cached.buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+        self?.stateQueue.async { [weak self] in self?.completeVoice(elementId: request.elementId) }
+      }
+      node.play()
     }
-    node.play()
+    if let exceptionReason {
+      activeVoices.removeValue(forKey: request.elementId)
+      availableNodes.append(node)
+      if var cached = buffers[relativePath] {
+        cached.retainCount = max(0, cached.retainCount - 1)
+        buffers[relativePath] = cached
+      }
+      evictBuffers()
+      metric("native_sfx_fallback", path: relativePath, details: [
+        "reason": "schedule_exception",
+        "exception": String(exceptionReason),
+      ])
+      fallback(request, reason: "schedule_failed")
+      return
+    }
     metric("native_sfx_play_scheduled", path: relativePath, details: [
       "scheduleMs": Int((ProcessInfo.processInfo.systemUptime - request.requestedAt) * 1_000),
       "activeNodes": activeVoices.count,

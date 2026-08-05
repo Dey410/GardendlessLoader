@@ -25,6 +25,8 @@ let package = Package(
         "GeneratedPluginRegistrant.m",
         "GpNextNativeCore.swift",
         "Info.plist",
+        "NativeSfxExceptionGuard.h",
+        "NativeSfxExceptionGuard.m",
         "NativeSfxEngine.swift",
         "Runner-Bridging-Header.h",
         "SceneDelegate.swift",
