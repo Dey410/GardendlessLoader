@@ -78,6 +78,21 @@ void main() {
     expect(controller, contains('16.0 / 10.0'));
     expect(controller, contains('17.0 / 9.0'));
     expect(controller, contains('injectionTime: .atDocumentStart'));
+    expect(
+      controller,
+      contains(
+        'contentController.add(scriptBridge, contentWorld: .page, name: GameScriptBridge.name)',
+      ),
+    );
+    expect(
+      controller,
+      matches(
+        RegExp(
+          r'contentController\.add\(\s*audioBridge,\s*contentWorld: \.page,\s*name: GameAudioBridge\.name\s*\)',
+        ),
+      ),
+    );
+    expect(controller, isNot(contains('addScriptMessageHandler')));
     expect(controller, contains('"touch_patch.js"'));
     expect(controller, contains('"auto_sun.js"'));
     expect(
