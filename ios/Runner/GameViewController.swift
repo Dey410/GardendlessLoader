@@ -48,10 +48,13 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
   private let session: NativeGameSession
   private let onExit: () -> Void
   private let schemeHandler: GameResourceSchemeHandler
+  private let nativeSfxEngine: NativeSfxEngine
+  private let nativeSfxEnabled: Bool
   private let networkRuleList: WKContentRuleList
   private let gpNextCore: GpNextNativeCore?
   private var webView: WKWebView!
   private var scriptBridge: GameScriptBridge!
+  private var audioBridge: GameAudioBridge!
   private var navigationDelegate: GameNavigationDelegate!
   private var pendingExport: (id: String, file: URL)?
   private var chunkedExport: ChunkedExport?
@@ -67,8 +70,10 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
     self.session = session
     self.networkRuleList = networkRuleList
     self.onExit = onExit
+    let locator = try GameResourceLocator(root: session.resourceRoot)
+    nativeSfxEnabled = UserDefaults.standard.object(forKey: "nativeSfxEnabled") as? Bool ?? true
     schemeHandler = try GameResourceSchemeHandler(
-      resourceRoot: session.resourceRoot,
+      locator: locator,
       onDiagnostic: { code, path, status, details in
         var context: [String: Any] = ["status": status]
         if let path { context["path"] = path }
@@ -80,6 +85,20 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
           "event": "resource_request_failed",
           "outcome": "failed",
           "code": code,
+          "gameSessionId": session.sessionId,
+          "context": context,
+        ])
+      }
+    )
+    nativeSfxEngine = NativeSfxEngine(
+      locator: locator,
+      onMetric: { event, context in
+        AppLogStore.shared.emit([
+          "source": "ios",
+          "level": event == "native_sfx_decode_failed" ? "WARN" : "INFO",
+          "category": "game.audio",
+          "event": event,
+          "outcome": event.contains("failed") ? "failed" : "observed",
           "gameSessionId": session.sessionId,
           "context": context,
         ])
@@ -122,6 +141,15 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
     scriptBridge = GameScriptBridge(webView: webView)
     scriptBridge.delegate = self
     contentController.addScriptMessageHandler(scriptBridge, contentWorld: .page, name: GameScriptBridge.name)
+    audioBridge = GameAudioBridge(
+      engine: nativeSfxEngine,
+      webViewProvider: { [weak self] in self?.webView }
+    )
+    contentController.addScriptMessageHandler(
+      audioBridge,
+      contentWorld: .page,
+      name: GameAudioBridge.name
+    )
     navigationDelegate = GameNavigationDelegate(session: session)
     navigationDelegate.owner = self
     webView.navigationDelegate = navigationDelegate
@@ -565,6 +593,12 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
       forName: GameScriptBridge.name,
       contentWorld: .page
     )
+    webView.configuration.userContentController.removeScriptMessageHandler(
+      forName: GameAudioBridge.name,
+      contentWorld: .page
+    )
+    audioBridge.destroy()
+    nativeSfxEngine.shutdown()
     scriptBridge.destroy()
     webView.stopLoading()
     webView.navigationDelegate = nil
@@ -597,12 +631,14 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
       "gpNextVersion": session.gpNextVersion ?? NSNull(),
       "watermarkEnabled": session.watermarkEnabled,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
+      "nativeSfxEnabled": nativeSfxEnabled,
       "gpNextBaseDirectory": session.appRoot.path,
     ]
     let configData = try! JSONSerialization.data(withJSONObject: config)
     var source = "window.__gardendlessHostConfig=" + String(data: configData, encoding: .utf8)! + ";"
     var names = [
       "transport.js",
+      "ios_audio_proxy.js",
       "bootstrap.js",
       "logging.js",
       "auto_sun.js",

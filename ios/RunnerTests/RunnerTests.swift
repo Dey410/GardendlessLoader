@@ -292,6 +292,30 @@ final class RunnerTests: XCTestCase {
     )
   }
 
+  func testResourceLocatorUsesTheSameOriginAndPathConfinementAsSchemeHandler() throws {
+    let locator = try GameResourceLocator(root: root)
+    let validURL = try XCTUnwrap(URL(string: "gardendless-game://localhost/%E4%BD%A0%E5%A5%BD.json"))
+    let relativePath = try XCTUnwrap(locator.relativePath(for: validURL))
+    XCTAssertEqual(relativePath, "你好.json")
+    XCTAssertEqual(locator.resolve(relativePath)?.standardizedFileURL, root.appendingPathComponent("你好.json"))
+
+    XCTAssertNil(locator.relativePath(for: URL(string: "gardendless-game://foreign/index.html")!))
+    XCTAssertNil(locator.relativePath(for: URL(string: "gardendless-game://localhost/%252e%252e/secret")!))
+    XCTAssertNil(locator.resolve("../secret"))
+  }
+
+  func testResourceLocatorDetectsMislabeledM4AAndGenuineMP3() throws {
+    let locator = try GameResourceLocator(root: root)
+    XCTAssertEqual(
+      try locator.audioContainer(root.appendingPathComponent("mislabeled.mp3")),
+      .m4a
+    )
+    XCTAssertEqual(
+      try locator.audioContainer(root.appendingPathComponent("genuine.mp3")),
+      .mp3
+    )
+  }
+
   private func perform(
     _ handler: GameResourceSchemeHandler,
     url: String,

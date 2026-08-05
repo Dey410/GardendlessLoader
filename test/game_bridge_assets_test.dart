@@ -87,6 +87,35 @@ void main() {
     expect(result.stdout, contains('touch patch input contract passes'));
   });
 
+  test('iOS native short sound proxy is injected before bootstrap', () {
+    final proxy =
+        File('assets/game_bridge/ios_audio_proxy.js').readAsStringSync();
+    final controller =
+        File('ios/Runner/GameViewController.swift').readAsStringSync();
+    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
+    final bridge = File('ios/Runner/GameAudioBridge.swift').readAsStringSync();
+    final schemeHandler =
+        File('ios/Runner/GameResourceSchemeHandler.swift').readAsStringSync();
+
+    expect(proxy, contains('__pvzgeLazySrc'));
+    expect(proxy, contains('gardendlessAudio'));
+    expect(proxy, contains('__gardendlessNativeAudioFallback'));
+    expect(proxy, contains('element.dispatchEvent(new Event("ended"))'));
+    expect(controller, contains('"nativeSfxEnabled": nativeSfxEnabled'));
+    expect(engine, contains('maxConcurrentOperationCount = 1'));
+    expect(engine, contains('pcmCacheByteLimit = 64 * 1024 * 1024'));
+    expect(engine, contains('singleBufferByteLimit = 4 * 1024 * 1024'));
+    expect(engine, contains('nodeCount = 16'));
+    expect(bridge, contains('message.frameInfo.isMainFrame'));
+    expect(bridge, contains('securityOrigin.protocol == "gardendless-game"'));
+    expect(bridge, contains('securityOrigin.host == "localhost"'));
+    expect(schemeHandler, contains('private let locator: GameResourceLocator'));
+    expect(
+      controller.indexOf('"ios_audio_proxy.js"'),
+      lessThan(controller.indexOf('"bootstrap.js"')),
+    );
+  });
+
   test('legacy in-game menu is removed and native back paths return home', () {
     final android = File(
       'android/app/src/main/kotlin/io/github/dey410/'

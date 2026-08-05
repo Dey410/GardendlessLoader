@@ -34,7 +34,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     case notFound
   }
 
-  private let root: URL
+  private let locator: GameResourceLocator
   private let onDiagnostic: ((String, String?, Int, [String: String]) -> Void)?
   private let resourceQueue: OperationQueue = {
     let queue = OperationQueue()
@@ -63,15 +63,18 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   private var audioCacheClock: UInt64 = 0
   private var loadingAudioPaths = Set<String>()
 
-  init(
+  convenience init(
     resourceRoot: URL,
     onDiagnostic: ((String, String?, Int, [String: String]) -> Void)? = nil
   ) throws {
-    let values = try resourceRoot.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-    guard values.isDirectory == true, values.isSymbolicLink != true else {
-      throw GameSessionError.invalid("Resource root is not a safe directory")
-    }
-    root = resourceRoot.resolvingSymlinksInPath().standardizedFileURL
+    try self.init(locator: GameResourceLocator(root: resourceRoot), onDiagnostic: onDiagnostic)
+  }
+
+  init(
+    locator: GameResourceLocator,
+    onDiagnostic: ((String, String?, Int, [String: String]) -> Void)? = nil
+  ) throws {
+    self.locator = locator
     self.onDiagnostic = onDiagnostic
   }
 
@@ -125,7 +128,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       )
       return
     }
-    guard let relativePath = decodePath(url) else {
+    guard let relativePath = locator.relativePath(for: url) else {
       diagnose("resource_file_not_found", path: url.path, status: 404)
       sendError(task, identifier: identifier, status: 404, reason: "Not Found")
       return
@@ -142,7 +145,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
             relativePath: relativePath,
             method: method,
             metadata: ResourceMetadata(
-              file: root.appendingPathComponent(relativePath),
+              file: locator.root.appendingPathComponent(relativePath),
               totalLength: entry.totalLength,
               mimeType: entry.mimeType,
               etag: entry.etag
@@ -168,7 +171,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
         return
       }
 
-      guard let file = resolveFile(relativePath) else {
+      guard let file = locator.resolve(relativePath) else {
         diagnose("resource_file_not_found", path: url.path, status: 404)
         sendError(task, identifier: identifier, status: 404, reason: "Not Found")
         return
@@ -324,7 +327,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     audioCacheCondition.unlock()
 
     do {
-      guard let file = resolveFile(relativePath) else {
+      guard let file = locator.resolve(relativePath) else {
         finishAudioLoad(relativePath, entry: nil)
         return .notFound
       }
@@ -398,41 +401,8 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   }
 
   private func fileProperties(_ file: URL) throws -> (length: Int64, etag: String) {
-    let values = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-    let length = Int64(values.fileSize ?? 0)
-    let etag = "\"\(Int(values.contentModificationDate?.timeIntervalSince1970 ?? 0))-\(length)\""
-    return (length, etag)
-  }
-
-  private func decodePath(_ url: URL) -> String? {
-    guard let encoded = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath,
-          let decoded = encoded.removingPercentEncoding else { return nil }
-    if decoded.range(of: "%(?:2e|2f|5c|25)", options: [.regularExpression, .caseInsensitive]) != nil {
-      return nil
-    }
-    let path = decoded.hasPrefix("/") ? String(decoded.dropFirst()) : decoded
-    let effective = path.isEmpty ? "index.html" : path
-    let components = effective.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-    guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
-          !effective.contains("\\"), !effective.contains("\0") else { return nil }
-    return components.joined(separator: "/")
-  }
-
-  private func resolveFile(_ relativePath: String) -> URL? {
-    var cursor = root
-    for component in relativePath.split(separator: "/") {
-      cursor.appendPathComponent(String(component), isDirectory: false)
-      if (try? cursor.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
-        return nil
-      }
-    }
-    let resolved = cursor.resolvingSymlinksInPath().standardizedFileURL
-    let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
-    guard resolved.path.hasPrefix(rootPath),
-          (try? resolved.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
-      return nil
-    }
-    return resolved
+    let properties = try locator.fileProperties(file)
+    return (properties.length, properties.etag)
   }
 
   private func parseRange(_ value: String, length: Int64) -> ClosedRange<Int64>? {
