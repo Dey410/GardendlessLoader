@@ -7,6 +7,7 @@ let package = Package(
   defaultLocalization: "en",
   platforms: [
     .iOS(.v14),
+    .macOS(.v13),
   ],
   products: [
     .library(name: "GardendlessCore", targets: ["GardendlessCore"]),
