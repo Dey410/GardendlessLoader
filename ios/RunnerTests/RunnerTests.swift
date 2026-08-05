@@ -81,6 +81,10 @@ final class RunnerTests: XCTestCase {
     try Data("<html>game</html>".utf8).write(to: root.appendingPathComponent("index.html"))
     try Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).write(to: root.appendingPathComponent("asset.bin"))
     try Data("你好".utf8).write(to: root.appendingPathComponent("你好.json"))
+    try Data([0, 0, 0, 24] + Array("ftypM4A ".utf8) + [0, 0, 0, 0])
+      .write(to: root.appendingPathComponent("mislabeled.mp3"))
+    try Data(Array("ID3genuine-mp3".utf8))
+      .write(to: root.appendingPathComponent("genuine.mp3"))
   }
 
   override func tearDownWithError() throws {
@@ -135,6 +139,69 @@ final class RunnerTests: XCTestCase {
     XCTAssertEqual(unicode.statusCode, 200)
     XCTAssertEqual(unicode.headers["content-type"], "application/json; charset=utf-8")
     XCTAssertEqual(String(data: unicode.body, encoding: .utf8), "你好")
+  }
+
+  func testMp3PathWithM4AContainerUsesAudioMp4MimeType() throws {
+    let handler = try GameResourceSchemeHandler(resourceRoot: root)
+    for (index, brand) in ["ftypM4A", "ftypisom", "ftypmp42"].enumerated() {
+      let name = "mislabeled-\(index).mp3"
+      try Data([0, 0, 0, 24] + Array(brand.utf8) + [0, 0, 0, 0])
+        .write(to: root.appendingPathComponent(name))
+      let response = try perform(
+        handler,
+        url: "gardendless-game://localhost/\(name)"
+      )
+
+      XCTAssertEqual(response.statusCode, 200)
+      XCTAssertEqual(response.headers["content-type"], "audio/mp4")
+    }
+
+    let genuine = try perform(
+      handler,
+      url: "gardendless-game://localhost/genuine.mp3"
+    )
+    XCTAssertEqual(genuine.headers["content-type"], "audio/mpeg")
+  }
+
+  func testSmallAudioCacheServesRepeatedRangeInOneDataCallback() throws {
+    let handler = try GameResourceSchemeHandler(resourceRoot: root)
+    let file = root.appendingPathComponent("mislabeled.mp3")
+    let contents = try Data(contentsOf: file)
+
+    let first = try perform(
+      handler,
+      url: "gardendless-game://localhost/mislabeled.mp3"
+    )
+    XCTAssertEqual(first.dataCallbackCount, 1)
+
+    try FileManager.default.removeItem(at: file)
+    let repeated = try perform(
+      handler,
+      url: "gardendless-game://localhost/mislabeled.mp3",
+      headers: ["Range": "bytes=4-11"]
+    )
+    XCTAssertEqual(repeated.statusCode, 206)
+    XCTAssertEqual(repeated.body, contents.subdata(in: 4..<12))
+    XCTAssertEqual(repeated.dataCallbackCount, 1)
+  }
+
+  func testStoppedAudioTaskReceivesNoFurtherCallbacks() throws {
+    let handler = try GameResourceSchemeHandler(resourceRoot: root)
+    let webView = WKWebView()
+    let task = FakeSchemeTask(
+      request: request(url: "gardendless-game://localhost/mislabeled.mp3")
+    )
+    let stopped = expectation(description: "scheme task stopped")
+    task.finished.isInverted = true
+    task.onResponse = {
+      handler.webView(webView, stop: task)
+      stopped.fulfill()
+    }
+
+    handler.webView(webView, start: task)
+    wait(for: [stopped, task.finished], timeout: 0.25)
+    XCTAssertTrue(task.body.isEmpty)
+    XCTAssertNil(task.failure)
   }
 
   func testRejectsInvalidRangesMethodsOriginsAndTraversal() throws {
@@ -256,6 +323,8 @@ private final class FakeSchemeTask: NSObject, WKURLSchemeTask, @unchecked Sendab
   private var response: URLResponse?
   private(set) var body = Data()
   private(set) var failure: Error?
+  private(set) var dataCallbackCount = 0
+  var onResponse: (() -> Void)?
 
   init(request: URLRequest) {
     self.request = request
@@ -277,10 +346,14 @@ private final class FakeSchemeTask: NSObject, WKURLSchemeTask, @unchecked Sendab
 
   func didReceive(_ response: URLResponse) {
     lock.withLock { self.response = response }
+    onResponse?()
   }
 
   func didReceive(_ data: Data) {
-    lock.withLock { body.append(data) }
+    lock.withLock {
+      body.append(data)
+      dataCallbackCount += 1
+    }
   }
 
   func didFinish() {

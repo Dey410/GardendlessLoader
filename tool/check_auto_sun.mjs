@@ -35,6 +35,7 @@ function createHarness({
   hasGpNext = false,
   gaming = true,
   modulesAvailable = true,
+  modulesRegistered = true,
   unexpectedExports = false,
 } = {}) {
   let now = 0;
@@ -76,6 +77,8 @@ function createHarness({
   window.__gardendlessHost = {
     config: {autoCollectSunEnabled: enabled, hasGpNext},
   };
+  const levelId = 'chunks:///_virtual/levelController.ts';
+  const uiId = 'chunks:///_virtual/UI.ts';
   window.System = {
     get(path) {
       getCount += 1;
@@ -85,10 +88,20 @@ function createHarness({
       if (path.endsWith('UI.ts')) return {UI};
       throw new Error(`Unexpected module: ${path}`);
     },
-    async import() {
+    async import(path) {
       importCount += 1;
-      throw new Error('early System.import poisons cold game startup');
+      if (!modulesRegistered) {
+        throw new Error('early System.import poisons cold game startup');
+      }
+      modulesReady = true;
+      if (path === levelId) return {levelController};
+      if (path === uiId) return {UI};
+      throw new Error(`Unexpected module: ${path}`);
     },
+    registerRegistry: modulesRegistered ? {
+      [levelId]: [{}, () => {}],
+      [uiId]: [{}, () => {}],
+    } : {},
   };
 
   const context = {
@@ -234,7 +247,10 @@ for (const options of [
 }
 
 {
-  const harness = createHarness({modulesAvailable: false});
+  const harness = createHarness({
+    modulesAvailable: false,
+    modulesRegistered: false,
+  });
   await harness.flushMicrotasks();
   await harness.advance(1000);
   assert.equal(harness.importCount, 0);
@@ -246,6 +262,19 @@ for (const options of [
   assert.deepEqual(harness.keyboardEvents, []);
   await harness.advance(1);
   assert.equal(harness.importCount, 0);
+  await harness.advance(2999);
+  assert.deepEqual(harness.keyboardEvents, []);
+  await harness.advance(1);
+  assert.equal(harness.keyboardEvents[0].type, 'keydown');
+}
+
+{
+  const harness = createHarness({
+    modulesAvailable: false,
+    modulesRegistered: true,
+  });
+  await harness.flushMicrotasks();
+  assert.equal(harness.importCount, 2);
   await harness.advance(2999);
   assert.deepEqual(harness.keyboardEvents, []);
   await harness.advance(1);

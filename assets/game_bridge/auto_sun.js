@@ -150,25 +150,50 @@
     return module ? module.default : null;
   }
 
+  function isRegisteredForImport(system, moduleId) {
+    if (typeof system.has === "function" && system.has(moduleId)) {
+      return true;
+    }
+    return Boolean(
+      system.registerRegistry && system.registerRegistry[moduleId]
+    );
+  }
+
   function scheduleModuleCheck() {
     if (stopped || moduleCheckTimer !== null) return;
     moduleCheckTimer = setTimeout(findGameModules, checkIntervalMs);
   }
 
-  function findGameModules() {
+  async function findGameModules() {
     moduleCheckTimer = null;
     try {
       const system = window.System;
-      if (!system || typeof system.get !== "function") {
+      if (!system) {
         scheduleModuleCheck();
         return;
       }
 
-      const levelControllerModule = system.get(levelControllerModuleId);
-      const uiModule = system.get(uiModuleId);
+      let levelControllerModule = typeof system.get === "function"
+        ? system.get(levelControllerModuleId)
+        : null;
+      let uiModule = typeof system.get === "function"
+        ? system.get(uiModuleId)
+        : null;
       if (!levelControllerModule || !uiModule) {
-        scheduleModuleCheck();
-        return;
+        const canImport = typeof system.import === "function" &&
+          isRegisteredForImport(system, levelControllerModuleId) &&
+          isRegisteredForImport(system, uiModuleId);
+        if (!canImport) {
+          scheduleModuleCheck();
+          return;
+        }
+        const modules = await Promise.all([
+          system.import(levelControllerModuleId),
+          system.import(uiModuleId)
+        ]);
+        if (stopped) return;
+        levelControllerModule = modules[0];
+        uiModule = modules[1];
       }
 
       levelController = moduleValue(

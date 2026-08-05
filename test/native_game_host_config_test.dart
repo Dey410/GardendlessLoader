@@ -97,7 +97,16 @@ void main() {
     );
     expect(controller, contains('setURLSchemeHandler'));
     expect(handler, contains('WKURLSchemeHandler'));
-    expect(handler, contains('attributes: .concurrent'));
+    expect(handler, contains('maxConcurrentOperationCount = 6'));
+    expect(handler, contains('maxConcurrentOperationCount = 2'));
+    expect(handler, contains('"ftypM4A"'));
+    expect(handler, contains('"ftypisom"'));
+    expect(handler, contains('"ftypmp42"'));
+    expect(
+        handler, contains('Data(contentsOf: file, options: [.mappedIfSafe])'));
+    expect(handler, contains('audioCacheByteLimit = 24 * 1024 * 1024'));
+    expect(handler, contains('case cancelled'));
+    expect(handler, isNot(contains('attributes: .concurrent')));
     expect(session, contains('WKContentRuleListStore.default()'));
     expect(session, contains('["url-filter": "^http://"]'));
     expect(session, contains('"type": "ignore-previous-rules"'));

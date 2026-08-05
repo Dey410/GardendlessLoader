@@ -2,16 +2,65 @@ import Foundation
 import WebKit
 
 final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
+  private enum TaskState: Equatable {
+    case active
+    case cancelled
+    case finished
+  }
+
+  private struct AudioFileEntry {
+    let data: Data
+    let totalLength: Int64
+    let mimeType: String
+    let etag: String
+  }
+
+  private struct CachedAudioFile {
+    let entry: AudioFileEntry
+    var lastAccess: UInt64
+  }
+
+  private struct ResourceMetadata {
+    let file: URL
+    let totalLength: Int64
+    let mimeType: String
+    let etag: String
+  }
+
+  private enum AudioLoadResult {
+    case cached(AudioFileEntry)
+    case streamed(ResourceMetadata)
+    case cancelled
+    case notFound
+  }
+
   private let root: URL
   private let onDiagnostic: ((String, String?, Int, [String: String]) -> Void)?
-  private let queue = DispatchQueue(
-    label: "io.github.dey410.gardendless.resource-stream",
-    qos: .userInitiated,
-    attributes: .concurrent
-  )
-  private let taskStateLock = NSLock()
-  private var activeTasks = Set<ObjectIdentifier>()
-  private var stoppedTasks = Set<ObjectIdentifier>()
+  private let resourceQueue: OperationQueue = {
+    let queue = OperationQueue()
+    queue.name = "io.github.dey410.gardendless.resource"
+    queue.qualityOfService = .userInitiated
+    queue.maxConcurrentOperationCount = 6
+    return queue
+  }()
+  private let audioQueue: OperationQueue = {
+    let queue = OperationQueue()
+    queue.name = "io.github.dey410.gardendless.audio-resource"
+    queue.qualityOfService = .userInitiated
+    queue.maxConcurrentOperationCount = 2
+    return queue
+  }()
+
+  private let taskStateLock = NSRecursiveLock()
+  private var taskStates = [ObjectIdentifier: TaskState]()
+
+  private let smallAudioByteLimit = 256 * 1024
+  private let audioCacheByteLimit = 24 * 1024 * 1024
+  private let audioCacheCondition = NSCondition()
+  private var audioCache = [String: CachedAudioFile]()
+  private var audioCacheBytes = 0
+  private var audioCacheClock: UInt64 = 0
+  private var loadingAudioPaths = Set<String>()
 
   init(
     resourceRoot: URL,
@@ -28,10 +77,10 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
     let identifier = ObjectIdentifier(urlSchemeTask as AnyObject)
     taskStateLock.synchronized {
-      activeTasks.insert(identifier)
-      stoppedTasks.remove(identifier)
+      taskStates[identifier] = .active
     }
-    queue.async { [weak self] in
+    let queue = isAudioPath(urlSchemeTask.request.url?.path) ? audioQueue : resourceQueue
+    queue.addOperation { [weak self] in
       guard let self else { return }
       self.serve(urlSchemeTask, identifier: identifier)
     }
@@ -40,49 +89,136 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
     let identifier = ObjectIdentifier(urlSchemeTask as AnyObject)
     taskStateLock.synchronized {
-      if activeTasks.contains(identifier) {
-        stoppedTasks.insert(identifier)
+      if taskStates[identifier] == .active {
+        taskStates[identifier] = .cancelled
       }
     }
+    audioCacheCondition.lock()
+    audioCacheCondition.broadcast()
+    audioCacheCondition.unlock()
   }
 
   private func serve(_ task: WKURLSchemeTask, identifier: ObjectIdentifier) {
     defer {
       taskStateLock.synchronized {
-        activeTasks.remove(identifier)
-        stoppedTasks.remove(identifier)
+        taskStates.removeValue(forKey: identifier)
       }
     }
-    guard !isStopped(identifier) else { return }
+    guard isActive(identifier) else { return }
     guard let url = task.request.url,
           url.scheme == "gardendless-game", url.host == "localhost" else {
       diagnose("resource_path_forbidden", path: task.request.url?.path, status: 403)
-      sendError(task, status: 403, reason: "Forbidden")
+      sendError(task, identifier: identifier, status: 403, reason: "Forbidden")
       return
     }
     let method = task.request.httpMethod ?? "GET"
     guard method == "GET" || method == "HEAD" else {
       diagnose("resource_method_not_allowed", path: url.path, status: 405, details: ["method": method])
-      sendError(task, status: 405, reason: "Method Not Allowed", headers: ["Allow": "GET, HEAD"])
+      sendError(
+        task,
+        identifier: identifier,
+        status: 405,
+        reason: "Method Not Allowed",
+        headers: ["Allow": "GET, HEAD"]
+      )
       return
     }
-    guard let relativePath = decodePath(url), let file = resolveFile(relativePath) else {
+    guard let relativePath = decodePath(url) else {
       diagnose("resource_file_not_found", path: url.path, status: 404)
-      sendError(task, status: 404, reason: "Not Found")
+      sendError(task, identifier: identifier, status: 404, reason: "Not Found")
       return
     }
+
     do {
-      let values = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-      let length = Int64(values.fileSize ?? 0)
-      let etag = "\"\(Int(values.contentModificationDate?.timeIntervalSince1970 ?? 0))-\(length)\""
+      if isCacheableAudioPath(relativePath) {
+        switch try loadAudio(relativePath, identifier: identifier) {
+        case let .cached(entry):
+          serve(
+            task,
+            identifier: identifier,
+            url: url,
+            relativePath: relativePath,
+            method: method,
+            metadata: ResourceMetadata(
+              file: root.appendingPathComponent(relativePath),
+              totalLength: entry.totalLength,
+              mimeType: entry.mimeType,
+              etag: entry.etag
+            ),
+            cachedData: entry.data
+          )
+        case let .streamed(metadata):
+          serve(
+            task,
+            identifier: identifier,
+            url: url,
+            relativePath: relativePath,
+            method: method,
+            metadata: metadata,
+            cachedData: nil
+          )
+        case .cancelled:
+          return
+        case .notFound:
+          diagnose("resource_file_not_found", path: url.path, status: 404)
+          sendError(task, identifier: identifier, status: 404, reason: "Not Found")
+        }
+        return
+      }
+
+      guard let file = resolveFile(relativePath) else {
+        diagnose("resource_file_not_found", path: url.path, status: 404)
+        sendError(task, identifier: identifier, status: 404, reason: "Not Found")
+        return
+      }
+      let metadata = try resourceMetadata(file: file, relativePath: relativePath)
+      serve(
+        task,
+        identifier: identifier,
+        url: url,
+        relativePath: relativePath,
+        method: method,
+        metadata: metadata,
+        cachedData: nil
+      )
+    } catch {
+      diagnose(
+        "resource_read_failed",
+        path: task.request.url?.path,
+        status: 500,
+        details: ["errorType": String(describing: type(of: error))]
+      )
+      failTask(task, identifier: identifier, error: error)
+    }
+  }
+
+  private func serve(
+    _ task: WKURLSchemeTask,
+    identifier: ObjectIdentifier,
+    url: URL,
+    relativePath: String,
+    method: String,
+    metadata: ResourceMetadata,
+    cachedData: Data?
+  ) {
+    do {
+      let length = metadata.totalLength
       var headers = [
         "Accept-Ranges": "bytes",
-        "ETag": etag,
+        "ETag": metadata.etag,
         "Cache-Control": cacheControl(relativePath),
         "X-Content-Type-Options": "nosniff",
       ]
-      if task.request.value(forHTTPHeaderField: "If-None-Match") == etag {
-        send(task, url: url, status: 304, reason: "Not Modified", headers: headers, body: nil)
+      if task.request.value(forHTTPHeaderField: "If-None-Match") == metadata.etag {
+        send(
+          task,
+          identifier: identifier,
+          url: url,
+          status: 304,
+          reason: "Not Modified",
+          headers: headers,
+          body: nil
+        )
         return
       }
       let rangeHeader = task.request.value(forHTTPHeaderField: "Range")
@@ -90,20 +226,25 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       if rangeHeader != nil && range == nil {
         diagnose("resource_read_failed", path: relativePath, status: 416)
         headers["Content-Range"] = "bytes */\(length)"
-        sendError(task, status: 416, reason: "Range Not Satisfiable", headers: headers)
+        sendError(
+          task,
+          identifier: identifier,
+          status: 416,
+          reason: "Range Not Satisfiable",
+          headers: headers
+        )
         return
       }
       let start = range?.lowerBound ?? 0
       let end = range?.upperBound ?? max(0, length - 1)
       let responseLength = length == 0 ? 0 : end - start + 1
-      let contentType = mimeType(relativePath)
-      headers["Content-Type"] = contentType
-      if contentType == "application/octet-stream" {
+      headers["Content-Type"] = metadata.mimeType
+      if metadata.mimeType == "application/octet-stream" {
         diagnose(
           "resource_mime_mismatch",
           path: relativePath,
           status: 200,
-          details: ["expectedMime": "known resource MIME", "actualMime": contentType]
+          details: ["expectedMime": "known resource MIME", "actualMime": metadata.mimeType]
         )
       }
       headers["Content-Length"] = String(responseLength)
@@ -112,36 +253,153 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       }
       let status = range == nil ? 200 : 206
       let reason = range == nil ? "OK" : "Partial Content"
-      send(task, url: url, status: status, reason: reason, headers: headers, body: nil, finish: false)
+      guard sendResponse(
+        task,
+        identifier: identifier,
+        url: url,
+        status: status,
+        reason: reason,
+        headers: headers
+      ) else { return }
       guard method == "GET", responseLength > 0 else {
-        if !isStopped(identifier) { task.didFinish() }
+        finishTask(task, identifier: identifier)
         return
       }
-      let handle = try FileHandle(forReadingFrom: file)
+
+      if let cachedData {
+        let body = cachedData.subdata(in: Int(start)..<(Int(end) + 1))
+        guard sendData(task, identifier: identifier, data: body) else { return }
+        finishTask(task, identifier: identifier)
+        return
+      }
+
+      let handle = try FileHandle(forReadingFrom: metadata.file)
       defer { try? handle.close() }
       try handle.seek(toOffset: UInt64(start))
       var remaining = responseLength
-      while remaining > 0 && !isStopped(identifier) {
+      while remaining > 0 && isActive(identifier) {
         let count = Int(min(remaining, 128 * 1024))
         guard let data = try handle.read(upToCount: count), !data.isEmpty else { break }
-        task.didReceive(data)
+        guard sendData(task, identifier: identifier, data: data) else { return }
         remaining -= Int64(data.count)
       }
-      if !isStopped(identifier) {
-        guard remaining == 0 else {
-          throw GameSessionError.invalid("Unexpected end of resource file")
-        }
-        task.didFinish()
+      guard isActive(identifier) else { return }
+      guard remaining == 0 else {
+        throw GameSessionError.invalid("Unexpected end of resource file")
       }
+      finishTask(task, identifier: identifier)
     } catch {
       diagnose(
         "resource_read_failed",
-        path: task.request.url?.path,
+        path: relativePath,
         status: 500,
         details: ["errorType": String(describing: type(of: error))]
       )
-      if !isStopped(identifier) { task.didFailWithError(error) }
+      failTask(task, identifier: identifier, error: error)
     }
+  }
+
+  private func loadAudio(
+    _ relativePath: String,
+    identifier: ObjectIdentifier
+  ) throws -> AudioLoadResult {
+    audioCacheCondition.lock()
+    while loadingAudioPaths.contains(relativePath) {
+      if let entry = cachedAudioEntryLocked(relativePath) {
+        audioCacheCondition.unlock()
+        return .cached(entry)
+      }
+      audioCacheCondition.wait(until: Date(timeIntervalSinceNow: 0.05))
+      audioCacheCondition.unlock()
+      guard isActive(identifier) else { return .cancelled }
+      audioCacheCondition.lock()
+    }
+    if let entry = cachedAudioEntryLocked(relativePath) {
+      audioCacheCondition.unlock()
+      return .cached(entry)
+    }
+    loadingAudioPaths.insert(relativePath)
+    audioCacheCondition.unlock()
+
+    do {
+      guard let file = resolveFile(relativePath) else {
+        finishAudioLoad(relativePath, entry: nil)
+        return .notFound
+      }
+      let properties = try fileProperties(file)
+      guard properties.length <= Int64(smallAudioByteLimit) else {
+        let metadata = ResourceMetadata(
+          file: file,
+          totalLength: properties.length,
+          mimeType: try detectedMimeType(relativePath, file: file),
+          etag: properties.etag
+        )
+        finishAudioLoad(relativePath, entry: nil)
+        return .streamed(metadata)
+      }
+      guard isActive(identifier) else {
+        finishAudioLoad(relativePath, entry: nil)
+        return .cancelled
+      }
+      let data = try Data(contentsOf: file, options: [.mappedIfSafe])
+      let entry = AudioFileEntry(
+        data: data,
+        totalLength: properties.length,
+        mimeType: detectedMimeType(relativePath, header: data.prefix(16)),
+        etag: properties.etag
+      )
+      finishAudioLoad(relativePath, entry: entry)
+      return .cached(entry)
+    } catch {
+      finishAudioLoad(relativePath, entry: nil)
+      throw error
+    }
+  }
+
+  private func finishAudioLoad(_ relativePath: String, entry: AudioFileEntry?) {
+    audioCacheCondition.lock()
+    if let entry {
+      audioCacheClock &+= 1
+      audioCache[relativePath] = CachedAudioFile(entry: entry, lastAccess: audioCacheClock)
+      audioCacheBytes += entry.data.count
+      evictAudioCacheLocked()
+    }
+    loadingAudioPaths.remove(relativePath)
+    audioCacheCondition.broadcast()
+    audioCacheCondition.unlock()
+  }
+
+  private func cachedAudioEntryLocked(_ relativePath: String) -> AudioFileEntry? {
+    guard var cached = audioCache[relativePath] else { return nil }
+    audioCacheClock &+= 1
+    cached.lastAccess = audioCacheClock
+    audioCache[relativePath] = cached
+    return cached.entry
+  }
+
+  private func evictAudioCacheLocked() {
+    while audioCacheBytes > audioCacheByteLimit,
+          let oldest = audioCache.min(by: { $0.value.lastAccess < $1.value.lastAccess }) {
+      audioCache.removeValue(forKey: oldest.key)
+      audioCacheBytes -= oldest.value.entry.data.count
+    }
+  }
+
+  private func resourceMetadata(file: URL, relativePath: String) throws -> ResourceMetadata {
+    let properties = try fileProperties(file)
+    return ResourceMetadata(
+      file: file,
+      totalLength: properties.length,
+      mimeType: try detectedMimeType(relativePath, file: file),
+      etag: properties.etag
+    )
+  }
+
+  private func fileProperties(_ file: URL) throws -> (length: Int64, etag: String) {
+    let values = try file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    let length = Int64(values.fileSize ?? 0)
+    let etag = "\"\(Int(values.contentModificationDate?.timeIntervalSince1970 ?? 0))-\(length)\""
+    return (length, etag)
   }
 
   private func decodePath(_ url: URL) -> String? {
@@ -198,10 +456,32 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       return "public, max-age=31536000, immutable"
     }
     let ext = (path as NSString).pathExtension.lowercased()
-    if ["png", "jpg", "jpeg", "gif", "webp", "svg", "mp3", "ogg", "wav", "mp4", "webm", "wasm", "bin"].contains(ext) {
+    if ["png", "jpg", "jpeg", "gif", "webp", "svg", "mp3", "m4a", "ogg", "wav", "mp4", "webm", "wasm", "bin"].contains(ext) {
       return "public, max-age=86400"
     }
     return "no-cache"
+  }
+
+  private func detectedMimeType(_ path: String, file: URL) throws -> String {
+    guard (path as NSString).pathExtension.lowercased() == "mp3" else {
+      return mimeType(path)
+    }
+    let handle = try FileHandle(forReadingFrom: file)
+    defer { try? handle.close() }
+    let header = try handle.read(upToCount: 16) ?? Data()
+    return detectedMimeType(path, header: header)
+  }
+
+  private func detectedMimeType(_ path: String, header: Data.SubSequence) -> String {
+    guard (path as NSString).pathExtension.lowercased() == "mp3" else {
+      return mimeType(path)
+    }
+    let bytes = Data(header)
+    let mp4Brands = ["ftypM4A", "ftypisom", "ftypmp42"]
+    if mp4Brands.contains(where: { bytes.range(of: Data($0.utf8)) != nil }) {
+      return "audio/mp4"
+    }
+    return "audio/mpeg"
   }
 
   private func mimeType(_ path: String) -> String {
@@ -217,6 +497,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     case "gif": return "image/gif"
     case "webp": return "image/webp"
     case "mp3": return "audio/mpeg"
+    case "m4a": return "audio/mp4"
     case "ogg": return "audio/ogg"
     case "wav": return "audio/wav"
     case "mp4": return "video/mp4"
@@ -228,18 +509,39 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     }
   }
 
+  private func isAudioPath(_ path: String?) -> Bool {
+    guard let path else { return false }
+    return ["mp3", "m4a", "ogg"].contains((path as NSString).pathExtension.lowercased())
+  }
+
+  private func isCacheableAudioPath(_ path: String) -> Bool {
+    guard isAudioPath(path) else { return false }
+    let tokens = path.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+    return !tokens.contains("bgm") && !tokens.contains("music")
+  }
+
   private func sendError(
     _ task: WKURLSchemeTask,
+    identifier: ObjectIdentifier,
     status: Int,
     reason: String,
     headers: [String: String] = [:]
   ) {
     guard let url = task.request.url else { return }
-    send(task, url: url, status: status, reason: reason, headers: headers.merging(["Content-Length": "0"]) { a, _ in a }, body: Data())
+    send(
+      task,
+      identifier: identifier,
+      url: url,
+      status: status,
+      reason: reason,
+      headers: headers.merging(["Content-Length": "0"]) { a, _ in a },
+      body: Data()
+    )
   }
 
   private func send(
     _ task: WKURLSchemeTask,
+    identifier: ObjectIdentifier,
     url: URL,
     status: Int,
     reason: String,
@@ -247,19 +549,83 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     body: Data?,
     finish: Bool = true
   ) {
+    guard sendResponse(
+      task,
+      identifier: identifier,
+      url: url,
+      status: status,
+      reason: reason,
+      headers: headers
+    ) else { return }
+    if let body, !body.isEmpty,
+       !sendData(task, identifier: identifier, data: body) {
+      return
+    }
+    if finish { finishTask(task, identifier: identifier) }
+  }
+
+  private func sendResponse(
+    _ task: WKURLSchemeTask,
+    identifier: ObjectIdentifier,
+    url: URL,
+    status: Int,
+    reason: String,
+    headers: [String: String]
+  ) -> Bool {
     guard let response = HTTPURLResponse(
       url: url,
       statusCode: status,
       httpVersion: "HTTP/1.1",
       headerFields: headers
-    ) else { return }
-    task.didReceive(response)
-    if let body, !body.isEmpty { task.didReceive(body) }
-    if finish { task.didFinish() }
+    ) else { return false }
+    return withActiveTask(identifier) {
+      task.didReceive(response)
+    }
   }
 
-  private func isStopped(_ identifier: ObjectIdentifier) -> Bool {
-    taskStateLock.synchronized { stoppedTasks.contains(identifier) }
+  private func sendData(
+    _ task: WKURLSchemeTask,
+    identifier: ObjectIdentifier,
+    data: Data
+  ) -> Bool {
+    withActiveTask(identifier) {
+      task.didReceive(data)
+    }
+  }
+
+  private func finishTask(_ task: WKURLSchemeTask, identifier: ObjectIdentifier) {
+    taskStateLock.synchronized {
+      guard taskStates[identifier] == .active else { return }
+      taskStates[identifier] = .finished
+      task.didFinish()
+    }
+  }
+
+  private func failTask(
+    _ task: WKURLSchemeTask,
+    identifier: ObjectIdentifier,
+    error: Error
+  ) {
+    taskStateLock.synchronized {
+      guard taskStates[identifier] == .active else { return }
+      taskStates[identifier] = .finished
+      task.didFailWithError(error)
+    }
+  }
+
+  private func withActiveTask(
+    _ identifier: ObjectIdentifier,
+    action: () -> Void
+  ) -> Bool {
+    taskStateLock.synchronized {
+      guard taskStates[identifier] == .active else { return false }
+      action()
+      return true
+    }
+  }
+
+  private func isActive(_ identifier: ObjectIdentifier) -> Bool {
+    taskStateLock.synchronized { taskStates[identifier] == .active }
   }
 
   private func diagnose(
@@ -272,7 +638,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   }
 }
 
-private extension NSLock {
+private extension NSRecursiveLock {
   func synchronized<T>(_ body: () throws -> T) rethrows -> T {
     lock()
     defer { unlock() }
