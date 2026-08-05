@@ -138,6 +138,32 @@ void main() {
     );
   });
 
+  test('iOS pooled sound nodes follow each decoded buffer format', () {
+    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
+    final configuration = engine.substring(
+      engine.indexOf('  private func configureNodes('),
+      engine.indexOf('  private func observeLifecycle('),
+    );
+    final scheduling = engine.substring(
+      engine.indexOf('  private func schedule('),
+      engine.indexOf('  private func completeVoice('),
+    );
+    const connect = 'engine.connect(node, to: engine.mainMixerNode, '
+        'format: cached.buffer.format)';
+
+    expect(configuration, isNot(contains('engine.connect(')));
+    expect(scheduling, contains('engine.disconnectNodeOutput(node)'));
+    expect(scheduling, contains(connect));
+    expect(
+      scheduling.indexOf('engine.disconnectNodeOutput(node)'),
+      lessThan(scheduling.indexOf(connect)),
+    );
+    expect(
+      scheduling.indexOf(connect),
+      lessThan(scheduling.indexOf('node.scheduleBuffer(cached.buffer')),
+    );
+  });
+
   test('legacy in-game menu is removed and native back paths return home', () {
     final android = File(
       'android/app/src/main/kotlin/io/github/dey410/'

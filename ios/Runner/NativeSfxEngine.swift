@@ -136,7 +136,6 @@ final class NativeSfxEngine: NSObject {
     for _ in 0..<nodeCount {
       let node = AVAudioPlayerNode()
       engine.attach(node)
-      engine.connect(node, to: engine.mainMixerNode, format: nil)
       availableNodes.append(node)
     }
   }
@@ -372,6 +371,8 @@ final class NativeSfxEngine: NSObject {
       delegate?.nativeSfxEngineDidProduce(.ended(request.elementId))
       return
     }
+    engine.disconnectNodeOutput(node)
+    engine.connect(node, to: engine.mainMixerNode, format: cached.buffer.format)
     cached.retainCount += 1
     buffers[relativePath] = cached
     activeVoices[request.elementId] = Voice(
