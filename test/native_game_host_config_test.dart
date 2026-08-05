@@ -51,12 +51,25 @@ void main() {
       () {
     final delegate = File('ios/Runner/AppDelegate.swift').readAsStringSync();
     final controller =
-        File('ios/Runner/GameViewController.swift').readAsStringSync();
-    final handler =
-        File('ios/Runner/GameResourceSchemeHandler.swift').readAsStringSync();
-    final scriptBridge =
-        File('ios/Runner/GameScriptBridge.swift').readAsStringSync();
-    final session = File('ios/Runner/GameSession.swift').readAsStringSync();
+        File('ios/Runner/GameHostController.swift').readAsStringSync();
+    final handler = File(
+      'ios/GardendlessKit/Sources/GardendlessResource/ResourceSchemeHandler.swift',
+    ).readAsStringSync();
+    final mime = File(
+      'ios/GardendlessKit/Sources/GardendlessResource/ResourceMIME.swift',
+    ).readAsStringSync();
+    final configuration = File(
+      'ios/GardendlessKit/Sources/GardendlessCore/GameConfiguration.swift',
+    ).readAsStringSync();
+    final scriptBridge = File(
+      'ios/GardendlessKit/Sources/GardendlessBridge/ScriptMessageBridge.swift',
+    ).readAsStringSync();
+    final session = File(
+      'ios/GardendlessKit/Sources/GardendlessCore/GameSession.swift',
+    ).readAsStringSync();
+    final policy = File(
+      'ios/GardendlessKit/Sources/GardendlessCore/NetworkPolicy.swift',
+    ).readAsStringSync();
     final bridgingHeader =
         File('ios/Runner/Runner-Bridging-Header.h').readAsStringSync();
     final highRefreshHeader =
@@ -88,7 +101,7 @@ void main() {
       controller,
       matches(
         RegExp(
-          r'contentController\.addScriptMessageHandler\(\s*configuredScriptBridge,\s*contentWorld: \.page,\s*name: GameScriptBridge\.name\s*\)',
+          r'contentController\.addScriptMessageHandler\(\s*scriptBridge,\s*contentWorld: \.page,\s*name: ScriptMessageBridge\.name\s*\)',
         ),
       ),
     );
@@ -96,14 +109,9 @@ void main() {
       controller,
       matches(
         RegExp(
-          r'contentController\.add\(\s*configuredAudioBridge,\s*contentWorld: \.page,\s*name: GameAudioBridge\.name\s*\)',
+          r'contentController\.add\(\s*audioBridge,\s*contentWorld: \.page,\s*name: AudioScriptBridge\.name\s*\)',
         ),
       ),
-    );
-    expect(
-      controller,
-      isNot(
-          matches(RegExp(r'contentController\.add\(\s*(script|audio)Bridge,'))),
     );
     expect(controller, contains('"touch_patch.js"'));
     expect(controller, contains('"auto_sun.js"'));
@@ -119,32 +127,36 @@ void main() {
     expect(
       session,
       contains(
-        'autoCollectSunEnabled = try json.requiredBool("autoCollectSunEnabled")',
+        'autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled")',
       ),
     );
     expect(controller, contains('setURLSchemeHandler'));
     expect(handler, contains('WKURLSchemeHandler'));
-    expect(handler, contains('maxConcurrentOperationCount = 6'));
+    expect(
+      handler,
+      contains(
+          'maxConcurrentOperationCount = configuration.resourceQueueConcurrency'),
+    );
     expect(handler, contains('maxConcurrentOperationCount = 2'));
-    expect(handler, contains('"ftypM4A"'));
-    expect(handler, contains('"ftypisom"'));
-    expect(handler, contains('"ftypmp42"'));
+    expect('$handler\n$mime', contains('"ftypM4A"'));
+    expect('$handler\n$mime', contains('"ftypisom"'));
+    expect('$handler\n$mime', contains('"ftypmp42"'));
     expect(
         handler, contains('Data(contentsOf: file, options: [.mappedIfSafe])'));
-    expect(handler, contains('audioCacheByteLimit = 24 * 1024 * 1024'));
+    expect(
+      configuration,
+      contains('audioCacheByteLimit: Int = 24 * 1024 * 1024'),
+    );
     expect(handler, contains('case cancelled'));
     expect(handler, contains('guard reserveCallback(identifier) else'));
     expect(handler, contains('defer { releaseCallback(identifier) }'));
     expect(handler, isNot(contains('private func withActiveTask(')));
     expect(handler, isNot(contains('attributes: .concurrent')));
-    expect(session, contains('WKContentRuleListStore.default()'));
-    expect(session, contains('["url-filter": "^http://"]'));
-    expect(session, contains('"type": "ignore-previous-rules"'));
-    expect(session, isNot(contains('unless-domain')));
-    expect(
-      File('ios/Runner/GameScriptBridge.swift').readAsStringSync(),
-      contains('removeActive: false'),
-    );
+    expect(policy, contains('WKContentRuleListStore.default()'));
+    expect(policy, contains('["url-filter": "^http://"]'));
+    expect(policy, contains('"type": "ignore-previous-rules"'));
+    expect(policy, isNot(contains('unless-domain')));
+    expect(scriptBridge, contains('duplicate_request_id'));
     expect(handler, isNot(contains('HttpServer')));
   });
 

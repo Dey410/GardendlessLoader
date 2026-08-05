@@ -7,25 +7,22 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0CD24F995A09D9FD061E67C4 /* GardendlessGPNext in Frameworks */ = {isa = PBXBuildFile; productRef = 6909E3E05E57B47F07950B11 /* GardendlessGPNext */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
+		2D9135E651688EF92B88F67D /* GardendlessBridge in Frameworks */ = {isa = PBXBuildFile; productRef = 759D6140EA7B158F1AE92213 /* GardendlessBridge */; };
+		3162658A24FCFD77B05C5539 /* GardendlessAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 88BD0CD8C86A25C87B6C8051 /* GardendlessAudio */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
+		3E73EB8EAB38F892EAB803B8 /* GardendlessImport in Frameworks */ = {isa = PBXBuildFile; productRef = 2F0C5FFFE34BCF10D9E0F80A /* GardendlessImport */; };
+		783294D998C6560942212126 /* GardendlessCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5C32751A1766AF68088F3869 /* GardendlessCore */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 		97C146F31CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146F11CF9000F007C117D /* Main.storyboard */; };
 		97C146FC1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Assets.xcassets */; };
 		97C146FE1CF9000F007C117D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* AppDelegate.swift */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
-		B41000000000000000000002 /* GameSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000001 /* GameSession.swift */; };
-		B41000000000000000000004 /* GameResourceSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000003 /* GameResourceSchemeHandler.swift */; };
-		B41000000000000000000006 /* GameNavigationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000005 /* GameNavigationDelegate.swift */; };
-		B41000000000000000000008 /* GameScriptBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000007 /* GameScriptBridge.swift */; };
-		B4100000000000000000000C /* GameViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4100000000000000000000B /* GameViewController.swift */; };
-		B4100000000000000000000E /* GpNextNativeCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4100000000000000000000D /* GpNextNativeCore.swift */; };
-		B41000000000000000000010 /* AppLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4100000000000000000000F /* AppLogStore.swift */; };
-		B41000000000000000000012 /* GameResourceLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000011 /* GameResourceLocator.swift */; };
-		B41000000000000000000014 /* NativeSfxEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000013 /* NativeSfxEngine.swift */; };
-		B41000000000000000000016 /* GameAudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000015 /* GameAudioBridge.swift */; };
-		B41000000000000000000018 /* JavaScriptArgumentEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000017 /* JavaScriptArgumentEncoder.swift */; };
-		B4100000000000000000001A /* NativeSfxExceptionGuard.m in Sources */ = {isa = PBXBuildFile; fileRef = B41000000000000000000019 /* NativeSfxExceptionGuard.m */; };
+		A5AF66CC3FF5EE05786C044A /* AudioScriptBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A2536AA4BE0C1629FEE5DAC /* AudioScriptBridge.swift */; };
+		A917DBAA51AFE92D1B56A5A5 /* GameHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D749A4C4C961FF0CCD9F5E9 /* GameHostController.swift */; };
+		C64239B031C42BDDC5D95CA0 /* GardendlessLogging in Frameworks */ = {isa = PBXBuildFile; productRef = 64EC15B80965413F90D0BE60 /* GardendlessLogging */; };
+		C7A45B6D48E4DA40C6639D2E /* GardendlessResource in Frameworks */ = {isa = PBXBuildFile; productRef = 4845EBE5FDC4576F11FB5A2F /* GardendlessResource */; };
 		ED3FF8138F7359FA8817FB0E /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1079332BB0326BDE69DB7A7 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
 
@@ -33,7 +30,9 @@
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
+		3D749A4C4C961FF0CCD9F5E9 /* GameHostController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GameHostController.swift; sourceTree = "<group>"; };
 		526E20E87F8DC3F0CEDAE6CB /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
+		5A2536AA4BE0C1629FEE5DAC /* AudioScriptBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudioScriptBridge.swift; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
@@ -69,6 +68,13 @@
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
 				ED3FF8138F7359FA8817FB0E /* Pods_Runner.framework in Frameworks */,
+				783294D998C6560942212126 /* GardendlessCore in Frameworks */,
+				C7A45B6D48E4DA40C6639D2E /* GardendlessResource in Frameworks */,
+				2D9135E651688EF92B88F67D /* GardendlessBridge in Frameworks */,
+				3E73EB8EAB38F892EAB803B8 /* GardendlessImport in Frameworks */,
+				0CD24F995A09D9FD061E67C4 /* GardendlessGPNext in Frameworks */,
+				3162658A24FCFD77B05C5539 /* GardendlessAudio in Frameworks */,
+				C64239B031C42BDDC5D95CA0 /* GardendlessLogging in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,6 +145,8 @@
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
+				3D749A4C4C961FF0CCD9F5E9 /* GameHostController.swift */,
+				5A2536AA4BE0C1629FEE5DAC /* AudioScriptBridge.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -173,6 +181,13 @@
 			name = Runner;
 			packageProductDependencies = (
 				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
+				5C32751A1766AF68088F3869 /* GardendlessCore */,
+				4845EBE5FDC4576F11FB5A2F /* GardendlessResource */,
+				759D6140EA7B158F1AE92213 /* GardendlessBridge */,
+				2F0C5FFFE34BCF10D9E0F80A /* GardendlessImport */,
+				6909E3E05E57B47F07950B11 /* GardendlessGPNext */,
+				88BD0CD8C86A25C87B6C8051 /* GardendlessAudio */,
+				64EC15B80965413F90D0BE60 /* GardendlessLogging */,
 			);
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
@@ -205,6 +220,7 @@
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
 				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */,
+				1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
 			projectDirPath = "";
@@ -306,19 +322,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				97C146FE1CF9000F007C117D /* AppDelegate.swift in Sources */,
-				B41000000000000000000002 /* GameSession.swift in Sources */,
-				B41000000000000000000004 /* GameResourceSchemeHandler.swift in Sources */,
-				B41000000000000000000012 /* GameResourceLocator.swift in Sources */,
-				B41000000000000000000006 /* GameNavigationDelegate.swift in Sources */,
-				B41000000000000000000008 /* GameScriptBridge.swift in Sources */,
-				B41000000000000000000016 /* GameAudioBridge.swift in Sources */,
-				B41000000000000000000018 /* JavaScriptArgumentEncoder.swift in Sources */,
-				B4100000000000000000001A /* NativeSfxExceptionGuard.m in Sources */,
-				B4100000000000000000000C /* GameViewController.swift in Sources */,
-				B41000000000000000000014 /* NativeSfxEngine.swift in Sources */,
-				B4100000000000000000000E /* GpNextNativeCore.swift in Sources */,
-				B41000000000000000000010 /* AppLogStore.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
+				A917DBAA51AFE92D1B56A5A5 /* GameHostController.swift in Sources */,
+				A5AF66CC3FF5EE05786C044A /* AudioScriptBridge.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -610,6 +616,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = GardendlessKit;
+		};
 		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage;
@@ -617,9 +627,44 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		2F0C5FFFE34BCF10D9E0F80A /* GardendlessImport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */;
+			productName = GardendlessImport;
+		};
+		4845EBE5FDC4576F11FB5A2F /* GardendlessResource */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */;
+			productName = GardendlessResource;
+		};
+		5C32751A1766AF68088F3869 /* GardendlessCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */;
+			productName = GardendlessCore;
+		};
+		64EC15B80965413F90D0BE60 /* GardendlessLogging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */;
+			productName = GardendlessLogging;
+		};
+		6909E3E05E57B47F07950B11 /* GardendlessGPNext */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */;
+			productName = GardendlessGPNext;
+		};
+		759D6140EA7B158F1AE92213 /* GardendlessBridge */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */;
+			productName = GardendlessBridge;
+		};
 		78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = FlutterGeneratedPluginSwiftPackage;
+		};
+		88BD0CD8C86A25C87B6C8051 /* GardendlessAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C296F2AC43570B8E670D139 /* XCLocalSwiftPackageReference "GardendlessKit" */;
+			productName = GardendlessAudio;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
