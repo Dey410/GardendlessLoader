@@ -45,8 +45,12 @@ let package = Package(
     ),
     .target(
       name: "GardendlessAudio",
-      dependencies: ["GardendlessCore"],
+      dependencies: ["GardendlessCore", "SfxExceptionGuard"],
       path: "Sources/GardendlessAudio"
+    ),
+    .target(
+      name: "SfxExceptionGuard",
+      path: "Sources/SfxExceptionGuard"
     ),
     .target(
       name: "GardendlessLogging",
@@ -62,6 +66,7 @@ let package = Package(
         "GardendlessGPNext",
         "GardendlessAudio",
         "GardendlessLogging",
+        "SfxExceptionGuard",
       ],
       path: "Tests/GardendlessKitTests"
     ),
