@@ -142,12 +142,18 @@
     );
   }
 
-  function moduleValue(module, name) {
-    if (module && module[name]) return module[name];
-    if (module && module.default && module.default[name]) {
-      return module.default[name];
+  function moduleValue(module, names) {
+    if (!module) return null;
+    for (const name of names) {
+      if (module[name]) return module[name];
     }
-    return module ? module.default : null;
+    if (module.default) {
+      for (const name of names) {
+        if (module.default[name]) return module.default[name];
+      }
+      return module.default;
+    }
+    return null;
   }
 
   function isRegisteredForImport(system, moduleId) {
@@ -196,11 +202,14 @@
         uiModule = modules[1];
       }
 
-      levelController = moduleValue(
-        levelControllerModule,
+      levelController = moduleValue(levelControllerModule, [
+        "LevelPlay",
         "levelController"
-      );
-      gameUI = moduleValue(uiModule, "UI");
+      ]);
+      gameUI = moduleValue(uiModule, [
+        "UIInGame",
+        "UI"
+      ]);
       if (!levelController || !gameUI) {
         throw new Error("Game state modules have unexpected exports");
       }

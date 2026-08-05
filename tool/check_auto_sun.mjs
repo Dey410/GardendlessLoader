@@ -37,6 +37,7 @@ function createHarness({
   modulesAvailable = true,
   modulesRegistered = true,
   unexpectedExports = false,
+  realV010Exports = false,
 } = {}) {
   let now = 0;
   let nextTimerId = 1;
@@ -48,6 +49,20 @@ function createHarness({
   const keyboardEvents = [];
   const levelController = {gaming, AirRaidProps: null};
   const UI = {component: {paused: false}};
+  const levelModuleExports = realV010Exports
+    ? {
+        LevelPlay: levelController,
+        levelController: function LevelController() {},
+      }
+    : {levelController};
+  let uiModuleExports;
+  if (realV010Exports) {
+    function UIInGame() {}
+    UIInGame.component = UI.component;
+    uiModuleExports = {UIInGame};
+  } else {
+    uiModuleExports = {UI};
+  }
   const body = createElement('BODY');
   const canvas = createElement('CANVAS');
   canvas.id = 'GameCanvas';
@@ -84,8 +99,8 @@ function createHarness({
       getCount += 1;
       if (!modulesReady) return undefined;
       if (unexpectedExports) return {};
-      if (path.endsWith('levelController.ts')) return {levelController};
-      if (path.endsWith('UI.ts')) return {UI};
+      if (path.endsWith('levelController.ts')) return levelModuleExports;
+      if (path.endsWith('UI.ts')) return uiModuleExports;
       throw new Error(`Unexpected module: ${path}`);
     },
     async import(path) {
@@ -94,8 +109,8 @@ function createHarness({
         throw new Error('early System.import poisons cold game startup');
       }
       modulesReady = true;
-      if (path === levelId) return {levelController};
-      if (path === uiId) return {UI};
+      if (path === levelId) return levelModuleExports;
+      if (path === uiId) return uiModuleExports;
       throw new Error(`Unexpected module: ${path}`);
     },
     registerRegistry: modulesRegistered ? {
@@ -244,6 +259,19 @@ for (const options of [
   await harness.advance(2950);
   assert.equal(harness.keyboardEvents[2].type, 'keydown');
   assert.equal(harness.keyboardEvents[2].at, 6000);
+}
+
+{
+  const harness = createHarness({realV010Exports: true});
+  await harness.flushMicrotasks();
+  assert.equal(harness.getCount, 2);
+  assert.equal(harness.importCount, 0);
+
+  await harness.advance(2999);
+  assert.deepEqual(harness.keyboardEvents, []);
+  await harness.advance(1);
+  assert.equal(harness.keyboardEvents[0].type, 'keydown');
+  assert.equal(harness.keyboardEvents[0].keyCode, 65);
 }
 
 {
