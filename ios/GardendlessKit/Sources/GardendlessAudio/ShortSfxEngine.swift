@@ -2,6 +2,9 @@ import AVFoundation
 import Foundation
 import GardendlessCore
 import SfxExceptionGuard
+#if os(iOS)
+import UIKit
+#endif
 
 public protocol ShortSfxEngineDelegate: AnyObject {
   func shortSfxEngineDidProduce(_ result: ShortSfxEngine.PlayResult)

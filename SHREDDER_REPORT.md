@@ -1,6 +1,6 @@
 # Shredder Report — GardendlessLoader iOS 端 Clean-Slate 重建
 
-> 阶段状态：**Phase 1 完整分析（只读）**
+> 阶段状态：**Phase 7（实现与本地验证完成；真机验证与旧文件删除等待用户确认）**
 > 本文件是 Shredder Skill 的阶段性报告。当前只描述现状、保留项、候选架构与重建计划；未修改任何生产代码，未删除任何文件，未开始实现。
 
 ## 0. 当前 Git 事实（2026-08-05 检查）
@@ -419,7 +419,7 @@ dart format --set-exit-if-changed lib test
 git diff --check
 
 # iOS 原生
-cd ios && swift test        # GardendlessNativeCoreTests
+cd ios/GardendlessKit && swift test
 cd .. && flutter build ios --release --no-codesign
 
 # 产物（CI 同流程）
@@ -428,14 +428,42 @@ cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/Runner.app
 cd build/ios/ipa && zip -r GardendlessLoader-unsigned.ipa Payload
 ```
 
-## 15. Final Summary（将在 Phase 7 更新）
+## 15. Final Summary
 
-- 已重写内容：尚未开始（Phase 1）。
-- 新架构：候选 B 推荐（待确认）。
-- 新增/删除文件：仅新增本报告。
-- 依赖变化：无。
-- 行为保留/改变：尚未改变。
-- 已执行命令：Git 状态、文件盘点、代码/文档阅读（均为只读）。
-- 未执行命令：`flutter analyze/test/build`、`swift test`（Phase 4 起执行；本阶段未修改代码，无基线验证需求）。
-- 已知限制：见第 8、9 节。
-- 后续工作：等待用户确认第 9 节待确认项与候选架构后进入 Phase 2。
+- 已重写内容：iOS 原生层全部替换为 `ios/GardendlessKit`（7 个 SwiftPM 能力模块 + 1 个 ObjC 异常守卫 target），`ios/Runner` 瘦身为薄壳。
+- 新架构：候选 B（Flutter 启动器保留 + iOS 原生层 Clean-Slate）。
+- 新增文件：GardendlessKit 包（源码/测试）、GameHostController.swift、AudioScriptBridge.swift、tool/update_ios_project.rb、架构与交付文档。
+- 移除编译但保留磁盘：14 个旧 iOS 原生文件（见 `docs/breaking-changes.md` 第 3 节）。
+- 依赖变化：无新增第三方依赖；新增本地 SwiftPM 包依赖（系统框架 + zlib）。
+- 行为保留：通道契约、Origin、JS 桥、触摸矩阵、自动收集、水印、GP-Next 规则、导出/导入、数据布局。
+- 有意改变：导出临时文件 commit 后使用用户建议文件名；原生错误模型/内部 API 全新；CI 增加 Swift 测试门禁。
+- 已执行验证：见第 16 节。
+- 已知限制：见第 8、9 节；真机（iPad/iPhone）行为验证未执行。
+- 后续工作：用户确认删除旧文件清单；真机验证矩阵；可选纯 SPM 迁移（pod deintegrate）。
+
+## 16. 已执行验证矩阵
+
+| 项目 | 命令 | 结果 | 剩余风险 |
+| --- | --- | --- | --- |
+| Swift 单元测试（Core/Resource/Bridge/Import/GP-Next/Audio/Logging） | `cd ios/GardendlessKit && swift test` | 65 项通过 | 音频引擎仅测决策/守卫，未做真机播放 |
+| Flutter 静态分析 | `flutter analyze` | 0 问题 | 无 |
+| Flutter 全量测试 | `flutter test` | 189 项通过 | 无 |
+| Dart 格式化 | `dart format --set-exit-if-changed lib test` | 通过（1 个测试文件被格式化） | 无 |
+| diff 空白 | `git diff --check` | 通过 | 无 |
+| iOS Release 构建 | `flutter build ios --release --no-codesign` | 成功（Runner.app 22.6MB） | 未真机运行；App Store/侧载兼容性待验证 |
+| Xcode 工程接入 | `ruby tool/update_ios_project.rb` | 成功（包/产品/源文件/移除旧编译引用） | 工程脚本依赖 xcodeproj gem（CocoaPods 自带） |
+
+### 未执行验证
+
+- 真机验证（iPhone/iPad）：触摸矩阵、原生音频、导出选择器、GP-Next 导入/替换确认、后台/中断恢复、渲染进程退出。
+- 远端 CI 重跑：当前分支尚未 push/触发 GitHub Actions；`swift test` 步骤在 CI 环境的通过性待确认。
+- Android/OHOS 构建：本次改动不影响其源码，但未执行对应构建。
+- Xcode 单元测试 target（RunnerTests）：已缩为冒烟测试，未运行 `xcodebuild test`。
+
+## 17. 待确认事项与后续工作
+
+1. **旧文件删除**：`docs/breaking-changes.md` 第 3 节列出 14 个已移出编译的文件完整路径。按仓库删除安全规则，确认后才可逐个删除。
+2. **真机验证**：建议按 `docs/acceptance-checklist.md` 执行 iOS 全量验收（触摸矩阵、自动收集、导出、GP-Next、音频、后台/恢复）。
+3. **纯 SPM 迁移**（可选）：`pod deintegrate` 并移除 xcconfig 的 Pods 引用，消除 Flutter 构建警告。
+4. **CI 远端确认**：push 后观察 iOS job（新增 `swift test` 门禁）与 unsigned IPA 产物。
+5. **iOS/Package.swift 退役**：旧测试包保留为参考；后续可移出跟踪（需确认）。

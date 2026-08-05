@@ -27,7 +27,7 @@ active slot directly, without a local HTTP server or a Flutter game page.
 - Validates the expected `PvZ2 Gardendless` Cocos web build shape, title, and fingerprints.
 - Native GameHosts intercept a fixed synthetic origin and stream Range/ETag/MIME responses without opening a socket.
 - Gameplay uses a full-screen, landscape native WebView; the launcher FlutterEngine is released while the game runs, and non-allowlisted remote requests are blocked.
-- Detects the GP-Next 1.4.2 desktop build, injects a mobile compatibility bridge without modifying game resources, and conditionally exposes `Open GP-Next` in the game menu.
+- Detects GP-Next 1.4.x desktop builds, injects a mobile compatibility bridge without modifying game resources, and conditionally exposes `Open GP-Next` in the game menu.
 - Shows import progress, extracts directly into the inactive slot, keeps the active slot on failure, and recovers unfinished transactions at startup.
 - Provides copyable diagnostics containing the native GameHost, synthetic origin, and `resourceServer: none`.
 - Sends game input directly to the platform WebView and supports home-page announcements, independent loader/game update checks, and auto sunlight collection.
@@ -54,7 +54,7 @@ iOS `gardendless-game://localhost`, and HarmonyOS/OpenHarmony
 - Three or more touches: no mouse mapping; the current touch gesture is cancelled.
 - Physical mice and keyboards continue through the platform WebView unchanged.
 
-If the center of a two-finger gesture moves no more than 20 physical pixels vertically, lifting the first finger sends one right click to `GameCanvas`; horizontal movement does not cancel the candidate. When enabled in the game menu, auto sunlight collection simulates one `A` key press every 1.5 seconds. The game watermark is enabled by default, can be disabled from the menu, and remembers the last choice.
+If the center of a two-finger gesture moves no more than 20 physical pixels vertically, lifting the first finger sends one right click to `GameCanvas`; horizontal movement does not cancel the candidate. When enabled in the game menu, auto sunlight collection simulates one `A` key press every 3 seconds. The game watermark is enabled by default, can be disabled from the menu, and remembers the last choice.
 
 Imported resources are stored under an app-created `GardendlessLoader` directory:
 
@@ -101,7 +101,7 @@ The validator also checks that:
 
 ### GP-Next compatibility
 
-The loader currently targets GP-Next `1.4.2` from the inspected desktop build. An unknown GP-Next version remains importable and playable, but its compatibility bridge and `Open GP-Next` action are disabled with a diagnostic reason. Standard web builds retain their original path.
+The loader currently targets GP-Next `1.4.x` builds through the `patcher-`, `file-loader-`, and `js-mod-loader-` fingerprints. An unknown GP-Next version remains importable and playable, but its compatibility bridge and `Open GP-Next` action are disabled with a diagnostic reason. Standard web builds retain their original path.
 
 GP-Next-defined patch discovery, parsing, loading, saving, reloading, and JS Mod switch behavior is preserved. Only desktop system boundaries are mapped on mobile: AppData file APIs use the loader's `gp-next` sandbox, `open patch folder` invokes the system file picker, and save dialogs invoke the system exporter. Imports accept ZIP packs with a root `pack.json`, JSON, and JSON5; naked JavaScript is rejected. Replacements require confirmation and use a rollback-safe file swap. JS Mods remain disabled by GP-Next by default until the user explicitly enables them there.
 
@@ -131,7 +131,9 @@ Useful project files:
 | `lib/src/ui/home_page.dart` | Import, status, announcement, update, and diagnostics UI |
 | `assets/game_bridge/` | Shared document-start transport, GP-Next, touch, export, watermark, and menu scripts |
 | `android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/` | Android native WebView GameHost |
-| `ios/Runner/GameViewController.swift` | iOS native WKWebView GameHost |
+| `ios/Runner/AppDelegate.swift` | iOS shell: Flutter channels, ZIP picker, logging channel |
+| `ios/Runner/GameHostController.swift` | iOS shell: WKWebView GameHost assembly, bridge, export, GP-Next |
+| `ios/GardendlessKit/` | iOS native GameHost capability modules (SwiftPM) |
 | `ohos/entry/src/main/ets/game/` | HarmonyOS/OpenHarmony ArkWeb GameHost boundaries |
 | `announcements.json` | Remote announcement payload |
 
