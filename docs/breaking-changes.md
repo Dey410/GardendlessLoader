@@ -15,6 +15,7 @@
 | 6 | CI iOS job 新增 `swift test` 门禁 | CI | 自动生效 |
 | 7 | `ios/RunnerTests` 缩减为冒烟测试；原生行为测试迁移到 `GardendlessKitTests` | 测试组织 | 无 |
 | 8 | `ios/Package.swift`（旧 GardendlessNativeGameHost 测试包）退役保留 | 开发者 | 新包为 `ios/GardendlessKit/Package.swift` |
+| 9 | iOS 音频改为分类拦截：非短音效（超限/不支持容器/引擎不可用）直接走 WebKit 播放，原生解码失败静音，删除“失败后回退 WebKit”机制；伪装 `.mp3` 的 M4A 统一按 `.m4a` 别名解码 | 用户可见音频行为改善 | 无；超限长音效由 WebKit 正常播放，解码失败音效静音 |
 
 ## 2. 不变（公共契约）
 

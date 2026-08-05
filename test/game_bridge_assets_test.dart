@@ -91,25 +91,47 @@ void main() {
     final proxy =
         File('assets/game_bridge/ios_audio_proxy.js').readAsStringSync();
     final controller =
-        File('ios/Runner/GameViewController.swift').readAsStringSync();
-    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
-    final bridge = File('ios/Runner/GameAudioBridge.swift').readAsStringSync();
-    final schemeHandler =
-        File('ios/Runner/GameResourceSchemeHandler.swift').readAsStringSync();
+        File('ios/Runner/GameHostController.swift').readAsStringSync();
+    final engine = File(
+      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
+    ).readAsStringSync();
+    final bridge =
+        File('ios/Runner/AudioScriptBridge.swift').readAsStringSync();
+    final schemeHandler = File(
+      'ios/GardendlessKit/Sources/GardendlessResource/'
+      'ResourceSchemeHandler.swift',
+    ).readAsStringSync();
+    final configuration = File(
+      'ios/GardendlessKit/Sources/GardendlessCore/GameConfiguration.swift',
+    ).readAsStringSync();
+    final limits = File(
+      'ios/GardendlessKit/Sources/GardendlessAudio/AudioPlaybackLimits.swift',
+    ).readAsStringSync();
 
     expect(proxy, contains('__pvzgeLazySrc'));
     expect(proxy, contains('gardendlessAudio'));
-    expect(proxy, contains('__gardendlessNativeAudioFallback'));
+    expect(proxy, contains('__gardendlessNativeAudioWebKit'));
+    expect(proxy, contains('__gardendlessNativeAudioSilent'));
+    expect(proxy, isNot(contains('__gardendlessNativeAudioFallback')));
     expect(proxy, contains('element.dispatchEvent(new Event("ended"))'));
     expect(controller, contains('"nativeSfxEnabled": nativeSfxEnabled'));
-    expect(engine, contains('maxConcurrentOperationCount = 1'));
-    expect(engine, contains('pcmCacheByteLimit = 64 * 1024 * 1024'));
-    expect(engine, contains('singleBufferByteLimit = 4 * 1024 * 1024'));
-    expect(engine, contains('nodeCount = 16'));
+    expect(
+      engine,
+      contains('maxConcurrentOperationCount = configuration.audioQueueConcurrency'),
+    );
+    expect(
+      configuration,
+      contains('pcmCacheByteLimit: Int = 64 * 1024 * 1024'),
+    );
+    expect(
+      configuration,
+      contains('singleBufferByteLimit: Int = 4 * 1024 * 1024'),
+    );
+    expect(limits, contains('nodeCount = 16'));
     expect(bridge, contains('message.frameInfo.isMainFrame'));
-    expect(bridge, contains('securityOrigin.protocol == "gardendless-game"'));
-    expect(bridge, contains('securityOrigin.host == "localhost"'));
-    expect(schemeHandler, contains('private let locator: GameResourceLocator'));
+    expect(bridge, contains('securityOrigin.protocol == GameOrigin.scheme'));
+    expect(bridge, contains('securityOrigin.host == GameOrigin.host'));
+    expect(schemeHandler, contains('private let sandbox: PathSandbox'));
     expect(
       controller.indexOf('"ios_audio_proxy.js"'),
       lessThan(controller.indexOf('"bootstrap.js"')),
@@ -117,10 +139,12 @@ void main() {
   });
 
   test('iOS native sound graph is initialized lazily after audio session', () {
-    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
+    final engine = File(
+      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
+    ).readAsStringSync();
     final initializer = engine.substring(
-      engine.indexOf('  init('),
-      engine.indexOf('  func register('),
+      engine.indexOf('  public init('),
+      engine.indexOf('  public func register('),
     );
 
     expect(initializer, isNot(contains('AVAudioEngine()')));
@@ -130,7 +154,7 @@ void main() {
     expect(engine, contains('private var engine: AVAudioEngine?'));
     final preparation = engine.substring(
       engine.indexOf('  private func ensureEngineRunning()'),
-      engine.indexOf('  private func enqueue('),
+      engine.indexOf('  private func configureNodes('),
     );
     expect(
       preparation.indexOf('try session.setActive(true)'),
@@ -139,7 +163,9 @@ void main() {
   });
 
   test('iOS pooled sound nodes follow each decoded buffer format', () {
-    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
+    final engine = File(
+      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
+    ).readAsStringSync();
     final configuration = engine.substring(
       engine.indexOf('  private func configureNodes('),
       engine.indexOf('  private func observeLifecycle('),
@@ -160,7 +186,7 @@ void main() {
     );
     expect(
       scheduling.indexOf(connect),
-      lessThan(scheduling.indexOf('node.scheduleBuffer(cached.buffer')),
+      lessThan(scheduling.indexOf('node.scheduleBuffer(')),
     );
   });
 
@@ -169,7 +195,8 @@ void main() {
       'android/app/src/main/kotlin/io/github/dey410/'
       'gardendlessloader/game/GameActivity.kt',
     ).readAsStringSync();
-    final ios = File('ios/Runner/GameViewController.swift').readAsStringSync();
+    final ios =
+        File('ios/Runner/GameHostController.swift').readAsStringSync();
     final iosProject =
         File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
     final iosPackage = File('ios/Package.swift').readAsStringSync();

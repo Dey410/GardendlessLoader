@@ -10,12 +10,27 @@ public protocol ShortSfxEngineDelegate: AnyObject {
   func shortSfxEngineDidProduce(_ result: ShortSfxEngine.PlayResult)
 }
 
-/// Decodes short non-BGM sound effects natively and falls back to WebKit
-/// audio whenever decoding or engine scheduling fails.
+public enum NativeAudioRoute: Equatable {
+  case native
+  case webkit(String)
+}
+
+/// Decodes short non-BGM sound effects natively. Audio that does not fit the
+/// short-SFX contract is routed directly to WebKit; audio that fails after
+/// native classification is silenced instead of falling back.
 public final class ShortSfxEngine: NSObject {
   public enum PlayResult {
     case ended(String)
-    case fallback(String, String)
+    /// Play this element through WebKit: the file is not a native short SFX.
+    case webkit(String, String)
+    /// Native decode was attempted but failed; play nothing.
+    case silent(String, String)
+  }
+
+  private enum DecodeOutcome {
+    case buffer(AVAudioPCMBuffer, Int, TimeInterval, Int64)
+    case webkit(String)
+    case silent(String, String)
   }
 
   private struct CachedBuffer {
@@ -90,6 +105,25 @@ public final class ShortSfxEngine: NSObject {
     return !tokens.contains {
       AudioPlaybackLimits.excludedTokens.contains(String($0))
     }
+  }
+
+  /// Pure classification used before native decoding: only bounded, short
+  /// audio is accepted; anything else must be played by WebKit.
+  public static func route(
+    compressedBytes: Int64,
+    duration: TimeInterval,
+    configuration: GameConfiguration = .default
+  ) -> NativeAudioRoute {
+    guard compressedBytes > 0,
+          compressedBytes <= configuration.compressedSfxByteLimit else {
+      return .webkit("compressed_size_limit")
+    }
+    guard duration.isFinite,
+          duration > 0,
+          duration <= configuration.maximumSfxDuration else {
+      return .webkit("duration_limit")
+    }
+    return .native
   }
 
   public func register(_ url: URL) {
@@ -171,7 +205,7 @@ public final class ShortSfxEngine: NSObject {
   private func enqueue(_ request: PlayRequest) {
     guard !stopped,
           let relativePath = sandbox.relativePath(for: request.url) else {
-      fallback(request, reason: "invalid_url")
+      routeSilent(request, reason: "invalid_url")
       return
     }
     let ext = (relativePath as NSString).pathExtension.lowercased()
@@ -182,7 +216,7 @@ public final class ShortSfxEngine: NSObject {
           !tokens.contains(where: {
             AudioPlaybackLimits.excludedTokens.contains(String($0))
           }) else {
-      fallback(request, reason: "not_short_sfx")
+      routeWebKit(request, reason: "not_short_sfx")
       return
     }
     if var cached = buffers[relativePath] {
@@ -202,72 +236,86 @@ public final class ShortSfxEngine: NSObject {
     let startedAt = ProcessInfo.processInfo.systemUptime
     decodeQueue.addOperation { [weak self] in
       guard let self else { return }
-      do {
-        let decoded = try self.decode(relativePath: relativePath)
-        self.stateQueue.async { [weak self] in
-          self?.finishDecode(
-            relativePath,
-            decoded: decoded,
-            startedAt: startedAt
-          )
-        }
-      } catch {
-        self.stateQueue.async { [weak self] in
-          self?.failDecode(
-            relativePath,
-            reason: String(describing: type(of: error))
-          )
-        }
+      let outcome = self.decode(relativePath: relativePath)
+      self.stateQueue.async { [weak self] in
+        self?.finishDecode(
+          relativePath,
+          outcome: outcome,
+          startedAt: startedAt
+        )
       }
     }
   }
 
   private func decode(
     relativePath: String
-  ) throws -> (AVAudioPCMBuffer, Int, TimeInterval, Int64) {
+  ) -> DecodeOutcome {
     guard let file = sandbox.resolve(relativePath) else {
-      throw GameError.failed(.resourceNotFound, "Audio resource is unavailable")
+      return .silent("file_unavailable", "Audio resource is unavailable")
     }
-    let properties = try sandbox.fileProperties(file)
-    guard properties.length > 0,
-          properties.length <= configuration.compressedSfxByteLimit else {
-      throw GameError.failed(
-        .nativeAudioFailed,
-        "Audio resource is not a short sound effect"
-      )
+    let properties: (length: Int64, etag: String)
+    do {
+      properties = try sandbox.fileProperties(file)
+    } catch {
+      return .silent("properties_failed", String(describing: error))
     }
-    let container = try AudioContainerDetector.detect(file)
+    guard properties.length > 0 else {
+      return .silent("invalid_audio", "Audio resource is empty")
+    }
+    let container: AudioContainer
+    do {
+      container = try AudioContainerDetector.detect(file)
+    } catch {
+      return .silent("container_detect_failed", String(describing: error))
+    }
     guard container != .unsupported else {
-      throw GameError.failed(.nativeAudioFailed, "Audio container is unsupported")
+      return .webkit("unsupported_container")
     }
-    let audioFile = try openAudioFile(
-      file,
-      relativePath: relativePath,
-      container: container
-    )
+    let audioFile: AVAudioFile
+    do {
+      audioFile = try openAudioFile(
+        file,
+        relativePath: relativePath,
+        container: container
+      )
+    } catch {
+      return .silent("open_failed", String(describing: error))
+    }
     let format = audioFile.processingFormat
     let duration = Double(audioFile.length) / format.sampleRate
-    guard duration.isFinite, duration > 0,
-          duration <= configuration.maximumSfxDuration,
-          audioFile.length <= Int64(AVAudioFrameCount.max),
+    switch ShortSfxEngine.route(
+      compressedBytes: properties.length,
+      duration: duration,
+      configuration: configuration
+    ) {
+    case .webkit(let reason):
+      return .webkit(reason)
+    case .native:
+      break
+    }
+    guard audioFile.length <= Int64(AVAudioFrameCount.max),
           let buffer = AVAudioPCMBuffer(
             pcmFormat: format,
             frameCapacity: AVAudioFrameCount(audioFile.length)
           ) else {
-      throw GameError.failed(.nativeAudioFailed, "Decoded audio is too long")
+      return .silent("buffer_alloc_failed", "Decoded audio is too long")
     }
-    try audioFile.read(into: buffer)
+    do {
+      try audioFile.read(into: buffer)
+    } catch {
+      return .silent("decode_failed", String(describing: error))
+    }
     let decodedBytes = Int(buffer.frameLength)
       * Int(buffer.format.channelCount)
       * MemoryLayout<Float>.size
     guard decodedBytes > 0,
           decodedBytes <= configuration.singleBufferByteLimit else {
-      throw GameError.failed(
-        .nativeAudioFailed,
+      return .silent(
+        "pcm_limit",
         "Decoded audio exceeds the per-sound limit"
       )
     }
-    return (buffer, decodedBytes, duration, properties.length)
+    return .buffer(buffer, decodedBytes, duration, properties.length)
   }
 
   private func openAudioFile(
@@ -275,15 +323,12 @@ public final class ShortSfxEngine: NSObject {
     relativePath: String,
     container: AudioContainer
   ) throws -> AVAudioFile {
-    do {
-      return try AVAudioFile(forReading: file)
-    } catch {
-      guard container == .m4a,
-            file.pathExtension.lowercased() != "m4a" else {
-        throw error
-      }
-      return try AVAudioFile(forReading: m4aAlias(file, relativePath: relativePath))
+    if container == .m4a, file.pathExtension.lowercased() != "m4a" {
+      return try AVAudioFile(
+        forReading: m4aAlias(file, relativePath: relativePath)
+      )
     }
+    return try AVAudioFile(forReading: file)
   }
 
   private func m4aAlias(_ file: URL, relativePath: String) throws -> URL {
@@ -317,15 +362,40 @@ public final class ShortSfxEngine: NSObject {
 
   private func finishDecode(
     _ relativePath: String,
-    decoded: (AVAudioPCMBuffer, Int, TimeInterval, Int64),
+    outcome: DecodeOutcome,
     startedAt: TimeInterval
   ) {
     guard !stopped else { return }
     let pending = inFlight.removeValue(forKey: relativePath) ?? []
+    let decoded: (AVAudioPCMBuffer, Int, TimeInterval, Int64)
+    switch outcome {
+    case .webkit(let reason):
+      metric(
+        "native_sfx_webkit_route",
+        path: relativePath,
+        details: ["reason": reason]
+      )
+      for request in pending {
+        routeWebKit(request, reason: reason)
+      }
+      return
+    case .silent(let reason, let message):
+      metric(
+        "native_sfx_silent",
+        path: relativePath,
+        details: ["reason": reason, "message": message]
+      )
+      for request in pending {
+        routeSilent(request, reason: reason)
+      }
+      return
+    case .buffer(let value):
+      decoded = value
+    }
     makeCacheSpace(for: decoded.1)
     guard cacheBytes + decoded.1 <= configuration.pcmCacheByteLimit else {
       for request in pending {
-        fallback(request, reason: "pcm_cache_full")
+        routeSilent(request, reason: "pcm_cache_full")
       }
       return
     }
@@ -355,21 +425,13 @@ public final class ShortSfxEngine: NSObject {
     }
   }
 
-  private func failDecode(_ relativePath: String, reason: String) {
-    let pending = inFlight.removeValue(forKey: relativePath) ?? []
-    metric("native_sfx_decode_failed", path: relativePath, details: ["reason": reason])
-    for request in pending {
-      fallback(request, reason: "decode_failed")
-    }
-  }
-
   private func schedule(_ request: PlayRequest, relativePath: String) {
     guard var cached = buffers[relativePath] else {
-      fallback(request, reason: "buffer_missing")
+      routeSilent(request, reason: "buffer_missing")
       return
     }
     guard let engine = ensureEngineRunning(), engine.isRunning else {
-      fallback(request, reason: "engine_unavailable")
+      routeWebKit(request, reason: "engine_unavailable")
       return
     }
     stopVoice(elementId: request.elementId, notifyEnded: false)
@@ -406,11 +468,11 @@ public final class ShortSfxEngine: NSObject {
         buffers[relativePath] = stored
       }
       evictBuffers()
-      metric("native_sfx_fallback", path: relativePath, details: [
+      metric("native_sfx_schedule_failed", path: relativePath, details: [
         "reason": "schedule_exception",
         "exception": String(exceptionReason),
       ])
-      fallback(request, reason: "schedule_failed")
+      routeSilent(request, reason: "schedule_failed")
       return
     }
     metric("native_sfx_play_scheduled", path: relativePath, details: [
@@ -464,13 +526,22 @@ public final class ShortSfxEngine: NSObject {
     }
   }
 
-  private func fallback(_ request: PlayRequest, reason: String) {
+  private func routeWebKit(_ request: PlayRequest, reason: String) {
     metric(
-      "native_sfx_fallback",
+      "native_sfx_webkit_route",
       path: sandbox.relativePath(for: request.url),
       details: ["reason": reason]
     )
-    delegate?.shortSfxEngineDidProduce(.fallback(request.elementId, reason))
+    delegate?.shortSfxEngineDidProduce(.webkit(request.elementId, reason))
+  }
+
+  private func routeSilent(_ request: PlayRequest, reason: String) {
+    metric(
+      "native_sfx_silent",
+      path: sandbox.relativePath(for: request.url),
+      details: ["reason": reason]
+    )
+    delegate?.shortSfxEngineDidProduce(.silent(request.elementId, reason))
   }
 
   private func ensureEngineRunning() -> AVAudioEngine? {
@@ -488,7 +559,10 @@ public final class ShortSfxEngine: NSObject {
       )
       try session.setActive(true)
     } catch {
-      metric("native_sfx_fallback", details: ["reason": "session_start_failed"])
+      metric(
+        "native_sfx_engine_unavailable",
+        details: ["reason": "session_start_failed"]
+      )
       return nil
     }
     #endif
@@ -505,7 +579,10 @@ public final class ShortSfxEngine: NSObject {
     // Touch the main mixer so the output node is created before start().
     _ = preparedEngine.mainMixerNode
     guard startEngineSafely(preparedEngine) else {
-      metric("native_sfx_fallback", details: ["reason": "engine_start_failed"])
+      metric(
+        "native_sfx_engine_unavailable",
+        details: ["reason": "engine_start_failed"]
+      )
       return nil
     }
     return preparedEngine
@@ -524,7 +601,7 @@ public final class ShortSfxEngine: NSObject {
       try? engine.start()
     }
     if let exceptionReason {
-      metric("native_sfx_fallback", details: [
+      metric("native_sfx_engine_unavailable", details: [
         "reason": "engine_start_exception",
         "exception": String(exceptionReason),
       ])

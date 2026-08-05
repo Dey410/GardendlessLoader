@@ -65,6 +65,34 @@ final class AudioTests: XCTestCase {
     )
   }
 
+  func testRouteClassifierRoutesOnlyShortBoundedAudioToNative() {
+    let configuration = GameConfiguration.default
+    XCTAssertEqual(
+      ShortSfxEngine.route(
+        compressedBytes: 100_000,
+        duration: 2,
+        configuration: configuration
+      ),
+      .native
+    )
+    XCTAssertEqual(
+      ShortSfxEngine.route(
+        compressedBytes: 300_000,
+        duration: 2,
+        configuration: configuration
+      ),
+      .webkit("compressed_size_limit")
+    )
+    XCTAssertEqual(
+      ShortSfxEngine.route(
+        compressedBytes: 100_000,
+        duration: 20,
+        configuration: configuration
+      ),
+      .webkit("duration_limit")
+    )
+  }
+
   func testAudioContainerDetection() throws {
     let m4a = root.appendingPathComponent("mislabeled.mp3")
     try Data([0, 0, 0, 24] + Array("ftypM4A ".utf8) + [0, 0, 0, 0])
