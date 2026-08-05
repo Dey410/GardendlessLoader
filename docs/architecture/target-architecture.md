@@ -69,7 +69,7 @@ flowchart TD
 | `GardendlessGPNext` | GP-Next 沙箱 FS、补丁导入/替换、导出/外链 | `GpNextFileSystem`、`GpNextPackageImporter`、`GpNextCommandRouter` |
 | `GardendlessAudio` | 短音效解码/播放、缓存、fallback、异常守卫 | `ShortSfxEngine`、`AudioPlaybackController`、`SfxExceptionGuard` |
 | `GardendlessLogging` | JSONL 持久化、脱敏、轮转、快照、删除 | `LogStore`、`LogEventBuilder`、`LogSanitizer` |
-| `GardendlessHost` | Flutter 通道适配、App 启动、ViewController 装配 | `LauncherBootstrap`、`GameHostController`、`AppChannelRouter` |
+| `Runner 壳（Host）` | Flutter 通道适配、App 启动、ViewController 装配（留在 Runner target） | `LauncherBootstrap`、`GameHostController`、`AppChannelRouter` |
 
 ## 4. 依赖方向
 
@@ -80,9 +80,9 @@ flowchart TD
 - `GardendlessAudio` → Core（定位器/路径）、Logging（可选指标）。
 - `GardendlessImport` → Core（错误/路径）。
 - `GardendlessLogging`：无内部依赖。
-- `GardendlessHost` → 全部能力模块；是唯一与 Flutter/Dart 通道直接交互的模块。
+- Runner 壳（Host）→ 全部能力模块；是唯一与 Flutter/Dart 通道直接交互的代码。
 
-禁止反向依赖；`GardendlessHost` 之外不得 import Flutter。
+禁止反向依赖；Runner 壳之外不得 import Flutter（Kit 保持可独立 `swift test`）。
 
 ## 5. 领域模型与数据所有权
 

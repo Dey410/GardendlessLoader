@@ -111,6 +111,10 @@ jobs:
           fi
           flutter pub get
 
+      - name: Test native GardendlessKit
+        working-directory: ios/GardendlessKit
+        run: swift test
+
       - name: Install CocoaPods dependencies
         run: pod install
         working-directory: ios

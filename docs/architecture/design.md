@@ -189,7 +189,6 @@ public final class ShortSfxEngine {
 
 ```swift
 public final class LogStore {
-  public func install(messenger: FlutterBinaryMessenger)
   public func emit(_ event: [String: Any])
   public func snapshot(limit: Int) -> [String: Any]
   public func flush(timeout: TimeInterval) -> Bool
@@ -198,18 +197,12 @@ public final class LogStore {
 }
 ```
 
+- `LogStore` 本身不 import Flutter；FlutterMethodChannel 适配由 Runner 壳实现（`LogChannelBridge` 协议）。
 - schema v1、2MB 分段、500 条内存环、7 天/5 组/10MB 清理、16KB 事件截断、pending 1000/1100 丢弃保护、脱敏正则与 `<user-home>` 替换。
 
 ## 9. GardendlessHost（App 壳）
 
-```swift
-public final class LauncherBootstrap {
-  public static func start(application: UIApplication, window: UIWindow)
-}
-public final class GameHostController: UIViewController { ... }
-```
-
-- 唯一 import Flutter 的模块；负责：launcher engine 生命周期、4 个通道注册、ZIP 导入通道转 `GardendlessImport`、launch 转 Core/Bridge/Resource/Audio/GPNext 装配、退出结果写入、AppLogStore 安装。
+- Host 是留在 Runner target 的薄壳（唯一 import Flutter 的代码）：launcher engine 生命周期、4 个通道注册、ZIP 导入通道转 `GardendlessImport`、launch 转 Core/Bridge/Resource/Audio/GPNext 装配、退出结果写入、LogStore 的 Flutter 适配。
 - ViewController 装配使用组合而非继承：`GameHostController` 聚合 `WKWebView`、`ScriptMessageBridge`、`ResourceSchemeHandler`、`ShortSfxEngine`。
 
 ## 10. 测试策略
