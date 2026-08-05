@@ -433,7 +433,7 @@ cd build/ios/ipa && zip -r GardendlessLoader-unsigned.ipa Payload
 - 已重写内容：iOS 原生层全部替换为 `ios/GardendlessKit`（7 个 SwiftPM 能力模块 + 1 个 ObjC 异常守卫 target），`ios/Runner` 瘦身为薄壳。
 - 新架构：候选 B（Flutter 启动器保留 + iOS 原生层 Clean-Slate）。
 - 新增文件：GardendlessKit 包（源码/测试）、GameHostController.swift、AudioScriptBridge.swift、tool/update_ios_project.rb、架构与交付文档。
-- 移除编译但保留磁盘：14 个旧 iOS 原生文件（见 `docs/breaking-changes.md` 第 3 节）。
+- 旧文件删除：13 个旧 iOS 原生文件已按用户确认从磁盘删除（Git 历史保留可恢复副本）；`WebKitHighRefreshRate.h` 作为新实现的独立兼容组件保留。
 - 依赖变化：无新增第三方依赖；新增本地 SwiftPM 包依赖（系统框架 + zlib）。
 - 行为保留：通道契约、Origin、JS 桥、触摸矩阵、自动收集、水印、GP-Next 规则、导出/导入、数据布局。
 - 有意改变：导出临时文件 commit 后使用用户建议文件名；原生错误模型/内部 API 全新；CI 增加 Swift 测试门禁。
@@ -462,7 +462,7 @@ cd build/ios/ipa && zip -r GardendlessLoader-unsigned.ipa Payload
 
 ## 17. 待确认事项与后续工作
 
-1. **旧文件删除**：`docs/breaking-changes.md` 第 3 节列出 14 个已移出编译的文件完整路径。按仓库删除安全规则，确认后才可逐个删除。
+1. **旧文件删除**：已完成（13 个文件逐路径确认删除；`WebKitHighRefreshRate.h` 保留，见 `docs/breaking-changes.md` 第 3 节）。
 2. **真机验证**：建议按 `docs/acceptance-checklist.md` 执行 iOS 全量验收（触摸矩阵、自动收集、导出、GP-Next、音频、后台/恢复）。
 3. **纯 SPM 迁移**（可选）：`pod deintegrate` 并移除 xcconfig 的 Pods 引用，消除 Flutter 构建警告。
 4. **CI 远端确认**：push 后观察 iOS job（新增 `swift test` 门禁）与 unsigned IPA 产物。

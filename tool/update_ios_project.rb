@@ -41,7 +41,6 @@ LEGACY_SOURCES = %w[
   NativeSfxEngine.swift
   AppLogStore.swift
   JavaScriptArgumentEncoder.swift
-  WebKitHighRefreshRate.h
   NativeSfxExceptionGuard.h
   NativeSfxExceptionGuard.m
 ].freeze
@@ -50,11 +49,21 @@ project = Xcodeproj::Project.open(PROJECT_PATH)
 target = project.targets.find { |candidate| candidate.name == "Runner" }
 abort "Runner target not found" unless target
 
-package = project.new(Xcodeproj::Project::Object::XCLocalSwiftPackageReference)
-package.relative_path = LOCAL_PACKAGE_PATH
-project.root_object.package_references << package
+package = project.root_object.package_references.find do |reference|
+  reference.respond_to?(:relative_path) &&
+    reference.relative_path == LOCAL_PACKAGE_PATH
+end
+unless package
+  package = project.new(Xcodeproj::Project::Object::XCLocalSwiftPackageReference)
+  package.relative_path = LOCAL_PACKAGE_PATH
+  project.root_object.package_references << package
+end
 
 KIT_PRODUCTS.each do |product_name|
+  next if target.package_product_dependencies.any? do |dependency|
+    dependency.respond_to?(:product_name) &&
+      dependency.product_name == product_name
+  end
   dependency = project.new(Xcodeproj::Project::Object::XCSwiftPackageProductDependency)
   dependency.product_name = product_name
   dependency.package = package
@@ -84,6 +93,15 @@ target.source_build_phase.files.dup.each do |build_file|
 
   removed << path
   build_file.remove_from_project
+end
+
+legacy_references = runner_group.children.select do |child|
+  child.is_a?(Xcodeproj::Project::Object::PBXFileReference) &&
+    LEGACY_SOURCES.include?(child.path)
+end
+legacy_references.each do |reference|
+  removed << reference.path
+  reference.remove_from_project
 end
 
 project.save

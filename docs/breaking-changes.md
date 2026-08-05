@@ -7,7 +7,7 @@
 
 | # | 变更 | 影响 | 迁移方式 |
 | --- | --- | --- | --- |
-| 1 | `ios/Runner` 旧 Swift 原生实现（AppDelegate 中的 ZIP 逻辑、GameViewController、SchemeHandler、桥、音频、GP-Next、日志）不再编译 | 仅内部实现 | 无需用户操作；旧文件保留在磁盘与 Git 历史，删除需另行确认 |
+| 1 | `ios/Runner` 旧 Swift 原生实现（AppDelegate 中的 ZIP 逻辑、GameViewController、SchemeHandler、桥、音频、GP-Next、日志）不再编译 | 仅内部实现 | 无需用户操作；旧文件已按确认从磁盘删除（Git 历史可恢复） |
 | 2 | 新实现移至 `ios/GardendlessKit/`（SwiftPM 7 模块 + 1 个 ObjC 守卫 target） | 仅内部结构 | 无需迁移 |
 | 3 | `ios/Runner.xcodeproj` 增加本地 SwiftPM 依赖；`tool/update_ios_project.rb` 可重复执行该工程更新 | 开发者构建流程 | 以脚本为唯一工程更新入口 |
 | 4 | 原生错误码/内部 API 全部重新设计（`GameError.Code`） | 仅内部 | Dart 通道错误码不变 |
@@ -25,9 +25,9 @@
 - 用户可见行为、中文文案与验收清单。
 - 数据布局与存档。
 
-## 3. 待确认删除清单
+## 3. 旧文件删除记录（2026-08-05 用户已确认）
 
-以下旧文件已移出编译目标但仍在磁盘；确认后逐文件删除（遵守仓库删除安全规则）：
+以下旧文件已移出编译目标，并在用户确认后从磁盘删除（遵守仓库删除安全规则，逐文件操作）：
 
 ```text
 ios/Runner/AppLogStore.swift
@@ -43,5 +43,6 @@ ios/Runner/JavaScriptArgumentEncoder.swift
 ios/Runner/NativeSfxEngine.swift
 ios/Runner/NativeSfxExceptionGuard.h
 ios/Runner/NativeSfxExceptionGuard.m
-ios/Runner/WebKitHighRefreshRate.h
 ```
+
+`ios/Runner/WebKitHighRefreshRate.h` **保留**：新 Runner 壳仍在调用其中的刷新率兼容函数（ADR-0002 的独立兼容组件）。

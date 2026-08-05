@@ -45,19 +45,6 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		9ADAE63E69BF599F8BD69EA5 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		A313119762DE6CB1B444F3C6 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
-		B41000000000000000000001 /* GameSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameSession.swift; sourceTree = "<group>"; };
-		B41000000000000000000003 /* GameResourceSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameResourceSchemeHandler.swift; sourceTree = "<group>"; };
-		B41000000000000000000005 /* GameNavigationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameNavigationDelegate.swift; sourceTree = "<group>"; };
-		B41000000000000000000007 /* GameScriptBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameScriptBridge.swift; sourceTree = "<group>"; };
-		B4100000000000000000000B /* GameViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewController.swift; sourceTree = "<group>"; };
-		B4100000000000000000000D /* GpNextNativeCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpNextNativeCore.swift; sourceTree = "<group>"; };
-		B4100000000000000000000F /* AppLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogStore.swift; sourceTree = "<group>"; };
-		B41000000000000000000011 /* GameResourceLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameResourceLocator.swift; sourceTree = "<group>"; };
-		B41000000000000000000013 /* NativeSfxEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSfxEngine.swift; sourceTree = "<group>"; };
-		B41000000000000000000015 /* GameAudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameAudioBridge.swift; sourceTree = "<group>"; };
-		B41000000000000000000017 /* JavaScriptArgumentEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JavaScriptArgumentEncoder.swift; sourceTree = "<group>"; };
-		B41000000000000000000019 /* NativeSfxExceptionGuard.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = NativeSfxExceptionGuard.m; sourceTree = "<group>"; };
-		B4100000000000000000001B /* NativeSfxExceptionGuard.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeSfxExceptionGuard.h; sourceTree = "<group>"; };
 		E1079332BB0326BDE69DB7A7 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -125,19 +112,6 @@
 			isa = PBXGroup;
 			children = (
 				97C146FD1CF9000F007C117D /* AppDelegate.swift */,
-				B41000000000000000000001 /* GameSession.swift */,
-				B41000000000000000000003 /* GameResourceSchemeHandler.swift */,
-				B41000000000000000000011 /* GameResourceLocator.swift */,
-				B41000000000000000000005 /* GameNavigationDelegate.swift */,
-				B41000000000000000000007 /* GameScriptBridge.swift */,
-				B41000000000000000000015 /* GameAudioBridge.swift */,
-				B41000000000000000000017 /* JavaScriptArgumentEncoder.swift */,
-				B4100000000000000000000B /* GameViewController.swift */,
-				B41000000000000000000013 /* NativeSfxEngine.swift */,
-				B41000000000000000000019 /* NativeSfxExceptionGuard.m */,
-				B4100000000000000000001B /* NativeSfxExceptionGuard.h */,
-				B4100000000000000000000D /* GpNextNativeCore.swift */,
-				B4100000000000000000000F /* AppLogStore.swift */,
 				97C146FA1CF9000F007C117D /* Assets.xcassets */,
 				97C146F11CF9000F007C117D /* Main.storyboard */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
