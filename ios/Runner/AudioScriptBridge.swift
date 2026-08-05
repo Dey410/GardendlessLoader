@@ -76,9 +76,6 @@ final class AudioScriptBridge: NSObject,
     case .ended(let id):
       function = "__gardendlessNativeAudioEnded"
       elementId = id
-    case .webkit(let id, _):
-      function = "__gardendlessNativeAudioWebKit"
-      elementId = id
     case .silent(let id, _):
       function = "__gardendlessNativeAudioSilent"
       elementId = id

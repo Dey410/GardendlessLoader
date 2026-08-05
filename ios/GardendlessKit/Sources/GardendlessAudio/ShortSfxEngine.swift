@@ -10,26 +10,23 @@ public protocol ShortSfxEngineDelegate: AnyObject {
   func shortSfxEngineDidProduce(_ result: ShortSfxEngine.PlayResult)
 }
 
-public enum NativeAudioRoute: Equatable {
+public enum NativeAudioDecision: Equatable {
   case native
-  case webkit(String)
+  case silent(String)
 }
 
 /// Decodes short non-BGM sound effects natively. Audio that does not fit the
-/// short-SFX contract is routed directly to WebKit; audio that fails after
-/// native classification is silenced instead of falling back.
+/// short-SFX contract is silenced; nothing is routed back to WebKit after a
+/// native attempt.
 public final class ShortSfxEngine: NSObject {
   public enum PlayResult {
     case ended(String)
-    /// Play this element through WebKit: the file is not a native short SFX.
-    case webkit(String, String)
     /// Native decode was attempted but failed; play nothing.
     case silent(String, String)
   }
 
   private enum DecodeOutcome {
     case buffer(AVAudioPCMBuffer, Int, TimeInterval, Int64)
-    case webkit(String)
     case silent(String, String)
   }
 
@@ -108,20 +105,20 @@ public final class ShortSfxEngine: NSObject {
   }
 
   /// Pure classification used before native decoding: only bounded, short
-  /// audio is accepted; anything else must be played by WebKit.
-  public static func route(
+  /// audio is accepted; anything else is silenced.
+  public static func classify(
     compressedBytes: Int64,
     duration: TimeInterval,
     configuration: GameConfiguration = .default
-  ) -> NativeAudioRoute {
+  ) -> NativeAudioDecision {
     guard compressedBytes > 0,
           compressedBytes <= configuration.compressedSfxByteLimit else {
-      return .webkit("compressed_size_limit")
+      return .silent("compressed_size_limit")
     }
     guard duration.isFinite,
           duration > 0,
           duration <= configuration.maximumSfxDuration else {
-      return .webkit("duration_limit")
+      return .silent("duration_limit")
     }
     return .native
   }
@@ -216,7 +213,7 @@ public final class ShortSfxEngine: NSObject {
           !tokens.contains(where: {
             AudioPlaybackLimits.excludedTokens.contains(String($0))
           }) else {
-      routeWebKit(request, reason: "not_short_sfx")
+      routeSilent(request, reason: "not_short_sfx")
       return
     }
     if var cached = buffers[relativePath] {
@@ -269,7 +266,10 @@ public final class ShortSfxEngine: NSObject {
       return .silent("container_detect_failed", String(describing: error))
     }
     guard container != .unsupported else {
-      return .webkit("unsupported_container")
+      return .silent(
+        "unsupported_container",
+        "Audio container is unsupported"
+      )
     }
     let audioFile: AVAudioFile
     do {
@@ -283,13 +283,13 @@ public final class ShortSfxEngine: NSObject {
     }
     let format = audioFile.processingFormat
     let duration = Double(audioFile.length) / format.sampleRate
-    switch ShortSfxEngine.route(
+    switch ShortSfxEngine.classify(
       compressedBytes: properties.length,
       duration: duration,
       configuration: configuration
     ) {
-    case .webkit(let reason):
-      return .webkit(reason)
+    case .silent(let reason):
+      return .silent(reason, "Audio is not a native short SFX")
     case .native:
       break
     }
@@ -369,16 +369,6 @@ public final class ShortSfxEngine: NSObject {
     let pending = inFlight.removeValue(forKey: relativePath) ?? []
     let decoded: (AVAudioPCMBuffer, Int, TimeInterval, Int64)
     switch outcome {
-    case .webkit(let reason):
-      metric(
-        "native_sfx_webkit_route",
-        path: relativePath,
-        details: ["reason": reason]
-      )
-      for request in pending {
-        routeWebKit(request, reason: reason)
-      }
-      return
     case .silent(let reason, let message):
       metric(
         "native_sfx_silent",
@@ -431,7 +421,7 @@ public final class ShortSfxEngine: NSObject {
       return
     }
     guard let engine = ensureEngineRunning(), engine.isRunning else {
-      routeWebKit(request, reason: "engine_unavailable")
+      routeSilent(request, reason: "engine_unavailable")
       return
     }
     stopVoice(elementId: request.elementId, notifyEnded: false)
@@ -524,15 +514,6 @@ public final class ShortSfxEngine: NSObject {
       buffers.removeValue(forKey: oldest.key)
       cacheBytes -= oldest.value.byteCount
     }
-  }
-
-  private func routeWebKit(_ request: PlayRequest, reason: String) {
-    metric(
-      "native_sfx_webkit_route",
-      path: sandbox.relativePath(for: request.url),
-      details: ["reason": reason]
-    )
-    delegate?.shortSfxEngineDidProduce(.webkit(request.elementId, reason))
   }
 
   private func routeSilent(_ request: PlayRequest, reason: String) {

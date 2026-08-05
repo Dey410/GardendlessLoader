@@ -100,15 +100,6 @@
     element.dispatchEvent(new Event("ended"));
   };
 
-  window.__gardendlessNativeAudioWebKit = function (id) {
-    const element = elements.get(String(id));
-    if (!element) return;
-    const state = nativeStates.get(element);
-    if (!state || !state.playing) return;
-    state.playing = false;
-    originalPlay.call(element).catch(function () {});
-  };
-
   window.__gardendlessNativeAudioSilent = function (id) {
     const element = elements.get(String(id));
     if (!element) return;

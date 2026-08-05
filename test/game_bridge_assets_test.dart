@@ -110,8 +110,8 @@ void main() {
 
     expect(proxy, contains('__pvzgeLazySrc'));
     expect(proxy, contains('gardendlessAudio'));
-    expect(proxy, contains('__gardendlessNativeAudioWebKit'));
     expect(proxy, contains('__gardendlessNativeAudioSilent'));
+    expect(proxy, isNot(contains('__gardendlessNativeAudioWebKit')));
     expect(proxy, isNot(contains('__gardendlessNativeAudioFallback')));
     expect(proxy, contains('element.dispatchEvent(new Event("ended"))'));
     expect(controller, contains('"nativeSfxEnabled": nativeSfxEnabled'));

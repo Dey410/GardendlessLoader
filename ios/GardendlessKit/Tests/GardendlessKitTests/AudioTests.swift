@@ -65,10 +65,10 @@ final class AudioTests: XCTestCase {
     )
   }
 
-  func testRouteClassifierRoutesOnlyShortBoundedAudioToNative() {
+  func testRouteClassifierSilencesEverythingOutsideShortBounds() {
     let configuration = GameConfiguration.default
     XCTAssertEqual(
-      ShortSfxEngine.route(
+      ShortSfxEngine.classify(
         compressedBytes: 100_000,
         duration: 2,
         configuration: configuration
@@ -76,20 +76,20 @@ final class AudioTests: XCTestCase {
       .native
     )
     XCTAssertEqual(
-      ShortSfxEngine.route(
+      ShortSfxEngine.classify(
         compressedBytes: 300_000,
         duration: 2,
         configuration: configuration
       ),
-      .webkit("compressed_size_limit")
+      .silent("compressed_size_limit")
     )
     XCTAssertEqual(
-      ShortSfxEngine.route(
+      ShortSfxEngine.classify(
         compressedBytes: 100_000,
         duration: 20,
         configuration: configuration
       ),
-      .webkit("duration_limit")
+      .silent("duration_limit")
     )
   }
 
