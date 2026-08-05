@@ -51,8 +51,9 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     return queue
   }()
 
-  private let taskStateLock = NSRecursiveLock()
+  private let taskStateLock = NSLock()
   private var taskStates = [ObjectIdentifier: TaskState]()
+  private var callbackReservations = [ObjectIdentifier: Int]()
 
   private let smallAudioByteLimit = 256 * 1024
   private let audioCacheByteLimit = 24 * 1024 * 1024
@@ -102,6 +103,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     defer {
       taskStateLock.synchronized {
         taskStates.removeValue(forKey: identifier)
+        callbackReservations.removeValue(forKey: identifier)
       }
     }
     guard isActive(identifier) else { return }
@@ -578,7 +580,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       httpVersion: "HTTP/1.1",
       headerFields: headers
     ) else { return false }
-    return withActiveTask(identifier) {
+    return performCallback(identifier) {
       task.didReceive(response)
     }
   }
@@ -588,17 +590,15 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     identifier: ObjectIdentifier,
     data: Data
   ) -> Bool {
-    withActiveTask(identifier) {
+    performCallback(identifier) {
       task.didReceive(data)
     }
   }
 
   private func finishTask(_ task: WKURLSchemeTask, identifier: ObjectIdentifier) {
-    taskStateLock.synchronized {
-      guard taskStates[identifier] == .active else { return }
-      taskStates[identifier] = .finished
-      task.didFinish()
-    }
+    guard reserveCallback(identifier, finishing: true) else { return }
+    defer { releaseCallback(identifier) }
+    task.didFinish()
   }
 
   private func failTask(
@@ -606,21 +606,41 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     identifier: ObjectIdentifier,
     error: Error
   ) {
-    taskStateLock.synchronized {
-      guard taskStates[identifier] == .active else { return }
-      taskStates[identifier] = .finished
-      task.didFailWithError(error)
-    }
+    guard reserveCallback(identifier, finishing: true) else { return }
+    defer { releaseCallback(identifier) }
+    task.didFailWithError(error)
   }
 
-  private func withActiveTask(
+  private func performCallback(
     _ identifier: ObjectIdentifier,
     action: () -> Void
   ) -> Bool {
+    guard reserveCallback(identifier) else { return false }
+    defer { releaseCallback(identifier) }
+    action()
+    return true
+  }
+
+  private func reserveCallback(
+    _ identifier: ObjectIdentifier,
+    finishing: Bool = false
+  ) -> Bool {
     taskStateLock.synchronized {
       guard taskStates[identifier] == .active else { return false }
-      action()
+      callbackReservations[identifier, default: 0] += 1
+      if finishing { taskStates[identifier] = .finished }
       return true
+    }
+  }
+
+  private func releaseCallback(_ identifier: ObjectIdentifier) {
+    taskStateLock.synchronized {
+      let remaining = (callbackReservations[identifier] ?? 1) - 1
+      if remaining > 0 {
+        callbackReservations[identifier] = remaining
+      } else {
+        callbackReservations.removeValue(forKey: identifier)
+      }
     }
   }
 
@@ -638,7 +658,7 @@ final class GameResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   }
 }
 
-private extension NSRecursiveLock {
+private extension NSLock {
   func synchronized<T>(_ body: () throws -> T) rethrows -> T {
     lock()
     defer { unlock() }

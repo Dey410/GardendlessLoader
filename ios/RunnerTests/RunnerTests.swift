@@ -194,7 +194,12 @@ final class RunnerTests: XCTestCase {
     let stopped = expectation(description: "scheme task stopped")
     task.finished.isInverted = true
     task.onResponse = {
-      handler.webView(webView, stop: task)
+      let stopReturned = DispatchSemaphore(value: 0)
+      DispatchQueue.global(qos: .userInitiated).async {
+        handler.webView(webView, stop: task)
+        stopReturned.signal()
+      }
+      XCTAssertEqual(stopReturned.wait(timeout: .now() + 0.2), .success)
       stopped.fulfill()
     }
 

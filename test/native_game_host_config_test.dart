@@ -106,6 +106,9 @@ void main() {
         handler, contains('Data(contentsOf: file, options: [.mappedIfSafe])'));
     expect(handler, contains('audioCacheByteLimit = 24 * 1024 * 1024'));
     expect(handler, contains('case cancelled'));
+    expect(handler, contains('guard reserveCallback(identifier) else'));
+    expect(handler, contains('defer { releaseCallback(identifier) }'));
+    expect(handler, isNot(contains('private func withActiveTask(')));
     expect(handler, isNot(contains('attributes: .concurrent')));
     expect(session, contains('WKContentRuleListStore.default()'));
     expect(session, contains('["url-filter": "^http://"]'));
