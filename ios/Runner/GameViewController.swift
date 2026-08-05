@@ -141,7 +141,7 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
     let configuredScriptBridge = GameScriptBridge(webView: webView)
     configuredScriptBridge.delegate = self
     scriptBridge = configuredScriptBridge
-    contentController.add(
+    contentController.addScriptMessageHandler(
       configuredScriptBridge,
       contentWorld: .page,
       name: GameScriptBridge.name

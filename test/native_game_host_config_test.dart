@@ -54,6 +54,8 @@ void main() {
         File('ios/Runner/GameViewController.swift').readAsStringSync();
     final handler =
         File('ios/Runner/GameResourceSchemeHandler.swift').readAsStringSync();
+    final scriptBridge =
+        File('ios/Runner/GameScriptBridge.swift').readAsStringSync();
     final session = File('ios/Runner/GameSession.swift').readAsStringSync();
     final bridgingHeader =
         File('ios/Runner/Runner-Bridging-Header.h').readAsStringSync();
@@ -79,10 +81,14 @@ void main() {
     expect(controller, contains('17.0 / 9.0'));
     expect(controller, contains('injectionTime: .atDocumentStart'));
     expect(
+      scriptBridge,
+      contains('WKScriptMessageHandlerWithReply'),
+    );
+    expect(
       controller,
       matches(
         RegExp(
-          r'contentController\.add\(\s*configuredScriptBridge,\s*contentWorld: \.page,\s*name: GameScriptBridge\.name\s*\)',
+          r'contentController\.addScriptMessageHandler\(\s*configuredScriptBridge,\s*contentWorld: \.page,\s*name: GameScriptBridge\.name\s*\)',
         ),
       ),
     );
@@ -99,7 +105,6 @@ void main() {
       isNot(
           matches(RegExp(r'contentController\.add\(\s*(script|audio)Bridge,'))),
     );
-    expect(controller, isNot(contains('addScriptMessageHandler')));
     expect(controller, contains('"touch_patch.js"'));
     expect(controller, contains('"auto_sun.js"'));
     expect(
