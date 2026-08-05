@@ -80,17 +80,24 @@ void main() {
     expect(controller, contains('injectionTime: .atDocumentStart'));
     expect(
       controller,
-      contains(
-        'contentController.add(scriptBridge, contentWorld: .page, name: GameScriptBridge.name)',
+      matches(
+        RegExp(
+          r'contentController\.add\(\s*configuredScriptBridge,\s*contentWorld: \.page,\s*name: GameScriptBridge\.name\s*\)',
+        ),
       ),
     );
     expect(
       controller,
       matches(
         RegExp(
-          r'contentController\.add\(\s*audioBridge,\s*contentWorld: \.page,\s*name: GameAudioBridge\.name\s*\)',
+          r'contentController\.add\(\s*configuredAudioBridge,\s*contentWorld: \.page,\s*name: GameAudioBridge\.name\s*\)',
         ),
       ),
+    );
+    expect(
+      controller,
+      isNot(
+          matches(RegExp(r'contentController\.add\(\s*(script|audio)Bridge,'))),
     );
     expect(controller, isNot(contains('addScriptMessageHandler')));
     expect(controller, contains('"touch_patch.js"'));

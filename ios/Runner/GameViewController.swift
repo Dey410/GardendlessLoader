@@ -138,15 +138,21 @@ final class GameViewController: UIViewController, GameScriptBridgeDelegate, UIDo
     webView.scrollView.bounces = false
     webView.allowsBackForwardNavigationGestures = false
     webView.allowsLinkPreview = false
-    scriptBridge = GameScriptBridge(webView: webView)
-    scriptBridge.delegate = self
-    contentController.add(scriptBridge, contentWorld: .page, name: GameScriptBridge.name)
-    audioBridge = GameAudioBridge(
+    let configuredScriptBridge = GameScriptBridge(webView: webView)
+    configuredScriptBridge.delegate = self
+    scriptBridge = configuredScriptBridge
+    contentController.add(
+      configuredScriptBridge,
+      contentWorld: .page,
+      name: GameScriptBridge.name
+    )
+    let configuredAudioBridge = GameAudioBridge(
       engine: nativeSfxEngine,
       webViewProvider: { [weak self] in self?.webView }
     )
+    audioBridge = configuredAudioBridge
     contentController.add(
-      audioBridge,
+      configuredAudioBridge,
       contentWorld: .page,
       name: GameAudioBridge.name
     )
