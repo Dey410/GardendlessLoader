@@ -5,7 +5,11 @@
   const handler = window.webkit && window.webkit.messageHandlers
     ? window.webkit.messageHandlers.gardendlessAudio
     : null;
-  if (!config.nativeSfxEnabled || !handler || window.__gardendlessNativeAudioInstalled) return;
+  if (!config.nativeSfxEnabled || !handler ||
+      (window.__gardendlessNativeAudioInstalled &&
+       window.__pvzgeAudioFacadeLoaded)) {
+    return;
+  }
 
   const sources = new WeakMap();
   const ids = new WeakMap();
@@ -14,6 +18,7 @@
   const originalPlay = HTMLMediaElement.prototype.play;
   const originalPause = HTMLMediaElement.prototype.pause;
   let nextId = 1;
+  const diagnostics = window.__gardendlessAudioDiagnostics;
 
   function elementId(element) {
     let id = ids.get(element);
@@ -62,14 +67,23 @@
       const url = absoluteURL(value);
       sources.set(this, url);
       if (url) {
-        post({ command: "register", elementId: elementId(this), url: url });
+        if (diagnostics) {
+          diagnostics.record("lazySrcSet", { url: url });
+        }
       }
     }
   });
 
   HTMLMediaElement.prototype.play = function () {
     const url = sources.get(this);
-    if (!isNativeCandidate(this, url)) return originalPlay.call(this);
+    if (!isNativeCandidate(this, url)) {
+      if (diagnostics) {
+        diagnostics.record("webkitFallback", {
+          url: url || this.currentSrc || this.src || "",
+        });
+      }
+      return originalPlay.call(this);
+    }
     const id = elementId(this);
     if (!post({
       command: "play",
@@ -79,7 +93,18 @@
       playbackRate: this.playbackRate,
       loop: this.loop
     })) {
+      if (diagnostics) {
+        diagnostics.record("nativePostFailed", { elementId: id, url: url });
+      }
       return originalPlay.call(this);
+    }
+    if (diagnostics) {
+      const pending = diagnostics.beginNativePlay();
+      diagnostics.record("nativePlayPosted", {
+        elementId: id,
+        url: url,
+        pendingNative: pending
+      });
     }
     nativeStates.set(this, { playing: true });
     return Promise.resolve();
@@ -88,6 +113,10 @@
   HTMLMediaElement.prototype.pause = function () {
     const state = nativeStates.get(this);
     if (!state || !state.playing) return originalPause.call(this);
+    if (diagnostics) {
+      diagnostics.endNativePlay();
+      diagnostics.record("nativeStop", { elementId: elementId(this) });
+    }
     post({ command: "stop", elementId: elementId(this) });
     state.playing = false;
   };
@@ -97,16 +126,23 @@
     if (!element) return;
     const state = nativeStates.get(element);
     if (state) state.playing = false;
+    if (diagnostics) {
+      diagnostics.endNativePlay();
+      diagnostics.record("nativeEnded", { elementId: String(id) });
+    }
     element.dispatchEvent(new Event("ended"));
   };
 
-  window.__gardendlessNativeAudioFallback = function (id) {
+  window.__gardendlessNativeAudioSilent = function (id) {
     const element = elements.get(String(id));
     if (!element) return;
     const state = nativeStates.get(element);
-    if (!state || !state.playing) return;
-    state.playing = false;
-    originalPlay.call(element).catch(function () {});
+    if (state) state.playing = false;
+    if (diagnostics) {
+      diagnostics.endNativePlay();
+      diagnostics.record("nativeSilent", { elementId: String(id) });
+    }
+    element.dispatchEvent(new Event("ended"));
   };
 
   window.__gardendlessNativeAudioSetMasterVolume = function (volume) {
@@ -117,6 +153,10 @@
   };
 
   window.addEventListener("pagehide", function () {
+    if (diagnostics) {
+      diagnostics.resetPendingNative();
+      diagnostics.record("nativeStopAll", {});
+    }
     post({ command: "stopAll" });
   }, { once: true });
 

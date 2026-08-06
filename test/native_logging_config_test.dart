@@ -7,7 +7,7 @@ void main() {
     final android = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/logging/AppLogStore.kt',
     ).readAsStringSync();
-    final ios = File('ios/Runner/AppLogStore.swift').readAsStringSync();
+    final ios = File('ios/Runner/AppDelegate.swift').readAsStringSync();
     final ohos = File(
       'ohos/entry/src/main/ets/plugins/AppLoggerPlugin.ets',
     ).readAsStringSync();
@@ -31,7 +31,9 @@ void main() {
       File(
         'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/logging/AppLogStore.kt',
       ).readAsStringSync(),
-      File('ios/Runner/AppLogStore.swift').readAsStringSync(),
+      File(
+        'ios/GardendlessKit/Sources/GardendlessLogging/LogStore.swift',
+      ).readAsStringSync(),
       File('ohos/entry/src/main/ets/logging/AppLogStore.ets')
           .readAsStringSync(),
     ];
@@ -52,11 +54,19 @@ void main() {
   });
 
   test('all game hosts accept the shared JavaScript logging command', () {
+    final iosBridge = [
+      File(
+        'ios/GardendlessKit/Sources/GardendlessBridge/ScriptMessageBridge.swift',
+      ).readAsStringSync(),
+      File(
+        'ios/GardendlessKit/Sources/GardendlessBridge/BridgeRequest.swift',
+      ).readAsStringSync(),
+    ].join('\n');
     final sources = <String>[
       File(
         'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameBridge.kt',
       ).readAsStringSync(),
-      File('ios/Runner/GameScriptBridge.swift').readAsStringSync(),
+      iosBridge,
       File('ohos/entry/src/main/ets/game/GameBridge.ets').readAsStringSync(),
     ];
     for (final source in sources) {
@@ -64,7 +74,7 @@ void main() {
     }
     expect(sources[0], contains('bridge_message_invalid'));
     expect(
-      '${sources[1]}${File('ios/Runner/GameViewController.swift').readAsStringSync()}',
+      '${sources[1]}${File('ios/Runner/GameHostController.swift').readAsStringSync()}',
       contains('bridge_message_invalid'),
     );
     expect(sources[2], contains('bridge_message_invalid'));
@@ -81,7 +91,9 @@ void main() {
       File(
         'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameWebViewClient.kt',
       ).readAsStringSync(),
-      File('ios/Runner/GameResourceSchemeHandler.swift').readAsStringSync(),
+      File(
+        'ios/GardendlessKit/Sources/GardendlessResource/ResourceSchemeHandler.swift',
+      ).readAsStringSync(),
       File('ohos/entry/src/main/ets/game/NativeGameResourceHandler.ets')
           .readAsStringSync(),
     ];
@@ -104,17 +116,20 @@ void main() {
   });
 
   test('iOS previous-session parsing keeps collection chains out of guard', () {
-    final source = File('ios/Runner/AppLogStore.swift').readAsStringSync();
+    final source = File(
+      'ios/GardendlessKit/Sources/GardendlessLogging/LogStore.swift',
+    ).readAsStringSync();
 
     expect(source, contains('let candidates = files.filter'));
     expect(source, contains('guard let file = candidates.max'));
   });
 
   test('iOS log cleanup uses explicit types and small metadata helpers', () {
-    final source = File('ios/Runner/AppLogStore.swift').readAsStringSync();
+    final source = File(
+      'ios/GardendlessKit/Sources/GardendlessLogging/LogStore.swift',
+    ).readAsStringSync();
 
-    expect(source, contains('let discovered: [URL]'));
-    expect(source, contains('let groupedFiles: [String: [URL]]'));
+    expect(source, contains('let grouped = Dictionary(grouping: files)'));
     expect(source, contains('private func modificationDate('));
     expect(source, contains('private func fileSize('));
   });

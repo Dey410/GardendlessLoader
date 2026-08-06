@@ -1,16 +1,26 @@
 import Flutter
+import Foundation
+import GardendlessCore
+import GardendlessImport
+import GardendlessLogging
 import UniformTypeIdentifiers
 import UIKit
-import zlib
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
-  private let resourceZipImporterChannelName =
-    "io.github.dey410.gardendlessloader/resource_zip_importer"
-  private let gameHostChannelName =
-    "io.github.dey410.gardendlessloader/game_host"
-  private let externalBrowserChannelName =
-    "io.github.dey410.gardendlessloader/external_browser"
+  private let logStore: LogStore = {
+    let support = FileManager.default.urls(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask
+    )[0]
+    return LogStore(
+      directory: support.appendingPathComponent(
+        "GardendlessLoader/logs",
+        isDirectory: true
+      )
+    )
+  }()
+
   private var launcherEngine: FlutterEngine?
   private var gameHostChannel: FlutterMethodChannel?
   private var resourceZipImporterChannel: FlutterMethodChannel?
@@ -24,9 +34,18 @@ import zlib
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    let launched = super.application(
+      application,
+      didFinishLaunchingWithOptions: launchOptions
+    )
+    logStore.initialize()
     showLauncher()
     return launched
+  }
+
+  override func applicationWillTerminate(_ application: UIApplication) {
+    logStore.endSession()
+    super.applicationWillTerminate(application)
   }
 
   private func showLauncher() {
@@ -40,22 +59,20 @@ import zlib
     launcherEngine = engine
     window?.rootViewController = controller
     window?.makeKeyAndVisible()
-    AppLogStore.shared.install(messenger: controller.binaryMessenger)
-    registerResourceZipImporter()
-    registerGameHost()
-    registerExternalBrowser()
+    registerChannels(on: controller.binaryMessenger)
   }
 
-  override func applicationWillTerminate(_ application: UIApplication) {
-    AppLogStore.shared.endSession()
-    super.applicationWillTerminate(application)
+  private func registerChannels(on messenger: FlutterBinaryMessenger) {
+    registerExternalBrowser(on: messenger)
+    registerGameHost(on: messenger)
+    registerResourceZipImporter(on: messenger)
+    registerAppLogger(on: messenger)
   }
 
-  private func registerExternalBrowser() {
-    guard let controller = window?.rootViewController as? FlutterViewController else { return }
+  private func registerExternalBrowser(on messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
-      name: externalBrowserChannelName,
-      binaryMessenger: controller.binaryMessenger
+      name: "io.github.dey410.gardendlessloader/external_browser",
+      binaryMessenger: messenger
     )
     channel.setMethodCallHandler { call, result in
       guard call.method == "open" else {
@@ -66,24 +83,35 @@ import zlib
             let raw = arguments["url"] as? String,
             let url = URL(string: raw),
             url.scheme == "https" || url.scheme == "http" else {
-        result(FlutterError(code: "invalid_external_url", message: "Only HTTP(S) URLs are allowed", details: nil))
+        result(
+          FlutterError(
+            code: "invalid_external_url",
+            message: "Only HTTP(S) URLs are allowed",
+            details: nil
+          )
+        )
         return
       }
       UIApplication.shared.open(url) { opened in
         if opened {
           result(nil)
         } else {
-          result(FlutterError(code: "external_open_failed", message: "No application can open this URL", details: nil))
+          result(
+            FlutterError(
+              code: "external_open_failed",
+              message: "No application can open this URL",
+              details: nil
+            )
+          )
         }
       }
     }
   }
 
-  private func registerGameHost() {
-    guard let controller = window?.rootViewController as? FlutterViewController else { return }
+  private func registerGameHost(on messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
-      name: gameHostChannelName,
-      binaryMessenger: controller.binaryMessenger
+      name: "io.github.dey410.gardendlessloader/game_host",
+      binaryMessenger: messenger
     )
     gameHostChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
@@ -92,28 +120,47 @@ import zlib
         return
       }
       guard let self else {
-        result(FlutterError(code: "game_host_unavailable", message: "App delegate released", details: nil))
+        result(
+          FlutterError(
+            code: "game_host_unavailable",
+            message: "App delegate released",
+            details: nil
+          )
+        )
         return
       }
       guard !self.gameLaunchInProgress else {
-        result(FlutterError(code: "game_host_launch_busy", message: "Native GameHost is launching", details: nil))
+        result(
+          FlutterError(
+            code: "game_host_launch_busy",
+            message: "Native GameHost is launching",
+            details: nil
+          )
+        )
         return
       }
       do {
-        let session = try NativeGameSession(arguments: call.arguments)
+        let session = try GameSessionDecoder.decode(call.arguments)
         self.gameLaunchInProgress = true
-        NativeGameNetworkPolicy.load(for: session) { [weak self] policyResult in
+        NetworkPolicy.load(for: session) { [weak self] policyResult in
           DispatchQueue.main.async {
             guard let self else {
-              result(FlutterError(code: "game_host_unavailable", message: "App delegate released", details: nil))
+              result(
+                FlutterError(
+                  code: "game_host_unavailable",
+                  message: "App delegate released",
+                  details: nil
+                )
+              )
               return
             }
             self.gameLaunchInProgress = false
             do {
               let policy = try policyResult.get()
-              let gameController = try GameViewController(
+              let gameController = try GameHostController(
                 session: session,
-                networkRuleList: policy
+                networkRuleList: policy,
+                logStore: self.logStore
               ) { [weak self] in
                 self?.showLauncher()
               }
@@ -128,32 +175,32 @@ import zlib
                 engine?.destroyContext()
               }
             } catch {
-              result(FlutterError(
-                code: "game_host_launch_failed",
-                message: error.localizedDescription,
-                details: nil
-              ))
+              result(
+                FlutterError(
+                  code: "game_host_launch_failed",
+                  message: error.localizedDescription,
+                  details: nil
+                )
+              )
             }
           }
         }
       } catch {
-        result(FlutterError(
-          code: "game_host_launch_failed",
-          message: error.localizedDescription,
-          details: nil
-        ))
+        result(
+          FlutterError(
+            code: "game_host_launch_failed",
+            message: error.localizedDescription,
+            details: nil
+          )
+        )
       }
     }
   }
 
-  private func registerResourceZipImporter() {
-    guard let controller = window?.rootViewController as? FlutterViewController else {
-      return
-    }
-
+  private func registerResourceZipImporter(on messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
-      name: resourceZipImporterChannelName,
-      binaryMessenger: controller.binaryMessenger
+      name: "io.github.dey410.gardendlessloader/resource_zip_importer",
+      binaryMessenger: messenger
     )
     resourceZipImporterChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
@@ -165,104 +212,147 @@ import zlib
     }
   }
 
-  private func pickAndExtractDocsZip(call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func registerAppLogger(on messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "io.github.dey410.gardendlessloader/app_logger",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self else {
+        result(nil)
+        return
+      }
+      switch call.method {
+      case "initialize":
+        self.logStore.initialize()
+        result(["appSessionId": self.logStore.appSessionId])
+      case "emit":
+        guard let event = call.arguments as? [String: Any] else {
+          result(
+            FlutterError(
+              code: "invalid_log_event",
+              message: "Log event must be a map",
+              details: nil
+            )
+          )
+          return
+        }
+        self.logStore.emit(event)
+        result(nil)
+      case "snapshot":
+        let limit = (call.arguments as? [String: Any])?["limit"] as? Int ?? 500
+        result(self.logStore.snapshot(limit: limit))
+      case "flush":
+        _ = self.logStore.flush(timeout: 0.5)
+        result(nil)
+      case "deleteHistory":
+        self.logStore.deleteHistory()
+        result(nil)
+      case "endSession":
+        self.logStore.endSession()
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func pickAndExtractDocsZip(
+    call: FlutterMethodCall,
+    result: @escaping FlutterResult
+  ) {
     guard let args = call.arguments as? [String: Any],
           let targetDirectory = args["targetDirectory"] as? String,
           !targetDirectory.isEmpty else {
-      result(FlutterError(
-        code: "invalid_target_directory",
-        message: "缺少导入目标目录",
-        details: nil
-      ))
+      result(
+        FlutterError(
+          code: "invalid_target_directory",
+          message: "缺少导入目标目录",
+          details: nil
+        )
+      )
       return
     }
-
     DispatchQueue.main.async { [weak self] in
       guard let self else {
-        result(FlutterError(
-          code: "missing_app_delegate",
-          message: "无法获取 iOS 应用代理",
-          details: nil
-        ))
+        result(
+          FlutterError(
+            code: "missing_app_delegate",
+            message: "无法获取 iOS 应用代理",
+            details: nil
+          )
+        )
         return
       }
-
       guard let rootController = self.topViewController() else {
-        result(FlutterError(
-          code: "missing_view_controller",
-          message: "Unable to present ZIP picker",
-          details: nil
-        ))
+        result(
+          FlutterError(
+            code: "missing_view_controller",
+            message: "Unable to present ZIP picker",
+            details: nil
+          )
+        )
         return
       }
-
       if self.zipImportInProgress || self.pendingImportResult != nil {
-        result(FlutterError(
-          code: "zip_import_busy",
-          message: "已有 ZIP 导入选择正在进行",
-          details: nil
-        ))
+        result(
+          FlutterError(
+            code: "zip_import_busy",
+            message: "已有 ZIP 导入选择正在进行",
+            details: nil
+          )
+        )
         return
       }
-
-      let documentPicker = self.makeZipDocumentPicker()
-      documentPicker.delegate = self
-      documentPicker.allowsMultipleSelection = false
-      documentPicker.modalPresentationStyle = .formSheet
-
-      self.zipImportInProgress = true
-      self.pendingImportResult = result
-      self.pendingImportTargetDirectory = targetDirectory
-      rootController.present(documentPicker, animated: true)
-    }
-  }
-
-  private func makeZipDocumentPicker() -> UIDocumentPickerViewController {
-    if #available(iOS 14.0, *) {
-      return UIDocumentPickerViewController(
+      let picker = UIDocumentPickerViewController(
         forOpeningContentTypes: [UTType.zip],
         asCopy: true
       )
+      picker.delegate = self
+      picker.allowsMultipleSelection = false
+      picker.modalPresentationStyle = .formSheet
+      self.zipImportInProgress = true
+      self.pendingImportResult = result
+      self.pendingImportTargetDirectory = targetDirectory
+      rootController.present(picker, animated: true)
     }
-    return UIDocumentPickerViewController(
-      documentTypes: [
-        "public.zip-archive",
-        "com.pkware.zip-archive",
-        "public.archive",
-      ],
-      in: .import
-    )
   }
 
   private func finishPickedZipImport(
-    zipUrl: URL,
+    zipURL: URL,
     targetDirectory: String,
     result: @escaping FlutterResult
   ) {
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       guard let self else {
         DispatchQueue.main.async {
-          result(FlutterError(
-            code: "missing_app_delegate",
-            message: "无法获取 iOS 应用代理",
-            details: nil
-          ))
+          result(
+            FlutterError(
+              code: "missing_app_delegate",
+              message: "无法获取 iOS 应用代理",
+              details: nil
+            )
+          )
         }
         return
       }
-
-      let didAccess = zipUrl.startAccessingSecurityScopedResource()
+      let didAccess = zipURL.startAccessingSecurityScopedResource()
       defer {
         if didAccess {
-          zipUrl.stopAccessingSecurityScopedResource()
+          zipURL.stopAccessingSecurityScopedResource()
         }
       }
-
       do {
-        try self.extractDocsZip(
-          from: zipUrl,
-          to: URL(fileURLWithPath: targetDirectory, isDirectory: true)
+        let session = ZipImportSession(
+          zipURL: zipURL,
+          targetDirectory: URL(
+            fileURLWithPath: targetDirectory,
+            isDirectory: true
+          )
         )
+        _ = try session.run { [weak self] progress in
+          self?.reportImportProgress(progress)
+        }
         DispatchQueue.main.async {
           self.zipImportInProgress = false
           result(targetDirectory)
@@ -270,568 +360,38 @@ import zlib
       } catch {
         DispatchQueue.main.async {
           self.zipImportInProgress = false
-          result(FlutterError(
-            code: "zip_import_failed",
-            message: "无法导入选择的 ZIP：\(self.importErrorMessage(error))",
-            details: nil
-          ))
+          result(
+            FlutterError(
+              code: "zip_import_failed",
+              message: "无法导入选择的 ZIP：\(error.localizedDescription)",
+              details: nil
+            )
+          )
         }
       }
     }
   }
 
-  private func extractDocsZip(from zipUrl: URL, to targetDirectory: URL) throws {
-    let attributes = try FileManager.default.attributesOfItem(atPath: zipUrl.path)
-    let sourceBytes = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
-    reportImportProgress(
-      phase: "receiving",
-      totalBytes: sourceBytes,
-      message: "正在读取 ZIP",
-      force: true
-    )
-    let entries = try readZipCentralDirectory(from: zipUrl)
-    reportImportProgress(
-      phase: "receiving",
-      processedBytes: sourceBytes,
-      totalBytes: sourceBytes,
-      message: "已读取 ZIP",
-      force: true
-    )
-    let docsPrefix = try findDocsPrefix(in: entries)
-    guard let docsPrefix else {
-      throw ZipImportError("选择的 ZIP 中没有找到有效的 docs 资源目录")
-    }
-
-    try resetDirectory(targetDirectory)
-
-    var selectedEntries: [(entry: ZipEntry, archivePath: String)] = []
-    for entry in entries {
-      if entry.isSymbolicLink {
-        throw ZipImportError("选择的 ZIP 包含不支持的符号链接")
-      }
-      let archivePath = try safeArchivePath(entry.name)
-      if isWithinArchivePrefix(archivePath, prefix: docsPrefix) {
-        selectedEntries.append((entry, archivePath))
-      }
-    }
-    let fileEntries = selectedEntries.filter { !$0.entry.isDirectory }
-    let totalFiles = fileEntries.count
-    let totalBytes = fileEntries.reduce(UInt64(0)) {
-      $0 + $1.entry.uncompressedSize
-    }
-    var processedFiles = 0
-    var processedBytes = UInt64(0)
-    reportImportProgress(
-      phase: "extracting",
-      totalBytes: totalBytes,
-      totalFiles: totalFiles,
-      message: "正在解压资源",
-      force: true
-    )
-
-    let zipFile = try FileHandle(forReadingFrom: zipUrl)
-    defer {
-      zipFile.closeFile()
-    }
-
-    for selected in selectedEntries {
-      let entry = selected.entry
-      let archivePath = selected.archivePath
-
-      let relativePath = docsPrefix.isEmpty
-        ? archivePath
-        : String(archivePath.dropFirst(docsPrefix.count + 1))
-      if relativePath.isEmpty {
-        continue
-      }
-
-      let outputUrl = try targetUrl(
-        for: relativePath,
-        in: targetDirectory,
-        isDirectory: entry.isDirectory
-      )
-
-      if entry.isDirectory {
-        try FileManager.default.createDirectory(
-          at: outputUrl,
-          withIntermediateDirectories: true
-        )
-        continue
-      }
-
-      try FileManager.default.createDirectory(
-        at: outputUrl.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-
-      guard let output = OutputStream(url: outputUrl, append: false) else {
-        throw ZipImportError("无法写入导入文件：\(relativePath)")
-      }
-      output.open()
-      defer {
-        output.close()
-      }
-
-      let dataOffset = try localFileDataOffset(for: entry, in: zipFile)
-      zipFile.seek(toFileOffset: dataOffset)
-      let onBytesWritten: (Int) -> Void = { [weak self] count in
-        processedBytes += UInt64(count)
-        self?.reportImportProgress(
-          phase: "extracting",
-          processedBytes: processedBytes,
-          totalBytes: totalBytes,
-          processedFiles: processedFiles,
-          totalFiles: totalFiles,
-          message: "正在解压资源"
-        )
-      }
-      switch entry.compressionMethod {
-      case 0:
-        try copyStoredEntry(
-          from: zipFile,
-          compressedSize: entry.compressedSize,
-          to: output,
-          onBytesWritten: onBytesWritten
-        )
-      case 8:
-        try inflateDeflatedEntry(
-          from: zipFile,
-          compressedSize: entry.compressedSize,
-          to: output,
-          onBytesWritten: onBytesWritten
-        )
-      default:
-        throw ZipImportError("选择的 ZIP 包含不支持的压缩方式")
-      }
-      processedFiles += 1
-      reportImportProgress(
-        phase: "extracting",
-        processedBytes: processedBytes,
-        totalBytes: totalBytes,
-        processedFiles: processedFiles,
-        totalFiles: totalFiles,
-        message: "正在解压资源",
-        force: true
-      )
-    }
-  }
-
-  private func reportImportProgress(
-    phase: String,
-    processedBytes: UInt64 = 0,
-    totalBytes: UInt64 = 0,
-    processedFiles: Int = 0,
-    totalFiles: Int = 0,
-    message: String,
-    force: Bool = false
-  ) {
+  private func reportImportProgress(_ progress: ImportProgress) {
     let now = DispatchTime.now().uptimeNanoseconds
-    if !force && now - lastImportProgressReportAt < progressReportIntervalNs {
+    if now - lastImportProgressReportAt < 100_000_000 {
       return
     }
     lastImportProgressReportAt = now
     let arguments: [String: Any] = [
-      "phase": phase,
-      "processedBytes": Int64(clamping: processedBytes),
-      "totalBytes": Int64(clamping: totalBytes),
-      "processedFiles": processedFiles,
-      "totalFiles": totalFiles,
-      "message": message,
+      "phase": progress.phase,
+      "processedBytes": progress.processedBytes,
+      "totalBytes": progress.totalBytes,
+      "processedFiles": progress.processedFiles,
+      "totalFiles": progress.totalFiles,
+      "message": progress.message,
     ]
     DispatchQueue.main.async { [weak self] in
-      self?.resourceZipImporterChannel?.invokeMethod("progress", arguments: arguments)
-    }
-  }
-
-  private func readZipCentralDirectory(from zipUrl: URL) throws -> [ZipEntry] {
-    let attributes = try FileManager.default.attributesOfItem(atPath: zipUrl.path)
-    guard let fileSize = (attributes[.size] as? NSNumber)?.uint64Value,
-          fileSize >= UInt64(zipEndOfCentralDirectoryMinLength) else {
-      throw ZipImportError("无效的 ZIP 文件")
-    }
-
-    let zipFile = try FileHandle(forReadingFrom: zipUrl)
-    defer {
-      zipFile.closeFile()
-    }
-
-    let tailLength = min(
-      fileSize,
-      UInt64(zipEndOfCentralDirectoryMinLength + zipMaxCommentLength)
-    )
-    zipFile.seek(toFileOffset: fileSize - tailLength)
-    let tail = zipFile.readData(ofLength: Int(tailLength))
-    let eocdOffset = try endOfCentralDirectoryOffset(in: tail)
-
-    let totalEntries = uint16(tail, eocdOffset + 10)
-    let centralDirectorySize = uint32(tail, eocdOffset + 12)
-    let centralDirectoryOffset = uint32(tail, eocdOffset + 16)
-    if totalEntries == UInt16.max ||
-        centralDirectorySize == UInt32.max ||
-        centralDirectoryOffset == UInt32.max {
-      throw ZipImportError("暂不支持 ZIP64 格式")
-    }
-
-    zipFile.seek(toFileOffset: UInt64(centralDirectoryOffset))
-    var entries: [ZipEntry] = []
-    entries.reserveCapacity(Int(totalEntries))
-    for _ in 0..<totalEntries {
-      let header = try readData(from: zipFile, length: zipCentralHeaderLength)
-      guard uint32(header, 0) == zipCentralHeaderSignature else {
-        throw ZipImportError("无效的 ZIP 中央目录")
-      }
-
-      let flags = uint16(header, 8)
-      if flags & 0x0001 != 0 {
-        throw ZipImportError("选择的 ZIP 已加密，无法导入")
-      }
-
-      let compressionMethod = uint16(header, 10)
-      let compressedSize = uint32(header, 20)
-      let uncompressedSize = uint32(header, 24)
-      let fileNameLength = Int(uint16(header, 28))
-      let extraLength = Int(uint16(header, 30))
-      let commentLength = Int(uint16(header, 32))
-      let externalAttributes = uint32(header, 38)
-      let localHeaderOffset = uint32(header, 42)
-      if compressedSize == UInt32.max ||
-          uncompressedSize == UInt32.max ||
-          localHeaderOffset == UInt32.max {
-        throw ZipImportError("暂不支持 ZIP64 格式")
-      }
-
-      let nameData = try readData(from: zipFile, length: fileNameLength)
-      let nameEncoding: String.Encoding =
-        flags & 0x0800 == 0 ? .isoLatin1 : .utf8
-      guard let name = String(data: nameData, encoding: nameEncoding) ??
-              String(data: nameData, encoding: .utf8) else {
-        throw ZipImportError("选择的 ZIP 包含无法识别的文件名")
-      }
-
-      if extraLength + commentLength > 0 {
-        zipFile.seek(
-          toFileOffset: zipFile.offsetInFile + UInt64(extraLength + commentLength)
-        )
-      }
-
-      entries.append(ZipEntry(
-        name: name,
-        compressionMethod: compressionMethod,
-        compressedSize: UInt64(compressedSize),
-        uncompressedSize: UInt64(uncompressedSize),
-        localHeaderOffset: UInt64(localHeaderOffset),
-        externalAttributes: externalAttributes
-      ))
-    }
-
-    return entries
-  }
-
-  private func endOfCentralDirectoryOffset(in data: Data) throws -> Int {
-    if data.count < zipEndOfCentralDirectoryMinLength {
-      throw ZipImportError("无效的 ZIP 文件")
-    }
-
-    for offset in stride(
-      from: data.count - zipEndOfCentralDirectoryMinLength,
-      through: 0,
-      by: -1
-    ) {
-      guard uint32(data, offset) == zipEndOfCentralDirectorySignature else {
-        continue
-      }
-      let commentLength = Int(uint16(data, offset + 20))
-      if offset + zipEndOfCentralDirectoryMinLength + commentLength == data.count {
-        return offset
-      }
-    }
-
-    throw ZipImportError("无效的 ZIP 文件")
-  }
-
-  private func findDocsPrefix(in entries: [ZipEntry]) throws -> String? {
-    var filePaths = Set<String>()
-    var directoryPaths = Set<String>()
-
-    for entry in entries {
-      if entry.isSymbolicLink {
-        throw ZipImportError("选择的 ZIP 包含不支持的符号链接")
-      }
-
-      let archivePath = try safeArchivePath(entry.name)
-      if entry.isDirectory {
-        directoryPaths.insert(archivePath)
-      } else {
-        filePaths.insert(archivePath)
-      }
-    }
-
-    var candidates = Set<String>()
-    for path in filePaths where basename(path).lowercased() == "index.html" {
-      candidates.insert(dirname(path))
-    }
-
-    return candidates.filter { candidate in
-      func candidatePath(_ relativePath: String) -> String {
-        candidate.isEmpty ? relativePath : "\(candidate)/\(relativePath)"
-      }
-
-      func hasFile(_ relativePath: String) -> Bool {
-        filePaths.contains(candidatePath(relativePath))
-      }
-
-      func hasDirectory(_ relativePath: String) -> Bool {
-        let path = candidatePath(relativePath)
-        return directoryPaths.contains(path) ||
-          filePaths.contains { filePath in filePath.hasPrefix("\(path)/") }
-      }
-
-      return hasFile("index.html") &&
-        hasFile("src/settings.json") &&
-        hasFile("src/import-map.json") &&
-        hasDirectory("assets") &&
-        hasDirectory("cocos-js") &&
-        hasDirectory("src")
-    }.sorted { first, second in
-      let firstIsDocs = basename(first) == "docs"
-      let secondIsDocs = basename(second) == "docs"
-      if firstIsDocs != secondIsDocs {
-        return firstIsDocs
-      }
-      return first.count < second.count
-    }.first
-  }
-
-  private func localFileDataOffset(for entry: ZipEntry, in zipFile: FileHandle) throws -> UInt64 {
-    zipFile.seek(toFileOffset: entry.localHeaderOffset)
-    let header = try readData(from: zipFile, length: zipLocalHeaderLength)
-    guard uint32(header, 0) == zipLocalHeaderSignature else {
-      throw ZipImportError("无效的 ZIP 本地文件头")
-    }
-    let fileNameLength = UInt64(uint16(header, 26))
-    let extraLength = UInt64(uint16(header, 28))
-    return entry.localHeaderOffset + UInt64(zipLocalHeaderLength) +
-      fileNameLength + extraLength
-  }
-
-  private func copyStoredEntry(
-    from zipFile: FileHandle,
-    compressedSize: UInt64,
-    to output: OutputStream,
-    onBytesWritten: (Int) -> Void
-  ) throws {
-    var remaining = compressedSize
-    while remaining > 0 {
-      let readLength = Int(min(UInt64(zipCopyBufferSize), remaining))
-      let data = zipFile.readData(ofLength: readLength)
-      guard !data.isEmpty else {
-        throw ZipImportError("ZIP 文件内容不完整")
-      }
-      try data.withUnsafeBytes { rawBuffer in
-        guard let baseAddress = rawBuffer.bindMemory(to: UInt8.self).baseAddress else {
-          return
-        }
-        try write(baseAddress, count: data.count, to: output)
-      }
-      onBytesWritten(data.count)
-      remaining -= UInt64(data.count)
-    }
-  }
-
-  private func inflateDeflatedEntry(
-    from zipFile: FileHandle,
-    compressedSize: UInt64,
-    to output: OutputStream,
-    onBytesWritten: (Int) -> Void
-  ) throws {
-    var stream = z_stream()
-    let initStatus = inflateInit2_(
-      &stream,
-      -MAX_WBITS,
-      ZLIB_VERSION,
-      Int32(MemoryLayout<z_stream>.size)
-    )
-    guard initStatus == Z_OK else {
-      throw ZipImportError("无法初始化 ZIP 解压器")
-    }
-    defer {
-      inflateEnd(&stream)
-    }
-
-    var remaining = compressedSize
-    var didEnd = false
-    var outputBuffer = [UInt8](repeating: 0, count: zipCopyBufferSize)
-
-    while remaining > 0 && !didEnd {
-      let readLength = Int(min(UInt64(zipCopyBufferSize), remaining))
-      let inputData = zipFile.readData(ofLength: readLength)
-      guard !inputData.isEmpty else {
-        throw ZipImportError("ZIP 文件内容不完整")
-      }
-      remaining -= UInt64(inputData.count)
-
-      try inputData.withUnsafeBytes { rawBuffer in
-        guard let inputBaseAddress =
-                rawBuffer.bindMemory(to: Bytef.self).baseAddress else {
-          return
-        }
-        stream.next_in = UnsafeMutablePointer<Bytef>(
-          mutating: inputBaseAddress
-        )
-        stream.avail_in = uInt(inputData.count)
-
-        while stream.avail_in > 0 {
-          let status = outputBuffer.withUnsafeMutableBufferPointer { outputPointer in
-            stream.next_out = outputPointer.baseAddress
-            stream.avail_out = uInt(outputPointer.count)
-            return inflate(&stream, Z_NO_FLUSH)
-          }
-
-          let produced = outputBuffer.count - Int(stream.avail_out)
-          if produced > 0 {
-            try outputBuffer.withUnsafeBytes { outputRawBuffer in
-              guard let outputBaseAddress =
-                      outputRawBuffer.bindMemory(to: UInt8.self).baseAddress else {
-                return
-              }
-              try write(outputBaseAddress, count: produced, to: output)
-            }
-            onBytesWritten(produced)
-          }
-
-          if status == Z_STREAM_END {
-            didEnd = true
-            break
-          }
-          if status != Z_OK {
-            throw ZipImportError("ZIP 解压失败")
-          }
-        }
-      }
-    }
-
-    if !didEnd {
-      throw ZipImportError("ZIP 文件内容不完整")
-    }
-  }
-
-  private func write(
-    _ pointer: UnsafePointer<UInt8>,
-    count: Int,
-    to output: OutputStream
-  ) throws {
-    var totalWritten = 0
-    while totalWritten < count {
-      let written = output.write(
-        pointer.advanced(by: totalWritten),
-        maxLength: count - totalWritten
+      self?.resourceZipImporterChannel?.invokeMethod(
+        "progress",
+        arguments: arguments
       )
-      if written <= 0 {
-        throw ZipImportError(
-          output.streamError?.localizedDescription ?? "无法写入导入文件"
-        )
-      }
-      totalWritten += written
     }
-  }
-
-  private func readData(from file: FileHandle, length: Int) throws -> Data {
-    let data = file.readData(ofLength: length)
-    guard data.count == length else {
-      throw ZipImportError("ZIP 文件内容不完整")
-    }
-    return data
-  }
-
-  private func resetDirectory(_ directory: URL) throws {
-    let fileManager = FileManager.default
-    if fileManager.fileExists(atPath: directory.path) {
-      let children = try fileManager.contentsOfDirectory(
-        at: directory,
-        includingPropertiesForKeys: nil
-      )
-      for child in children {
-        try fileManager.removeItem(at: child)
-      }
-    }
-    try fileManager.createDirectory(
-      at: directory,
-      withIntermediateDirectories: true
-    )
-  }
-
-  private func targetUrl(
-    for relativePath: String,
-    in root: URL,
-    isDirectory: Bool
-  ) throws -> URL {
-    var target = root
-    let components = relativePath.split(separator: "/").map(String.init)
-    for component in components {
-      target.appendPathComponent(component, isDirectory: false)
-    }
-
-    let rootPath = root.standardizedFileURL.path
-    let targetPath = target.standardizedFileURL.path
-    guard targetPath == rootPath || targetPath.hasPrefix("\(rootPath)/") else {
-      throw ZipImportError("选择的 ZIP 包含 docs 外部路径")
-    }
-    return isDirectory
-      ? URL(fileURLWithPath: target.path, isDirectory: true)
-      : target
-  }
-
-  private func safeArchivePath(_ path: String) throws -> String {
-    let normalized = path.replacingOccurrences(of: "\\", with: "/")
-    if normalized.hasPrefix("/") {
-      throw ZipImportError("选择的 ZIP 包含不安全路径")
-    }
-
-    let parts = normalized
-      .split(separator: "/", omittingEmptySubsequences: false)
-      .compactMap { part -> String? in
-        let value = String(part)
-        return value.isEmpty || value == "." ? nil : value
-      }
-    if parts.isEmpty || parts.contains("..") {
-      throw ZipImportError("选择的 ZIP 包含不安全路径")
-    }
-    return parts.joined(separator: "/")
-  }
-
-  private func isWithinArchivePrefix(_ path: String, prefix: String) -> Bool {
-    prefix.isEmpty || path == prefix || path.hasPrefix("\(prefix)/")
-  }
-
-  private func basename(_ path: String) -> String {
-    path.split(separator: "/").last.map(String.init) ?? path
-  }
-
-  private func dirname(_ path: String) -> String {
-    guard let index = path.lastIndex(of: "/") else {
-      return ""
-    }
-    return String(path[..<index])
-  }
-
-  private func importErrorMessage(_ error: Error) -> String {
-    if let localizedError = error as? LocalizedError,
-       let description = localizedError.errorDescription {
-      return description
-    }
-    return error.localizedDescription
-  }
-
-  private func uint16(_ data: Data, _ offset: Int) -> UInt16 {
-    UInt16(data[offset]) |
-      UInt16(data[offset + 1]) << 8
-  }
-
-  private func uint32(_ data: Data, _ offset: Int) -> UInt32 {
-    UInt32(data[offset]) |
-      UInt32(data[offset + 1]) << 8 |
-      UInt32(data[offset + 2]) << 16 |
-      UInt32(data[offset + 3]) << 24
   }
 
   private func topViewController() -> UIViewController? {
@@ -845,77 +405,30 @@ import zlib
 
 extension AppDelegate: UIDocumentPickerDelegate {
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-    if let pendingImportResult {
-      pendingImportResult(nil)
-      self.pendingImportResult = nil
-      pendingImportTargetDirectory = nil
-      zipImportInProgress = false
-      return
-    }
-
+    guard let pendingImportResult else { return }
+    pendingImportResult(nil)
+    self.pendingImportResult = nil
+    pendingImportTargetDirectory = nil
+    zipImportInProgress = false
   }
 
   func documentPicker(
     _ controller: UIDocumentPickerViewController,
     didPickDocumentsAt urls: [URL]
   ) {
-    if let pendingImportResult {
-      let targetDirectory = pendingImportTargetDirectory
-      self.pendingImportResult = nil
-      pendingImportTargetDirectory = nil
-
-      guard let zipUrl = urls.first, let targetDirectory else {
-        zipImportInProgress = false
-        pendingImportResult(nil)
-        return
-      }
-
-      finishPickedZipImport(
-        zipUrl: zipUrl,
-        targetDirectory: targetDirectory,
-        result: pendingImportResult
-      )
+    guard let pendingImportResult else { return }
+    let targetDirectory = pendingImportTargetDirectory
+    self.pendingImportResult = nil
+    pendingImportTargetDirectory = nil
+    guard let zipURL = urls.first, let targetDirectory else {
+      zipImportInProgress = false
+      pendingImportResult(nil)
       return
     }
+    finishPickedZipImport(
+      zipURL: zipURL,
+      targetDirectory: targetDirectory,
+      result: pendingImportResult
+    )
   }
 }
-
-private struct ZipEntry {
-  let name: String
-  let compressionMethod: UInt16
-  let compressedSize: UInt64
-  let uncompressedSize: UInt64
-  let localHeaderOffset: UInt64
-  let externalAttributes: UInt32
-
-  var isDirectory: Bool {
-    name.hasSuffix("/")
-  }
-
-  var isSymbolicLink: Bool {
-    let unixMode = (externalAttributes >> 16) & 0o170000
-    return unixMode == 0o120000
-  }
-}
-
-private struct ZipImportError: LocalizedError {
-  init(_ message: String) {
-    self.message = message
-  }
-
-  private let message: String
-
-  var errorDescription: String? {
-    message
-  }
-}
-
-private let zipLocalHeaderSignature: UInt32 = 0x04034b50
-private let zipCentralHeaderSignature: UInt32 = 0x02014b50
-private let zipEndOfCentralDirectorySignature: UInt32 = 0x06054b50
-private let zipLocalHeaderLength = 30
-private let zipCentralHeaderLength = 46
-private let zipEndOfCentralDirectoryMinLength = 22
-private let zipMaxCommentLength = 0xffff
-private let zipCopyBufferSize = 64 * 1024
-private let progressReportIntervalNs: UInt64 = 100_000_000

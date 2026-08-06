@@ -87,40 +87,153 @@ void main() {
     expect(result.stdout, contains('touch patch input contract passes'));
   });
 
+  test('iOS audio facade passes executable behavior checks', () async {
+    final result = await Process.run(
+      'node',
+      const ['tool/check_audio_facade.mjs'],
+    );
+
+    expect(
+      result.exitCode,
+      0,
+      reason: '${result.stdout}\n${result.stderr}',
+    );
+    expect(result.stdout, contains('audio facade contract passes'));
+  });
+
   test('iOS native short sound proxy is injected before bootstrap', () {
     final proxy =
         File('assets/game_bridge/ios_audio_proxy.js').readAsStringSync();
+    final facade =
+        File('assets/game_bridge/ios_audio_facade.js').readAsStringSync();
     final controller =
-        File('ios/Runner/GameViewController.swift').readAsStringSync();
-    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
-    final bridge = File('ios/Runner/GameAudioBridge.swift').readAsStringSync();
-    final schemeHandler =
-        File('ios/Runner/GameResourceSchemeHandler.swift').readAsStringSync();
+        File('ios/Runner/GameHostController.swift').readAsStringSync();
+    final bridge =
+        File('ios/Runner/AudioScriptBridge.swift').readAsStringSync();
+    final engine = File(
+      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
+    ).readAsStringSync();
+    final schemeHandler = File(
+      'ios/GardendlessKit/Sources/GardendlessResource/'
+      'ResourceSchemeHandler.swift',
+    ).readAsStringSync();
+    final configuration = File(
+      'ios/GardendlessKit/Sources/GardendlessCore/GameConfiguration.swift',
+    ).readAsStringSync();
+    final limits = File(
+      'ios/GardendlessKit/Sources/GardendlessAudio/AudioPlaybackLimits.swift',
+    ).readAsStringSync();
 
     expect(proxy, contains('__pvzgeLazySrc'));
     expect(proxy, contains('gardendlessAudio'));
-    expect(proxy, contains('__gardendlessNativeAudioFallback'));
+    expect(proxy, contains('window.__gardendlessNativeAudioInstalled'));
+    expect(proxy, contains('diagnostics.record("webkitFallback"'));
+    expect(facade, contains('window.__gardendlessNativeAudio'));
+    expect(facade, contains('createNativeAudioHandle'));
+    expect(facade, contains('command: "setVolume"'));
+    expect(facade, contains('command: "setLoop"'));
+    expect(facade, contains('command: "setRate"'));
+    expect(facade, contains('command: "releaseMany"'));
+    expect(facade, contains('window.__gardendlessAudioEvents'));
+    expect(facade, contains('silentThrottled'));
+    expect(facade, contains('__gardendlessNativeAudioFacadeInstalled'));
+    expect(proxy, contains('__gardendlessNativeAudioSilent'));
+    expect(proxy, isNot(contains('__gardendlessNativeAudioWebKit')));
+    expect(proxy, isNot(contains('__gardendlessNativeAudioFallback')));
     expect(proxy, contains('element.dispatchEvent(new Event("ended"))'));
     expect(controller, contains('"nativeSfxEnabled": nativeSfxEnabled'));
-    expect(engine, contains('maxConcurrentOperationCount = 1'));
-    expect(engine, contains('pcmCacheByteLimit = 64 * 1024 * 1024'));
-    expect(engine, contains('singleBufferByteLimit = 4 * 1024 * 1024'));
-    expect(engine, contains('nodeCount = 16'));
+    expect(
+      controller,
+      contains('"audioVoicePoolSize": AudioPlaybackLimits.voicePoolSize'),
+    );
+    expect(controller, contains('audioCompressedSfxByteLimit'));
+    expect(controller, contains('audioPcmCacheByteLimit'));
+    expect(controller, contains('audioLongMaxBytes'));
+    expect(
+      engine,
+      contains(
+          'maxConcurrentOperationCount = configuration.audioQueueConcurrency'),
+    );
+    expect(
+      configuration,
+      contains('pcmCacheByteLimit: Int = 96 * 1024 * 1024'),
+    );
+    expect(
+      configuration,
+      contains('compressedSfxByteLimit: Int64 = 512 * 1024'),
+    );
+    expect(
+      configuration,
+      contains('singleBufferByteLimit: Int = 4 * 1024 * 1024'),
+    );
+    expect(limits, contains('voicePoolSize = 48'));
+    expect(limits, contains('rateVoiceCount = 6'));
+    expect(limits, contains('longChannelCount = 8'));
     expect(bridge, contains('message.frameInfo.isMainFrame'));
-    expect(bridge, contains('securityOrigin.protocol == "gardendless-game"'));
-    expect(bridge, contains('securityOrigin.host == "localhost"'));
-    expect(schemeHandler, contains('private let locator: GameResourceLocator'));
+    expect(bridge, contains('securityOrigin.protocol == GameOrigin.scheme'));
+    expect(bridge, contains('securityOrigin.host == GameOrigin.host'));
+    expect(schemeHandler, contains('private let sandbox: PathSandbox'));
     expect(
       controller.indexOf('"ios_audio_proxy.js"'),
       lessThan(controller.indexOf('"bootstrap.js"')),
     );
+    expect(
+      controller.indexOf('"ios_audio_facade.js"'),
+      lessThan(controller.indexOf('"ios_audio_proxy.js"')),
+    );
+  });
+
+  test('audio diagnostics probe is injected before the iOS audio proxy', () {
+    final diagnostic =
+        File('assets/game_bridge/audio_diagnostic.js').readAsStringSync();
+    final proxy =
+        File('assets/game_bridge/ios_audio_proxy.js').readAsStringSync();
+    final controller =
+        File('ios/Runner/GameHostController.swift').readAsStringSync();
+    final bridge =
+        File('ios/Runner/AudioScriptBridge.swift').readAsStringSync();
+
+    expect(diagnostic, contains('window.__gardendlessAudioDiagnostics'));
+    expect(diagnostic, contains('schemaVersion: 2'));
+    expect(diagnostic, contains('facadeCreated'));
+    expect(diagnostic, contains('playPosted'));
+    expect(diagnostic, contains('silentThrottled'));
+    expect(diagnostic, contains('stoppedReceived'));
+    expect(diagnostic, contains('webkitFallback'));
+    expect(
+      diagnostic,
+      contains('facadeInstalled: !!window.__gardendlessNativeAudioFacadeInstalled'),
+    );
+    expect(diagnostic, contains('AudioBufferSourceNode.prototype.start'));
+    expect(diagnostic, contains('decodeAudioData'));
+    expect(diagnostic, contains('requestAnimationFrame(frameLoop)'));
+    expect(diagnostic, contains('GDL_AUDIO_DIAG'));
+    expect(diagnostic, contains('command: "writeDiagnostics"'));
+    expect(proxy, contains('diagnostics.record("nativePlayPosted"'));
+    expect(
+      proxy,
+      contains('diagnostics.record("nativePostFailed"'),
+    );
+    expect(
+      controller,
+      contains('"audioDiagnosticsEnabled": audioDiagnosticsEnabled'),
+    );
+    expect(bridge, contains('case "writeDiagnostics"'));
+    expect(bridge, contains('case "releaseMany"'));
+    expect(bridge, contains('audio-diagnostics.json'));
+    expect(
+      controller.indexOf('"audio_diagnostic.js"'),
+      lessThan(controller.indexOf('"ios_audio_proxy.js"')),
+    );
   });
 
   test('iOS native sound graph is initialized lazily after audio session', () {
-    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
+    final engine = File(
+      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
+    ).readAsStringSync();
     final initializer = engine.substring(
-      engine.indexOf('  init('),
-      engine.indexOf('  func register('),
+      engine.indexOf('  public init('),
+      engine.indexOf('  public func play('),
     );
 
     expect(initializer, isNot(contains('AVAudioEngine()')));
@@ -130,16 +243,18 @@ void main() {
     expect(engine, contains('private var engine: AVAudioEngine?'));
     final preparation = engine.substring(
       engine.indexOf('  private func ensureEngineRunning()'),
-      engine.indexOf('  private func enqueue('),
+      engine.indexOf('  private func configureNodes('),
     );
     expect(
       preparation.indexOf('try session.setActive(true)'),
-      lessThan(preparation.indexOf('configureNodes(preparedEngine)')),
+      lessThan(preparation.indexOf('configureNodes(newEngine)')),
     );
   });
 
   test('iOS pooled sound nodes follow each decoded buffer format', () {
-    final engine = File('ios/Runner/NativeSfxEngine.swift').readAsStringSync();
+    final engine = File(
+      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
+    ).readAsStringSync();
     final configuration = engine.substring(
       engine.indexOf('  private func configureNodes('),
       engine.indexOf('  private func observeLifecycle('),
@@ -148,19 +263,26 @@ void main() {
       engine.indexOf('  private func schedule('),
       engine.indexOf('  private func completeVoice('),
     );
-    const connect = 'engine.connect(node, to: engine.mainMixerNode, '
-        'format: cached.buffer.format)';
 
-    expect(configuration, isNot(contains('engine.connect(')));
-    expect(scheduling, contains('engine.disconnectNodeOutput(node)'));
-    expect(scheduling, contains(connect));
+    expect(configuration, contains('engine.attach(varispeed)'));
     expect(
-      scheduling.indexOf('engine.disconnectNodeOutput(node)'),
-      lessThan(scheduling.indexOf(connect)),
+      configuration,
+      isNot(contains('engine.connect(varispeed, to: engine.mainMixerNode')),
     );
     expect(
-      scheduling.indexOf(connect),
-      lessThan(scheduling.indexOf('node.scheduleBuffer(cached.buffer')),
+      scheduling,
+      contains('engine.disconnectNodeOutput(selectedNode.player)'),
+    );
+    expect(scheduling, contains('to: engine.mainMixerNode,'));
+    expect(scheduling, contains('to: varispeed,'));
+    expect(scheduling, contains('format: cached.buffer.format'));
+    expect(
+      scheduling.indexOf('engine.disconnectNodeOutput(selectedNode.player)'),
+      lessThan(scheduling.indexOf('format: cached.buffer.format')),
+    );
+    expect(
+      scheduling.indexOf('format: cached.buffer.format'),
+      lessThan(scheduling.indexOf('selectedNode.player.scheduleBuffer(')),
     );
   });
 
@@ -169,7 +291,7 @@ void main() {
       'android/app/src/main/kotlin/io/github/dey410/'
       'gardendlessloader/game/GameActivity.kt',
     ).readAsStringSync();
-    final ios = File('ios/Runner/GameViewController.swift').readAsStringSync();
+    final ios = File('ios/Runner/GameHostController.swift').readAsStringSync();
     final iosProject =
         File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
     final iosPackage = File('ios/Package.swift').readAsStringSync();

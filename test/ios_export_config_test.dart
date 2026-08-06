@@ -5,16 +5,20 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('iOS native game host owns chunked save export', () {
     final controller =
-        File('ios/Runner/GameViewController.swift').readAsStringSync();
+        File('ios/Runner/GameHostController.swift').readAsStringSync();
+    final coordinator = File(
+      'ios/GardendlessKit/Sources/GardendlessBridge/ExportCoordinator.swift',
+    ).readAsStringSync();
+    final combined = '$controller\n$coordinator';
 
-    expect(controller, contains('host:exportBegin'));
-    expect(controller, contains('host:exportChunk'));
-    expect(controller, contains('host:exportCommit'));
-    expect(controller, contains('UIDocumentPickerViewController'));
-    expect(controller, contains('forExporting: [export.file]'));
-    expect(controller, contains('asCopy: true'));
-    expect(controller, contains('documentPickerWasCancelled'));
-    expect(controller, contains('export_cancelled'));
-    expect(controller, isNot(contains('UIActivityViewController')));
+    expect(combined, contains('BridgeCommand.exportBegin.rawValue'));
+    expect(combined, contains('BridgeCommand.exportChunk.rawValue'));
+    expect(combined, contains('BridgeCommand.exportCommit.rawValue'));
+    expect(combined, contains('UIDocumentPickerViewController'));
+    expect(combined, contains('forExporting: [file]'));
+    expect(combined, contains('asCopy: true'));
+    expect(combined, contains('documentPickerWasCancelled'));
+    expect(combined, contains('export_cancelled'));
+    expect(combined, isNot(contains('UIActivityViewController')));
   });
 }
