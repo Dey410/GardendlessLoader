@@ -6,7 +6,7 @@
 
   const host = window.__gardendlessHost;
   const config = host ? host.config : (window.__gardendlessHostConfig || {});
-  if (!config.autoCollectSunEnabled || config.hasGpNext) return;
+  if (!config.autoCollectSunEnabled) return;
 
   const checkIntervalMs = 250;
   const collectIntervalMs = 3000;

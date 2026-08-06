@@ -67,7 +67,7 @@ final class GameHostController: UIViewController,
   private let onExit: () -> Void
   private let sandbox: PathSandbox
   private let schemeHandler: ResourceSchemeHandler
-  private let audioEngine: ShortSfxEngine
+  private let audioEngine: AudioPipelineEngine
   private let exportCoordinator: ExportCoordinator
   private let gpNextRouter: GpNextCommandRouter?
   private let logStore: LogStore
@@ -111,7 +111,10 @@ final class GameHostController: UIViewController,
         "context": context,
       ])
     }
-    audioEngine = ShortSfxEngine(sandbox: sandbox) { [session] event, context in
+    audioEngine = AudioPipelineEngine(
+      sandbox: sandbox,
+      configuration: Self.audioConfiguration()
+    ) { [session] event, context in
       logStore.emit([
         "source": "ios",
         "level": event == "native_sfx_decode_failed" ? "WARN" : "INFO",
@@ -130,6 +133,36 @@ final class GameHostController: UIViewController,
       : nil
     super.init(nibName: nil, bundle: nil)
     modalPresentationStyle = .fullScreen
+  }
+
+  private static func audioConfiguration() -> GameConfiguration {
+    let defaults = UserDefaults.standard
+    var config = GameConfiguration.default
+    if let value = defaults.object(forKey: "audioCompressedSfxByteLimit")
+      as? Int, value > 0 {
+      config.compressedSfxByteLimit = Int64(value)
+    }
+    if let value = defaults.object(forKey: "audioPcmCacheByteLimit")
+      as? Int, value > 0 {
+      config.pcmCacheByteLimit = value
+    }
+    if let value = defaults.object(forKey: "audioSingleBufferByteLimit")
+      as? Int, value > 0 {
+      config.singleBufferByteLimit = value
+    }
+    if let value = defaults.object(forKey: "audioMaximumSfxDuration")
+      as? Double, value > 0 {
+      config.maximumSfxDuration = value
+    }
+    if let value = defaults.object(forKey: "audioLongMaxBytes")
+      as? Int, value > 0 {
+      config.longMaxBytes = Int64(value)
+    }
+    if let value = defaults.object(forKey: "audioLongMaxDuration")
+      as? Double, value > 0 {
+      config.longMaxDuration = value
+    }
+    return config
   }
 
   @available(*, unavailable)
@@ -686,6 +719,9 @@ final class GameHostController: UIViewController,
     let nativeSfxEnabled = UserDefaults.standard.object(
       forKey: "nativeSfxEnabled"
     ) as? Bool ?? true
+    let audioDiagnosticsEnabled = UserDefaults.standard.object(
+      forKey: "audioDiagnosticsEnabled"
+    ) as? Bool ?? true
     let config: [String: Any] = [
       "platform": "ios",
       "origin": GameOrigin.value,
@@ -696,6 +732,8 @@ final class GameHostController: UIViewController,
       "watermarkEnabled": session.watermarkEnabled,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
       "nativeSfxEnabled": nativeSfxEnabled,
+      "audioDiagnosticsEnabled": audioDiagnosticsEnabled,
+      "audioVoicePoolSize": AudioPlaybackLimits.voicePoolSize,
       "gpNextBaseDirectory": session.appRoot.path,
     ]
     let configData = try! JSONSerialization.data(withJSONObject: config)
@@ -704,6 +742,8 @@ final class GameHostController: UIViewController,
       + ";"
     var names = [
       "transport.js",
+      "audio_diagnostic.js",
+      "ios_audio_facade.js",
       "ios_audio_proxy.js",
       "bootstrap.js",
       "logging.js",

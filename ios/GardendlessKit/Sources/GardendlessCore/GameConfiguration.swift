@@ -11,6 +11,8 @@ public struct GameConfiguration: Equatable, Sendable {
   public var singleBufferByteLimit: Int
   public var maximumSfxDuration: TimeInterval
   public var compressedSfxByteLimit: Int64
+  public var longMaxBytes: Int64
+  public var longMaxDuration: TimeInterval
   public var maxExportBytes: Int
   public var maxExportChunkBytes: Int
   public var bridgeMaxMessageBytes: Int
@@ -20,12 +22,14 @@ public struct GameConfiguration: Equatable, Sendable {
 
   public init(
     resourceQueueConcurrency: Int = 6,
-    audioQueueConcurrency: Int = 1,
+    audioQueueConcurrency: Int = 3,
     audioCacheByteLimit: Int = 24 * 1024 * 1024,
-    pcmCacheByteLimit: Int = 64 * 1024 * 1024,
+    pcmCacheByteLimit: Int = 96 * 1024 * 1024,
     singleBufferByteLimit: Int = 4 * 1024 * 1024,
     maximumSfxDuration: TimeInterval = 10,
-    compressedSfxByteLimit: Int64 = 256 * 1024,
+    compressedSfxByteLimit: Int64 = 512 * 1024,
+    longMaxBytes: Int64 = 64 * 1024 * 1024,
+    longMaxDuration: TimeInterval = 600,
     maxExportBytes: Int = 512 * 1024 * 1024,
     maxExportChunkBytes: Int = 256 * 1024,
     bridgeMaxMessageBytes: Int = 1024 * 1024,
@@ -40,6 +44,8 @@ public struct GameConfiguration: Equatable, Sendable {
     self.singleBufferByteLimit = singleBufferByteLimit
     self.maximumSfxDuration = maximumSfxDuration
     self.compressedSfxByteLimit = compressedSfxByteLimit
+    self.longMaxBytes = longMaxBytes
+    self.longMaxDuration = longMaxDuration
     self.maxExportBytes = maxExportBytes
     self.maxExportChunkBytes = maxExportChunkBytes
     self.bridgeMaxMessageBytes = bridgeMaxMessageBytes
