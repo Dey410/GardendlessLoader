@@ -206,7 +206,7 @@ public final class LongAudioChannel: NSObject {
       return
     }
     guard properties.length > 0,
-          properties.length <= AudioPlaybackLimits.longMaxBytes else {
+          properties.length <= configuration.longMaxBytes else {
       route(.init(kind: .silent, requestId: request.requestId, reason: "size_limit"))
       return
     }
@@ -235,7 +235,7 @@ public final class LongAudioChannel: NSObject {
     let duration = Double(audioFile.length) / audioFile.processingFormat.sampleRate
     guard duration.isFinite,
           duration > 0,
-          duration <= AudioPlaybackLimits.longMaxDuration else {
+          duration <= configuration.longMaxDuration else {
       route(.init(kind: .silent, requestId: request.requestId, reason: "duration_limit"))
       return
     }

@@ -135,7 +135,7 @@ flowchart TD
 
 - **Voice pool**：48 路（与 `P9.maxAudioChannel` 同一常量，可配置），其中 4–8 路挂 `AVAudioUnitVarispeed` 组成可变速子池（`preservesPitch=false`，与 Cocos DOM 行为一致）。
 - **准入策略**：池满时抢占**最旧** one-shot（向其回 `ended`），不抢占长音频通道；新请求照常入池。
-- **解码**：有界并发（2–4），同一 URL 在途请求共享一次解码；解码结果进 PCM LRU（64MB，单 buffer ≤4MB）。
+- **解码**：有界并发（2–4），同一 URL 在途请求共享一次解码；解码结果进 PCM LRU（96MB，单 buffer ≤4MB）。
 - **拒绝缓存**：`duration_limit`/`compressed_size_limit`/`unsupported_container` 等结论按 URL + etag + role 缓存，后续请求直接复用，不重复解码。
 - **预热**：对高频短音效在首次使用前提前解码/缓存（由使用频率统计驱动）。
 - **事件回传批量**：原生 → JS 的 `ended/silent/stopped` 按帧合并传数组。
@@ -241,3 +241,27 @@ flowchart TD
 - `SoundRescourses` 已做一帧内同 clip 去重（合并音量）与冷却节流，故不做播放级合并。
 - BGM 使用双播放器轮换 + 轮询 `currentTime` + seek；`MusicSpeedRange` 0.5–2、极限 0.1–4，变速为原生必需能力。
 - 26.1s 环境音（超 10s duration_limit）与 123.9s BGM（超 256KB size_limit）是被 silent 的真实对象，角色优先分类后可进长通道。
+
+## 14. 保留 MP3（不转码）的校准建议（2026-08-06 审计）
+
+审计脚本：[extract-pvzge-gpnext/scripts/audit_audio_assets.py](../../../extract-pvzge-gpnext/scripts/audit_audio_assets.py)
+
+对未转码原始包 `pvzge_web-0.10.0.zip`（4050 个 MP3，324.1MB，最大 4.5MB）全量探测（afinfo，全部可读）：
+
+| 指标 | 数值 |
+| --- | --- |
+| 时长分布 | ≤1s: 1438 / 1–3s: 1867 / 3–10s: 536 / 10–30s: 101 / >30s: 108 |
+| 大小分布 | >256KB: 155 / >384KB: 132 / >512KB: 120 / >1MB: 49 |
+| 当前 256KB/10s 规则 | short_candidate 3830、size_over 11、long_candidate 209 |
+| 384KB/10s 规则 | short_candidate 3841、size_over 0、long_candidate 209 |
+| PCM 估算总量 | 4281MB；短音效池 963.2MB（中位 0.15MB、p90 0.47MB）；单 buffer 超 4MB 的文件 150 个（基本都 >11.6s，归长通道） |
+| 百分位 | 时长 p50 1.37s / p90 4.5s / p99 67.4s / max 186.6s；大小 p50 31KB / p90 115KB / p99 1.3MB / max 4.5MB |
+
+结论与建议：
+
+1. **真 MP3 全链路可用**（容器检测、原生 AVAudioFile、资源 MIME 均已支持），不需要为“不转码”改解码代码。
+2. **`compressedSfxByteLimit` 已定为 512KB（524288）**：256KB 会让 11 个 ≤10s 的短音效被静音；384KB 即可归零，512KB 为未来版本留余量。
+3. **长通道限制保持 600s / 64MB 即可**：原始包最大 186.6s、4.5MB，远低于上限。
+4. **`pcmCacheByteLimit` 已定为 96MB（100663296）**：原始包短音效中位 PCM 0.15MB，96MB 可驻留约 600 个典型短音效（p90 约 200 个），远大于单屏活跃音效集合；若 iPad 实测仍出现热音效反复 `decodeStarted`、`native_sfx_cache_hit` 占比低，再上调并重测。
+5. **解码成本上升**：原始 MP3 多为 44.1kHz 立体声，解码采样量约为转码 16kHz 单声道的 5.5 倍；首发延迟和 CPU 峰值更高，`audioQueueConcurrency` 在原始包上建议先用 1–2 再实测。
+6. **运行时可用 UserDefaults 覆盖而不改代码**：`audioCompressedSfxByteLimit`、`audioPcmCacheByteLimit`、`audioSingleBufferByteLimit`、`audioMaximumSfxDuration`、`audioLongMaxBytes`、`audioLongMaxDuration`。

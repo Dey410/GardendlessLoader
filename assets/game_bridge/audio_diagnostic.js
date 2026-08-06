@@ -133,7 +133,7 @@
       },
       patch: {
         lazySrcSetCount: counters.lazySrcSet,
-        facadeInstalled: !!window.__gardendlessNativeAudioInstalled,
+        facadeInstalled: !!window.__gardendlessNativeAudioFacadeInstalled,
         audioFacadeLoaded: window.__pvzgeAudioFacadeLoaded || 0,
         facadeCreatedCount: counters.facadeCreated,
         nativeAudioInstalled: !!window.__gardendlessNativeAudioInstalled,

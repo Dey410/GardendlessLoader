@@ -111,7 +111,10 @@ final class GameHostController: UIViewController,
         "context": context,
       ])
     }
-    audioEngine = AudioPipelineEngine(sandbox: sandbox) { [session] event, context in
+    audioEngine = AudioPipelineEngine(
+      sandbox: sandbox,
+      configuration: Self.audioConfiguration()
+    ) { [session] event, context in
       logStore.emit([
         "source": "ios",
         "level": event == "native_sfx_decode_failed" ? "WARN" : "INFO",
@@ -130,6 +133,36 @@ final class GameHostController: UIViewController,
       : nil
     super.init(nibName: nil, bundle: nil)
     modalPresentationStyle = .fullScreen
+  }
+
+  private static func audioConfiguration() -> GameConfiguration {
+    let defaults = UserDefaults.standard
+    var config = GameConfiguration.default
+    if let value = defaults.object(forKey: "audioCompressedSfxByteLimit")
+      as? Int, value > 0 {
+      config.compressedSfxByteLimit = Int64(value)
+    }
+    if let value = defaults.object(forKey: "audioPcmCacheByteLimit")
+      as? Int, value > 0 {
+      config.pcmCacheByteLimit = value
+    }
+    if let value = defaults.object(forKey: "audioSingleBufferByteLimit")
+      as? Int, value > 0 {
+      config.singleBufferByteLimit = value
+    }
+    if let value = defaults.object(forKey: "audioMaximumSfxDuration")
+      as? Double, value > 0 {
+      config.maximumSfxDuration = value
+    }
+    if let value = defaults.object(forKey: "audioLongMaxBytes")
+      as? Int, value > 0 {
+      config.longMaxBytes = Int64(value)
+    }
+    if let value = defaults.object(forKey: "audioLongMaxDuration")
+      as? Double, value > 0 {
+      config.longMaxDuration = value
+    }
+    return config
   }
 
   @available(*, unavailable)

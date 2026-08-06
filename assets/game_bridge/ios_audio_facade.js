@@ -6,7 +6,7 @@
     ? window.webkit.messageHandlers.gardendlessAudio
     : null;
   if (!config.nativeSfxEnabled || !handler ||
-      window.__gardendlessNativeAudioInstalled) {
+      window.__gardendlessNativeAudioFacadeInstalled) {
     return;
   }
 
@@ -396,5 +396,5 @@
     createNativeAudioHandle: createNativeAudioHandle
   });
   window.__gardendlessAudioEvents = applyEvents;
-  window.__gardendlessNativeAudioInstalled = true;
+  window.__gardendlessNativeAudioFacadeInstalled = true;
 })();

@@ -136,6 +136,7 @@ void main() {
     expect(facade, contains('command: "releaseMany"'));
     expect(facade, contains('window.__gardendlessAudioEvents'));
     expect(facade, contains('silentThrottled'));
+    expect(facade, contains('__gardendlessNativeAudioFacadeInstalled'));
     expect(proxy, contains('__gardendlessNativeAudioSilent'));
     expect(proxy, isNot(contains('__gardendlessNativeAudioWebKit')));
     expect(proxy, isNot(contains('__gardendlessNativeAudioFallback')));
@@ -145,6 +146,9 @@ void main() {
       controller,
       contains('"audioVoicePoolSize": AudioPlaybackLimits.voicePoolSize'),
     );
+    expect(controller, contains('audioCompressedSfxByteLimit'));
+    expect(controller, contains('audioPcmCacheByteLimit'));
+    expect(controller, contains('audioLongMaxBytes'));
     expect(
       engine,
       contains(
@@ -152,7 +156,11 @@ void main() {
     );
     expect(
       configuration,
-      contains('pcmCacheByteLimit: Int = 64 * 1024 * 1024'),
+      contains('pcmCacheByteLimit: Int = 96 * 1024 * 1024'),
+    );
+    expect(
+      configuration,
+      contains('compressedSfxByteLimit: Int64 = 512 * 1024'),
     );
     expect(
       configuration,
@@ -192,6 +200,10 @@ void main() {
     expect(diagnostic, contains('silentThrottled'));
     expect(diagnostic, contains('stoppedReceived'));
     expect(diagnostic, contains('webkitFallback'));
+    expect(
+      diagnostic,
+      contains('facadeInstalled: !!window.__gardendlessNativeAudioFacadeInstalled'),
+    );
     expect(diagnostic, contains('AudioBufferSourceNode.prototype.start'));
     expect(diagnostic, contains('decodeAudioData'));
     expect(diagnostic, contains('requestAnimationFrame(frameLoop)'));

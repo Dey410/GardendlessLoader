@@ -83,7 +83,7 @@ public struct GameConfiguration {
   public var resourceQueueConcurrency = 6
   public var audioQueueConcurrency = 1
   public var audioCacheByteLimit = 24 * 1024 * 1024
-  public var pcmCacheByteLimit = 64 * 1024 * 1024
+  public var pcmCacheByteLimit = 96 * 1024 * 1024
   public var singleBufferByteLimit = 4 * 1024 * 1024
   public var maxExportBytes = 512 * 1024 * 1024
   public var maxExportChunkBytes = 256 * 1024

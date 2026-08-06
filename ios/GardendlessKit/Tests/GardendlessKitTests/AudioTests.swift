@@ -77,7 +77,7 @@ final class AudioTests: XCTestCase {
     )
     XCTAssertEqual(
       ShortSfxEngine.classify(
-        compressedBytes: 300_000,
+        compressedBytes: 600_000,
         duration: 2,
         configuration: configuration
       ),
