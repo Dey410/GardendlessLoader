@@ -215,7 +215,7 @@ function createHarness({
 
 for (const options of [
   {enabled: false, hasGpNext: false},
-  {enabled: true, hasGpNext: true},
+  {enabled: false, hasGpNext: true},
 ]) {
   const harness = createHarness(options);
   await harness.flushMicrotasks();
@@ -223,6 +223,42 @@ for (const options of [
   assert.equal(harness.getCount, 0);
   assert.equal(harness.importCount, 0);
   assert.deepEqual(harness.keyboardEvents, []);
+}
+
+{
+  const harness = createHarness({enabled: true, hasGpNext: true});
+  await harness.flushMicrotasks();
+  assert.equal(harness.getCount, 2);
+  assert.equal(harness.importCount, 0);
+
+  await harness.advance(2999);
+  assert.deepEqual(harness.keyboardEvents, []);
+  await harness.advance(1);
+  assert.deepEqual(harness.keyboardEvents, [{
+    type: 'keydown',
+    key: 'a',
+    code: 'KeyA',
+    keyCode: 65,
+    which: 65,
+    repeat: false,
+    at: 3000,
+  }]);
+  await harness.advance(49);
+  assert.equal(harness.keyboardEvents.length, 1);
+  await harness.advance(1);
+  assert.deepEqual(harness.keyboardEvents[1], {
+    type: 'keyup',
+    key: 'a',
+    code: 'KeyA',
+    keyCode: 65,
+    which: 65,
+    repeat: false,
+    at: 3050,
+  });
+
+  await harness.advance(2950);
+  assert.equal(harness.keyboardEvents[2].type, 'keydown');
+  assert.equal(harness.keyboardEvents[2].at, 6000);
 }
 
 {
