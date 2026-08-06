@@ -39,3 +39,56 @@ ios/Runner.xcworkspace/
 .env.*
 .DS_Store
 **/.DS_Store
+
+# Logs and transient files
+*.log
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+*.orig
+*.rej
+.history/
+
+# macOS / Xcode generated files
+**/xcuserdata/
+**/DerivedData/
+*.xcuserstate
+macos/Flutter/ephemeral/
+macos/Flutter/Generated.xcconfig
+macos/Flutter/flutter_export_environment.sh
+macos/Flutter/.last_build_id
+**/GeneratedPluginRegistrant.*
+macos/Pods/
+macos/.symlinks/
+
+# Node tooling
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Generated archives and bundled game resources
+*.apk
+*.aab
+*.ipa
+*.hap
+*.hsp
+*.dmg
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.pkg
+
+# Signing and provisioning
+*.mobileprovision
+*.cer
+*.p8
+
+# Orphaned root Gradle wrapper (no root Gradle build)
+/gradle/
+/gradlew
+/gradlew.bat

@@ -6,14 +6,18 @@
 
   const host = window.__gardendlessHost;
   const config = host ? host.config : (window.__gardendlessHostConfig || {});
-  if (!config.autoCollectSunEnabled || config.hasGpNext) return;
+  if (!config.autoCollectSunEnabled) return;
 
   const checkIntervalMs = 250;
   const collectIntervalMs = 3000;
   const keyHoldMs = 50;
+  const levelControllerModuleId =
+    "chunks:///_virtual/levelController.ts";
+  const uiModuleId = "chunks:///_virtual/UI.ts";
   let levelController = null;
   let gameUI = null;
   let eligibleSince = null;
+  let moduleCheckTimer = null;
   let checkTimer = null;
   let keyUpTimer = null;
   let keyTarget = null;
@@ -138,25 +142,74 @@
     );
   }
 
-  function moduleValue(module, name) {
-    if (module && module[name]) return module[name];
-    if (module && module.default && module.default[name]) {
-      return module.default[name];
+  function moduleValue(module, names) {
+    if (!module) return null;
+    for (const name of names) {
+      if (module[name]) return module[name];
     }
-    return module ? module.default : null;
+    if (module.default) {
+      for (const name of names) {
+        if (module.default[name]) return module.default[name];
+      }
+      return module.default;
+    }
+    return null;
   }
 
-  async function start() {
+  function isRegisteredForImport(system, moduleId) {
+    if (typeof system.has === "function" && system.has(moduleId)) {
+      return true;
+    }
+    return Boolean(
+      system.registerRegistry && system.registerRegistry[moduleId]
+    );
+  }
+
+  function scheduleModuleCheck() {
+    if (stopped || moduleCheckTimer !== null) return;
+    moduleCheckTimer = setTimeout(findGameModules, checkIntervalMs);
+  }
+
+  async function findGameModules() {
+    moduleCheckTimer = null;
     try {
-      if (!window.System || typeof window.System.import !== "function") {
-        throw new Error("System.import is unavailable");
+      const system = window.System;
+      if (!system) {
+        scheduleModuleCheck();
+        return;
       }
-      const modules = await Promise.all([
-        window.System.import("chunks:///_virtual/levelController.ts"),
-        window.System.import("chunks:///_virtual/UI.ts")
+
+      let levelControllerModule = typeof system.get === "function"
+        ? system.get(levelControllerModuleId)
+        : null;
+      let uiModule = typeof system.get === "function"
+        ? system.get(uiModuleId)
+        : null;
+      if (!levelControllerModule || !uiModule) {
+        const canImport = typeof system.import === "function" &&
+          isRegisteredForImport(system, levelControllerModuleId) &&
+          isRegisteredForImport(system, uiModuleId);
+        if (!canImport) {
+          scheduleModuleCheck();
+          return;
+        }
+        const modules = await Promise.all([
+          system.import(levelControllerModuleId),
+          system.import(uiModuleId)
+        ]);
+        if (stopped) return;
+        levelControllerModule = modules[0];
+        uiModule = modules[1];
+      }
+
+      levelController = moduleValue(levelControllerModule, [
+        "LevelPlay",
+        "levelController"
       ]);
-      levelController = moduleValue(modules[0], "levelController");
-      gameUI = moduleValue(modules[1], "UI");
+      gameUI = moduleValue(uiModule, [
+        "UIInGame",
+        "UI"
+      ]);
       if (!levelController || !gameUI) {
         throw new Error("Game state modules have unexpected exports");
       }
@@ -170,6 +223,10 @@
 
   function stop() {
     stopped = true;
+    if (moduleCheckTimer !== null) {
+      clearTimeout(moduleCheckTimer);
+      moduleCheckTimer = null;
+    }
     if (checkTimer !== null) {
       clearTimeout(checkTimer);
       checkTimer = null;
@@ -193,8 +250,8 @@
   window.addEventListener("pagehide", stop, { once: true });
 
   if (document.readyState === "complete") {
-    start();
+    findGameModules();
   } else {
-    window.addEventListener("load", start, { once: true });
+    window.addEventListener("load", findGameModules, { once: true });
   }
 })();

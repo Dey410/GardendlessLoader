@@ -363,7 +363,7 @@ void main() {
   );
 
   testWidgets(
-    'GP-Next resources hide Loader automatic sun collection',
+    'GP-Next resources offer automatic sun collection above game start',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(915, 412);
@@ -376,10 +376,25 @@ void main() {
       );
       await tester.pump();
 
+      final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
+      final startGame = find.byKey(const ValueKey('home-start-game-button'));
+
       expect(controller.hasGpNext, isTrue);
+      expect(autoCollect, findsOneWidget);
+      expect(find.text('自动收集'), findsOneWidget);
+      expect(tester.getRect(autoCollect).bottom, tester.getRect(startGame).top);
+
+      await tester.tap(autoCollect);
+      await tester.pump();
+
+      expect(controller.autoCollectSunEnabled, isTrue);
       expect(
-        find.byKey(const ValueKey('home-auto-collect-sun')),
-        findsNothing,
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('home-auto-collect-sun-switch')),
+            )
+            .value,
+        isTrue,
       );
     },
     timeout: const Timeout(Duration(seconds: 5)),

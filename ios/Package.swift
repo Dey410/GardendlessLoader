@@ -1,43 +1,20 @@
 // swift-tools-version: 5.9
+
+// Retired legacy SwiftPM test package.
+//
+// The original GardendlessNativeGameHost package tested the pre-shredder iOS
+// implementation, whose source files have been removed from the working tree
+// after user confirmation. Native core tests now live in:
+//   ios/GardendlessKit/Package.swift
+
 import PackageDescription
 
 let package = Package(
   name: "GardendlessNativeGameHost",
-  defaultLocalization: "en",
-  platforms: [.macOS(.v13)],
   products: [
-    .library(name: "GardendlessNativeCore", targets: ["GardendlessNativeCore"]),
+    .library(name: "GardendlessLegacy", targets: ["GardendlessLegacy"]),
   ],
   targets: [
-    .target(
-      name: "GardendlessNativeCore",
-      path: "Runner",
-      exclude: [
-        "AppDelegate.swift",
-        "AppLogStore.swift",
-        "Assets.xcassets",
-        "Base.lproj",
-        "GameNavigationDelegate.swift",
-        "GameScriptBridge.swift",
-        "GameViewController.swift",
-        "GeneratedPluginRegistrant.h",
-        "GeneratedPluginRegistrant.m",
-        "GpNextNativeCore.swift",
-        "Info.plist",
-        "Runner-Bridging-Header.h",
-        "SceneDelegate.swift",
-        "WebKitHighRefreshRate.h",
-      ],
-      sources: [
-        "GameResourceSchemeHandler.swift",
-        "GameSession.swift",
-      ]
-    ),
-    .testTarget(
-      name: "GardendlessNativeCoreTests",
-      dependencies: ["GardendlessNativeCore"],
-      path: "RunnerTests",
-      sources: ["RunnerTests.swift"]
-    ),
+    .target(name: "GardendlessLegacy", path: "Sources/GardendlessLegacy"),
   ]
 )

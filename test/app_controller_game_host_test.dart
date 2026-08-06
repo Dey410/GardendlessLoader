@@ -120,7 +120,7 @@ void main() {
     expect(await sessionStore.exitResultFile.exists(), isFalse);
   });
 
-  test('never enables Loader automatic collection for a GP-Next session',
+  test('keeps Loader automatic collection enabled for a GP-Next session',
       () async {
     final root = await Directory.systemTemp.createTemp('gl_gpnext_host_');
     addTearDown(() async {
@@ -153,7 +153,7 @@ void main() {
     await controller.startGame();
 
     expect(host.session?.hasGpNext, isTrue);
-    expect(host.session?.autoCollectSunEnabled, isFalse);
+    expect(host.session?.autoCollectSunEnabled, isTrue);
   });
 }
 

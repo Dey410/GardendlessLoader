@@ -22,7 +22,7 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 - 校验 `PvZ2 Gardendless` Cocos Web 构建结构、标题和指纹。
 - 原生 GameHost 直接拦截固定合成 Origin 的资源请求，支持 Range、ETag、MIME 和分块读取，不创建 socket。
 - 游戏页由平台 WebView 全屏、横屏和沉浸式承载；启动器 FlutterEngine 在游戏期间释放，非白名单远程请求默认阻止。
-- 自动识别 GP-Next 1.4.2 桌面构建，在不修改游戏资源的前提下注入移动端兼容桥，并在游戏菜单显示“打开 GP-Next”。
+- 自动识别 GP-Next 1.4.x 桌面构建，在不修改游戏资源的前提下注入移动端兼容桥，并在游戏菜单显示“打开 GP-Next”。
 - 导入过程带进度显示；新资源直接写入空闲槽，失败时继续使用原激活槽，启动时恢复未完成事务。
 - 提供可复制的诊断信息，显示原生 GameHost、合成 Origin 和 `resourceServer: none`。
 - 游戏输入直接交给平台 WebView，并支持首页公告、加载器与游戏资源双更新检查和自动收集阳光。
@@ -48,7 +48,7 @@ App 会让用户选择资源 ZIP，自动解压并定位其中的 `docs` Web 构
 - 三指及以上：不执行鼠标映射，并取消当前触摸手势。
 - 实体鼠标和键盘继续由系统 WebView 原生处理。
 
-双指轻点需要在 250 毫秒内完成，且双指中心移动不超过 14 CSS 像素。游戏菜单中的“自动收集阳光”开启后，会每 1.5 秒模拟一次 `A` 键。游戏水印默认开启，可在菜单中关闭；应用会记住最后一次选择。
+双指中心的纵向移动不超过 20 物理像素时，第一根手指抬起便会向 `GameCanvas` 触发一次右键；横向移动不影响右键候选。游戏菜单中的“自动收集阳光”开启后，会每 3 秒模拟一次 `A` 键。游戏水印默认开启，可在菜单中关闭；应用会记住最后一次选择。
 
 导入完成后，资源会被组织在应用创建的 `GardendlessLoader` 目录下：
 
@@ -89,7 +89,7 @@ docs/
 
 ### GP-Next 兼容
 
-Loader 当前精确适配反编译资源中的 GP-Next `1.4.2`。识别到其他 GP-Next 版本时，游戏资源仍可正常导入和启动，但兼容桥与“打开 GP-Next”按钮会禁用并显示原因；普通 Web 构建继续使用原有流程。
+Loader 当前适配反编译资源中的 GP-Next `1.4.x` 系列（通过 `patcher-`、`file-loader-`、`js-mod-loader-` 指纹识别）。识别到不兼容的 GP-Next 版本时，游戏资源仍可正常导入和启动，但兼容桥与“打开 GP-Next”按钮会禁用并显示原因；普通 Web 构建继续使用原有流程。
 
 GP-Next 明确定义的补丁发现、解析、加载、保存、重新加载和 JS Mod 开关行为保持不变。移动端仅替代桌面系统边界：AppData 文件 API 映射到 Loader 的 `gp-next` 沙箱，“打开补丁目录”映射为系统文件选择器，保存对话框映射为系统导出。选择器只接受根目录含 `pack.json` 的 ZIP、JSON 和 JSON5；裸 JavaScript 不可导入。重名文件必须确认后才以可回滚方式替换。JS Mod 仍按 GP-Next 默认关闭，需用户在 GP-Next 中明确开启。
 
@@ -103,6 +103,19 @@ GP-Next 明确定义的补丁发现、解析、加载、保存、重新加载和
 flutter pub get
 flutter test
 flutter run
+```
+
+### iOS 原生层
+
+iOS 原生 GameHost 以本地 SwiftPM 包 `ios/GardendlessKit/` 实现，按业务能力分为
+`GardendlessCore`（会话/路径沙箱/网络策略）、`GardendlessResource`（WKURLSchemeHandler）、
+`GardendlessBridge`（脚本桥/导出）、`GardendlessImport`（ZIP 流式导入）、
+`GardendlessGPNext`（补丁沙箱）、`GardendlessAudio`（短音效）、`GardendlessLogging`（JSONL）。
+`ios/Runner` 只保留薄壳（AppDelegate + GameHostController + AudioScriptBridge）。
+
+```bash
+cd ios/GardendlessKit
+swift test
 ```
 
 关键文件：
@@ -119,7 +132,9 @@ flutter run
 | `lib/src/ui/home_page.dart` | 导入、状态、公告、更新和诊断 UI |
 | `assets/game_bridge/` | 三平台共享的 document-start Transport、GP-Next、触摸、导出、水印和菜单脚本 |
 | `android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/` | Android 原生 WebView GameHost |
-| `ios/Runner/GameViewController.swift` | iOS 原生 WKWebView GameHost |
+| `ios/Runner/AppDelegate.swift` | iOS 薄壳：Flutter 通道、ZIP 选择器、日志通道 |
+| `ios/Runner/GameHostController.swift` | iOS 薄壳：WKWebView GameHost 装配、桥、导出、GP-Next |
+| `ios/GardendlessKit/` | iOS 原生 GameHost 能力模块（SwiftPM） |
 | `ohos/entry/src/main/ets/game/` | HarmonyOS/OpenHarmony ArkWeb GameHost 边界实现 |
 | `announcements.json` | 远程公告配置 |
 

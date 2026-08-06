@@ -72,7 +72,7 @@ function createTouchEvent(type, {touches, changedTouches}) {
   return event;
 }
 
-function createTouchHarness() {
+function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
   const appendedElements = [];
   const frames = new Map();
   const mutationObservers = [];
@@ -100,7 +100,7 @@ function createTouchHarness() {
       textContent: '',
     }),
     documentElement: documentRoot,
-    elementFromPoint: () => canvas,
+    elementFromPoint: () => pointTarget ?? canvas,
     getElementById: (id) => {
       if (id === 'GameCanvas') {
         return canvas;
@@ -111,6 +111,7 @@ function createTouchHarness() {
     hidden: false,
   });
   const window = new EventTarget();
+  window.devicePixelRatio = devicePixelRatio;
   const context = {
     Event,
     Math,
@@ -290,8 +291,10 @@ function createTouchHarness() {
 }
 
 {
-  const harness = createTouchHarness();
+  const pointTarget = createElement({id: 'point-target'});
+  const harness = createTouchHarness({pointTarget});
   const rightClicks = [];
+  let pointTargetRightClicks = 0;
   for (const type of ['mousedown', 'mouseup']) {
     harness.canvas.addEventListener(type, (event) => {
       if (event.button === 2) {
@@ -305,6 +308,11 @@ function createTouchHarness() {
       }
     });
   }
+  pointTarget.addEventListener('mousedown', (event) => {
+    if (event.button === 2) {
+      pointTargetRightClicks += 1;
+    }
+  });
 
   const firstStart = createTouch(31, harness.canvas, 80, 100);
   const secondStart = createTouch(32, harness.canvas, 120, 100);
@@ -317,8 +325,8 @@ function createTouchHarness() {
     changedTouches: [secondStart],
   }));
 
-  const firstMove = createTouch(31, harness.canvas, 99, 100);
-  const secondMove = createTouch(32, harness.canvas, 139, 100);
+  const firstMove = createTouch(31, harness.canvas, 180, 100);
+  const secondMove = createTouch(32, harness.canvas, 220, 100);
   harness.document.dispatchEvent(createTouchEvent('touchmove', {
     touches: [firstMove, secondMove],
     changedTouches: [firstMove, secondMove],
@@ -327,10 +335,6 @@ function createTouchHarness() {
   harness.document.dispatchEvent(createTouchEvent('touchend', {
     touches: [secondMove],
     changedTouches: [firstMove],
-  }));
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [secondMove],
   }));
 
   assert.deepEqual(rightClicks, [
@@ -349,10 +353,25 @@ function createTouchHarness() {
       clientY: 100,
     },
   ]);
+  assert.equal(
+    pointTargetRightClicks,
+    0,
+    'right clicks must target GameCanvas instead of the hit-tested element',
+  );
+
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [secondMove],
+  }));
+  assert.equal(
+    rightClicks.length,
+    2,
+    'lifting the remaining finger must not emit another right click',
+  );
 }
 
 {
-  const harness = createTouchHarness();
+  const harness = createTouchHarness({devicePixelRatio: 2});
   const wheelEvents = [];
   let rightClicks = 0;
   harness.canvas.addEventListener('wheel', (event) => {
@@ -380,8 +399,8 @@ function createTouchHarness() {
     changedTouches: [secondStart],
   }));
 
-  const firstWithinSlop = createTouch(41, harness.canvas, 80, 115);
-  const secondWithinSlop = createTouch(42, harness.canvas, 120, 115);
+  const firstWithinSlop = createTouch(41, harness.canvas, 80, 110);
+  const secondWithinSlop = createTouch(42, harness.canvas, 120, 110);
   harness.document.dispatchEvent(createTouchEvent('touchmove', {
     touches: [firstWithinSlop, secondWithinSlop],
     changedTouches: [firstWithinSlop, secondWithinSlop],
@@ -389,19 +408,19 @@ function createTouchHarness() {
   assert.deepEqual(
     wheelEvents,
     [],
-    'movement inside the 20px slop must remain a right-click candidate',
+    'movement at the 20 physical pixel slop must remain a right-click candidate',
   );
 
-  const firstScroll = createTouch(41, harness.canvas, 80, 125);
-  const secondScroll = createTouch(42, harness.canvas, 120, 125);
+  const firstScroll = createTouch(41, harness.canvas, 80, 111);
+  const secondScroll = createTouch(42, harness.canvas, 120, 111);
   harness.document.dispatchEvent(createTouchEvent('touchmove', {
     touches: [firstScroll, secondScroll],
     changedTouches: [firstScroll, secondScroll],
   }));
   assert.deepEqual(wheelEvents, [{
-    deltaY: -45,
+    deltaY: -4.5,
     clientX: 100,
-    clientY: 125,
+    clientY: 111,
     target: harness.canvas,
   }]);
 

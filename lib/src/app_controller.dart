@@ -884,7 +884,7 @@ class AppController extends ChangeNotifier {
       gpNextCompatible: gpNextCompatible,
       gpNextVersion: gpNextVersion,
       watermarkEnabled: _watermarkEnabled,
-      autoCollectSunEnabled: !hasGpNext && _manifest.autoCollectSunEnabled,
+      autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],

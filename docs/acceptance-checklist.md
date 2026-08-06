@@ -30,9 +30,9 @@
 - On Android, one-finger dragging keeps the left button pressed and follows the active finger without jumping to another finger.
 - On Android, adding a second finger releases the left button at the first finger's last position.
 - On Android, returning from two fingers to one does not restart a left-button gesture until every finger is lifted.
-- On Android, two-finger movement inside 20 CSS pixels remains a right-click candidate.
-- On Android, a two-finger gesture that exceeds 20 CSS pixels scrolls at the configured `-4.5` multiplier and does not emit a right click.
-- On Android, a stationary two-finger gesture emits one right click after both fingers are lifted, even when held longer than 250 ms.
+- On Android, two-finger center movement of at most 20 physical pixels vertically remains a right-click candidate, regardless of horizontal movement.
+- On Android, a two-finger gesture whose center exceeds 20 physical pixels vertically scrolls at the configured `-4.5` multiplier and does not emit a right click.
+- On Android, a stationary two-finger gesture emits one right click to `GameCanvas` when the first finger is lifted, even when held longer than 250 ms; lifting the remaining finger emits no second click.
 - On Android, cancelling the gesture, backgrounding the app, removing the target, or losing focus never leaves a mouse button pressed.
 - On Android, text inputs, selects, editable content, and GP-Next controls retain native touch behavior.
 - Repeat the complete touch-input matrix above on iOS WKWebView before release.
@@ -40,15 +40,15 @@
 
 ## Automatic sun collection
 
-- With a valid standard resource, a gray `自动收集` panel is attached directly above `开始游戏`; only the panel's top corners and the button's bottom corners are rounded.
+- With any valid resource (standard or GP-Next), a gray `自动收集` panel is attached directly above `开始游戏`; only the panel's top corners and the button's bottom corners are rounded.
 - The whole panel and its switch toggle the setting; the enabled switch uses the launcher's blue accent.
-- With no valid resource or any GP-Next resource, the panel is absent and the start button keeps all four rounded corners.
+- With no valid resource, the panel is absent and the start button keeps all four rounded corners.
 - During an import over an existing standard resource, the panel remains visible at reduced opacity and cannot be changed.
 - Restarting the Loader preserves the current resource's choice; every successful import resets it to off, while failed or cancelled imports preserve it.
 - When enabled, continuously valid gameplay waits three seconds before sending `A` keydown, sends keyup after 50 ms, then repeats every three seconds.
 - Leaving gameplay, pausing, entering an air-raid/special stage, focusing a native input/select/editable element, backgrounding, or losing window focus cancels the pending cycle.
 - Returning to valid foreground gameplay starts a fresh three-second wait with no catch-up presses.
-- A GP-Next session never starts Loader automatic collection, even if a stale manifest value is present.
+- A GP-Next session starts Loader automatic collection when the manifest value is enabled, independently of GP-Next's own auto-collect control.
 - Failure to import the game-state modules disables automatic collection and logs the failure once without affecting gameplay.
 - The removed legacy in-game menu and its former 1.5-second unscoped collector are absent from Android, iOS, HarmonyOS, and shared assets.
 

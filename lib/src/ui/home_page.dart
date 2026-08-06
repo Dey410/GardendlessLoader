@@ -2079,8 +2079,7 @@ class _GameLaunchControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showAutoCollectSun =
-        controller.hasCurrentResource && !controller.hasGpNext;
+    final showAutoCollectSun = controller.hasCurrentResource;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
