@@ -27,6 +27,7 @@ public final class LongAudioChannel: NSObject {
     var stopped: Bool
     var generation: Int
     var pendingChunks: Int
+    var reachedEOF: Bool
   }
 
   public weak var delegate: LongAudioChannelDelegate?
@@ -46,6 +47,7 @@ public final class LongAudioChannel: NSObject {
   private var stopped = false
   private var generationCounter = 0
   private let chunkDuration: TimeInterval = 2
+  private let chunkReadAhead = 2
 
   public init(
     sandbox: PathSandbox,
@@ -170,7 +172,7 @@ public final class LongAudioChannel: NSObject {
         resumed.paused = false
         streams[request.requestId] = resumed
         if resumed.pendingChunks == 0 {
-          scheduleNextChunk(resumed)
+          ensureChunks(resumed)
         }
         metric("long_channel_resumed", path: existing.relativePath)
         return
@@ -281,7 +283,8 @@ public final class LongAudioChannel: NSObject {
       paused: false,
       stopped: false,
       generation: 0,
-      pendingChunks: 0
+      pendingChunks: 0,
+      reachedEOF: false
     )
     player.volume = request.volume * masterVolume
     varispeed.rate = Float(stream.rate)
@@ -307,42 +310,61 @@ public final class LongAudioChannel: NSObject {
       stream.file.length
     )
     stream.file.framePosition = frame
-    scheduleNextChunk(updated)
+    ensureChunks(updated)
   }
 
-  private func scheduleNextChunk(_ stream: Stream) {
-    guard let current = streams[stream.requestId],
+  private func ensureChunks(_ stream: Stream) {
+    while let current = streams[stream.requestId],
           !current.stopped,
           !current.paused,
-          current.generation == stream.generation else {
-      return
+          current.generation == stream.generation,
+          current.pendingChunks < chunkReadAhead {
+      guard scheduleNextChunk(current) else {
+        return
+      }
     }
-    let format = stream.file.processingFormat
-    let chunkFrames = AVAudioFrameCount(
-      max(1, Int(Double(format.sampleRate) * chunkDuration))
-    )
-    guard let buffer = AVAudioPCMBuffer(
-      pcmFormat: format,
-      frameCapacity: chunkFrames
-    ) else {
-      stopStream(
-        requestId: stream.requestId,
-        outcome: .init(
-          kind: .silent,
-          requestId: stream.requestId,
-          reason: "buffer_alloc_failed"
-        )
+  }
+
+  private func scheduleNextChunk(_ stream: Stream) -> Bool {
+    while true {
+      guard let current = streams[stream.requestId],
+            !current.stopped,
+            !current.paused,
+            current.generation == stream.generation else {
+        return false
+      }
+      let format = stream.file.processingFormat
+      let chunkFrames = AVAudioFrameCount(
+        max(1, Int(Double(format.sampleRate) * chunkDuration))
       )
-      return
-    }
-    do {
-      try stream.file.read(into: buffer, frameCount: chunkFrames)
-    } catch {
-      if stream.file.framePosition >= stream.file.length {
-        if stream.loop {
-          stream.file.framePosition = 0
-          scheduleNextChunk(stream)
-        } else {
+      guard let buffer = AVAudioPCMBuffer(
+        pcmFormat: format,
+        frameCapacity: chunkFrames
+      ) else {
+        stopStream(
+          requestId: stream.requestId,
+          outcome: .init(
+            kind: .silent,
+            requestId: stream.requestId,
+            reason: "buffer_alloc_failed"
+          )
+        )
+        return false
+      }
+      do {
+        try stream.file.read(into: buffer, frameCount: chunkFrames)
+      } catch {
+        if stream.file.framePosition >= stream.file.length {
+          var eofStream = stream
+          eofStream.reachedEOF = true
+          streams[stream.requestId] = eofStream
+          if eofStream.loop {
+            stream.file.framePosition = 0
+            continue
+          }
+          if eofStream.pendingChunks > 0 {
+            return false
+          }
           stopStream(
             requestId: stream.requestId,
             outcome: .init(
@@ -351,24 +373,29 @@ public final class LongAudioChannel: NSObject {
               reason: nil
             )
           )
+          return false
         }
-        return
-      }
-      stopStream(
-        requestId: stream.requestId,
-        outcome: .init(
-          kind: .silent,
+        stopStream(
           requestId: stream.requestId,
-          reason: "read_failed"
+          outcome: .init(
+            kind: .silent,
+            requestId: stream.requestId,
+            reason: "read_failed"
+          )
         )
-      )
-      return
-    }
-    if buffer.frameLength == 0 {
-      if stream.loop {
-        stream.file.framePosition = 0
-        scheduleNextChunk(stream)
-      } else {
+        return false
+      }
+      if buffer.frameLength == 0 {
+        var eofStream = stream
+        eofStream.reachedEOF = true
+        streams[stream.requestId] = eofStream
+        if eofStream.loop {
+          stream.file.framePosition = 0
+          continue
+        }
+        if eofStream.pendingChunks > 0 {
+          return false
+        }
         stopStream(
           requestId: stream.requestId,
           outcome: .init(
@@ -377,41 +404,43 @@ public final class LongAudioChannel: NSObject {
             reason: nil
           )
         )
+        return false
       }
-      return
-    }
-    let requestId = stream.requestId
-    let generation = stream.generation
-    var scheduled = stream
-    scheduled.pendingChunks += 1
-    streams[stream.requestId] = scheduled
-    let scheduleException = SfxExceptionGuard.runBlock {
-      scheduled.player.scheduleBuffer(
-        buffer,
-        completionCallbackType: .dataPlayedBack
-      ) { [weak self] _ in
-        self?.stateQueue.async { [weak self] in
-          self?.handleChunkCompletion(
-            requestId: requestId,
-            generation: generation
-          )
+      let requestId = stream.requestId
+      let generation = stream.generation
+      var scheduled = stream
+      scheduled.pendingChunks += 1
+      streams[stream.requestId] = scheduled
+      let scheduleException = SfxExceptionGuard.runBlock {
+        scheduled.player.scheduleBuffer(
+          buffer,
+          completionCallbackType: .dataPlayedBack
+        ) { [weak self] _ in
+          self?.stateQueue.async { [weak self] in
+            self?.handleChunkCompletion(
+              requestId: requestId,
+              generation: generation
+            )
+          }
         }
       }
-    }
-    if let scheduleException {
-      metric(
-        "long_channel_schedule_failed",
-        path: stream.relativePath,
-        details: ["reason": scheduleException]
-      )
-      stopStream(
-        requestId: requestId,
-        outcome: .init(
-          kind: .silent,
-          requestId: requestId,
-          reason: "schedule_failed"
+      if let scheduleException {
+        metric(
+          "long_channel_schedule_failed",
+          path: stream.relativePath,
+          details: ["reason": scheduleException]
         )
-      )
+        stopStream(
+          requestId: requestId,
+          outcome: .init(
+            kind: .silent,
+            requestId: requestId,
+            reason: "schedule_failed"
+          )
+        )
+        return false
+      }
+      return true
     }
   }
 
@@ -426,7 +455,18 @@ public final class LongAudioChannel: NSObject {
     if stream.paused {
       return
     }
-    scheduleNextChunk(stream)
+    if stream.reachedEOF && !stream.loop && stream.pendingChunks == 0 {
+      stopStream(
+        requestId: requestId,
+        outcome: .init(
+          kind: .ended,
+          requestId: requestId,
+          reason: nil
+        )
+      )
+      return
+    }
+    ensureChunks(stream)
   }
 
   private func pauseLocked(requestId: String) {
@@ -449,6 +489,7 @@ public final class LongAudioChannel: NSObject {
     streams[requestId] = stream
     stream.player.stop()
     stream.pendingChunks = 0
+    stream.reachedEOF = false
     stream.file.framePosition = frame
     schedule(stream, at: time)
     if !stream.paused {

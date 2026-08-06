@@ -495,6 +495,61 @@ final class AudioTests: XCTestCase {
     channel.shutdown()
   }
 
+  func testLongChannelMultiChunkStreamingPlaysToEnd() throws {
+    let url = root.appendingPathComponent("multi-chunk.m4a")
+    let settings: [String: Any] = [
+      AVFormatIDKey: kAudioFormatMPEG4AAC,
+      AVSampleRateKey: 16_000,
+      AVNumberOfChannelsKey: 1,
+      AVEncoderBitRateKey: 24_000,
+    ]
+    do {
+      let audioFile = try AVAudioFile(forWriting: url, settings: settings)
+      let format = audioFile.processingFormat
+      let buffer = AVAudioPCMBuffer(
+        pcmFormat: format,
+        frameCapacity: 80_000
+      )!
+      buffer.frameLength = 80_000
+      if let channel = buffer.floatChannelData?[0] {
+        for index in 0..<Int(buffer.frameLength) {
+          channel[index] = sin(Float(index) * 0.01)
+        }
+      }
+      try audioFile.write(from: buffer)
+    }
+    let sandbox = try PathSandbox(root: root)
+    let channel = LongAudioChannel(sandbox: sandbox)
+    let spy = OutcomeSpy()
+    channel.delegate = spy
+    let startedAt = Date()
+    let expectation = expectation(description: "multi chunk ended")
+    spy.onOutcome = { outcome in
+      if outcome.kind == .ended {
+        expectation.fulfill()
+      }
+    }
+    channel.play(
+      AudioPlayRequest(
+        requestId: "multi-chunk",
+        url: URL(string: "gardendless-game://localhost/multi-chunk.m4a")!,
+        role: .continuous
+      )
+    )
+    wait(for: [expectation], timeout: 8)
+    let elapsed = Date().timeIntervalSince(startedAt)
+    XCTAssertGreaterThan(
+      elapsed,
+      4.5,
+      "5s audio must play through multiple chunks before ending"
+    )
+    XCTAssertFalse(
+      spy.outcomes.contains { $0.kind == .silent },
+      "multi-chunk continuous audio must not report silent"
+    )
+    channel.shutdown()
+  }
+
   func testPipelineRoutesShortContinuousAudioToShortEngine() throws {
     _ = try writeOneSecondM4a("route-short.m4a")
     let sandbox = try PathSandbox(root: root)
