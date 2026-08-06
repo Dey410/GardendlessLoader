@@ -7,7 +7,7 @@ import UIKit
 #endif
 
 public protocol ShortSfxEngineDelegate: AnyObject {
-  func shortSfxEngineDidProduce(_ result: ShortSfxEngine.PlayResult)
+  func shortSfxEngineDidProduce(_ outcome: AudioOutcome)
 }
 
 public enum NativeAudioDecision: Equatable {
@@ -15,16 +15,11 @@ public enum NativeAudioDecision: Equatable {
   case silent(String)
 }
 
-/// Decodes short non-BGM sound effects natively. Audio that does not fit the
-/// short-SFX contract is silenced; nothing is routed back to WebKit after a
-/// native attempt.
+/// Decodes and plays bounded one-shot sound effects natively on a fixed voice
+/// pool. The pool preempts the oldest one-shot when full and never touches the
+/// long-audio channel. Audio that cannot be played is reported as `silent` and
+/// cached so repeated requests do not re-decode.
 public final class ShortSfxEngine: NSObject {
-  public enum PlayResult {
-    case ended(String)
-    /// Native decode was attempted but failed; play nothing.
-    case silent(String, String)
-  }
-
   private enum DecodeOutcome {
     case buffer(AVAudioPCMBuffer, Int, TimeInterval, Int64)
     case silent(String, String)
@@ -37,16 +32,28 @@ public final class ShortSfxEngine: NSObject {
     var retainCount: Int
   }
 
+  private struct VoiceNode {
+    let player: AVAudioPlayerNode
+    let varispeed: AVAudioUnitVarispeed?
+  }
+
   private struct Voice {
-    let node: AVAudioPlayerNode
+    let node: VoiceNode
+    let url: URL
     let relativePath: String
     let volume: Float
+    let rate: Double
+    let startedAt: TimeInterval
+    var paused: Bool
+    let generation: Int
   }
 
   private struct PlayRequest {
-    let elementId: String
+    let requestId: String
     let url: URL
     let volume: Float
+    let rate: Double
+    let startTime: TimeInterval
     let requestedAt: TimeInterval
   }
 
@@ -58,17 +65,21 @@ public final class ShortSfxEngine: NSObject {
   private let stateQueue = DispatchQueue(
     label: "io.github.dey410.gardendless.native-sfx-state"
   )
+  private let fileOpener = AudioFileOpener()
 
   private var engine: AVAudioEngine?
   private var buffers: [String: CachedBuffer] = [:]
   private var inFlight: [String: [PlayRequest]] = [:]
+  private var inFlightEtags: [String: String] = [:]
+  private var etags: [String: String] = [:]
   private var activeVoices: [String: Voice] = [:]
-  private var availableNodes: [AVAudioPlayerNode] = []
-  private var aliasFiles: [String: URL] = [:]
+  private var availableNodes: [VoiceNode] = []
+  private var rejectionCache: [String: String] = [:]
   private var cacheBytes = 0
   private var cacheClock: UInt64 = 0
   private var masterVolume: Float = 1
   private var stopped = false
+  private var voiceGeneration = 0
 
   public init(
     sandbox: PathSandbox,
@@ -105,7 +116,7 @@ public final class ShortSfxEngine: NSObject {
   }
 
   /// Pure classification used before native decoding: only bounded, short
-  /// audio is accepted; anything else is silenced.
+  /// audio is accepted; anything else is rejected.
   public static func classify(
     compressedBytes: Int64,
     duration: TimeInterval,
@@ -123,16 +134,19 @@ public final class ShortSfxEngine: NSObject {
     return .native
   }
 
-  public func register(_ url: URL) {
-    guard let relativePath = sandbox.relativePath(for: url) else { return }
-    metric("native_sfx_registered", path: relativePath)
-  }
-
-  public func play(elementId: String, url: URL, volume: Float) {
+  public func play(
+    requestId: String,
+    url: URL,
+    volume: Float,
+    rate: Double = 1,
+    startTime: TimeInterval = 0
+  ) {
     let request = PlayRequest(
-      elementId: elementId,
+      requestId: requestId,
       url: url,
       volume: max(0, min(1, volume)),
+      rate: max(0.1, min(4, rate)),
+      startTime: max(0, startTime),
       requestedAt: ProcessInfo.processInfo.systemUptime
     )
     stateQueue.async { [weak self] in
@@ -140,25 +154,87 @@ public final class ShortSfxEngine: NSObject {
     }
   }
 
-  public func stop(elementId: String) {
+  public func pause(requestId: String) {
     stateQueue.async { [weak self] in
-      self?.stopVoice(elementId: elementId, notifyEnded: false)
+      guard var voice = self?.activeVoices[requestId], !voice.paused else {
+        return
+      }
+      voice.paused = true
+      self?.activeVoices[requestId] = voice
+      voice.node.player.pause()
     }
   }
 
-  public func release(elementId: String) {
+  public func stop(requestId: String) {
+    stateQueue.async { [weak self] in
+      self?.stopVoice(requestId: requestId, notifyEnded: false)
+    }
+  }
+
+  public func release(requestId: String) {
     stateQueue.async { [weak self] in
       guard let self else { return }
-      self.stopVoice(elementId: elementId, notifyEnded: false)
+      self.stopVoice(requestId: requestId, notifyEnded: false)
       for path in Array(self.inFlight.keys) {
-        self.inFlight[path]?.removeAll { $0.elementId == elementId }
+        self.inFlight[path]?.removeAll { $0.requestId == requestId }
       }
+    }
+  }
+
+  public func seek(requestId: String, time: TimeInterval) {
+    stateQueue.async { [weak self] in
+      guard let self,
+            let voice = self.activeVoices[requestId],
+            let cached = self.buffers[voice.relativePath] else {
+        return
+      }
+      self.stopVoice(requestId: requestId, notifyEnded: false)
+      let request = PlayRequest(
+        requestId: requestId,
+        url: voice.url,
+        volume: voice.volume,
+        rate: voice.rate,
+        startTime: time,
+        requestedAt: ProcessInfo.processInfo.systemUptime
+      )
+      self.schedule(
+        request,
+        relativePath: voice.relativePath,
+        cached: cached
+      )
+    }
+  }
+
+  public func setVolume(requestId: String, volume: Float) {
+    stateQueue.async { [weak self] in
+      guard let self,
+            let voice = self.activeVoices[requestId] else {
+        return
+      }
+      let normalized = max(0, min(1, volume))
+      voice.node.player.volume = normalized * self.masterVolume
+    }
+  }
+
+  public func setLoop(requestId: String, loop: Bool) {
+    // One-shot voices never loop; the game routes looped audio to the long
+    // channel. Kept as a no-op so the bridge protocol stays uniform.
+  }
+
+  public func setRate(requestId: String, rate: Double) {
+    stateQueue.async { [weak self] in
+      guard let self,
+            let voice = self.activeVoices[requestId],
+            let varispeed = voice.node.varispeed else {
+        return
+      }
+      varispeed.rate = Float(max(0.25, min(4, rate)))
     }
   }
 
   public func stopAll() {
     stateQueue.async { [weak self] in
-      self?.stopAllLocked(notifyEnded: false)
+      self?.stopAllLocked(notifyEnded: false, stoppedReason: nil)
     }
   }
 
@@ -167,8 +243,15 @@ public final class ShortSfxEngine: NSObject {
       guard let self else { return }
       self.masterVolume = max(0, min(1, volume))
       for voice in self.activeVoices.values {
-        voice.node.volume = voice.volume * self.masterVolume
+        voice.node.player.volume = voice.volume * self.masterVolume
       }
+    }
+  }
+
+  public func isActive(requestId: String) -> Bool {
+    stateQueue.sync {
+      activeVoices[requestId] != nil
+        || inFlight.values.contains { $0.contains { $0.requestId == requestId } }
     }
   }
 
@@ -181,28 +264,38 @@ public final class ShortSfxEngine: NSObject {
       guard !stopped else { return }
       stopped = true
       inFlight.removeAll()
-      stopAllLocked(notifyEnded: false)
+      inFlightEtags.removeAll()
+      etags.removeAll()
+      stopAllLocked(notifyEnded: false, stoppedReason: nil)
       buffers.removeAll()
       cacheBytes = 0
+      rejectionCache.removeAll()
       engine?.stop()
       if let engine {
         for node in availableNodes {
-          engine.detach(node)
+          engine.detach(node.player)
+          if let varispeed = node.varispeed {
+            engine.detach(varispeed)
+          }
         }
       }
       availableNodes.removeAll()
       engine = nil
-      for file in aliasFiles.values {
-        try? FileManager.default.removeItem(at: file)
-      }
-      aliasFiles.removeAll()
     }
+    fileOpener.cleanup()
   }
 
   private func enqueue(_ request: PlayRequest) {
     guard !stopped,
           let relativePath = sandbox.relativePath(for: request.url) else {
       routeSilent(request, reason: "invalid_url")
+      return
+    }
+    if let voice = activeVoices[request.requestId], voice.paused {
+      voice.node.player.play()
+      var resumed = voice
+      resumed.paused = false
+      activeVoices[request.requestId] = resumed
       return
     }
     let ext = (relativePath as NSString).pathExtension.lowercased()
@@ -216,12 +309,34 @@ public final class ShortSfxEngine: NSObject {
       routeSilent(request, reason: "not_short_sfx")
       return
     }
-    if var cached = buffers[relativePath] {
+    if let cached = buffers[relativePath] {
       cacheClock &+= 1
-      cached.lastAccess = cacheClock
-      buffers[relativePath] = cached
+      var refreshed = cached
+      refreshed.lastAccess = cacheClock
+      buffers[relativePath] = refreshed
       metric("native_sfx_cache_hit", path: relativePath)
-      schedule(request, relativePath: relativePath)
+      schedule(request, relativePath: relativePath, cached: refreshed)
+      return
+    }
+    let etag: String
+    if let cachedEtag = etags[relativePath] {
+      etag = cachedEtag
+    } else if let file = sandbox.resolve(relativePath),
+              let properties = try? sandbox.fileProperties(file) {
+      etag = properties.etag
+      etags[relativePath] = etag
+    } else {
+      etag = ""
+    }
+    if let cachedReason = rejectionCache[rejectionKey(
+      role: "oneShot",
+      path: relativePath,
+      etag: etag
+    )] {
+      metric("native_sfx_rejected_cached", path: relativePath, details: [
+        "reason": cachedReason,
+      ])
+      routeSilent(request, reason: cachedReason)
       return
     }
     if inFlight[relativePath] != nil {
@@ -229,6 +344,7 @@ public final class ShortSfxEngine: NSObject {
       return
     }
     inFlight[relativePath] = [request]
+    inFlightEtags[relativePath] = etag
     metric("native_sfx_decode_started", path: relativePath)
     let startedAt = ProcessInfo.processInfo.systemUptime
     decodeQueue.addOperation { [weak self] in
@@ -273,7 +389,7 @@ public final class ShortSfxEngine: NSObject {
     }
     let audioFile: AVAudioFile
     do {
-      audioFile = try openAudioFile(
+      audioFile = try fileOpener.open(
         file,
         relativePath: relativePath,
         container: container
@@ -318,48 +434,6 @@ public final class ShortSfxEngine: NSObject {
     return .buffer(buffer, decodedBytes, duration, properties.length)
   }
 
-  private func openAudioFile(
-    _ file: URL,
-    relativePath: String,
-    container: AudioContainer
-  ) throws -> AVAudioFile {
-    if container == .m4a, file.pathExtension.lowercased() != "m4a" {
-      return try AVAudioFile(
-        forReading: m4aAlias(file, relativePath: relativePath)
-      )
-    }
-    return try AVAudioFile(forReading: file)
-  }
-
-  private func m4aAlias(_ file: URL, relativePath: String) throws -> URL {
-    if let existing = stateQueue.sync(execute: { aliasFiles[relativePath] }) {
-      return existing
-    }
-    let properties = try sandbox.fileProperties(file)
-    let directory = FileManager.default.urls(
-      for: .cachesDirectory,
-      in: .userDomainMask
-    )[0]
-      .appendingPathComponent("gardendless-native-sfx", isDirectory: true)
-    try FileManager.default.createDirectory(
-      at: directory,
-      withIntermediateDirectories: true
-    )
-    let identity = "\(sandbox.root.path):\(relativePath):\(properties.etag)"
-    let alias = directory.appendingPathComponent("\(urlHash(identity)).m4a")
-    if !FileManager.default.fileExists(atPath: alias.path) {
-      do {
-        try FileManager.default.linkItem(at: file, to: alias)
-      } catch {
-        try FileManager.default.copyItem(at: file, to: alias)
-      }
-    }
-    stateQueue.async { [weak self] in
-      self?.aliasFiles[relativePath] = alias
-    }
-    return alias
-  }
-
   private func finishDecode(
     _ relativePath: String,
     outcome: DecodeOutcome,
@@ -367,9 +441,22 @@ public final class ShortSfxEngine: NSObject {
   ) {
     guard !stopped else { return }
     let pending = inFlight.removeValue(forKey: relativePath) ?? []
+    let etag = inFlightEtags.removeValue(forKey: relativePath) ?? ""
     let decoded: (AVAudioPCMBuffer, Int, TimeInterval, Int64)
     switch outcome {
     case .silent(let reason, let message):
+      let key = rejectionKey(
+        role: "oneShot",
+        path: relativePath,
+        etag: etag
+      )
+      if isCacheable(reason: reason) {
+        rejectionCache[key] = reason
+        if rejectionCache.count > 512,
+           let first = rejectionCache.keys.first {
+          rejectionCache.removeValue(forKey: first)
+        }
+      }
       metric(
         "native_sfx_silent",
         path: relativePath,
@@ -379,8 +466,8 @@ public final class ShortSfxEngine: NSObject {
         routeSilent(request, reason: reason)
       }
       return
-    case .buffer(let value):
-      decoded = value
+    case let .buffer(buffer, byteCount, duration, compressedBytes):
+      decoded = (buffer, byteCount, duration, compressedBytes)
     }
     makeCacheSpace(for: decoded.1)
     guard cacheBytes + decoded.1 <= configuration.pcmCacheByteLimit else {
@@ -408,51 +495,111 @@ public final class ShortSfxEngine: NSObject {
     for request in pending {
       if ProcessInfo.processInfo.systemUptime - request.requestedAt
           > AudioPlaybackLimits.stalePlayInterval {
-        delegate?.shortSfxEngineDidProduce(.ended(request.elementId))
+        delegate?.shortSfxEngineDidProduce(
+          .init(kind: .ended, requestId: request.requestId)
+        )
       } else {
-        schedule(request, relativePath: relativePath)
+        schedule(request, relativePath: relativePath, cached: buffers[relativePath]!)
       }
     }
   }
 
-  private func schedule(_ request: PlayRequest, relativePath: String) {
-    guard var cached = buffers[relativePath] else {
-      routeSilent(request, reason: "buffer_missing")
-      return
-    }
+  private func schedule(
+    _ request: PlayRequest,
+    relativePath: String,
+    cached: CachedBuffer
+  ) {
     guard let engine = ensureEngineRunning(), engine.isRunning else {
       routeSilent(request, reason: "engine_unavailable")
       return
     }
-    stopVoice(elementId: request.elementId, notifyEnded: false)
-    guard let node = availableNodes.popLast() else {
-      delegate?.shortSfxEngineDidProduce(.ended(request.elementId))
+    stopVoice(requestId: request.requestId, notifyEnded: false)
+    var node: VoiceNode?
+    if request.rate != 1 {
+      if let index = availableNodes.firstIndex(where: { $0.varispeed != nil }) {
+        node = availableNodes.remove(at: index)
+      }
+    } else if let popped = availableNodes.popLast() {
+      node = popped
+    }
+    if node == nil {
+      // Preempt the oldest one-shot instead of dropping the new request.
+      if let oldest = activeVoices.min(by: {
+        $0.value.startedAt < $1.value.startedAt
+      }) {
+        stopVoice(requestId: oldest.key, notifyEnded: true)
+        if request.rate != 1 {
+          if let index = availableNodes.firstIndex(where: {
+            $0.varispeed != nil
+          }) {
+            node = availableNodes.remove(at: index)
+          }
+        } else {
+          node = availableNodes.popLast()
+        }
+      }
+    }
+    guard let selectedNode = node else {
+      delegate?.shortSfxEngineDidProduce(
+        .init(kind: .ended, requestId: request.requestId)
+      )
       return
     }
+    var cached = cached
     let exceptionReason = SfxExceptionGuard.runBlock {
-      engine.disconnectNodeOutput(node)
-      engine.connect(node, to: engine.mainMixerNode, format: cached.buffer.format)
+      if let varispeed = selectedNode.varispeed {
+        engine.disconnectNodeOutput(selectedNode.player)
+        engine.disconnectNodeOutput(varispeed)
+        engine.connect(
+          selectedNode.player,
+          to: varispeed,
+          format: cached.buffer.format
+        )
+        engine.connect(
+          varispeed,
+          to: engine.mainMixerNode,
+          format: cached.buffer.format
+        )
+        varispeed.rate = Float(max(0.25, min(4, request.rate)))
+      } else {
+        engine.disconnectNodeOutput(selectedNode.player)
+        engine.connect(
+          selectedNode.player,
+          to: engine.mainMixerNode,
+          format: cached.buffer.format
+        )
+      }
       cached.retainCount += 1
-      buffers[relativePath] = cached
-      activeVoices[request.elementId] = Voice(
-        node: node,
+      self.buffers[relativePath] = cached
+      self.voiceGeneration &+= 1
+      let generation = self.voiceGeneration
+      self.activeVoices[request.requestId] = Voice(
+        node: selectedNode,
+        url: request.url,
         relativePath: relativePath,
-        volume: request.volume
+        volume: request.volume,
+        rate: request.rate,
+        startedAt: ProcessInfo.processInfo.systemUptime,
+        paused: false,
+        generation: generation
       )
-      node.volume = request.volume * masterVolume
-      node.scheduleBuffer(
+      selectedNode.player.volume = request.volume * self.masterVolume
+      selectedNode.player.scheduleBuffer(
         cached.buffer,
         completionCallbackType: .dataPlayedBack
       ) { [weak self] _ in
         self?.stateQueue.async { [weak self] in
-          self?.completeVoice(elementId: request.elementId)
+          self?.completeVoice(
+            requestId: request.requestId,
+            generation: generation
+          )
         }
       }
-      node.play()
+      selectedNode.player.play()
     }
     if let exceptionReason {
-      activeVoices.removeValue(forKey: request.elementId)
-      availableNodes.append(node)
+      activeVoices.removeValue(forKey: request.requestId)
+      availableNodes.append(selectedNode)
       if var stored = buffers[relativePath] {
         stored.retainCount = max(0, stored.retainCount - 1)
         buffers[relativePath] = stored
@@ -471,34 +618,60 @@ public final class ShortSfxEngine: NSObject {
       ),
       "activeNodes": activeVoices.count,
       "pcmCacheBytes": cacheBytes,
+      "rate": request.rate,
     ])
   }
 
-  private func completeVoice(elementId: String) {
-    guard activeVoices[elementId] != nil else { return }
-    stopVoice(elementId: elementId, notifyEnded: true)
+  private func completeVoice(requestId: String, generation: Int) {
+    guard activeVoices[requestId]?.generation == generation else { return }
+    stopVoice(requestId: requestId, notifyEnded: true)
   }
 
-  private func stopVoice(elementId: String, notifyEnded: Bool) {
-    guard let voice = activeVoices.removeValue(forKey: elementId) else {
+  private func stopVoice(requestId: String, notifyEnded: Bool) {
+    guard let voice = activeVoices.removeValue(forKey: requestId) else {
       return
     }
-    voice.node.stop()
+    voice.node.player.stop()
     availableNodes.append(voice.node)
-    if var cached = buffers[voice.relativePath] {
+    let relativePath = voice.relativePath
+    if var cached = buffers[relativePath] {
       cached.retainCount = max(0, cached.retainCount - 1)
-      buffers[voice.relativePath] = cached
+      buffers[relativePath] = cached
     }
     evictBuffers()
     if notifyEnded {
-      delegate?.shortSfxEngineDidProduce(.ended(elementId))
+      delegate?.shortSfxEngineDidProduce(
+        .init(kind: .ended, requestId: requestId)
+      )
     }
   }
 
-  private func stopAllLocked(notifyEnded: Bool) {
+  private func stopAllLocked(notifyEnded: Bool, stoppedReason: String?) {
     let identifiers = Array(activeVoices.keys)
     for identifier in identifiers {
-      stopVoice(elementId: identifier, notifyEnded: notifyEnded)
+      if notifyEnded {
+        stopVoice(requestId: identifier, notifyEnded: true)
+      } else if let stoppedReason {
+        guard let voice = activeVoices.removeValue(forKey: identifier) else {
+          continue
+        }
+        voice.node.player.stop()
+        availableNodes.append(voice.node)
+        if var cached = buffers[voice.relativePath] {
+          cached.retainCount = max(0, cached.retainCount - 1)
+          buffers[voice.relativePath] = cached
+        }
+        evictBuffers()
+        delegate?.shortSfxEngineDidProduce(
+          .init(
+            kind: .stopped,
+            requestId: identifier,
+            reason: stoppedReason
+          )
+        )
+      } else {
+        stopVoice(requestId: identifier, notifyEnded: false)
+      }
     }
   }
 
@@ -522,7 +695,27 @@ public final class ShortSfxEngine: NSObject {
       path: sandbox.relativePath(for: request.url),
       details: ["reason": reason]
     )
-    delegate?.shortSfxEngineDidProduce(.silent(request.elementId, reason))
+    delegate?.shortSfxEngineDidProduce(
+      .init(kind: .silent, requestId: request.requestId, reason: reason)
+    )
+  }
+
+  private func rejectionKey(role: String, path: String, etag: String) -> String {
+    "\(role)|\(path)|\(etag)"
+  }
+
+  private func isCacheable(reason: String) -> Bool {
+    switch reason {
+    case "unsupported_container",
+         "compressed_size_limit",
+         "duration_limit",
+         "pcm_limit",
+         "not_short_sfx",
+         "invalid_audio":
+      return true
+    default:
+      return false
+    }
   }
 
   private func ensureEngineRunning() -> AVAudioEngine? {
@@ -570,10 +763,16 @@ public final class ShortSfxEngine: NSObject {
   }
 
   private func configureNodes(_ engine: AVAudioEngine) {
-    for _ in 0..<AudioPlaybackLimits.nodeCount {
-      let node = AVAudioPlayerNode()
-      engine.attach(node)
-      availableNodes.append(node)
+    for index in 0..<AudioPlaybackLimits.voicePoolSize {
+      let player = AVAudioPlayerNode()
+      engine.attach(player)
+      if index < AudioPlaybackLimits.rateVoiceCount {
+        let varispeed = AVAudioUnitVarispeed()
+        engine.attach(varispeed)
+        availableNodes.append(VoiceNode(player: player, varispeed: varispeed))
+      } else {
+        availableNodes.append(VoiceNode(player: player, varispeed: nil))
+      }
     }
   }
 
@@ -624,7 +823,7 @@ public final class ShortSfxEngine: NSObject {
   #if os(iOS)
   @objc private func didEnterBackground() {
     stateQueue.async { [weak self] in
-      self?.stopAllLocked(notifyEnded: false)
+      self?.stopAllLocked(notifyEnded: false, stoppedReason: "background")
       self?.engine?.pause()
     }
   }
@@ -640,7 +839,7 @@ public final class ShortSfxEngine: NSObject {
     let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
     if raw == AVAudioSession.InterruptionType.began.rawValue {
       stateQueue.async { [weak self] in
-        self?.stopAllLocked(notifyEnded: false)
+        self?.stopAllLocked(notifyEnded: false, stoppedReason: "interruption")
         self?.engine?.pause()
       }
     } else {
@@ -656,7 +855,7 @@ public final class ShortSfxEngine: NSObject {
     stateQueue.async { [weak self] in
       guard let self else { return }
       guard self.engine != nil else { return }
-      self.stopAllLocked(notifyEnded: false)
+      self.stopAllLocked(notifyEnded: false, stoppedReason: "route_changed")
       self.engine?.stop()
       _ = self.ensureEngineRunning()
     }

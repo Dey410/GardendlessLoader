@@ -30,7 +30,9 @@ final class ConstantsTests: XCTestCase {
   }
 
   func testAudioLimits() {
-    XCTAssertEqual(AudioPlaybackLimits.nodeCount, 16)
+    XCTAssertEqual(AudioPlaybackLimits.voicePoolSize, 48)
+    XCTAssertEqual(AudioPlaybackLimits.rateVoiceCount, 6)
+    XCTAssertEqual(AudioPlaybackLimits.longChannelCount, 8)
     XCTAssertTrue(AudioPlaybackLimits.excludedTokens.contains("bgm"))
   }
 }

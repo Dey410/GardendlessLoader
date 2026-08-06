@@ -20,7 +20,7 @@ public struct GameConfiguration: Equatable, Sendable {
 
   public init(
     resourceQueueConcurrency: Int = 6,
-    audioQueueConcurrency: Int = 1,
+    audioQueueConcurrency: Int = 2,
     audioCacheByteLimit: Int = 24 * 1024 * 1024,
     pcmCacheByteLimit: Int = 64 * 1024 * 1024,
     singleBufferByteLimit: Int = 4 * 1024 * 1024,
