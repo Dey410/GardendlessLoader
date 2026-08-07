@@ -240,6 +240,27 @@ public final class ZipImportSession {
       count: ZipImportLimits.copyBufferSize
     )
 
+    func pump() throws -> (status: Int32, produced: Int) {
+      let status = outputBuffer.withUnsafeMutableBufferPointer { outputPointer in
+        stream.next_out = outputPointer.baseAddress
+        stream.avail_out = uInt(outputPointer.count)
+        return inflate(&stream, Z_NO_FLUSH)
+      }
+      let produced = outputBuffer.count - Int(stream.avail_out)
+      if produced > 0 {
+        try outputBuffer.withUnsafeBytes { outputRawBuffer in
+          guard let outputBaseAddress = outputRawBuffer
+            .bindMemory(to: UInt8.self)
+            .baseAddress else {
+            return
+          }
+          try write(outputBaseAddress, count: produced, to: output)
+        }
+        onBytesWritten(produced)
+      }
+      return (status, produced)
+    }
+
     while remaining > 0 && !didEnd {
       let readLength = Int(
         min(UInt64(ZipImportLimits.copyBufferSize), remaining)
@@ -258,23 +279,7 @@ public final class ZipImportSession {
         stream.avail_in = uInt(inputData.count)
 
         while stream.avail_in > 0 {
-          let status = outputBuffer.withUnsafeMutableBufferPointer { outputPointer in
-            stream.next_out = outputPointer.baseAddress
-            stream.avail_out = uInt(outputPointer.count)
-            return inflate(&stream, Z_NO_FLUSH)
-          }
-          let produced = outputBuffer.count - Int(stream.avail_out)
-          if produced > 0 {
-            try outputBuffer.withUnsafeBytes { outputRawBuffer in
-              guard let outputBaseAddress = outputRawBuffer
-                .bindMemory(to: UInt8.self)
-                .baseAddress else {
-                return
-              }
-              try write(outputBaseAddress, count: produced, to: output)
-            }
-            onBytesWritten(produced)
-          }
+          let (status, _) = try pump()
           if status == Z_STREAM_END {
             didEnd = true
             break
@@ -285,8 +290,17 @@ public final class ZipImportSession {
         }
       }
     }
-    if !didEnd {
-      throw GameError.failed(.zipInvalid, "ZIP 文件内容不完整")
+    while !didEnd {
+      stream.next_in = nil
+      stream.avail_in = 0
+      let (status, produced) = try pump()
+      if status == Z_STREAM_END {
+        didEnd = true
+        break
+      }
+      if produced == 0 || status != Z_OK {
+        throw GameError.failed(.zipInvalid, "ZIP 文件内容不完整")
+      }
     }
   }
 

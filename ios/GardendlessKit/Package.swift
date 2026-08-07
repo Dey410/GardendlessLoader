@@ -68,7 +68,10 @@ let package = Package(
         "GardendlessLogging",
         "SfxExceptionGuard",
       ],
-      path: "Tests/GardendlessKitTests"
+      path: "Tests/GardendlessKitTests",
+      resources: [
+        .copy("Fixtures")
+      ]
     ),
   ],
   swiftLanguageVersions: [.v5]
