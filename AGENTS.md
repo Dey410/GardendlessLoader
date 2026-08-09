@@ -23,7 +23,7 @@
 - `flutter build apk --release` builds Android.
 - `flutter build ios --release --no-codesign` builds unsigned iOS artifacts.
 
-For HarmonyOS/OpenHarmony, copy `pubspec_overrides.ohos.yaml` to `pubspec_overrides.yaml`, use the OpenHarmony Flutter SDK, and follow `README.en.md`.
+For HarmonyOS/OpenHarmony, copy `pubspec_overrides.ohos.yaml` to `pubspec_overrides.yaml`, use the OpenHarmony Flutter SDK, and follow `README.md`.
 
 ## Coding Style & Naming Conventions
 
