@@ -111,7 +111,7 @@ ArkWeb 官方文档明确允许 SchemeHandler 拦截 Web 组件或 Service Worke
 ## 当前仓库实现
 
 - iOS 已由 [`GameHostController.swift`](../../ios/Runner/GameHostController.swift) 创建独立 WKWebView，
-  [`GameResourceSchemeHandler.swift`](../../ios/Runner/GameResourceSchemeHandler.swift) 并发分块读取激活槽；进入游戏后
+  [`ResourceSchemeHandler.swift`](../../ios/GardendlessKit/Sources/GardendlessResource/ResourceSchemeHandler.swift) 并发分块读取激活槽；进入游戏后
   [`AppDelegate.swift`](../../ios/Runner/AppDelegate.swift) 销毁启动器 FlutterEngine，退出游戏时重新创建。
 - HarmonyOS/OpenHarmony 已新增独立 `GameAbility` 与
   [`GamePage.ets`](../../ohos/entry/src/main/ets/pages/GamePage.ets)，不把 ArkWeb 放入 FlutterPage；

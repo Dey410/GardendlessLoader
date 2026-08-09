@@ -51,17 +51,11 @@ ios/Runner.xcworkspace/
 *.rej
 .history/
 
-# macOS / Xcode generated files
+# Xcode generated files
 **/xcuserdata/
 **/DerivedData/
 *.xcuserstate
-macos/Flutter/ephemeral/
-macos/Flutter/Generated.xcconfig
-macos/Flutter/flutter_export_environment.sh
-macos/Flutter/.last_build_id
 **/GeneratedPluginRegistrant.*
-macos/Pods/
-macos/.symlinks/
 
 # Node tooling
 node_modules/

@@ -49,6 +49,20 @@ void main() {
     expect(source, isNot(contains('readAsDataURL')));
   });
 
+  test('large export streaming passes executable behavior checks', () async {
+    final result = await Process.run(
+      'node',
+      const ['tool/check_export_download_patch.mjs'],
+    );
+
+    expect(
+      result.exitCode,
+      0,
+      reason: '${result.stdout}\n${result.stderr}',
+    );
+    expect(result.stdout, contains('streams revoked Blob downloads'));
+  });
+
   test('native bridge waits are bounded without timing out normal pickers', () {
     final source = File('assets/game_bridge/transport.js').readAsStringSync();
 
@@ -294,7 +308,6 @@ void main() {
     final ios = File('ios/Runner/GameHostController.swift').readAsStringSync();
     final iosProject =
         File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
-    final iosPackage = File('ios/Package.swift').readAsStringSync();
     final ohos =
         File('ohos/entry/src/main/ets/pages/GamePage.ets').readAsStringSync();
 
@@ -320,7 +333,6 @@ void main() {
     expect(ios, isNot(contains('GameMenuController')));
     expect(ios, isNot(contains('game_menu.js')));
     expect(iosProject, isNot(contains('GameMenuController.swift')));
-    expect(iosPackage, isNot(contains('GameMenuController.swift')));
     expect(ios, contains('#selector(returnToLauncher)'));
     expect(ohos, isNot(contains('GameMenu')));
     expect(ohos, isNot(contains('game_menu.js')));

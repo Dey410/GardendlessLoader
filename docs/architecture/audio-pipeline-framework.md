@@ -9,13 +9,13 @@
 | # | 决策 | 结论 |
 | --- | --- | --- |
 | 1 | 捕获架构 | 游戏包补丁直接返回**原生音频句柄（Facade）**，iOS 上不再创建真实 `<audio>` 元素；加载器层提供 Facade 工厂 + 桥 + 节流 + 诊断 |
-| 2 | 覆盖范围 | iOS 所有音频（短音效 + BGM/环境音/长音频）都走 Facade → 原生；真实 `<audio>` 仅保留为不支持容器的受控回退 |
+| 2 | 覆盖范围 | iOS 所有被 Facade 捕获的音频（短音效 + BGM/环境音/长音频）都走原生；原生不支持的容器会静音并结束，不转交 WebKit；只有 Facade 工厂不可用时才保留旧游戏包兼容路径 |
 | 3 | 状态语义 | `currentTime` 由 JS 本地估算，原生只在权威时刻回传 `ended/silent/stopped`；不做周期性位置推送 |
 | 4 | 并发口径 | voice pool 与 `P9.maxAudioChannel` 绑定为同一常量（初始 48）；池满丢**最旧** one-shot 并回 `ended`；不抢占长音频；删除 `priority` 字段 |
 | 5 | 长音频 | 动态长音频池（默认 8 路上限、可配置），与短音效池隔离、永不抢占；流式调度，满时拒绝并回 `ended` |
 | 6 | 长短判定 | **角色优先**（oneShot / continuous），可选 `kind`；continuous 且非 loop 且 ≤10s/≤256KB 的 AudioSource 短音频细化路由到短音效引擎；拒绝缓存 key = URL + etag + role；扩展名/关键字仅兜底 |
 | 7 | 拒绝语义 | `ended`=自然播完/被抢占；`silent`=本次不播并照发一次 `ended`；JS 侧按 URL 静音节流（10s 内 3 次后窗口内不再发 play），计数 `silentThrottled` |
-| 8 | 变速 | 长通道原生支持 playbackRate（`AVAudioUnitVarispeed` 0.25–4，`preservesPitch=false` 与 DOM 一致）；短音效划 4–8 路可变速子池；WebKit 回退仅剩“不支持容器” |
+| 8 | 变速 | 长通道原生支持 playbackRate（`AVAudioUnitVarispeed` 0.25–4，`preservesPitch=false` 与 DOM 一致）；短音效划 4–8 路可变速子池；原生拒绝结果统一静音，不转交 WebKit |
 | 9 | 音量 | Facade `volume` setter 实时发 `setVolume`；保留 `setMasterVolume` 作为全局乘数 |
 | 10 | 生命周期 | 中断/路由/后台时原生批量回传 `stopped`，Facade 复位并派发 `ended`，恢复后由游戏重新 `play()` 触发引擎重启 |
 | 11 | 协议 | 命令集按 §3 定稿：`play/pause/stop/seek/setVolume/setLoop/setRate/release/setMasterVolume/writeDiagnostics` + 批量 `ended/silent/stopped` |
@@ -119,7 +119,7 @@ flowchart TD
 3. `role=oneShot` 且 `rate=1` → 短音效引擎。
 4. `role=oneShot` 且 `rate≠1` → 短音效可变速子池。
 5. 拒绝缓存命中（URL + etag + role）→ 直接按缓存结论处理，不再解码。
-6. 不支持容器（当前资产全为 M4A 伪装 mp3，基本为死路径）→ WebKit 真实元素回退。
+6. 不支持容器 → 原生回传 `silent`，Facade 派发一次 `ended` 并参与 URL 静音节流，不转交 WebKit。
 7. 未识别路径（未打补丁的旧游戏包）→ 扩展名/路径关键字兜底。
 
 | 音频特征 | 去向 | 是否允许丢 |
@@ -127,7 +127,7 @@ flowchart TD
 | continuous / music / ambience | 长音频通道 | 不允许 |
 | one-shot，rate=1 | 原生短音效引擎 | 允许（丢最旧 one-shot） |
 | one-shot，rate≠1 | 短音效可变速子池 | 允许（丢最旧 one-shot） |
-| 不支持容器 | WebKit DOM 回退 | 不允许主动丢 |
+| 不支持容器 | 静音并派发 `ended` | 允许拒绝，不允许悬挂状态机 |
 
 **不做播放级同 URL 合并**：游戏 `SoundRescourses` 已做一帧内同 clip 去重与冷却节流，原生再合并会改变多声部手感。只保留“同一 URL 在途解码合并”（共享一次解码，解码完成后各自入池播放）。
 
@@ -244,7 +244,7 @@ flowchart TD
 
 ## 14. 保留 MP3（不转码）的校准建议（2026-08-06 审计）
 
-审计脚本：[extract-pvzge-gpnext/scripts/audit_audio_assets.py](../../../extract-pvzge-gpnext/scripts/audit_audio_assets.py)
+审计脚本位于配套工具仓库的 `scripts/audit_audio_assets.py`，不属于本仓库交付文件。
 
 对未转码原始包 `pvzge_web-0.10.0.zip`（4050 个 MP3，324.1MB，最大 4.5MB）全量探测（afinfo，全部可读）：
 
