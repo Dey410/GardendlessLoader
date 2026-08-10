@@ -161,6 +161,73 @@ void main() {
     expect(gamePage, contains('withDocumentPickerOrientation('));
   });
 
+  test('OpenHarmony save export preserves the suggested filename', () {
+    final gameBridge = File(
+      'ohos/entry/src/main/ets/game/GameBridge.ets',
+    ).readAsStringSync();
+
+    expect(
+      gameBridge,
+      contains(
+        'this.exportExistingFile(id, target.path, target.fileName, target.mimeType)',
+      ),
+    );
+    expect(
+      gameBridge,
+      contains('const fileName = this.safeFileName(suggestedFileName)'),
+    );
+    expect(gameBridge, contains('options.newFileNames = [fileName]'));
+    expect(
+      gameBridge,
+      isNot(contains('options.newFileNames = [this.safeFileName(sourcePath)]')),
+    );
+  });
+
+  test(
+      'OpenHarmony save export maps known suffixes without rewriting unknown files',
+      () {
+    final gameBridge = File(
+      'ohos/entry/src/main/ets/game/GameBridge.ets',
+    ).readAsStringSync();
+    final documentSpec = File(
+      'ohos/entry/src/main/ets/game/ExportDocumentSpec.ets',
+    ).readAsStringSync();
+
+    expect(documentSpec, contains("case 'json':"));
+    expect(documentSpec, contains("return ['JSON 文件|.json']"));
+    expect(documentSpec, contains("case 'json5':"));
+    expect(documentSpec, contains("return ['JSON5 文件|.json5']"));
+    expect(documentSpec, contains("case 'zip':"));
+    expect(documentSpec, contains("return ['ZIP 文件|.zip']"));
+    expect(documentSpec, contains('return new Array<string>()'));
+    expect(gameBridge, contains('ExportDocumentSpec.fileSuffixChoices('));
+    expect(gameBridge, contains('options.fileSuffixChoices = suffixChoices'));
+  });
+
+  test('OpenHarmony serializes game import and export pickers', () {
+    final gameBridge = File(
+      'ohos/entry/src/main/ets/game/GameBridge.ets',
+    ).readAsStringSync();
+
+    expect(gameBridge, contains('private pickerActive: boolean = false'));
+    expect(
+      gameBridge,
+      contains('if (this.pickerActive || this.chunkedExport != null)'),
+    );
+    expect(
+      'this.pickerActive = true'.allMatches(gameBridge),
+      hasLength(2),
+      reason: 'Save export and GP-Next import must both reserve the picker',
+    );
+    expect(
+      'this.pickerActive = false'.allMatches(gameBridge),
+      hasLength(2),
+      reason: 'Both finally blocks must release the picker',
+    );
+    expect(gameBridge, contains("this.fail(id, 'export_in_progress'"));
+    expect(gameBridge, contains("this.fail(id, 'gp_next_import_busy'"));
+  });
+
   test('OpenHarmony GameAbility owns LocalStorage before loading GamePage', () {
     final ability = File(
       'ohos/entry/src/main/ets/game/GameAbility.ets',

@@ -6,6 +6,7 @@ import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
 import { appLogStore, AppLogContext, AppLogError, AppLogEvent } from '../logging/AppLogStore';
 import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientation';
+import { ExportDocumentSpec } from './ExportDocumentSpec';
 import { GameSession } from './GameSession';
 import { GpNextNativeCore, GpNextValue } from './GpNextNativeCore';
 
@@ -59,6 +60,7 @@ export class GameBridge {
   private readonly activeIds: Set<string> = new Set<string>();
   private destroyed: boolean = false;
   private chunkedExport: ChunkedExport | null = null;
+  private pickerActive: boolean = false;
 
   constructor(
     controller: webview.WebviewController,
@@ -193,9 +195,12 @@ export class GameBridge {
   }
 
   private beginChunkedExport(id: string, args: BridgeArguments): void {
-    if (this.chunkedExport != null || args.totalBytes == null || args.totalBytes < 0 ||
-      args.totalBytes > 512 * 1024 * 1024) {
-      this.fail(id, 'invalid_export_size', 'Export size is invalid or another export is active');
+    if (this.pickerActive || this.chunkedExport != null) {
+      this.fail(id, 'export_in_progress', 'Another import or export picker is active');
+      return;
+    }
+    if (args.totalBytes == null || args.totalBytes < 0 || args.totalBytes > 512 * 1024 * 1024) {
+      this.fail(id, 'invalid_export_size', 'Export size is invalid');
       return;
     }
     try {
@@ -242,7 +247,7 @@ export class GameBridge {
     }
     fs.closeSync(target.file.fd);
     this.chunkedExport = null;
-    this.exportExistingFile(id, target.path);
+    this.exportExistingFile(id, target.path, target.fileName, target.mimeType);
   }
 
   private abortChunkedExport(id: string, args: BridgeArguments): void {
@@ -271,7 +276,12 @@ export class GameBridge {
       if (result.openUrl != null) {
         this.openGpNextUrl(request.id, result.openUrl);
       } else if (result.exportPath != null) {
-        this.exportExistingFile(request.id, result.exportPath);
+        this.exportExistingFile(
+          request.id,
+          result.exportPath,
+          this.safeFileName(result.exportPath),
+          'application/json',
+        );
       } else if (result.importRequested === true) {
         this.importGpNextPackages(request.id);
       } else {
@@ -299,10 +309,28 @@ export class GameBridge {
       .catch((error: Error): void => this.fail(id, 'external_open_failed', error.message));
   }
 
-  private async exportExistingFile(id: string, sourcePath: string): Promise<void> {
+  private async exportExistingFile(
+    id: string,
+    sourcePath: string,
+    suggestedFileName: string,
+    mimeType: string,
+  ): Promise<void> {
+    if (this.pickerActive) {
+      if (sourcePath.startsWith(`${this.session.exportTemporaryRoot}/`)) {
+        try { fs.unlinkSync(sourcePath); } catch (_error) {}
+      }
+      this.fail(id, 'export_in_progress', 'Another import or export picker is active');
+      return;
+    }
+    this.pickerActive = true;
     try {
       const options = new picker.DocumentSaveOptions();
-      options.newFileNames = [this.safeFileName(sourcePath)];
+      const fileName = this.safeFileName(suggestedFileName);
+      options.newFileNames = [fileName];
+      const suffixChoices = ExportDocumentSpec.fileSuffixChoices(fileName, mimeType);
+      if (suffixChoices.length > 0) {
+        options.fileSuffixChoices = suffixChoices;
+      }
       const targets = await withDocumentPickerOrientation(
         this.context,
         (): Promise<string[]> => new picker.DocumentViewPicker().save(options),
@@ -316,6 +344,7 @@ export class GameBridge {
     } catch (error) {
       this.fail(id, 'export_failed', (error as Error).message);
     } finally {
+      this.pickerActive = false;
       if (sourcePath.startsWith(`${this.session.exportTemporaryRoot}/`)) {
         try { fs.unlinkSync(sourcePath); } catch (_error) {}
       }
@@ -323,6 +352,11 @@ export class GameBridge {
   }
 
   private async importGpNextPackages(id: string): Promise<void> {
+    if (this.pickerActive) {
+      this.fail(id, 'gp_next_import_busy', 'Another import or export picker is active');
+      return;
+    }
+    this.pickerActive = true;
     try {
       const selected = await withDocumentPickerOrientation(
         this.context,
@@ -378,6 +412,8 @@ export class GameBridge {
       this.complete(id, null);
     } catch (error) {
       this.fail(id, 'gp_next_import_failed', (error as Error).message);
+    } finally {
+      this.pickerActive = false;
     }
   }
 
