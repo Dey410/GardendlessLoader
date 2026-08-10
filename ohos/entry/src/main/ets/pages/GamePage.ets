@@ -7,6 +7,7 @@ import { GameBridge } from '../game/GameBridge';
 import { NativeGameResourceHandler } from '../game/NativeGameResourceHandler';
 import { GameSession } from '../game/GameSession';
 import { appLogStore, AppLogContext, AppLogEvent } from '../logging/AppLogStore';
+import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientation';
 
 let storage = LocalStorage.getShared();
 
@@ -143,7 +144,10 @@ struct GamePage {
             return true;
           }
           const options = new picker.DocumentSelectOptions();
-          new picker.DocumentViewPicker().select(options).then((uris: string[]): void => {
+          withDocumentPickerOrientation(
+            this.context,
+            (): Promise<string[]> => new picker.DocumentViewPicker().select(options),
+          ).then((uris: string[]): void => {
             event.result.handleFileList(uris);
           }).catch((_error: Error): void => {
             event.result.handleFileList([]);

@@ -98,24 +98,7 @@ class MainActivity : FlutterActivity() {
 
             pendingResult = result
             pendingTargetDirectory = targetDirectory
-
-            try {
-                startActivityForResult(
-                    createZipPickerIntent(Intent.ACTION_OPEN_DOCUMENT),
-                    pickZipRequestCode,
-                )
-            } catch (error: ActivityNotFoundException) {
-                try {
-                    startActivityForResult(
-                        createZipPickerIntent(Intent.ACTION_GET_CONTENT),
-                        pickZipRequestCode,
-                    )
-                } catch (fallbackError: Exception) {
-                    failZipPicker(result, fallbackError)
-                }
-            } catch (error: Exception) {
-                failZipPicker(result, error)
-            }
+            launchZipPicker(result)
         }
     }
 
@@ -141,6 +124,29 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun launchZipPicker(result: MethodChannel.Result) {
+        prepareForDocumentPicker()
+        try {
+            startActivityForResult(
+                createZipPickerIntent(Intent.ACTION_OPEN_DOCUMENT),
+                pickZipRequestCode,
+            )
+        } catch (error: ActivityNotFoundException) {
+            try {
+                startActivityForResult(
+                    createZipPickerIntent(Intent.ACTION_GET_CONTENT),
+                    pickZipRequestCode,
+                )
+            } catch (fallbackError: Exception) {
+                restoreLandscapeOrientation()
+                failZipPicker(result, fallbackError)
+            }
+        } catch (error: Exception) {
+            restoreLandscapeOrientation()
+            failZipPicker(result, error)
+        }
+    }
+
     private fun failZipPicker(result: MethodChannel.Result, error: Exception) {
         pendingResult = null
         pendingTargetDirectory = null
@@ -153,6 +159,7 @@ class MainActivity : FlutterActivity() {
             return
         }
 
+        restoreLandscapeOrientation()
         val result = pendingResult
         val targetDirectory = pendingTargetDirectory
         pendingResult = null

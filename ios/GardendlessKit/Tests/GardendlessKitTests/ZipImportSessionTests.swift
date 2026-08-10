@@ -8,6 +8,8 @@ struct ZipTestEntry {
   let name: String
   let data: Data?
   let deflate: Bool
+  let rawDeflatePayload: Data?
+  let rawDeflateUncompressedSize: UInt32?
   let flags: UInt16
   let externalAttributes: UInt32
 
@@ -22,6 +24,26 @@ struct ZipTestEntry {
       name: name,
       data: data,
       deflate: deflate,
+      rawDeflatePayload: nil,
+      rawDeflateUncompressedSize: nil,
+      flags: flags,
+      externalAttributes: externalAttributes
+    )
+  }
+
+  static func rawDeflateFile(
+    _ name: String,
+    compressed: Data,
+    uncompressedSize: UInt32,
+    flags: UInt16 = 0x0800,
+    externalAttributes: UInt32 = 0
+  ) -> ZipTestEntry {
+    ZipTestEntry(
+      name: name,
+      data: Data(),
+      deflate: true,
+      rawDeflatePayload: compressed,
+      rawDeflateUncompressedSize: uncompressedSize,
       flags: flags,
       externalAttributes: externalAttributes
     )
@@ -36,6 +58,8 @@ struct ZipTestEntry {
       name: name,
       data: nil,
       deflate: false,
+      rawDeflatePayload: nil,
+      rawDeflateUncompressedSize: nil,
       flags: flags,
       externalAttributes: externalAttributes
     )
@@ -54,8 +78,13 @@ enum TestZipWriter {
         (isDirectory ? entry.name + "/" : entry.name).utf8
       )
       var payload = entry.data ?? Data()
+      var uncompressedSize = (entry.data ?? Data()).count
       var method: UInt16 = 0
-      if let source = entry.data, entry.deflate {
+      if let rawDeflatePayload = entry.rawDeflatePayload {
+        payload = rawDeflatePayload
+        uncompressedSize = Int(entry.rawDeflateUncompressedSize ?? 0)
+        method = 8
+      } else if let source = entry.data, entry.deflate {
         payload = try deflate(source)
         method = 8
       }
@@ -64,7 +93,7 @@ enum TestZipWriter {
         nameData: nameData,
         method: method,
         compressedSize: UInt32(payload.count),
-        uncompressedSize: UInt32((entry.data ?? Data()).count),
+        uncompressedSize: UInt32(uncompressedSize),
         flags: entry.flags
       )
       locals.append(local)
@@ -75,7 +104,7 @@ enum TestZipWriter {
           nameData: nameData,
           method: method,
           compressedSize: UInt32(payload.count),
-          uncompressedSize: UInt32((entry.data ?? Data()).count),
+          uncompressedSize: UInt32(uncompressedSize),
           flags: entry.flags,
           externalAttributes: entry.externalAttributes,
           localOffset: offset
@@ -297,6 +326,33 @@ final class ZipImportSessionTests: XCTestCase {
       contentsOf: target.appendingPathComponent("assets/compressed.bin")
     )
     XCTAssertEqual(extracted, Data((0..<4096).map { UInt8($0 & 0xff) }))
+  }
+
+  func testDeflatedEntryExactlyFillingOutputBufferIsFlushed() throws {
+    var entries = docsEntries()
+    let fixtureURL = Bundle.module.url(
+      forResource: "boundary-64k.astc.deflate",
+      withExtension: nil,
+      subdirectory: "Fixtures"
+    )!
+    let compressed = try Data(contentsOf: fixtureURL)
+    XCTAssertEqual(compressed.count, 41351)
+    entries.append(
+      .rawDeflateFile(
+        "release/docs/assets/boundary.bin",
+        compressed: compressed,
+        uncompressedSize: 131088
+      )
+    )
+    try TestZipWriter.write(entries, to: zipURL)
+
+    let session = ZipImportSession(zipURL: zipURL, targetDirectory: target)
+    _ = try session.run { _ in }
+
+    let attributes = try FileManager.default.attributesOfItem(
+      atPath: target.appendingPathComponent("assets/boundary.bin").path
+    )
+    XCTAssertEqual((attributes[.size] as? NSNumber)?.uint64Value, 131088)
   }
 
   func testRejectsTraversalPaths() throws {

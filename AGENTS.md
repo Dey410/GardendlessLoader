@@ -9,8 +9,9 @@
 - `lib/src/ui/` contains the Flutter launcher screen in `home_page.dart`.
 - `assets/game_bridge/` contains the shared document-start scripts injected by every native GameHost.
 - `test/` contains unit and widget tests named `*_test.dart`.
-- Maintained platform folders are `android/`, `ios/`, and `ohos/`. Generated folders for retired platforms remain in the repository but are unsupported.
+- Maintained platform folders are `android/`, `ios/`, and `ohos/`.
 - `announcements.json` is the remote announcement payload; `docs/acceptance-checklist.md` records manual release checks.
+- `docs/research/native_gamehost_local_resource_loading.md` records the native GameHost security constraints and device-validation limits.
 
 ## Build, Test, and Development Commands
 
@@ -22,7 +23,7 @@
 - `flutter build apk --release` builds Android.
 - `flutter build ios --release --no-codesign` builds unsigned iOS artifacts.
 
-For HarmonyOS/OpenHarmony, copy `pubspec_overrides.ohos.yaml` to `pubspec_overrides.yaml`, use the OpenHarmony Flutter SDK, and follow `README.en.md`.
+For HarmonyOS/OpenHarmony, copy `pubspec_overrides.ohos.yaml` to `pubspec_overrides.yaml`, use the OpenHarmony Flutter SDK, and follow `README.md`.
 
 ## Coding Style & Naming Conventions
 
