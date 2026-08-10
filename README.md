@@ -7,7 +7,7 @@
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/Dey410/GardendlessLoader)](https://github.com/Dey410/GardendlessLoader/commits/main)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-*Let the endless garden keep growing on mobile devices.*
+*Let the gardendLess keep growing on mobile devices.*
 
 GardendlessLoader is a local resource loader for `PvZ2 Gardendless` on Android, iOS, and HarmonyOS/OpenHarmony.
 
