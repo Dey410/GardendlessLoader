@@ -1,6 +1,6 @@
 <h1 align="center">GardendlessLoader</h1>
 
-<img src="tool/generated_icons/app_icon_master.png" align="left" width="150" height="150" alt="GardendlessLoader icon">
+<img src="tool/generated_icons/app_icon_master.png" align="left" width="150" height="150" style="border-radius: 17%" alt="GardendlessLoader icon">
 
 [![Build Artifacts](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml/badge.svg)](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/Dey410/GardendlessLoader?include_prereleases&sort=semver)](https://github.com/Dey410/GardendlessLoader/releases)
