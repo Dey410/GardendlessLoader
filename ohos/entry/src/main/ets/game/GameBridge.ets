@@ -5,6 +5,7 @@ import { promptAction } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
 import { appLogStore, AppLogContext, AppLogError, AppLogEvent } from '../logging/AppLogStore';
+import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientation';
 import { GameSession } from './GameSession';
 import { GpNextNativeCore, GpNextValue } from './GpNextNativeCore';
 
@@ -302,7 +303,10 @@ export class GameBridge {
     try {
       const options = new picker.DocumentSaveOptions();
       options.newFileNames = [this.safeFileName(sourcePath)];
-      const targets = await new picker.DocumentViewPicker().save(options);
+      const targets = await withDocumentPickerOrientation(
+        this.context,
+        (): Promise<string[]> => new picker.DocumentViewPicker().save(options),
+      );
       if (targets == null || targets.length === 0) {
         this.fail(id, 'export_cancelled', 'Export was cancelled');
         return;
@@ -320,7 +324,10 @@ export class GameBridge {
 
   private async importGpNextPackages(id: string): Promise<void> {
     try {
-      const selected = await new picker.DocumentViewPicker().select(new picker.DocumentSelectOptions());
+      const selected = await withDocumentPickerOrientation(
+        this.context,
+        (): Promise<string[]> => new picker.DocumentViewPicker().select(new picker.DocumentSelectOptions()),
+      );
       if (selected == null || selected.length === 0) {
         this.fail(id, 'import_cancelled', 'Import was cancelled');
         return;

@@ -14,6 +14,7 @@ import AbilityAware from '@ohos/flutter_ohos/src/main/ets/embedding/engine/plugi
 import {
   AbilityPluginBinding,
 } from '@ohos/flutter_ohos/src/main/ets/embedding/engine/plugins/ability/AbilityPluginBinding';
+import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientation';
 
 const CHANNEL_NAME = 'io.github.dey410.gardendlessloader/resource_zip_importer';
 const METHOD_PICK_AND_EXTRACT = 'pickAndExtractDocsZip';
@@ -95,7 +96,7 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
       throw new Error('无法获取鸿蒙应用上下文');
     }
 
-    const selectedUri = await this.pickZipUri();
+    const selectedUri = await this.pickZipUri(context);
     if (selectedUri == null) {
       return null;
     }
@@ -144,13 +145,16 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
     }
   }
 
-  private async pickZipUri(): Promise<string | null> {
+  private async pickZipUri(context: common.UIAbilityContext): Promise<string | null> {
     const options = new picker.DocumentSelectOptions();
     options.maxSelectNumber = 1;
     options.fileSuffixFilters = ['.zip'];
 
     const documentViewPicker = new picker.DocumentViewPicker();
-    const selected = await documentViewPicker.select(options);
+    const selected = await withDocumentPickerOrientation(
+      context,
+      (): Promise<string[]> => documentViewPicker.select(options),
+    );
     if (selected == null || selected.length === 0) {
       return null;
     }

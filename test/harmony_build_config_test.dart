@@ -125,6 +125,42 @@ void main() {
     expect(importer, contains("'totalFiles'"));
   });
 
+  test('OpenHarmony document pickers use adaptive orientation handling', () {
+    final orientation = File(
+      'ohos/entry/src/main/ets/picker/DocumentPickerOrientation.ets',
+    ).readAsStringSync();
+    final importer = File(
+      'ohos/entry/src/main/ets/plugins/ResourceZipImporterPlugin.ets',
+    ).readAsStringSync();
+    final gameBridge = File(
+      'ohos/entry/src/main/ets/game/GameBridge.ets',
+    ).readAsStringSync();
+    final gamePage = File(
+      'ohos/entry/src/main/ets/pages/GamePage.ets',
+    ).readAsStringSync();
+
+    expect(orientation, contains('const COMPACT_BREAKPOINT_VP: number = 600'));
+    expect(orientation, contains('windowRect.width / densityPixels'));
+    expect(orientation, contains('windowRect.height / densityPixels'));
+    expect(orientation, contains('window.Orientation.AUTO_ROTATION_PORTRAIT'));
+    expect(
+      orientation,
+      contains('window.Orientation.AUTO_ROTATION_UNSPECIFIED'),
+    );
+    expect(
+      orientation,
+      contains('window.Orientation.AUTO_ROTATION_LANDSCAPE'),
+    );
+    expect(orientation, contains('finally'));
+    expect(importer, contains('withDocumentPickerOrientation('));
+    expect(
+      'await withDocumentPickerOrientation('.allMatches(gameBridge),
+      hasLength(2),
+      reason: 'GP-Next import and save export must both adapt orientation',
+    );
+    expect(gamePage, contains('withDocumentPickerOrientation('));
+  });
+
   test('OpenHarmony GameAbility owns LocalStorage before loading GamePage', () {
     final ability = File(
       'ohos/entry/src/main/ets/game/GameAbility.ets',
