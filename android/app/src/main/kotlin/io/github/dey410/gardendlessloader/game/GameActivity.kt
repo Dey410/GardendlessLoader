@@ -21,6 +21,8 @@ import android.webkit.WebView
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import io.github.dey410.gardendlessloader.MainActivity
+import io.github.dey410.gardendlessloader.prepareForDocumentPicker
+import io.github.dey410.gardendlessloader.restoreLandscapeOrientation
 import io.github.dey410.gardendlessloader.logging.AppLogStore
 import org.json.JSONObject
 import java.io.File
@@ -460,7 +462,7 @@ class GameActivity : Activity() {
         requestCode: Int,
         onFailure: (Throwable) -> Unit,
     ) {
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        prepareForDocumentPicker()
         runCatching { startActivityForResult(intent, requestCode) }.onFailure {
             restoreGameOrientation()
             onFailure(it)
@@ -468,7 +470,7 @@ class GameActivity : Activity() {
     }
 
     private fun restoreGameOrientation() {
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        restoreLandscapeOrientation()
     }
 
     private fun exportMimeType(fileName: String, declaredMimeType: String): String =

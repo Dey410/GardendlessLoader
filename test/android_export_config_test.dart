@@ -54,31 +54,44 @@ void main() {
     expect(activity, contains('Intent.EXTRA_ALLOW_MULTIPLE'));
   });
 
-  test('Android document pickers leave the game landscape lock', () {
-    final activity = File(
+  test('Android document pickers use the shared adaptive orientation policy',
+      () {
+    final gameActivity = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
     ).readAsStringSync();
+    final mainActivity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/MainActivity.kt',
+    ).readAsStringSync();
+    final policy = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/DocumentPickerOrientationPolicy.kt',
+    ).readAsStringSync();
 
-    expect(activity, contains('private fun launchDocumentPicker('));
+    expect(gameActivity, contains('private fun launchDocumentPicker('));
+    expect(gameActivity, contains('prepareForDocumentPicker()'));
+    expect(mainActivity, contains('prepareForDocumentPicker()'));
+    expect(policy, contains('const val COMPACT_BREAKPOINT_DP = 600'));
     expect(
-      activity,
-      contains(
-        'requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT',
-      ),
-    );
-    expect(activity, contains('private fun restoreGameOrientation()'));
-    expect(
-      activity,
-      contains(
-        'requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE',
-      ),
+      policy,
+      contains('screenWidthDp < COMPACT_BREAKPOINT_DP ||'),
     );
     expect(
-      activity,
+      policy,
+      contains('screenHeightDp < COMPACT_BREAKPOINT_DP'),
+    );
+    expect(policy, contains('ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT'));
+    expect(policy, contains('ActivityInfo.SCREEN_ORIENTATION_FULL_USER'));
+    expect(
+        policy, contains('ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE'));
+    expect(
+      gameActivity,
       matches(RegExp(r'restoreGameOrientation\(\)\s+}\s+when \(requestCode\)')),
     );
     expect(
-      'startActivityForResult('.allMatches(activity),
+      mainActivity,
+      matches(RegExp(r'restoreLandscapeOrientation\(\)\s+val result')),
+    );
+    expect(
+      'startActivityForResult('.allMatches(gameActivity),
       hasLength(1),
       reason: 'Every document picker should use launchDocumentPicker',
     );
