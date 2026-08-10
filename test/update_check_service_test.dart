@@ -5,17 +5,17 @@ import 'package:gardendless_loader/src/constants.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
 
 void main() {
-  test('release version metadata exposes version 0.7.2 consistently', () {
+  test('release version metadata exposes version 0.7.6 consistently', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final match =
         RegExp(r'^version:\s*([^\s+]+)', multiLine: true).firstMatch(pubspec);
     final harmonyAppConfig = File('ohos/AppScope/app.json5').readAsStringSync();
 
     expect(match, isNotNull);
-    expect(match!.group(1), '0.7.2');
+    expect(match!.group(1), '0.7.6');
     expect(appVersion, match.group(1)!.split('+').first);
-    expect(harmonyAppConfig, contains('"versionName": "0.7.2"'));
-    expect(harmonyAppConfig, contains('"versionCode": 7002000'));
+    expect(harmonyAppConfig, contains('"versionName": "0.7.6"'));
+    expect(harmonyAppConfig, contains('"versionCode": 7006000'));
   });
 
   test('returns update info when latest GitHub release is newer', () async {
