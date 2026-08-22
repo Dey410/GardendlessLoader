@@ -126,6 +126,7 @@ class AppController extends ChangeNotifier {
   bool _gameUpdateDetected = false;
   bool _updateCheckInProgress = false;
   bool _watermarkEnabled = true;
+  bool _detailedAudioDiagnosticsEnabled = false;
   bool _initialized = false;
   bool _busy = false;
   String? _message;
@@ -152,6 +153,7 @@ class AppController extends ChangeNotifier {
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
   bool get watermarkEnabled => _watermarkEnabled;
+  bool get detailedAudioDiagnosticsEnabled => _detailedAudioDiagnosticsEnabled;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
   GameHostPlatform get gameHostPlatform {
     final configured = _gameHostPlatform;
@@ -227,7 +229,10 @@ class AppController extends ChangeNotifier {
         final exitResult = await _gameSessionStore!.consumeExitResult();
         _emitInitializationStage('settings');
         _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
-        _watermarkEnabled = await _appSettingsStore!.readWatermarkEnabled();
+        final appSettings = await _appSettingsStore!.read();
+        _watermarkEnabled = appSettings.watermarkEnabled;
+        _detailedAudioDiagnosticsEnabled =
+            appSettings.detailedAudioDiagnosticsEnabled;
         _emitInitializationStage('manifest');
         _manifestStore = ManifestStore(_paths!.manifestFile);
         _manifest = await _manifestStore!.read();
@@ -885,6 +890,7 @@ class AppController extends ChangeNotifier {
       gpNextVersion: gpNextVersion,
       watermarkEnabled: _watermarkEnabled,
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
+      detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -1042,7 +1048,41 @@ class AppController extends ChangeNotifier {
       } catch (_) {
         // A later choice must still be persisted after an earlier write fails.
       }
-      await appSettingsStore.writeWatermarkEnabled(enabled);
+      await appSettingsStore.write(
+        AppSettings(
+          watermarkEnabled: enabled,
+          detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
+        ),
+      );
+    }();
+    _appSettingsWrite = currentWrite;
+    await currentWrite;
+  }
+
+  Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) async {
+    if (_detailedAudioDiagnosticsEnabled == enabled) {
+      return;
+    }
+    final appSettingsStore = _appSettingsStore;
+    if (appSettingsStore == null) {
+      throw StateError('AppSettingsStore 尚未初始化');
+    }
+
+    _detailedAudioDiagnosticsEnabled = enabled;
+    notifyListeners();
+    final previousWrite = _appSettingsWrite;
+    final currentWrite = () async {
+      try {
+        await previousWrite;
+      } catch (_) {
+        // A later choice must still be persisted after an earlier write fails.
+      }
+      await appSettingsStore.write(
+        AppSettings(
+          watermarkEnabled: _watermarkEnabled,
+          detailedAudioDiagnosticsEnabled: enabled,
+        ),
+      );
     }();
     _appSettingsWrite = currentWrite;
     await currentWrite;

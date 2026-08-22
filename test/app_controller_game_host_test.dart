@@ -41,12 +41,14 @@ void main() {
     );
     await controller.initialize();
     await controller.setAutoCollectSunEnabled(true);
+    await controller.setDetailedAudioDiagnosticsEnabled(true);
 
     await controller.startGame();
 
     expect(host.session?.sessionId, 'session-42');
     expect(host.session?.resourceRoot, paths.slotADir.path);
     expect(host.session?.autoCollectSunEnabled, isTrue);
+    expect(host.session?.detailedAudioDiagnosticsEnabled, isTrue);
     expect(host.session?.entryUri.toString(),
         'https://appassets.androidplatform.net/index.html?generation=42');
     expect(

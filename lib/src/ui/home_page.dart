@@ -830,6 +830,58 @@ class _DiagnosticsLogViewState extends State<_DiagnosticsLogView> {
                   ],
                 ),
                 const SizedBox(height: 10),
+                Semantics(
+                  container: true,
+                  label: '详细音频诊断',
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: LauncherVisuals.service.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '详细音频诊断',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '记录每个音频的加载、解码和播放事件；仅在排查问题时开启',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            key: const ValueKey(
+                              'detailed-audio-diagnostics-switch',
+                            ),
+                            value: widget
+                                .controller.detailedAudioDiagnosticsEnabled,
+                            onChanged: (enabled) {
+                              unawaited(
+                                widget.controller
+                                    .setDetailedAudioDiagnosticsEnabled(
+                                  enabled,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 Expanded(
                   child: snapshot == null
                       ? _DiagnosticsLogBox(text: text)

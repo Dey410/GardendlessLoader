@@ -82,6 +82,32 @@ void main() {
     await controller.initialize();
 
     expect(controller.watermarkEnabled, isTrue);
+    expect(controller.detailedAudioDiagnosticsEnabled, isFalse);
+  });
+
+  test('remembers detailed audio diagnostics without losing watermark',
+      () async {
+    final root = await Directory.systemTemp.createTemp('gl_audio_diag_saved_');
+    addTearDown(() async {
+      if (await root.exists()) {
+        await root.delete(recursive: true);
+      }
+    });
+
+    final firstController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await firstController.initialize();
+    await firstController.setWatermarkEnabled(false);
+    await firstController.setDetailedAudioDiagnosticsEnabled(true);
+
+    final restartedController = AppController(
+      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+    );
+    await restartedController.initialize();
+
+    expect(restartedController.watermarkEnabled, isFalse);
+    expect(restartedController.detailedAudioDiagnosticsEnabled, isTrue);
   });
 
   test('remembers a disabled game watermark across app restarts', () async {

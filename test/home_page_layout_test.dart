@@ -528,6 +528,22 @@ void main() {
       await tester.pump();
 
       expect(find.text('日志信息'), findsOneWidget);
+      expect(find.text('详细音频诊断'), findsOneWidget);
+      expect(
+        find.text('记录每个音频的加载、解码和播放事件；仅在排查问题时开启'),
+        findsOneWidget,
+      );
+      final diagnosticsSwitch = find.byKey(
+        const ValueKey('detailed-audio-diagnostics-switch'),
+      );
+      expect(diagnosticsSwitch, findsOneWidget);
+      expect(tester.widget<Switch>(diagnosticsSwitch).value, isFalse);
+
+      await tester.tap(diagnosticsSwitch);
+      await tester.pumpAndSettle();
+
+      expect(controller.detailedAudioDiagnosticsEnabled, isTrue);
+      expect(tester.widget<Switch>(diagnosticsSwitch).value, isTrue);
       expect(find.text('复制日志信息'), findsOneWidget);
       expect(
         find.textContaining('[INFO] app', findRichText: true),
