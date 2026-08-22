@@ -14,6 +14,7 @@ public struct GameSession: Codable, Equatable {
   public let gpNextVersion: String?
   public let watermarkEnabled: Bool
   public let autoCollectSunEnabled: Bool
+  public let detailedAudioDiagnosticsEnabled: Bool
   public let allowedRemoteHosts: Set<String>
   public let gpNextRoot: URL
   public let exportTemporaryRoot: URL
@@ -32,6 +33,7 @@ public struct GameSession: Codable, Equatable {
     gpNextVersion: String?,
     watermarkEnabled: Bool,
     autoCollectSunEnabled: Bool,
+    detailedAudioDiagnosticsEnabled: Bool = false,
     allowedRemoteHosts: Set<String>,
     gpNextRoot: URL,
     exportTemporaryRoot: URL
@@ -45,6 +47,7 @@ public struct GameSession: Codable, Equatable {
     self.gpNextVersion = gpNextVersion
     self.watermarkEnabled = watermarkEnabled
     self.autoCollectSunEnabled = autoCollectSunEnabled
+    self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
     self.allowedRemoteHosts = allowedRemoteHosts
     self.gpNextRoot = gpNextRoot
     self.exportTemporaryRoot = exportTemporaryRoot
@@ -85,6 +88,8 @@ public enum GameSessionDecoder {
       gpNextVersion: json["gpNextVersion"] as? String,
       watermarkEnabled: try requiredBool(json, "watermarkEnabled"),
       autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled"),
+      detailedAudioDiagnosticsEnabled:
+        json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
       allowedRemoteHosts: Set(hosts.map { $0.lowercased() }),
       gpNextRoot: try requiredDirectoryURL(json, "gpNextRoot"),
       exportTemporaryRoot: try requiredDirectoryURL(json, "exportTemporaryRoot")

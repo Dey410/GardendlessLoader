@@ -1,323 +1,248 @@
 (function () {
   "use strict";
+  if (window.__gardendlessBrowserAudioObserverInstalled) return;
+  window.__gardendlessBrowserAudioObserverInstalled = true;
 
   const config = window.__gardendlessHostConfig || {};
-  const enabled = config.audioDiagnosticsEnabled === true;
-  const maxEvents = 6000;
-  const maxFrames = 6000;
-  const longFrameThresholdMs = 100;
-
+  const detailed = config.detailedAudioDiagnosticsEnabled === true;
   const counters = {
-    domPlay: 0,
-    domPause: 0,
-    lazySrcSet: 0,
-    facadeCreated: 0,
-    playPosted: 0,
-    pausePosted: 0,
-    stopPosted: 0,
-    seekPosted: 0,
-    setVolumePosted: 0,
-    setLoopPosted: 0,
-    setRatePosted: 0,
-    releasePosted: 0,
-    endedReceived: 0,
-    silentReceived: 0,
-    stoppedReceived: 0,
-    silentThrottled: 0,
-    silentThrottleArmed: 0,
-    webkitFallback: 0,
-    nativePlayPosted: 0,
-    nativePostFailed: 0,
-    nativeEnded: 0,
-    nativeSilent: 0,
-    nativeStop: 0,
-    nativeStopAll: 0,
-    webAudioDecodeStart: 0,
-    webAudioDecodeEnd: 0,
-    webAudioStart: 0,
+    decodeStarted: 0,
+    decodeSucceeded: 0,
+    decodeFailed: 0,
+    mediaLoadStarted: 0,
+    mediaReady: 0,
+    mediaPlayRequested: 0,
+    mediaPlaying: 0,
+    mediaEnded: 0,
+    mediaFailed: 0
   };
 
-  let pendingNative = 0;
-  const events = [];
-  const frameTimes = [];
-  let lastAutoSaveAt = 0;
-
-  const audioHandler =
-    window.webkit && window.webkit.messageHandlers
-      ? window.webkit.messageHandlers.gardendlessAudio
-      : null;
-
-  function now() {
-    return window.performance && window.performance.now
-      ? window.performance.now()
-      : Date.now();
-  }
-
-  function pushEvent(type, details) {
-    if (events.length >= maxEvents) {
-      events.shift();
+  function errorText(value) {
+    if (value && typeof value.message === "string") return value.message;
+    try { return String(value || "Unknown audio error"); } catch (_) {
+      return "Unknown audio error";
     }
-    const event = { t: Math.round(now()), type: type };
-    if (details) {
-      for (const key of Object.keys(details)) {
-        if (details[key] !== undefined) {
-          event[key] = details[key];
-        }
-      }
+  }
+
+  function relativePath(value) {
+    if (typeof value !== "string" || !value) return "";
+    if (value.indexOf("blob:") === 0 || value.indexOf("data:") === 0) {
+      return "[inline-audio]";
     }
-    events.push(event);
-  }
-
-  function record(type, details) {
-    if (!enabled) return;
-    if (counters[type] !== undefined) {
-      counters[type] += 1;
-    }
-    pushEvent(type, details);
-  }
-
-  function beginNativePlay() {
-    pendingNative += 1;
-    return pendingNative;
-  }
-
-  function endNativePlay() {
-    pendingNative = Math.max(0, pendingNative - 1);
-    return pendingNative;
-  }
-
-  function resetPendingNative() {
-    pendingNative = 0;
-  }
-
-  function computeFps() {
-    if (frameTimes.length < 2) {
-      return { frameCount: frameTimes.length, gaps: [] };
-    }
-    const durations = [];
-    const gaps = [];
-    for (let i = 1; i < frameTimes.length; i += 1) {
-      const duration = frameTimes[i] - frameTimes[i - 1];
-      durations.push(duration);
-      if (duration > longFrameThresholdMs) {
-        gaps.push({
-          t: Math.round(frameTimes[i - 1]),
-          durationMs: Math.round(duration),
-        });
-      }
-    }
-    durations.sort((a, b) => a - b);
-    const total = durations.reduce((sum, value) => sum + value, 0);
-    const p95Index = Math.min(
-      durations.length - 1,
-      Math.floor(durations.length * 0.95),
-    );
-    return {
-      frameCount: frameTimes.length,
-      avgFrameMs: Math.round((total / durations.length) * 10) / 10,
-      p95FrameMs: Math.round(durations[p95Index]),
-      maxFrameMs: Math.round(durations[durations.length - 1]),
-      gaps: gaps,
-    };
-  }
-
-  function exportJson() {
-    const data = {
-      schemaVersion: 2,
-      enabled: enabled,
-      collectedAt: new Date().toISOString(),
-      build: {
-        userAgent: navigator.userAgent,
-        platform: navigator.platform,
-        hardwareConcurrency: navigator.hardwareConcurrency || null,
-      },
-      patch: {
-        lazySrcSetCount: counters.lazySrcSet,
-        facadeInstalled: !!window.__gardendlessNativeAudioFacadeInstalled,
-        audioFacadeLoaded: window.__pvzgeAudioFacadeLoaded || 0,
-        facadeCreatedCount: counters.facadeCreated,
-        nativeAudioInstalled: !!window.__gardendlessNativeAudioInstalled,
-        audioPatchMarker: window.__pvzgeAudioPatchLoaded || 0,
-      },
-      fps: computeFps(),
-      audio: {
-        counters: Object.assign({}, counters, { pendingNative: pendingNative }),
-        events: events.slice(),
-      },
-    };
-    return JSON.stringify(data);
-  }
-
-  function exportJsonString() {
-    return exportJson();
-  }
-
-  function saveToNative() {
-    if (!enabled || !audioHandler) return false;
     try {
-      audioHandler.postMessage({
-        command: "writeDiagnostics",
-        json: exportJsonString(),
-      });
-      return true;
+      const url = new URL(value, window.location.href);
+      const path = String(url.pathname || "").replace(/^\/+/, "");
+      return path || "[document]";
     } catch (_) {
-      return false;
+      return value.split(/[?#]/, 1)[0].replace(/^\/+/, "").slice(0, 1024);
     }
   }
 
-  function frameLoop(timestamp) {
-    if (frameTimes.length >= maxFrames) {
-      frameTimes.shift();
-    }
-    frameTimes.push(timestamp);
-    const current = now();
-    if (current - lastAutoSaveAt >= 10000) {
-      lastAutoSaveAt = current;
-      saveToNative();
-    }
-    window.requestAnimationFrame(frameLoop);
+  function emit(event, level, outcome, message, context, detailedOnly) {
+    if (detailedOnly && !detailed) return;
+    const host = window.__gardendlessHost;
+    if (!host || typeof host.invoke !== "function") return;
+    host.invoke("host:log", {
+      args: {
+        event: event,
+        level: level,
+        outcome: outcome,
+        message: String(message || "").slice(0, 1024),
+        context: context || {}
+      }
+    }).catch(function () {});
   }
 
-  function wrapDecode(original) {
-    return function (buffer, success, error) {
-      const self = this;
+  function emitSummary() {
+    emit(
+      "audio_summary",
+      "INFO",
+      "observed",
+      detailed ? "Detailed audio diagnostics summary" : "Audio diagnostics summary",
+      Object.assign({ detailed: detailed }, counters),
+      false
+    );
+  }
+
+  function installDecodeObserver() {
+    const Context = window.AudioContext || window.webkitAudioContext;
+    const prototype = Context && Context.prototype;
+    if (!prototype || typeof prototype.decodeAudioData !== "function") return;
+
+    const original = prototype.decodeAudioData;
+    prototype.decodeAudioData = function () {
+      const receiver = this;
+      const args = Array.prototype.slice.call(arguments);
       let settled = false;
-      function mark(ok) {
+      counters.decodeStarted += 1;
+      emit(
+        "audio_decode_started",
+        "INFO",
+        "started",
+        "WebAudio decode started",
+        { byteLength: args[0] && Number(args[0].byteLength || 0) },
+        true
+      );
+
+      function finish(ok, reason) {
         if (settled) return;
         settled = true;
-        counters.webAudioDecodeEnd += 1;
-        pushEvent("webAudioDecodeEnd", { ok: ok });
+        if (ok) {
+          counters.decodeSucceeded += 1;
+          emit(
+            "audio_decode_succeeded",
+            "INFO",
+            "succeeded",
+            "WebAudio decode succeeded",
+            {},
+            true
+          );
+        } else {
+          counters.decodeFailed += 1;
+          emit(
+            "audio_decode_failed",
+            "ERROR",
+            "failed",
+            errorText(reason),
+            {},
+            false
+          );
+        }
       }
-      counters.webAudioDecodeStart += 1;
-      pushEvent("webAudioDecodeStart", {});
+
+      if (typeof args[1] === "function") {
+        const success = args[1];
+        args[1] = function () {
+          finish(true);
+          return success.apply(this, arguments);
+        };
+      }
+      if (typeof args[2] === "function") {
+        const failure = args[2];
+        args[2] = function () {
+          finish(false, arguments[0]);
+          return failure.apply(this, arguments);
+        };
+      }
+
       let result;
       try {
-        result = original.call(
-          self,
-          buffer,
-          function (decoded) {
-            mark(true);
-            if (typeof success === "function") {
-              success(decoded);
-            }
-          },
-          function (reason) {
-            mark(false);
-            if (typeof error === "function") {
-              error(reason);
-            }
-          },
-        );
-      } catch (errorValue) {
-        mark(false);
-        throw errorValue;
+        result = original.apply(receiver, args);
+      } catch (error) {
+        finish(false, error);
+        throw error;
       }
       if (result && typeof result.then === "function") {
-        return result.then(
-          function (decoded) {
-            mark(true);
-            return decoded;
-          },
-          function (reason) {
-            mark(false);
-            throw reason;
-          },
+        result.then(
+          function () { finish(true); },
+          function (reason) { finish(false, reason); }
         );
       }
       return result;
     };
   }
 
-  function installWebAudioProbe() {
-    const Context = window.AudioContext || window.webkitAudioContext;
-    if (Context && Context.prototype && Context.prototype.decodeAudioData) {
-      Context.prototype.decodeAudioData = wrapDecode(
-        Context.prototype.decodeAudioData,
+  function mediaContext(element) {
+    return {
+      relativePath: relativePath(
+        element && (element.currentSrc || element.src || "")
+      )
+    };
+  }
+
+  function installMediaObserver() {
+    const Media = window.HTMLMediaElement;
+    const prototype = Media && Media.prototype;
+    if (!prototype) return;
+
+    const eventMap = {
+      loadstart: ["mediaLoadStarted", "audio_media_load_started", "started"],
+      loadeddata: ["mediaReady", "audio_media_ready", "succeeded"],
+      canplay: ["mediaReady", "audio_media_ready", "succeeded"],
+      playing: ["mediaPlaying", "audio_media_playing", "observed"],
+      ended: ["mediaEnded", "audio_media_ended", "observed"]
+    };
+    Object.keys(eventMap).forEach(function (name) {
+      window.addEventListener(name, function (event) {
+        const element = event && event.target;
+        if (!(element instanceof Media)) return;
+        const definition = eventMap[name];
+        counters[definition[0]] += 1;
+        emit(
+          definition[1],
+          "INFO",
+          definition[2],
+          "HTML media event: " + name,
+          mediaContext(element),
+          true
+        );
+      }, true);
+    });
+    window.addEventListener("error", function (event) {
+      const element = event && event.target;
+      if (!(element instanceof Media)) return;
+      counters.mediaFailed += 1;
+      emit(
+        "audio_media_failed",
+        "ERROR",
+        "failed",
+        "HTML media failed to load or play",
+        mediaContext(element),
+        false
       );
-    }
-    if (
-      window.AudioBufferSourceNode &&
-      window.AudioBufferSourceNode.prototype
-    ) {
-      const originalStart = window.AudioBufferSourceNode.prototype.start;
-      if (typeof originalStart === "function") {
-        window.AudioBufferSourceNode.prototype.start = function () {
-          const buffer = this && this.buffer;
-          const duration =
-            buffer && typeof buffer.duration === "number"
-              ? Math.round(buffer.duration * 1000)
-              : null;
-          counters.webAudioStart += 1;
-          pushEvent("webAudioStart", { durationMs: duration });
-          return originalStart.apply(this, arguments);
-        };
-      }
-    }
-  }
+    }, true);
 
-  function installDomProbe() {
-    const proto =
-      window.HTMLMediaElement && window.HTMLMediaElement.prototype;
-    if (!proto) return;
-    const originalPlay = proto.play;
-    if (typeof originalPlay === "function") {
-      proto.play = function () {
+    if (typeof prototype.play === "function") {
+      const originalPlay = prototype.play;
+      prototype.play = function () {
         const element = this;
-        counters.domPlay += 1;
-        pushEvent("domPlay", {
-          url:
-            element.__pvzgeLazySrc ||
-            element.currentSrc ||
-            element.src ||
-            "",
-          loop: !!element.loop,
-          rate: element.playbackRate || 1,
-        });
-        return originalPlay.apply(element, arguments);
-      };
-    }
-    const originalPause = proto.pause;
-    if (typeof originalPause === "function") {
-      proto.pause = function () {
-        counters.domPause += 1;
-        pushEvent("domPause", {});
-        return originalPause.apply(this, arguments);
-      };
-    }
-  }
-
-  const api = {
-    enabled: enabled,
-    record: record,
-    beginNativePlay: beginNativePlay,
-    endNativePlay: endNativePlay,
-    resetPendingNative: resetPendingNative,
-    export: function () {
-      saveToNative();
-      return exportJsonString();
-    },
-    dump: function () {
-      return exportJsonString();
-    },
-  };
-
-  window.__gardendlessAudioDiagnostics = api;
-
-  if (enabled) {
-    installDomProbe();
-    installWebAudioProbe();
-    window.requestAnimationFrame(frameLoop);
-    window.addEventListener(
-      "pagehide",
-      function () {
-        saveToNative();
+        counters.mediaPlayRequested += 1;
+        emit(
+          "audio_media_play_requested",
+          "INFO",
+          "started",
+          "HTML media play requested",
+          mediaContext(element),
+          true
+        );
+        let result;
         try {
-          console.info("GDL_AUDIO_DIAG", exportJsonString());
-        } catch (_) {
-          // Diagnostics must never break page teardown.
+          result = originalPlay.apply(element, arguments);
+        } catch (error) {
+          counters.mediaFailed += 1;
+          emit(
+            "audio_media_failed",
+            "ERROR",
+            "failed",
+            errorText(error),
+            mediaContext(element),
+            false
+          );
+          throw error;
         }
-      },
-      { once: true },
-    );
+        if (result && typeof result.then === "function") {
+          result.then(
+            function () {},
+            function (reason) {
+              counters.mediaFailed += 1;
+              emit(
+                "audio_media_failed",
+                "ERROR",
+                "failed",
+                errorText(reason),
+                mediaContext(element),
+                false
+              );
+            }
+          );
+        }
+        return result;
+      };
+    }
   }
+
+  installDecodeObserver();
+  installMediaObserver();
+  window.setInterval(emitSummary, 30000);
+  window.addEventListener("pagehide", emitSummary, { once: true });
 })();

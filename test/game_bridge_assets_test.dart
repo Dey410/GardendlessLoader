@@ -101,10 +101,10 @@ void main() {
     expect(result.stdout, contains('touch patch input contract passes'));
   });
 
-  test('iOS audio facade passes executable behavior checks', () async {
+  test('passive audio diagnostics preserve browser audio behavior', () async {
     final result = await Process.run(
       'node',
-      const ['tool/check_audio_facade.mjs'],
+      const ['tool/check_audio_diagnostic.mjs'],
     );
 
     expect(
@@ -112,192 +112,53 @@ void main() {
       0,
       reason: '${result.stdout}\n${result.stderr}',
     );
-    expect(result.stdout, contains('audio facade contract passes'));
+    expect(
+        result.stdout, contains('passive audio diagnostics contract passes'));
   });
 
-  test('iOS native short sound proxy is injected before bootstrap', () {
-    final proxy =
-        File('assets/game_bridge/ios_audio_proxy.js').readAsStringSync();
-    final facade =
-        File('assets/game_bridge/ios_audio_facade.js').readAsStringSync();
+  test('iOS delegates audio loading and playback to Cocos browser backends',
+      () {
     final controller =
         File('ios/Runner/GameHostController.swift').readAsStringSync();
-    final bridge =
-        File('ios/Runner/AudioScriptBridge.swift').readAsStringSync();
-    final engine = File(
-      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
-    ).readAsStringSync();
-    final schemeHandler = File(
-      'ios/GardendlessKit/Sources/GardendlessResource/'
-      'ResourceSchemeHandler.swift',
-    ).readAsStringSync();
-    final configuration = File(
-      'ios/GardendlessKit/Sources/GardendlessCore/GameConfiguration.swift',
-    ).readAsStringSync();
-    final limits = File(
-      'ios/GardendlessKit/Sources/GardendlessAudio/AudioPlaybackLimits.swift',
-    ).readAsStringSync();
-
-    expect(proxy, contains('__pvzgeLazySrc'));
-    expect(proxy, contains('gardendlessAudio'));
-    expect(proxy, contains('window.__gardendlessNativeAudioInstalled'));
-    expect(proxy, contains('diagnostics.record("webkitFallback"'));
-    expect(facade, contains('window.__gardendlessNativeAudio'));
-    expect(facade, contains('createNativeAudioHandle'));
-    expect(facade, contains('command: "setVolume"'));
-    expect(facade, contains('command: "setLoop"'));
-    expect(facade, contains('command: "setRate"'));
-    expect(facade, contains('command: "releaseMany"'));
-    expect(facade, contains('window.__gardendlessAudioEvents'));
-    expect(facade, contains('silentThrottled'));
-    expect(facade, contains('__gardendlessNativeAudioFacadeInstalled'));
-    expect(proxy, contains('__gardendlessNativeAudioSilent'));
-    expect(proxy, isNot(contains('__gardendlessNativeAudioWebKit')));
-    expect(proxy, isNot(contains('__gardendlessNativeAudioFallback')));
-    expect(proxy, contains('element.dispatchEvent(new Event("ended"))'));
-    expect(controller, contains('"nativeSfxEnabled": nativeSfxEnabled'));
-    expect(
-      controller,
-      contains('"audioVoicePoolSize": AudioPlaybackLimits.voicePoolSize'),
-    );
-    expect(controller, contains('audioCompressedSfxByteLimit'));
-    expect(controller, contains('audioPcmCacheByteLimit'));
-    expect(controller, contains('audioLongMaxBytes'));
-    expect(
-      engine,
-      contains(
-          'maxConcurrentOperationCount = configuration.audioQueueConcurrency'),
-    );
-    expect(
-      configuration,
-      contains('pcmCacheByteLimit: Int = 96 * 1024 * 1024'),
-    );
-    expect(
-      configuration,
-      contains('compressedSfxByteLimit: Int64 = 512 * 1024'),
-    );
-    expect(
-      configuration,
-      contains('singleBufferByteLimit: Int = 4 * 1024 * 1024'),
-    );
-    expect(limits, contains('voicePoolSize = 48'));
-    expect(limits, contains('rateVoiceCount = 6'));
-    expect(limits, contains('longChannelCount = 8'));
-    expect(bridge, contains('message.frameInfo.isMainFrame'));
-    expect(bridge, contains('securityOrigin.protocol == GameOrigin.scheme'));
-    expect(bridge, contains('securityOrigin.host == GameOrigin.host'));
-    expect(schemeHandler, contains('private let sandbox: PathSandbox'));
-    expect(
-      controller.indexOf('"ios_audio_proxy.js"'),
-      lessThan(controller.indexOf('"bootstrap.js"')),
-    );
-    expect(
-      controller.indexOf('"ios_audio_facade.js"'),
-      lessThan(controller.indexOf('"ios_audio_proxy.js"')),
-    );
-  });
-
-  test('audio diagnostics probe is injected before the iOS audio proxy', () {
     final diagnostic =
         File('assets/game_bridge/audio_diagnostic.js').readAsStringSync();
-    final proxy =
-        File('assets/game_bridge/ios_audio_proxy.js').readAsStringSync();
-    final controller =
-        File('ios/Runner/GameHostController.swift').readAsStringSync();
-    final bridge =
-        File('ios/Runner/AudioScriptBridge.swift').readAsStringSync();
+    final package = File('ios/GardendlessKit/Package.swift').readAsStringSync();
+    final project =
+        File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+    final constants = File(
+      'ios/GardendlessKit/Sources/GardendlessBridge/BridgeConstants.swift',
+    ).readAsStringSync();
 
-    expect(diagnostic, contains('window.__gardendlessAudioDiagnostics'));
-    expect(diagnostic, contains('schemaVersion: 2'));
-    expect(diagnostic, contains('facadeCreated'));
-    expect(diagnostic, contains('playPosted'));
-    expect(diagnostic, contains('silentThrottled'));
-    expect(diagnostic, contains('stoppedReceived'));
-    expect(diagnostic, contains('webkitFallback'));
-    expect(
-      diagnostic,
-      contains('facadeInstalled: !!window.__gardendlessNativeAudioFacadeInstalled'),
-    );
-    expect(diagnostic, contains('AudioBufferSourceNode.prototype.start'));
-    expect(diagnostic, contains('decodeAudioData'));
-    expect(diagnostic, contains('requestAnimationFrame(frameLoop)'));
-    expect(diagnostic, contains('GDL_AUDIO_DIAG'));
-    expect(diagnostic, contains('command: "writeDiagnostics"'));
-    expect(proxy, contains('diagnostics.record("nativePlayPosted"'));
-    expect(
-      proxy,
-      contains('diagnostics.record("nativePostFailed"'),
-    );
     expect(
       controller,
-      contains('"audioDiagnosticsEnabled": audioDiagnosticsEnabled'),
+      contains('configuration.mediaTypesRequiringUserActionForPlayback = []'),
     );
-    expect(bridge, contains('case "writeDiagnostics"'));
-    expect(bridge, contains('case "releaseMany"'));
-    expect(bridge, contains('audio-diagnostics.json'));
+    expect(controller, contains('"audio_diagnostic.js"'));
     expect(
-      controller.indexOf('"audio_diagnostic.js"'),
-      lessThan(controller.indexOf('"ios_audio_proxy.js"')),
+      controller,
+      matches(
+        RegExp(
+          r'"detailedAudioDiagnosticsEnabled":\s*'
+          r'session\.detailedAudioDiagnosticsEnabled',
+        ),
+      ),
     );
-  });
+    expect(controller, isNot(contains('ios_audio_facade.js')));
+    expect(controller, isNot(contains('ios_audio_proxy.js')));
+    expect(controller, isNot(contains('AudioScriptBridge')));
+    expect(controller, isNot(contains('AudioPipelineEngine')));
+    expect(package, isNot(contains('GardendlessAudio')));
+    expect(package, isNot(contains('SfxExceptionGuard')));
+    expect(project, isNot(contains('GardendlessAudio')));
+    expect(project, isNot(contains('AudioScriptBridge.swift')));
+    expect(constants, isNot(contains('gardendlessAudio')));
 
-  test('iOS native sound graph is initialized lazily after audio session', () {
-    final engine = File(
-      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
-    ).readAsStringSync();
-    final initializer = engine.substring(
-      engine.indexOf('  public init('),
-      engine.indexOf('  public func play('),
-    );
-
-    expect(initializer, isNot(contains('AVAudioEngine()')));
-    expect(initializer, isNot(contains('configureNodes')));
-    expect(initializer, isNot(contains('observeLifecycle')));
-    expect(initializer, isNot(contains('ensureEngineRunning')));
-    expect(engine, contains('private var engine: AVAudioEngine?'));
-    final preparation = engine.substring(
-      engine.indexOf('  private func ensureEngineRunning()'),
-      engine.indexOf('  private func configureNodes('),
-    );
-    expect(
-      preparation.indexOf('try session.setActive(true)'),
-      lessThan(preparation.indexOf('configureNodes(newEngine)')),
-    );
-  });
-
-  test('iOS pooled sound nodes follow each decoded buffer format', () {
-    final engine = File(
-      'ios/GardendlessKit/Sources/GardendlessAudio/ShortSfxEngine.swift',
-    ).readAsStringSync();
-    final configuration = engine.substring(
-      engine.indexOf('  private func configureNodes('),
-      engine.indexOf('  private func observeLifecycle('),
-    );
-    final scheduling = engine.substring(
-      engine.indexOf('  private func schedule('),
-      engine.indexOf('  private func completeVoice('),
-    );
-
-    expect(configuration, contains('engine.attach(varispeed)'));
-    expect(
-      configuration,
-      isNot(contains('engine.connect(varispeed, to: engine.mainMixerNode')),
-    );
-    expect(
-      scheduling,
-      contains('engine.disconnectNodeOutput(selectedNode.player)'),
-    );
-    expect(scheduling, contains('to: engine.mainMixerNode,'));
-    expect(scheduling, contains('to: varispeed,'));
-    expect(scheduling, contains('format: cached.buffer.format'));
-    expect(
-      scheduling.indexOf('engine.disconnectNodeOutput(selectedNode.player)'),
-      lessThan(scheduling.indexOf('format: cached.buffer.format')),
-    );
-    expect(
-      scheduling.indexOf('format: cached.buffer.format'),
-      lessThan(scheduling.indexOf('selectedNode.player.scheduleBuffer(')),
-    );
+    expect(diagnostic, contains('decodeAudioData'));
+    expect(diagnostic, contains('HTMLMediaElement'));
+    expect(diagnostic, contains('host:log'));
+    expect(diagnostic, contains('detailedAudioDiagnosticsEnabled'));
+    expect(diagnostic, isNot(contains('gardendlessAudio')));
+    expect(diagnostic, isNot(contains('writeDiagnostics')));
   });
 
   test('legacy in-game menu is removed and native back paths return home', () {

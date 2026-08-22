@@ -105,14 +105,7 @@ void main() {
         ),
       ),
     );
-    expect(
-      controller,
-      matches(
-        RegExp(
-          r'contentController\.add\(\s*audioBridge,\s*contentWorld: \.page,\s*name: AudioScriptBridge\.name\s*\)',
-        ),
-      ),
-    );
+    expect(controller, isNot(contains('AudioScriptBridge')));
     expect(controller, contains('"touch_patch.js"'));
     expect(controller, contains('"auto_sun.js"'));
     expect(
@@ -123,7 +116,17 @@ void main() {
       controller,
       contains('"autoCollectSunEnabled": session.autoCollectSunEnabled'),
     );
+    expect(
+      controller,
+      matches(
+        RegExp(
+          r'"detailedAudioDiagnosticsEnabled":\s*'
+          r'session\.detailedAudioDiagnosticsEnabled',
+        ),
+      ),
+    );
     expect(session, contains('let autoCollectSunEnabled: Bool'));
+    expect(session, contains('let detailedAudioDiagnosticsEnabled: Bool'));
     expect(
       session,
       contains(
@@ -137,7 +140,12 @@ void main() {
       contains(
           'maxConcurrentOperationCount = configuration.resourceQueueConcurrency'),
     );
-    expect(handler, contains('maxConcurrentOperationCount = 2'));
+    expect(
+      handler,
+      contains(
+        'maxConcurrentOperationCount = configuration.audioQueueConcurrency',
+      ),
+    );
     expect('$handler\n$mime', contains('"ftypM4A"'));
     expect('$handler\n$mime', contains('"ftypisom"'));
     expect('$handler\n$mime', contains('"ftypmp42"'));

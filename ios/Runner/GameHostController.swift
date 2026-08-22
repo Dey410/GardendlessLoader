@@ -1,6 +1,5 @@
 import Flutter
 import Foundation
-import GardendlessAudio
 import GardendlessBridge
 import GardendlessCore
 import GardendlessGPNext
@@ -67,14 +66,12 @@ final class GameHostController: UIViewController,
   private let onExit: () -> Void
   private let sandbox: PathSandbox
   private let schemeHandler: ResourceSchemeHandler
-  private let audioEngine: AudioPipelineEngine
   private let exportCoordinator: ExportCoordinator
   private let gpNextRouter: GpNextCommandRouter?
   private let logStore: LogStore
 
   private var webView: WKWebView!
   private var scriptBridge: ScriptMessageBridge!
-  private var audioBridge: AudioScriptBridge!
   private var navigationPolicy: NavigationPolicy!
   private var pendingExport: (id: String, file: URL)?
   private var pendingGpNextImportId: String?
@@ -111,20 +108,6 @@ final class GameHostController: UIViewController,
         "context": context,
       ])
     }
-    audioEngine = AudioPipelineEngine(
-      sandbox: sandbox,
-      configuration: Self.audioConfiguration()
-    ) { [session] event, context in
-      logStore.emit([
-        "source": "ios",
-        "level": event == "native_sfx_decode_failed" ? "WARN" : "INFO",
-        "category": "game.audio",
-        "event": event,
-        "outcome": event.contains("failed") ? "failed" : "observed",
-        "gameSessionId": session.sessionId,
-        "context": context,
-      ])
-    }
     exportCoordinator = try ExportCoordinator(
       temporaryRoot: session.exportTemporaryRoot
     )
@@ -133,36 +116,6 @@ final class GameHostController: UIViewController,
       : nil
     super.init(nibName: nil, bundle: nil)
     modalPresentationStyle = .fullScreen
-  }
-
-  private static func audioConfiguration() -> GameConfiguration {
-    let defaults = UserDefaults.standard
-    var config = GameConfiguration.default
-    if let value = defaults.object(forKey: "audioCompressedSfxByteLimit")
-      as? Int, value > 0 {
-      config.compressedSfxByteLimit = Int64(value)
-    }
-    if let value = defaults.object(forKey: "audioPcmCacheByteLimit")
-      as? Int, value > 0 {
-      config.pcmCacheByteLimit = value
-    }
-    if let value = defaults.object(forKey: "audioSingleBufferByteLimit")
-      as? Int, value > 0 {
-      config.singleBufferByteLimit = value
-    }
-    if let value = defaults.object(forKey: "audioMaximumSfxDuration")
-      as? Double, value > 0 {
-      config.maximumSfxDuration = value
-    }
-    if let value = defaults.object(forKey: "audioLongMaxBytes")
-      as? Int, value > 0 {
-      config.longMaxBytes = Int64(value)
-    }
-    if let value = defaults.object(forKey: "audioLongMaxDuration")
-      as? Double, value > 0 {
-      config.longMaxDuration = value
-    }
-    return config
   }
 
   @available(*, unavailable)
@@ -205,16 +158,6 @@ final class GameHostController: UIViewController,
       scriptBridge,
       contentWorld: .page,
       name: ScriptMessageBridge.name
-    )
-
-    audioBridge = AudioScriptBridge(
-      engine: audioEngine,
-      webViewProvider: { [weak self] in self?.webView }
-    )
-    contentController.add(
-      audioBridge,
-      contentWorld: .page,
-      name: AudioScriptBridge.name
     )
 
     navigationPolicy = NavigationPolicy(session: session)
@@ -271,36 +214,58 @@ final class GameHostController: UIViewController,
 
   func bridgeRequestedWatermark(_ enabled: Bool) throws {
     let output = session.appRoot.appendingPathComponent("app_settings.json")
+    var settings = (try? Data(contentsOf: output))
+      .flatMap { try? JSONSerialization.jsonObject(with: $0) }
+      as? [String: Any] ?? [:]
+    settings["watermarkEnabled"] = enabled
     let data = try JSONSerialization.data(
-      withJSONObject: ["watermarkEnabled": enabled],
+      withJSONObject: settings,
       options: [.prettyPrinted, .sortedKeys]
     )
     try data.write(to: output, options: .atomic)
   }
 
   func bridgeRequestedLog(id: String, arguments: [String: Any]) {
-    let allowed = [
+    let javascriptEvents = [
       "javascript_uncaught_error",
       "javascript_unhandled_rejection",
       "javascript_console",
     ]
+    let audioEvents = [
+      "audio_decode_started",
+      "audio_decode_succeeded",
+      "audio_decode_failed",
+      "audio_media_load_started",
+      "audio_media_ready",
+      "audio_media_play_requested",
+      "audio_media_playing",
+      "audio_media_ended",
+      "audio_media_failed",
+      "audio_summary",
+    ]
     let requested = arguments["event"] as? String ?? "javascript_console"
-    let event = allowed.contains(requested) ? requested : "javascript_console"
-    logStore.emit([
-      "source": "javascript",
-      "level": arguments["level"] as? String ?? "ERROR",
-      "category": "game.javascript",
-      "event": event,
-      "outcome": "failed",
-      "code": event == "javascript_console" ? NSNull() : event,
-      "message": arguments["message"] as? String ?? "",
-      "gameSessionId": session.sessionId,
-      "context": [
+    let isAudio = audioEvents.contains(requested)
+    let event = isAudio || javascriptEvents.contains(requested)
+      ? requested : "javascript_console"
+    let context = isAudio
+      ? arguments["context"] as? [String: Any] ?? [:]
+      : [
         "page": arguments["page"] as? String ?? "",
         "line": arguments["line"] as? Int ?? 0,
         "column": arguments["column"] as? Int ?? 0,
-      ],
-      "error": [
+      ]
+    logStore.emit([
+      "source": "javascript",
+      "level": arguments["level"] as? String ?? "ERROR",
+      "category": isAudio ? "game.audio" : "game.javascript",
+      "event": event,
+      "outcome": isAudio
+        ? arguments["outcome"] as? String ?? "observed" : "failed",
+      "code": event.contains("failed") ? event : NSNull(),
+      "message": arguments["message"] as? String ?? "",
+      "gameSessionId": session.sessionId,
+      "context": context,
+      "error": isAudio ? NSNull() : [
         "type": "JavaScriptError",
         "message": arguments["message"] as? String ?? "",
         "stackTrace": arguments["stack"] as? String ?? "",
@@ -684,12 +649,6 @@ final class GameHostController: UIViewController,
       forName: ScriptMessageBridge.name,
       contentWorld: .page
     )
-    webView.configuration.userContentController.removeScriptMessageHandler(
-      forName: AudioScriptBridge.name,
-      contentWorld: .page
-    )
-    audioBridge.destroy()
-    audioEngine.shutdown()
     scriptBridge.destroy()
     webView.stopLoading()
     webView.navigationDelegate = nil
@@ -716,12 +675,6 @@ final class GameHostController: UIViewController,
   }
 
   private func buildDocumentStartScript() -> String {
-    let nativeSfxEnabled = UserDefaults.standard.object(
-      forKey: "nativeSfxEnabled"
-    ) as? Bool ?? true
-    let audioDiagnosticsEnabled = UserDefaults.standard.object(
-      forKey: "audioDiagnosticsEnabled"
-    ) as? Bool ?? true
     let config: [String: Any] = [
       "platform": "ios",
       "origin": GameOrigin.value,
@@ -731,9 +684,8 @@ final class GameHostController: UIViewController,
       "gpNextVersion": session.gpNextVersion ?? NSNull(),
       "watermarkEnabled": session.watermarkEnabled,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
-      "nativeSfxEnabled": nativeSfxEnabled,
-      "audioDiagnosticsEnabled": audioDiagnosticsEnabled,
-      "audioVoicePoolSize": AudioPlaybackLimits.voicePoolSize,
+      "detailedAudioDiagnosticsEnabled":
+        session.detailedAudioDiagnosticsEnabled,
       "gpNextBaseDirectory": session.appRoot.path,
     ]
     let configData = try! JSONSerialization.data(withJSONObject: config)
@@ -742,11 +694,9 @@ final class GameHostController: UIViewController,
       + ";"
     var names = [
       "transport.js",
-      "audio_diagnostic.js",
-      "ios_audio_facade.js",
-      "ios_audio_proxy.js",
       "bootstrap.js",
       "logging.js",
+      "audio_diagnostic.js",
       "auto_sun.js",
       "touch_patch.js",
       "export_download_patch.js",

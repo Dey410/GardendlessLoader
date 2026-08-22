@@ -25,6 +25,7 @@ final class GameSessionTests: XCTestCase {
       "gpNextVersion": "1.4.2",
       "watermarkEnabled": true,
       "autoCollectSunEnabled": false,
+      "detailedAudioDiagnosticsEnabled": true,
       "allowedRemoteHosts": hosts,
       "gpNextRoot": "/tmp/gardendless/gp-next",
       "exportTemporaryRoot": "/tmp/gardendless/gp-next/.exports",
@@ -35,9 +36,19 @@ final class GameSessionTests: XCTestCase {
     let session = try GameSessionDecoder.decode(makeJSON())
     XCTAssertEqual(session.sessionId, "session-1")
     XCTAssertEqual(session.activationGeneration, 7)
+    XCTAssertTrue(session.detailedAudioDiagnosticsEnabled)
     XCTAssertEqual(session.entryURL.scheme, "gardendless-game")
     XCTAssertEqual(session.allowedRemoteHosts, ["pvzge.com", "github.com"])
     XCTAssertEqual(session.appRoot.path, "/tmp/gardendless")
+  }
+
+  func testDefaultsDetailedAudioDiagnosticsOffForOlderPreparedSessions() throws {
+    var json = makeJSON()
+    json.removeValue(forKey: "detailedAudioDiagnosticsEnabled")
+
+    let session = try GameSessionDecoder.decode(json)
+
+    XCTAssertFalse(session.detailedAudioDiagnosticsEnabled)
   }
 
   func testRejectsWrongSchemaPlatformOrOrigin() {
