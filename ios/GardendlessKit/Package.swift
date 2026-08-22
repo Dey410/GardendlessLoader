@@ -57,9 +57,6 @@ let package = Package(
         "GardendlessLogging",
       ],
       path: "Tests/GardendlessKitTests",
-      exclude: [
-        "AudioTests.swift"
-      ],
       resources: [
         .copy("Fixtures")
       ]
