@@ -60,10 +60,11 @@ assert.ok(audio, "facade factory is installed");
 
 const handle = audio.createNativeAudioHandle(
   "gardendless-game://localhost/sfx/click.mp3",
-  { role: "oneShot" },
+  { role: "oneShot", duration: 1.75 },
 );
 assert.ok(handle, "facade handle is created");
 assert.equal(handle.role, "oneShot");
+assert.equal(handle.duration, 1.75, "facade preserves the decoded clip duration");
 assert.equal(handle.src, "gardendless-game://localhost/sfx/click.mp3");
 assert.ok(records.some((r) => r.type === "facadeCreated"), "facadeCreated recorded");
 

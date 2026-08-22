@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/models.dart';
+import 'package:gardendless_loader/src/services/cocos_audio_facade_patcher.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
 import 'package:gardendless_loader/src/services/resource_self_check.dart';
@@ -60,6 +61,64 @@ void main() {
       isTrue,
     );
     expect(await paths.slotBDir.list().isEmpty, isTrue);
+  });
+
+  test('applies the audio facade patch before activating the candidate',
+      () async {
+    final patcher = _RecordingAudioPatcher(
+      const CocosAudioFacadePatchResult(
+        CocosAudioFacadePatchStatus.applied,
+        '已启用测试音频补丁',
+      ),
+    );
+    importService = ImportService(
+      validator: ResourceValidator(),
+      audioFacadePatcher: patcher,
+    );
+    final target = await importService.beginImport(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+    await _writeValidResource(target.directory);
+
+    final manifest = await importService.completeImport(
+      paths: paths,
+      manifestStore: manifestStore,
+      target: target,
+    );
+
+    expect(patcher.appliedRoots, [target.directory.path]);
+    expect(manifest.activeSlot, target.slot);
+  });
+
+  test('audio patch mismatch warns but does not block activation', () async {
+    const warning = '资源包音频入口已变化，iOS 原生音频补丁未应用';
+    importService = ImportService(
+      validator: ResourceValidator(),
+      audioFacadePatcher: _RecordingAudioPatcher(
+        const CocosAudioFacadePatchResult(
+          CocosAudioFacadePatchStatus.unsupported,
+          warning,
+        ),
+      ),
+    );
+    final target = await importService.beginImport(
+      paths: paths,
+      manifestStore: manifestStore,
+    );
+    await _writeValidResource(target.directory);
+    final progress = <ImportProgress>[];
+
+    final manifest = await importService.completeImport(
+      paths: paths,
+      manifestStore: manifestStore,
+      target: target,
+      onProgress: progress.add,
+    );
+
+    expect(manifest.activeSlot, target.slot);
+    expect(progress.map((item) => item.message), contains(warning));
+    expect(progress.last.phase, ImportPhase.completed);
   });
 
   test('successful update activates the inactive slot and clears the old slot',
@@ -546,5 +605,18 @@ class _FailingSelfCheck implements ResourceSelfCheck {
   @override
   Future<void> validate(Directory root) async {
     throw StateError('self check failed');
+  }
+}
+
+class _RecordingAudioPatcher implements CocosAudioFacadePatchApplying {
+  _RecordingAudioPatcher(this.result);
+
+  final CocosAudioFacadePatchResult result;
+  final appliedRoots = <String>[];
+
+  @override
+  Future<CocosAudioFacadePatchResult> apply(Directory root) async {
+    appliedRoots.add(root.path);
+    return result;
   }
 }

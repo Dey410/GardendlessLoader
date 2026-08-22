@@ -170,6 +170,10 @@
     const role = optionsObject.role === "oneShot" ? "oneShot" : "continuous";
     const kind = optionsObject.kind === "music" ||
       optionsObject.kind === "ambience" ? optionsObject.kind : undefined;
+    const requestedDuration = Number(optionsObject.duration);
+    const duration = Number.isFinite(requestedDuration) && requestedDuration > 0
+      ? requestedDuration
+      : 0;
     const handle = {
       id: id,
       url: url,
@@ -183,7 +187,7 @@
       _startedAt: 0,
       _startOffset: 0,
       _pausedPosition: 0,
-      _duration: 0,
+      _duration: duration,
       __pvzgeLazySrc: url,
       _listeners: [],
       get src() {
