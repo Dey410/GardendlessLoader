@@ -252,7 +252,7 @@
       leftMouseDownDispatched = true;
       if (!leftMouseActive) {
         const upPoint = pendingLeftMouseUpPoint || leftMouseDownPoint;
-        dispatchMouse(targetAtPoint(upPoint), "mouseup", upPoint, 0, 1);
+        dispatchMouse(leftMouseTarget, "mouseup", upPoint, 0, 1);
         clearLeftMouseState();
       }
     });
@@ -271,8 +271,7 @@
       clearLeftMouseState();
       return;
     }
-    const target = targetAtPoint(point);
-    dispatchMouse(target, "mouseup", point, 0, 1);
+    dispatchMouse(leftMouseTarget, "mouseup", point, 0, 1);
     clearLeftMouseState();
   }
 
@@ -427,8 +426,7 @@
 
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
-    const target = targetAtPoint(point);
-    dispatchMouse(target, "mousemove", point, 0,
+    dispatchMouse(leftMouseTarget, "mousemove", point, 0,
       leftMouseDownDispatched ? 1 : 0);
     event.preventDefault();
     event.stopImmediatePropagation();

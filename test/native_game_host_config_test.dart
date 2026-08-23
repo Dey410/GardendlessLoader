@@ -26,11 +26,17 @@ void main() {
     expect(activity, contains('webView = MouseGameWebView(this).apply'));
     expect(
       activity,
-      contains('nativeSingleTouchMouseEnabled = !session.hasGpNext'),
+      contains('nativeSingleTouchMouseEnabled = true'),
     );
     expect(
       activity,
-      contains('.put("nativeSingleTouchMouse", !session.hasGpNext)'),
+      contains('.put("nativeSingleTouchMouse", true)'),
+      reason: 'Android game input must keep the APK native single-touch path',
+    );
+    expect(
+      activity,
+      isNot(contains('nativeSingleTouchMouseEnabled = !session.hasGpNext')),
+      reason: 'GP-Next resources must not switch lawn input to JavaScript',
     );
     expect(mouseWebView, contains('class MouseGameWebView'));
     expect(mouseWebView, contains('var nativeSingleTouchMouseEnabled = true'));

@@ -455,6 +455,53 @@ function createTouchHarness({
 }
 
 {
+  const coveringElement = createElement({id: 'transparent-cover'});
+  const harness = createTouchHarness({pointTarget: coveringElement});
+  const canvasEvents = [];
+  const coveringEvents = [];
+  for (const type of ['mousemove', 'mousedown', 'mouseup']) {
+    harness.canvas.addEventListener(type, (event) => {
+      canvasEvents.push({
+        type: event.type,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    });
+    coveringElement.addEventListener(type, (event) => {
+      coveringEvents.push(event.type);
+    });
+  }
+
+  const start = createTouch(11, harness.canvas, 60, 50);
+  const end = createTouch(11, harness.canvas, 240, 130);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [start],
+    changedTouches: [start],
+  }));
+  harness.flushAnimationFrame();
+  harness.document.dispatchEvent(createTouchEvent('touchmove', {
+    touches: [end],
+    changedTouches: [end],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [end],
+  }));
+
+  assert.deepEqual(canvasEvents, [
+    {type: 'mousemove', clientX: 60, clientY: 50},
+    {type: 'mousedown', clientX: 60, clientY: 50},
+    {type: 'mousemove', clientX: 240, clientY: 130},
+    {type: 'mouseup', clientX: 240, clientY: 130},
+  ], 'a drag must release on the pressed game canvas at the final coordinates');
+  assert.deepEqual(
+    coveringEvents,
+    [],
+    'an element covering the release point must not steal the Cocos mouse-up',
+  );
+}
+
+{
   const harness = createTouchHarness();
   const draggedMoves = [];
   let leakedMoves = 0;

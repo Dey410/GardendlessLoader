@@ -18,12 +18,13 @@ therefore use the current finger position rather than the previous mouse tile.
 For standard resources, Android produces the sequence with mouse-source
 `MotionEvent` objects in `MouseGameWebView`. The original touch is delivered
 first so the document-start bridge can classify native form targets;
-single-touch JavaScript mouse synthesis is disabled. GP-Next sessions stay on
-the shared JavaScript mapper so their selector-scoped native controls cannot be
-preempted by view-level mouse injection. iOS WKWebView and HarmonyOS ArkWeb use
-the same shared mapper. It emits the leading move immediately and defers the
-press to the next animation frame so the game consumes the new lawn position
-first. Both paths produce the same Cocos-visible sequence and planting result.
+single-touch JavaScript mouse synthesis is disabled. This native path remains
+enabled for GP-Next resources; the document-start bridge suppresses injected
+mouse events only for selector-scoped native controls. iOS WKWebView and
+HarmonyOS ArkWeb use the shared mapper. It emits the leading move immediately,
+defers the press to the next animation frame, and keeps move/up events on the
+original game canvas even if another DOM element covers the release point.
+Both paths produce the same Cocos-visible sequence and planting result.
 
 The original game touch is consumed for game gestures, preventing Cocos from
 processing both touch and mouse input. Native form controls and the scoped
