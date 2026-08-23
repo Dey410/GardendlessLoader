@@ -8,6 +8,7 @@ import 'package:gardendless_loader/src/logging/app_logger.dart';
 import 'package:gardendless_loader/src/logging/log_event_catalog.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
+import 'package:gardendless_loader/src/services/game_update_check_service.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
 import 'package:gardendless_loader/src/services/resource_picker_service.dart';
@@ -502,10 +503,29 @@ void main() {
         await root.delete(recursive: true);
       }
     });
+    final awakeDisableStarted = Completer<void>();
+    final releaseAwakeDisable = Completer<void>();
+    void Function()? resetCompletedProgress;
     final controller = AppController(
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
-      importCompletionVisibilityDuration: const Duration(seconds: 2),
-      importAwakeModeSetter: (_) async {},
+      gameUpdateCheckService: GameUpdateCheckService(
+        loader: (_, __, ___) async => const GameUpdateCheckHttpResponse(
+          statusCode: 200,
+          body: '[{"name":"0.0.0"}]',
+        ),
+      ),
+      importCompletionTimerFactory: (duration, callback) {
+        expect(duration, const Duration(seconds: 2));
+        resetCompletedProgress = callback;
+        return Timer(const Duration(days: 1), callback);
+      },
+      importAwakeModeGetter: () async => false,
+      importAwakeModeSetter: (enabled) async {
+        if (!enabled) {
+          awakeDisableStarted.complete();
+          await releaseAwakeDisable.future;
+        }
+      },
       resourcePickerService: ResourcePickerService(
         platformName: 'android',
         mobileZipImporter: ({
@@ -517,12 +537,22 @@ void main() {
         },
       ),
     );
+    addTearDown(controller.dispose);
     await controller.initialize();
 
-    await controller.importResources();
+    final importFuture = controller.importResources();
+    await awakeDisableStarted.future;
+    expect(
+      resetCompletedProgress,
+      isNull,
+      reason: 'the visible duration must start after post-import awaits',
+    );
+    releaseAwakeDisable.complete();
+    await importFuture;
     expect(controller.importProgress.phase, ImportPhase.completed);
 
-    await Future<void>.delayed(const Duration(milliseconds: 2100));
+    expect(resetCompletedProgress, isNotNull);
+    resetCompletedProgress!();
     expect(controller.importProgress.phase, ImportPhase.idle);
   });
 

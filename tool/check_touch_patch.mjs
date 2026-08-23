@@ -231,6 +231,44 @@ function createTouchHarness({
 }
 
 {
+  const input = createElement({tagName: 'INPUT'});
+  const harness = createTouchHarness({
+    hostConfig: {nativeSingleTouchMouse: true},
+  });
+  let leakedNativeMouseEvents = 0;
+  for (const type of ['mousemove', 'mousedown', 'mouseup']) {
+    harness.document.addEventListener(type, () => {
+      leakedNativeMouseEvents += 1;
+    });
+  }
+
+  const touch = createTouch(2, input, 30, 20);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [touch],
+    changedTouches: [touch],
+  }));
+  harness.document.dispatchEvent(new TestMouseEvent('mousemove', {
+    cancelable: true,
+  }));
+  harness.document.dispatchEvent(new TestMouseEvent('mousedown', {
+    cancelable: true,
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [touch],
+  }));
+  harness.document.dispatchEvent(new TestMouseEvent('mouseup', {
+    cancelable: true,
+  }));
+
+  assert.equal(
+    leakedNativeMouseEvents,
+    0,
+    'Android touch-derived mouse events must not duplicate native GP-Next/form input',
+  );
+}
+
+{
   const harness = createTouchHarness();
   const mouseEvents = [];
   let leakedTouches = 0;
@@ -259,20 +297,43 @@ function createTouchHarness({
   }));
   assert.deepEqual(mouseEvents, [
     {
+      type: 'mousemove',
+      button: 0,
+      buttons: 0,
+      clientX: 120,
+      clientY: 80,
+    },
+  ], 'single touch must position Cocos before pressing the left mouse');
+  harness.flushAnimationFrame();
+  assert.deepEqual(mouseEvents, [
+    {
+      type: 'mousemove',
+      button: 0,
+      buttons: 0,
+      clientX: 120,
+      clientY: 80,
+    },
+    {
       type: 'mousedown',
       button: 0,
       buttons: 1,
       clientX: 120,
       clientY: 80,
     },
-  ], 'single touch must press the left mouse immediately');
-  harness.flushAnimationFrame();
+  ], 'Cocos must consume the position for one frame before mouse-down');
   harness.document.dispatchEvent(createTouchEvent('touchend', {
     touches: [],
     changedTouches: [touch],
   }));
 
   assert.deepEqual(mouseEvents, [
+    {
+      type: 'mousemove',
+      button: 0,
+      buttons: 0,
+      clientX: 120,
+      clientY: 80,
+    },
     {
       type: 'mousedown',
       button: 0,
@@ -292,6 +353,104 @@ function createTouchHarness({
     leakedTouches,
     0,
     'game touch events must not reach Cocos listeners',
+  );
+}
+
+{
+  const harness = createTouchHarness();
+  const cocosEvents = [];
+  const plantedTiles = [];
+  let cocosPointer = {clientX: 0, clientY: 0};
+  let leftPressed = false;
+  for (const type of ['mousemove', 'mousedown', 'mouseup']) {
+    harness.canvas.addEventListener(type, (event) => {
+      const cocosType = `mouse-${type.slice(5)}`;
+      cocosEvents.push({
+        type: cocosType,
+        button: event.button,
+        buttons: event.buttons,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+      if (type === 'mousemove') {
+        cocosPointer = {clientX: event.clientX, clientY: event.clientY};
+      } else if (type === 'mousedown' && event.button === 0) {
+        leftPressed = true;
+      } else if (type === 'mouseup' && event.button === 0 && leftPressed) {
+        plantedTiles.push(cocosPointer);
+        leftPressed = false;
+      }
+    });
+  }
+
+  const tap = createTouch(9, harness.canvas, 180, 90);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [tap],
+    changedTouches: [tap],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [tap],
+  }));
+  assert.deepEqual(plantedTiles, [], 'a quick tap must wait for the Cocos frame');
+  harness.flushAnimationFrame();
+
+  assert.deepEqual(cocosEvents, [
+    {
+      type: 'mouse-move',
+      button: 0,
+      buttons: 0,
+      clientX: 180,
+      clientY: 90,
+    },
+    {
+      type: 'mouse-down',
+      button: 0,
+      buttons: 1,
+      clientX: 180,
+      clientY: 90,
+    },
+    {
+      type: 'mouse-up',
+      button: 0,
+      buttons: 1,
+      clientX: 180,
+      clientY: 90,
+    },
+  ], 'Cocos must observe the APK tap sequence at the touched lawn tile');
+  assert.deepEqual(
+    plantedTiles,
+    [{clientX: 180, clientY: 90}],
+    'tap planting must use the current touch position instead of stale mouse state',
+  );
+
+  const dragStart = createTouch(10, harness.canvas, 60, 50);
+  const dragEnd = createTouch(10, harness.canvas, 240, 130);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [dragStart],
+    changedTouches: [dragStart],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchmove', {
+    touches: [dragEnd],
+    changedTouches: [dragEnd],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [dragEnd],
+  }));
+  assert.deepEqual(
+    plantedTiles,
+    [{clientX: 180, clientY: 90}],
+    'a quick drag must wait for the Cocos frame',
+  );
+  harness.flushAnimationFrame();
+  assert.deepEqual(
+    plantedTiles,
+    [
+      {clientX: 180, clientY: 90},
+      {clientX: 240, clientY: 130},
+    ],
+    'drag planting must follow the last Cocos mouse-move position',
   );
 }
 

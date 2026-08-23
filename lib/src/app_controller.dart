@@ -26,6 +26,10 @@ import 'services/update_check_service.dart';
 
 typedef ImportAwakeModeSetter = Future<void> Function(bool enabled);
 typedef ImportAwakeModeGetter = Future<bool> Function();
+typedef ImportCompletionTimerFactory = Timer Function(
+  Duration duration,
+  void Function() callback,
+);
 
 //AppController 是整个应用的核心控制器，负责管理应用的状态、处理业务逻辑，并与 UI 进行交互。它使用 ChangeNotifier 来通知 UI 更新。
 class AppController extends ChangeNotifier {
@@ -45,6 +49,7 @@ class AppController extends ChangeNotifier {
     ResourcePickerService? resourcePickerService,
     ImportAwakeModeGetter? importAwakeModeGetter,
     ImportAwakeModeSetter? importAwakeModeSetter,
+    ImportCompletionTimerFactory? importCompletionTimerFactory,
     Duration importCompletionVisibilityDuration = const Duration(seconds: 2),
     Duration importProgressTickInterval = const Duration(seconds: 1),
   })  : _pathsService = pathsService ?? AppPathsService(),
@@ -65,6 +70,8 @@ class AppController extends ChangeNotifier {
             importAwakeModeGetter ?? _defaultImportAwakeModeGetter,
         _importAwakeModeSetter =
             importAwakeModeSetter ?? _defaultImportAwakeModeSetter,
+        _importCompletionTimerFactory =
+            importCompletionTimerFactory ?? Timer.new,
         _importCompletionVisibilityDuration =
             importCompletionVisibilityDuration,
         _importProgressTickInterval = importProgressTickInterval {
@@ -89,6 +96,7 @@ class AppController extends ChangeNotifier {
   final ResourcePickerService _resourcePickerService;
   final ImportAwakeModeGetter _importAwakeModeGetter;
   final ImportAwakeModeSetter _importAwakeModeSetter;
+  final ImportCompletionTimerFactory _importCompletionTimerFactory;
   final Duration _importCompletionVisibilityDuration;
   final Duration _importProgressTickInterval;
   late final ImportService _importService;
@@ -651,13 +659,13 @@ class AppController extends ChangeNotifier {
           ? '导入成功，旧槽清理将在下次启动重试'
           : '导入成功';
       _importProgressTickTimer?.cancel();
-      _scheduleCompletedProgressReset();
       if (restoreAwakeModeAfterImport) {
         await _setImportAwakeMode(false);
         restoreAwakeModeAfterImport = false;
       }
       await refresh();
       await _checkGameForUpdate(reuseLatestVersion: true);
+      _scheduleCompletedProgressReset();
       _appLogger?.emit(
         level: LogLevel.info,
         category: 'resource.import',
@@ -841,13 +849,16 @@ class AppController extends ChangeNotifier {
 
   void _scheduleCompletedProgressReset() {
     _importCompletionTimer?.cancel();
-    _importCompletionTimer = Timer(_importCompletionVisibilityDuration, () {
-      if (_importProgress.phase != ImportPhase.completed) {
-        return;
-      }
-      _importProgress = ImportProgress.idle;
-      notifyListeners();
-    });
+    _importCompletionTimer = _importCompletionTimerFactory(
+      _importCompletionVisibilityDuration,
+      () {
+        if (_importProgress.phase != ImportPhase.completed) {
+          return;
+        }
+        _importProgress = ImportProgress.idle;
+        notifyListeners();
+      },
+    );
   }
 
   @override

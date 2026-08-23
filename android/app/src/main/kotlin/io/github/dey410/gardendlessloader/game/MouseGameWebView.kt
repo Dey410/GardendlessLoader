@@ -10,6 +10,7 @@ class MouseGameWebView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : WebView(context, attrs) {
+    var nativeSingleTouchMouseEnabled = true
     private var maxTouches = 0
     private var isDragging = false
 
@@ -19,7 +20,7 @@ class MouseGameWebView @JvmOverloads constructor(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.source == InputDevice.SOURCE_MOUSE) {
+        if (!nativeSingleTouchMouseEnabled || event.source == InputDevice.SOURCE_MOUSE) {
             return super.dispatchTouchEvent(event)
         }
 
@@ -29,15 +30,11 @@ class MouseGameWebView @JvmOverloads constructor(
             maxTouches = pointerCount
         }
 
+        val touchHandled = super.dispatchTouchEvent(event)
         when (action) {
             MotionEvent.ACTION_DOWN -> {
                 if (pointerCount == 1) {
-                    injectMouseEventAt(
-                        event.x,
-                        event.y,
-                        MotionEvent.ACTION_DOWN,
-                        MotionEvent.BUTTON_PRIMARY,
-                    )
+                    pressLeftMouseAt(event.x, event.y)
                     isDragging = true
                 }
             }
@@ -81,7 +78,25 @@ class MouseGameWebView @JvmOverloads constructor(
             }
         }
 
-        return super.dispatchTouchEvent(event)
+        return touchHandled
+    }
+
+    private fun pressLeftMouseAt(
+        x: Float,
+        y: Float,
+    ) {
+        injectMouseEventAt(
+            x,
+            y,
+            MotionEvent.ACTION_MOVE,
+            0,
+        )
+        injectMouseEventAt(
+            x,
+            y,
+            MotionEvent.ACTION_DOWN,
+            MotionEvent.BUTTON_PRIMARY,
+        )
     }
 
     private fun injectMouseEventAt(

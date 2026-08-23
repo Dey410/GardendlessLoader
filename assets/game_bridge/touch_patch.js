@@ -17,6 +17,10 @@
   let lastWheelY = null;
   let leftMouseActive = false;
   let leftMouseDownDispatched = false;
+  let leftMouseTarget = null;
+  let leftMouseDownPoint = null;
+  let pendingLeftMouseDownFrame = null;
+  let pendingLeftMouseUpPoint = null;
   let twoFingerStartPoint = null;
   let twoFingerTarget = null;
   let twoFingerMoved = false;
@@ -28,6 +32,22 @@
   let gpNextBackdropTouchHadMultipleFingers = false;
   let lastGpNextBackdropTapAt = null;
   let lastGpNextBackdropTapPoint = null;
+  let suppressNativeMouse = false;
+
+  if (nativeSingleTouchMouse) {
+    for (const type of ["mousemove", "mousedown", "mouseup"]) {
+      document.addEventListener(type, function (event) {
+        if (!suppressNativeMouse) {
+          return;
+        }
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (type === "mouseup") {
+          suppressNativeMouse = false;
+        }
+      }, { capture: true });
+    }
+  }
 
   function installTouchActionStyle() {
     if (document.getElementById(touchActionStyleId)) {
@@ -211,16 +231,44 @@
   function clearLeftMouseState() {
     leftMouseActive = false;
     leftMouseDownDispatched = false;
+    leftMouseTarget = null;
+    leftMouseDownPoint = null;
+    pendingLeftMouseDownFrame = null;
+    pendingLeftMouseUpPoint = null;
   }
 
   function beginLeftMouse(target, point) {
     leftMouseActive = true;
-    dispatchMouse(target, "mousedown", point, 0, 1);
-    leftMouseDownDispatched = true;
+    leftMouseTarget = target;
+    leftMouseDownPoint = point;
+    pendingLeftMouseUpPoint = null;
+    dispatchMouse(target, "mousemove", point, 0, 0);
+    pendingLeftMouseDownFrame = requestAnimationFrame(function () {
+      pendingLeftMouseDownFrame = null;
+      if (!leftMouseTarget || !leftMouseDownPoint) {
+        return;
+      }
+      dispatchMouse(leftMouseTarget, "mousedown", leftMouseDownPoint, 0, 1);
+      leftMouseDownDispatched = true;
+      if (!leftMouseActive) {
+        const upPoint = pendingLeftMouseUpPoint || leftMouseDownPoint;
+        dispatchMouse(targetAtPoint(upPoint), "mouseup", upPoint, 0, 1);
+        clearLeftMouseState();
+      }
+    });
   }
 
   function releaseLeftMouse(point) {
-    if (!leftMouseActive || !leftMouseDownDispatched) {
+    if (!leftMouseActive) {
+      return;
+    }
+    leftMouseActive = false;
+    if (pendingLeftMouseDownFrame !== null) {
+      pendingLeftMouseUpPoint = point;
+      return;
+    }
+    if (!leftMouseDownDispatched) {
+      clearLeftMouseState();
       return;
     }
     const target = targetAtPoint(point);
@@ -229,6 +277,9 @@
   }
 
   function abandonLeftMouse() {
+    if (pendingLeftMouseDownFrame !== null) {
+      cancelAnimationFrame(pendingLeftMouseDownFrame);
+    }
     clearLeftMouseState();
   }
 
@@ -259,6 +310,7 @@
       cancelInteraction();
       resetGpNextBackdropTapCandidate();
       nativeTouchActive = true;
+      suppressNativeMouse = nativeSingleTouchMouse;
       return;
     }
 
@@ -269,6 +321,7 @@
       gpNextBackdropTouchStartPoint = point;
       gpNextBackdropTouchMoved = false;
       gpNextBackdropTouchHadMultipleFingers = false;
+      suppressNativeMouse = nativeSingleTouchMouse;
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
@@ -294,6 +347,7 @@
     }
 
     lastWheelY = null;
+    suppressNativeMouse = false;
     if (nativeSingleTouchMouse) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -374,7 +428,8 @@
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     const target = targetAtPoint(point);
-    dispatchMouse(target, "mousemove", point, 0, 1);
+    dispatchMouse(target, "mousemove", point, 0,
+      leftMouseDownDispatched ? 1 : 0);
     event.preventDefault();
     event.stopImmediatePropagation();
   }, { capture: true, passive: false });

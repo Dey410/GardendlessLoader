@@ -26,14 +26,14 @@
 
 ## Touch input
 
-- On Android, one-finger taps plant on lawn tiles and collect suns exactly once.
-- On Android, one-finger dragging keeps the left button pressed and follows the active finger without jumping to another finger.
-- On Android, adding a second finger releases the left button at the first finger's last position.
-- On Android, returning from two fingers to one does not restart a left-button gesture until every finger is lifted.
+- On Android, iOS, and HarmonyOS, a one-finger press reaches Cocos as `MOUSE_MOVE` at the current point followed by left-button `MOUSE_DOWN`.
+- On Android, iOS, and HarmonyOS, a one-finger tap ends with left-button `MOUSE_UP`, plants on the current lawn tile, and collects a sun exactly once instead of using a stale pointer position.
+- On Android, iOS, and HarmonyOS, one-finger dragging emits every current-point `MOUSE_MOVE` with the left button held and plants at the final Cocos pointer position.
+- On Android, adding a second finger follows the reference APK: it stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.
+- On Android, `ACTION_CANCEL` follows the reference APK and does not synthesize `MOUSE_UP` or clear its native drag state.
 - On Android, two-finger center movement of at most 20 physical pixels vertically remains a right-click candidate, regardless of horizontal movement.
 - On Android, a two-finger gesture whose center exceeds 20 physical pixels vertically scrolls at the configured `-4.5` multiplier and does not emit a right click.
-- On Android, a stationary two-finger gesture emits one right click to `GameCanvas` when the first finger is lifted, even when held longer than 250 ms; lifting the remaining finger emits no second click.
-- On Android, cancelling the gesture, backgrounding the app, removing the target, or losing focus never leaves a mouse button pressed.
+- On Android, a stationary two-finger gesture emits one right click to `GameCanvas` after both fingers are lifted, even when held longer than 250 ms.
 - On Android, text inputs, selects, editable content, and GP-Next controls retain native touch behavior.
 - Repeat the complete touch-input matrix above on iOS WKWebView before release.
 - Repeat the complete touch-input matrix above on HarmonyOS ArkWeb before release.

@@ -24,8 +24,16 @@ void main() {
     final mouseWebView = mouseWebViewFile.readAsStringSync();
     expect(activity, contains('class GameActivity : Activity()'));
     expect(activity, contains('webView = MouseGameWebView(this).apply'));
-    expect(activity, contains('.put("nativeSingleTouchMouse", true)'));
+    expect(
+      activity,
+      contains('nativeSingleTouchMouseEnabled = !session.hasGpNext'),
+    );
+    expect(
+      activity,
+      contains('.put("nativeSingleTouchMouse", !session.hasGpNext)'),
+    );
     expect(mouseWebView, contains('class MouseGameWebView'));
+    expect(mouseWebView, contains('var nativeSingleTouchMouseEnabled = true'));
     expect(mouseWebView, contains('InputDevice.SOURCE_MOUSE'));
     expect(mouseWebView, contains('MotionEvent.TOOL_TYPE_MOUSE'));
     expect(mouseWebView, contains('MotionEvent.ACTION_DOWN'));
@@ -34,6 +42,25 @@ void main() {
     expect(mouseWebView, contains('MotionEvent.ACTION_POINTER_DOWN'));
     expect(mouseWebView, contains('MotionEvent.BUTTON_PRIMARY'));
     expect(mouseWebView, contains('super.dispatchTouchEvent(mouseEvent)'));
+    expect(mouseWebView, contains('private fun pressLeftMouseAt('));
+    final pressStart = mouseWebView.indexOf('private fun pressLeftMouseAt(');
+    final pressEnd = mouseWebView.indexOf(
+      'private fun injectMouseEventAt(',
+      pressStart,
+    );
+    final pressBody = mouseWebView.substring(pressStart, pressEnd);
+    expect(
+      pressBody.indexOf('MotionEvent.ACTION_MOVE'),
+      lessThan(pressBody.indexOf('MotionEvent.ACTION_DOWN')),
+      reason: 'Cocos must receive the current pointer position before press',
+    );
+    expect(
+      mouseWebView.indexOf(
+        'val touchHandled = super.dispatchTouchEvent(event)',
+      ),
+      lessThan(mouseWebView.indexOf('when (action)')),
+      reason: 'JavaScript must classify native controls before mouse injection',
+    );
     expect(mouseWebView, contains('setLongClickable(false)'));
     expect(activity, contains('setContentView(viewport)'));
     expect(viewport, contains('16.0 / 10.0'));
