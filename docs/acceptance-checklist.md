@@ -26,10 +26,10 @@
 
 ## Touch input
 
-- On Android, iOS, and HarmonyOS, a one-finger press reaches Cocos as `MOUSE_MOVE(buttons=1)` followed by the original `touchstart`; no synthetic `MOUSE_DOWN` is emitted.
-- On Android, iOS, and HarmonyOS, a one-finger tap ends with `MOUSE_UP(buttons=1)` followed by the original `touchend`, plants on the current lawn tile, and collects a sun exactly once.
-- On Android, iOS, and HarmonyOS, one-finger dragging emits every current-point `MOUSE_MOVE(buttons=1)` before the corresponding original `touchmove` and plants at the final Cocos pointer position.
-- A slow drag, long hold, and fast flick use the same synchronous sequence and plant on release without any RAF, delayed `MOUSE_DOWN`, replayed `MOUSE_UP`, or synthetic `click`.
+- On Android, iOS, and HarmonyOS, a one-finger press immediately reaches Cocos as `MOUSE_DOWN(buttons=1)` with no leading positioning move or RAF delay.
+- On Android, iOS, and HarmonyOS, a one-finger tap ends with one `MOUSE_UP(buttons=1)`, plants on the current lawn tile, and collects a sun exactly once.
+- On Android, iOS, and HarmonyOS, one-finger dragging emits every current-point `MOUSE_MOVE(buttons=1)` and plants at the final Cocos pointer position.
+- A slow drag, long hold, and fast flick use the same synchronous `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP` sequence without release replay or synthetic `click`; original game touches remain suppressed like the APK extension.
 - Every game mouse event targets `GameCanvas`, even if the touch starts on or ends over another non-native DOM element; native form and GP-Next controls remain excluded before mapping.
 - On Android, adding a second finger follows the reference APK: it stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.
 - On Android, `ACTION_CANCEL` follows the reference APK and does not synthesize `MOUSE_UP` or clear the left-drag state.

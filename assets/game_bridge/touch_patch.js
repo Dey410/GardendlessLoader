@@ -218,7 +218,7 @@
   function beginLeftMouse(target, point) {
     leftMouseActive = true;
     leftMouseTarget = target;
-    dispatchMouse(target, "mousemove", point, 0, 1);
+    dispatchMouse(target, "mousedown", point, 0, 1);
   }
 
   function releaseLeftMouse(point) {
@@ -296,6 +296,8 @@
 
     lastWheelY = null;
     beginLeftMouse(gameMouseTarget(target), point);
+    event.preventDefault();
+    event.stopImmediatePropagation();
   }, { capture: true, passive: false });
 
   document.addEventListener("touchmove", function (event) {
@@ -368,6 +370,8 @@
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     dispatchMouse(leftMouseTarget, "mousemove", point, 0, 1);
+    event.preventDefault();
+    event.stopImmediatePropagation();
   }, { capture: true, passive: false });
 
   function endTouch(event) {
@@ -403,6 +407,8 @@
     lastWheelY = null;
     if (leftMouseActive) {
       releaseLeftMouse(point);
+      event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
     if (event.touches.length === 0 && twoFingerStartPoint) {
