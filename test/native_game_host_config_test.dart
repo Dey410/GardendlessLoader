@@ -55,6 +55,18 @@ void main() {
     expect(mouseWebView, contains('MotionEvent.ACTION_UP'));
     expect(mouseWebView, contains('MotionEvent.ACTION_POINTER_DOWN'));
     expect(mouseWebView, contains('MotionEvent.BUTTON_PRIMARY'));
+    expect(mouseWebView, contains('SystemClock.uptimeMillis()'));
+    expect(mouseWebView, contains('private var mouseDownTime = 0L'));
+    expect(
+      mouseWebView,
+      contains('val gestureDownTime = mouseDownTime.takeIf'),
+      reason: 'Chromium must receive one downTime for the complete gesture',
+    );
+    expect(
+      mouseWebView,
+      isNot(contains('System.currentTimeMillis()')),
+      reason: 'Chromium MotionEvent timestamps must use Android uptime',
+    );
     expect(mouseWebView, contains('super.dispatchTouchEvent(mouseEvent)'));
     expect(mouseWebView, isNot(contains('private fun pressLeftMouseAt(')));
     expect(

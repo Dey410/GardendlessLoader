@@ -1,6 +1,7 @@
 package io.github.dey410.gardendlessloader.game
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -13,6 +14,7 @@ class MouseGameWebView @JvmOverloads constructor(
     var nativeSingleTouchMouseEnabled = true
     private var maxTouches = 0
     private var isDragging = false
+    private var mouseDownTime = 0L
 
     init {
         setLongClickable(false)
@@ -103,9 +105,13 @@ class MouseGameWebView @JvmOverloads constructor(
                 this.y = y
             },
         )
-        val now = System.currentTimeMillis()
+        val now = SystemClock.uptimeMillis()
+        if (action == MotionEvent.ACTION_DOWN) {
+            mouseDownTime = now
+        }
+        val gestureDownTime = mouseDownTime.takeIf { it > 0L } ?: now
         val mouseEvent = MotionEvent.obtain(
-            now,
+            gestureDownTime,
             now,
             action,
             1,
@@ -124,6 +130,9 @@ class MouseGameWebView @JvmOverloads constructor(
             super.dispatchTouchEvent(mouseEvent)
         } finally {
             mouseEvent.recycle()
+            if (action == MotionEvent.ACTION_UP) {
+                mouseDownTime = 0L
+            }
         }
     }
 }
