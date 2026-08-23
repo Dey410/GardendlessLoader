@@ -16,8 +16,8 @@ void main() {
     final mouseWebViewFile = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/MouseGameWebView.kt',
     );
-    final touchPatch = File(
-      'assets/game_bridge/touch_patch.js',
+    final touchAdapter = File(
+      'assets/game_bridge/touch_input_adapter.js',
     ).readAsStringSync();
     final session = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameSessionCodec.kt',
@@ -29,51 +29,48 @@ void main() {
     expect(activity, contains('webView = MouseGameWebView(this).apply'));
     expect(
       activity,
-      contains('nativeSingleTouchMouseEnabled = true'),
+      contains('referenceTouchAdapterEnabled = true'),
     );
     expect(
       activity,
-      contains('.put("nativeSingleTouchMouse", true)'),
-      reason: 'Android sessions must expose the native path to the touch patch',
+      contains('.put("touchAdapter", "android-reference")'),
+      reason: 'Android sessions must select the reference hybrid adapter',
     );
     expect(
       activity,
-      isNot(contains('nativeSingleTouchMouseEnabled = false')),
-      reason: 'Android must route game touches through trusted host mouse input',
+      isNot(contains('nativeSingleTouchMouse')),
+      reason: 'the retired all-native primary path must not remain configured',
     );
     expect(
-      touchPatch,
-      contains('nativeSingleTouchMouse'),
-      reason: 'the shared mapper must suppress JS mouse synthesis on Android',
+      touchAdapter,
+      contains('android-reference'),
+      reason: 'the shared adapter must expose the reference Android command split',
     );
     expect(mouseWebView, contains('class MouseGameWebView'));
-    expect(mouseWebView, contains('var nativeSingleTouchMouseEnabled = true'));
+    expect(mouseWebView, contains('var referenceTouchAdapterEnabled = true'));
+    expect(mouseWebView, contains('ReferenceNativeTouchStateMachine'));
     expect(mouseWebView, contains('InputDevice.SOURCE_MOUSE'));
     expect(mouseWebView, contains('MotionEvent.TOOL_TYPE_MOUSE'));
     expect(mouseWebView, contains('MotionEvent.ACTION_DOWN'));
     expect(mouseWebView, contains('MotionEvent.ACTION_MOVE'));
-    expect(mouseWebView, contains('MotionEvent.ACTION_UP'));
     expect(mouseWebView, contains('MotionEvent.ACTION_POINTER_DOWN'));
-    expect(mouseWebView, contains('MotionEvent.BUTTON_PRIMARY'));
+    expect(mouseWebView, contains('MotionEvent.ACTION_SCROLL'));
+    expect(mouseWebView, contains('MotionEvent.AXIS_VSCROLL'));
+    expect(mouseWebView, contains('dispatchGenericMotionEvent'));
     expect(mouseWebView, contains('SystemClock.uptimeMillis()'));
-    expect(mouseWebView, contains('private var mouseDownTime = 0L'));
-    expect(
-      mouseWebView,
-      contains('val gestureDownTime = mouseDownTime.takeIf'),
-      reason: 'Chromium must receive one downTime for the complete gesture',
-    );
+    expect(mouseWebView, isNot(contains('private var mouseDownTime')));
     expect(
       mouseWebView,
       isNot(contains('System.currentTimeMillis()')),
       reason: 'Chromium MotionEvent timestamps must use Android uptime',
     );
-    expect(mouseWebView, contains('super.dispatchTouchEvent(mouseEvent)'));
+    expect(mouseWebView, contains('super.dispatchTouchEvent(event)'));
     expect(mouseWebView, isNot(contains('private fun pressLeftMouseAt(')));
     expect(
       mouseWebView.indexOf(
         'val touchHandled = super.dispatchTouchEvent(event)',
       ),
-      lessThan(mouseWebView.indexOf('when (action)')),
+      lessThan(mouseWebView.indexOf('touchStateMachine.handle(phase, points)')),
       reason: 'JavaScript must classify native controls before mouse injection',
     );
     expect(mouseWebView, contains('setLongClickable(false)'));
@@ -81,7 +78,9 @@ void main() {
     expect(viewport, contains('16.0 / 10.0'));
     expect(viewport, contains('17.0 / 9.0'));
     expect(activity, contains('addDocumentStartJavaScript'));
-    expect(activity, contains('add("touch_patch.js")'));
+    expect(activity, contains('add("touch_state_machine.js")'));
+    expect(activity, contains('add("touch_input_adapter.js")'));
+    expect(activity, isNot(contains('add("touch_patch.js")')));
     expect(activity, contains('add("auto_sun.js")'));
     expect(
       activity.indexOf('add("bootstrap.js")'),
@@ -165,7 +164,10 @@ void main() {
       ),
     );
     expect(controller, isNot(contains('AudioScriptBridge')));
-    expect(controller, contains('"touch_patch.js"'));
+    expect(controller, contains('"touch_state_machine.js"'));
+    expect(controller, contains('"touch_input_adapter.js"'));
+    expect(controller, isNot(contains('"touch_patch.js"')));
+    expect(controller, contains('"touchAdapter": "javascript"'));
     expect(controller, contains('"auto_sun.js"'));
     expect(
       controller.indexOf('"bootstrap.js"'),
@@ -251,7 +253,10 @@ void main() {
     expect(page, contains('scriptRules: [GameSession.ORIGIN]'));
     expect(page, isNot(contains(r'`${GameSession.ORIGIN}/*`')));
     expect(page, isNot(contains('.javaScriptOnDocumentStart(')));
-    expect(page, contains("'touch_patch.js'"));
+    expect(page, contains("'touch_state_machine.js'"));
+    expect(page, contains("'touch_input_adapter.js'"));
+    expect(page, isNot(contains("'touch_patch.js'")));
+    expect(page, contains("touchAdapter: 'javascript'"));
     expect(page, contains("'auto_sun.js'"));
     expect(
       page.indexOf("'bootstrap.js'"),

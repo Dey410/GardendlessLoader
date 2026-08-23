@@ -208,6 +208,9 @@ struct GamePage {
   private buildDocumentStartScript(session: GameSession): string {
     const config = JSON.stringify({
       platform: 'ohos',
+      touchAdapter: 'javascript',
+      touchWheelCssMultiplier: -4.5,
+      touchDiagnosticsEnabled: false,
       origin: GameSession.ORIGIN,
       activationGeneration: session.activationGeneration,
       hasGpNext: session.hasGpNext,
@@ -222,7 +225,8 @@ struct GamePage {
       'bootstrap.js',
       'logging.js',
       'auto_sun.js',
-      'touch_patch.js',
+      'touch_state_machine.js',
+      'touch_input_adapter.js',
       'export_download_patch.js',
     ];
     if (session.hasGpNext && session.gpNextCompatible) {

@@ -677,6 +677,9 @@ final class GameHostController: UIViewController,
   private func buildDocumentStartScript() -> String {
     let config: [String: Any] = [
       "platform": "ios",
+      "touchAdapter": "javascript",
+      "touchWheelCssMultiplier": -4.5,
+      "touchDiagnosticsEnabled": false,
       "origin": GameOrigin.value,
       "activationGeneration": session.activationGeneration,
       "hasGpNext": session.hasGpNext,
@@ -698,7 +701,8 @@ final class GameHostController: UIViewController,
       "logging.js",
       "audio_diagnostic.js",
       "auto_sun.js",
-      "touch_patch.js",
+      "touch_state_machine.js",
+      "touch_input_adapter.js",
       "export_download_patch.js",
     ]
     if session.hasGpNext && session.gpNextCompatible {

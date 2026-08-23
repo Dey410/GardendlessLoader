@@ -11,10 +11,8 @@ class MouseGameWebView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : WebView(context, attrs) {
-    var nativeSingleTouchMouseEnabled = true
-    private var maxTouches = 0
-    private var isDragging = false
-    private var mouseDownTime = 0L
+    var referenceTouchAdapterEnabled = true
+    private val touchStateMachine = ReferenceNativeTouchStateMachine()
 
     init {
         setLongClickable(false)
@@ -22,77 +20,57 @@ class MouseGameWebView @JvmOverloads constructor(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!nativeSingleTouchMouseEnabled || event.source == InputDevice.SOURCE_MOUSE) {
+        if (!referenceTouchAdapterEnabled || event.isFromSource(InputDevice.SOURCE_MOUSE)) {
             return super.dispatchTouchEvent(event)
         }
 
-        val action = event.actionMasked
-        val pointerCount = event.pointerCount
-        if (pointerCount > maxTouches) {
-            maxTouches = pointerCount
-        }
         val touchHandled = super.dispatchTouchEvent(event)
-        when (action) {
-            MotionEvent.ACTION_DOWN -> {
-                if (pointerCount == 1) {
-                    injectMouseEventAt(
-                        event.x,
-                        event.y,
-                        MotionEvent.ACTION_DOWN,
-                        MotionEvent.BUTTON_PRIMARY,
-                    )
-                    isDragging = true
-                }
-            }
-
-            MotionEvent.ACTION_MOVE -> {
-                if (pointerCount == 1 && isDragging) {
-                    injectMouseEventAt(
-                        event.x,
-                        event.y,
-                        MotionEvent.ACTION_MOVE,
-                        MotionEvent.BUTTON_PRIMARY,
-                    )
-                }
-            }
-
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                if (pointerCount == 2) {
-                    isDragging = false
-                    injectMouseEventAt(
-                        (event.getX(0) + event.getX(1)) / 2,
-                        (event.getY(0) + event.getY(1)) / 2,
-                        MotionEvent.ACTION_MOVE,
-                        0,
-                    )
-                }
-            }
-
-            MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_POINTER_UP,
-            -> {
-                if (maxTouches == 1 && isDragging) {
-                    injectMouseEventAt(
-                        event.x,
-                        event.y,
-                        MotionEvent.ACTION_UP,
-                        MotionEvent.BUTTON_PRIMARY,
-                    )
-                }
-                maxTouches = 0
-                isDragging = false
+        val phase = event.actionMasked.toNativeTouchPhase() ?: return touchHandled
+        val points = List(event.pointerCount) { index ->
+            NativeTouchPoint(event.getX(index), event.getY(index))
+        }
+        for (command in touchStateMachine.handle(phase, points)) {
+            when (command) {
+                is NativeTouchCommand.Move -> injectMouseMove(command)
+                is NativeTouchCommand.Scroll -> injectMouseScroll(command)
             }
         }
-
         return touchHandled
     }
 
-    private fun injectMouseEventAt(
-        x: Float,
-        y: Float,
+    private fun injectMouseMove(command: NativeTouchCommand.Move) {
+        val event = obtainMouseEvent(
+            action = MotionEvent.ACTION_MOVE,
+            point = command.point,
+            buttonState = command.buttons,
+        )
+        try {
+            super.dispatchTouchEvent(event)
+        } finally {
+            event.recycle()
+        }
+    }
+
+    private fun injectMouseScroll(command: NativeTouchCommand.Scroll) {
+        val event = obtainMouseEvent(
+            action = MotionEvent.ACTION_SCROLL,
+            point = command.point,
+            buttonState = 0,
+            verticalScroll = command.axisValue,
+        )
+        try {
+            super.dispatchGenericMotionEvent(event)
+        } finally {
+            event.recycle()
+        }
+    }
+
+    private fun obtainMouseEvent(
         action: Int,
+        point: NativeTouchPoint,
         buttonState: Int,
-    ) {
+        verticalScroll: Float? = null,
+    ): MotionEvent {
         val pointerProperties = arrayOf(
             MotionEvent.PointerProperties().apply {
                 id = 0
@@ -101,17 +79,14 @@ class MouseGameWebView @JvmOverloads constructor(
         )
         val pointerCoordinates = arrayOf(
             MotionEvent.PointerCoords().apply {
-                this.x = x
-                this.y = y
+                this.x = point.x
+                this.y = point.y
+                verticalScroll?.let { setAxisValue(MotionEvent.AXIS_VSCROLL, it) }
             },
         )
         val now = SystemClock.uptimeMillis()
-        if (action == MotionEvent.ACTION_DOWN) {
-            mouseDownTime = now
-        }
-        val gestureDownTime = mouseDownTime.takeIf { it > 0L } ?: now
-        val mouseEvent = MotionEvent.obtain(
-            gestureDownTime,
+        return MotionEvent.obtain(
+            now,
             now,
             action,
             1,
@@ -126,13 +101,15 @@ class MouseGameWebView @JvmOverloads constructor(
             InputDevice.SOURCE_MOUSE,
             0,
         )
-        try {
-            super.dispatchTouchEvent(mouseEvent)
-        } finally {
-            mouseEvent.recycle()
-            if (action == MotionEvent.ACTION_UP) {
-                mouseDownTime = 0L
-            }
-        }
+    }
+
+    private fun Int.toNativeTouchPhase(): NativeTouchPhase? = when (this) {
+        MotionEvent.ACTION_DOWN -> NativeTouchPhase.DOWN
+        MotionEvent.ACTION_MOVE -> NativeTouchPhase.MOVE
+        MotionEvent.ACTION_UP -> NativeTouchPhase.UP
+        MotionEvent.ACTION_POINTER_DOWN -> NativeTouchPhase.POINTER_DOWN
+        MotionEvent.ACTION_POINTER_UP -> NativeTouchPhase.POINTER_UP
+        MotionEvent.ACTION_CANCEL -> NativeTouchPhase.CANCEL
+        else -> null
     }
 }

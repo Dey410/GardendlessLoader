@@ -26,19 +26,22 @@
 
 ## Touch input
 
-- On Android, a one-finger press immediately reaches Cocos through the host as `MOUSE_DOWN(buttons=1)` with no leading JavaScript positioning move or RAF delay.
-- On Android, a one-finger tap ends with one host-injected `MOUSE_UP(buttons=1)`, plants on the current lawn tile, and collects a sun exactly once.
-- On Android, one-finger dragging emits every host-injected current-point `MOUSE_MOVE(buttons=1)` and plants at the release position without another tap.
-- A slow drag, long hold, and fast flick use `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP`; the release occurs exactly once with no JavaScript duplicate, second `MOUSE_DOWN`, synthetic `click`, or delayed replay, and original game touches remain suppressed like the APK extension.
+- On Android, a one-finger press immediately reaches `GameCanvas` as the reference JavaScript `MOUSE_DOWN`, with no leading positioning move or RAF delay.
+- On Android, a one-finger tap ends with one reference JavaScript `MOUSE_UP`, plants on the current lawn tile, and collects a sun exactly once.
+- On Android, one-finger dragging emits every current-point native `MOUSE_MOVE(buttons=1)` between that JavaScript down/up pair and plants at the release position without another tap.
+- A slow drag, long hold, and fast flick use `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP`; release occurs exactly once with no second down, synthetic `click`, delayed replay, or old-path fallback.
 - Every game mouse event targets `GameCanvas`, even if the touch starts on or ends over another non-native DOM element; native form and GP-Next controls remain excluded before mapping.
 - On Android, adding a second finger follows the reference APK: it stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.
-- On Android, `ACTION_CANCEL` follows the reference APK and does not synthesize `MOUSE_UP` or clear the left-drag state.
+- `ACTION_CANCEL`/`touchcancel` does not synthesize `MOUSE_UP`; it clears internal candidates, consumes residual game touches, and requires a fresh gesture.
 - On Android, two-finger center movement of at most 20 physical pixels vertically remains a right-click candidate, regardless of horizontal movement.
-- On Android, a two-finger gesture whose center exceeds 20 physical pixels vertically scrolls at the configured `-4.5` multiplier and does not emit a right click.
+- A two-finger gesture whose center exceeds 20 physical pixels vertically scrolls and does not emit a right click; calibrate each platform for the same in-game direction and distance rather than the same raw constant.
 - On Android, a stationary two-finger gesture emits one right click to `GameCanvas` after both fingers are lifted, even when held longer than 250 ms.
 - On Android, text inputs, selects, editable content, and GP-Next controls retain native touch behavior.
+- Real mouse and trackpad input remain native and are never mapped a second time; stylus input follows the one-finger path.
+- Removing `GameCanvas` or withholding the state-machine asset consumes game touches, emits no mouse events, records the failure, and never guesses another target.
+- With touch diagnostics enabled, the bounded trace contains input coordinates, owners, transitions, and command names, but no DOM text, form value, storage, or game data.
 - Repeat the complete touch-input matrix above on iOS WKWebView before release.
-- Repeat the complete touch-input matrix above on HarmonyOS ArkWeb before release.
+- Repeat the complete touch-input matrix above on OpenHarmony ArkWeb before release.
 
 ## Automatic sun collection
 

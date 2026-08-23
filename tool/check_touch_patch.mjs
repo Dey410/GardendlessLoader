@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const touchPatchSource = fs.readFileSync(
-  new URL('../assets/game_bridge/touch_patch.js', import.meta.url),
+const touchAdapterSource = fs.readFileSync(
+  new URL('../assets/game_bridge/touch_input_adapter.js', import.meta.url),
+  'utf8',
+);
+const touchStateMachineSource = fs.readFileSync(
+  new URL('../assets/game_bridge/touch_state_machine.js', import.meta.url),
   'utf8',
 );
 
@@ -73,9 +77,13 @@ function createTouchEvent(type, {touches, changedTouches}) {
 }
 
 function createTouchHarness({
+  canvasAvailable = true,
   devicePixelRatio = 1,
   hostConfig = {},
   pointTarget = null,
+  stateMachineAvailable = true,
+  stateMachineCreateThrows = false,
+  stateMachineHandleThrows = false,
 } = {}) {
   const appendedElements = [];
   const frames = new Map();
@@ -98,7 +106,7 @@ function createTouchHarness({
   });
   const document = new EventTarget();
   Object.assign(document, {
-    body: canvas,
+    body: canvasAvailable ? canvas : documentRoot,
     createElement: (tagName) => createElement({
       tagName: tagName.toUpperCase(),
       textContent: '',
@@ -107,7 +115,7 @@ function createTouchHarness({
     elementFromPoint: () => pointTarget ?? canvas,
     getElementById: (id) => {
       if (id === 'GameCanvas') {
-        return canvas;
+        return canvasAvailable && canvas.isConnected ? canvas : null;
       }
       return appendedElements.find((element) => element.id === id) ?? null;
     },
@@ -145,7 +153,22 @@ function createTouchHarness({
   };
   context.globalThis = context;
   vm.createContext(context);
-  vm.runInContext(touchPatchSource, context);
+  let stateMachineCreations = 0;
+  if (stateMachineAvailable) {
+    vm.runInContext(touchStateMachineSource, context);
+    const originalCreate = window.__gardendlessTouchStateMachine.create;
+    window.__gardendlessTouchStateMachine.create = (options) => {
+      stateMachineCreations += 1;
+      if (stateMachineCreateThrows) {
+        throw new Error('state machine create failed');
+      }
+      const machine = originalCreate(options);
+      return stateMachineHandleThrows
+        ? {handle: () => { throw new Error('state machine handle failed'); }}
+        : machine;
+    };
+  }
+  vm.runInContext(touchAdapterSource, context);
 
   return {
     appendedElements,
@@ -172,16 +195,130 @@ function createTouchHarness({
       document.hidden = hidden;
       document.dispatchEvent(new Event('visibilitychange'));
     },
-    rerunTouchPatch() {
-      vm.runInContext(touchPatchSource, context);
+    rerunTouchAdapter() {
+      vm.runInContext(touchAdapterSource, context);
+    },
+    get stateMachineCreations() {
+      return stateMachineCreations;
     },
     window,
   };
 }
 
 {
+  const harness = createTouchHarness({stateMachineHandleThrows: true});
+  let leakedTouches = 0;
+  harness.document.addEventListener('touchstart', () => {
+    leakedTouches += 1;
+  });
+  const touch = createTouch(87, harness.canvas, 50, 50);
+  const start = createTouchEvent('touchstart', {
+    touches: [touch],
+    changedTouches: [touch],
+  });
+
+  harness.document.dispatchEvent(start);
+
+  assert.equal(start.defaultPrevented, true);
+  assert.equal(leakedTouches, 0, 'state machine execution failure must fail closed');
+}
+
+{
+  const harness = createTouchHarness({stateMachineCreateThrows: true});
+  let leakedTouches = 0;
+  harness.document.addEventListener('touchstart', () => {
+    leakedTouches += 1;
+  });
+  const touch = createTouch(88, harness.canvas, 50, 50);
+  const start = createTouchEvent('touchstart', {
+    touches: [touch],
+    changedTouches: [touch],
+  });
+
+  harness.document.dispatchEvent(start);
+
+  assert.equal(start.defaultPrevented, true);
+  assert.equal(leakedTouches, 0, 'state machine creation failure must fail closed');
+}
+
+{
+  const harness = createTouchHarness({stateMachineAvailable: false});
+  let leakedTouches = 0;
+  harness.document.addEventListener('touchstart', () => {
+    leakedTouches += 1;
+  });
+  const touch = createTouch(89, harness.canvas, 50, 50);
+  const start = createTouchEvent('touchstart', {
+    touches: [touch],
+    changedTouches: [touch],
+  });
+
+  harness.document.dispatchEvent(start);
+
+  assert.equal(start.defaultPrevented, true);
+  assert.equal(leakedTouches, 0, 'missing state machine must fail closed');
+}
+
+{
+  const target = createElement({id: 'missing-canvas-target'});
+  const harness = createTouchHarness({canvasAvailable: false});
+  let leakedTouches = 0;
+  harness.document.addEventListener('touchstart', () => {
+    leakedTouches += 1;
+  });
+  const touch = createTouch(90, target, 50, 50);
+  const start = createTouchEvent('touchstart', {
+    touches: [touch],
+    changedTouches: [touch],
+  });
+
+  harness.document.dispatchEvent(start);
+
+  assert.equal(start.defaultPrevented, true);
+  assert.equal(leakedTouches, 0, 'missing GameCanvas must fail closed');
+}
+
+{
   const harness = createTouchHarness({
-    hostConfig: {nativeSingleTouchMouse: true},
+    hostConfig: {
+      platform: 'ios',
+      touchAdapter: 'javascript',
+      touchDiagnosticsEnabled: true,
+    },
+  });
+  const touch = createTouch(91, harness.canvas, 70, 60);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [touch],
+    changedTouches: [touch],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [touch],
+  }));
+
+  const trace = harness.window.__gardendlessTouchDiagnostics.snapshot();
+  assert.ok(trace.some((entry) => entry.event === 'touch_owner'));
+  assert.ok(trace.some((entry) => entry.event === 'touch_transition'));
+  assert.ok(trace.some((entry) => entry.event === 'touch_output'));
+  assert.equal(
+    trace.some((entry) => 'text' in entry || 'value' in entry),
+    false,
+    'touch diagnostics must not capture page or form content',
+  );
+}
+
+{
+  const harness = createTouchHarness();
+  assert.equal(
+    harness.stateMachineCreations,
+    1,
+    'the DOM adapter must delegate game gestures to the shared state machine',
+  );
+}
+
+{
+  const harness = createTouchHarness({
+    hostConfig: {touchAdapter: 'android-reference'},
   });
   const mouseEvents = [];
   let leakedTouches = 0;
@@ -218,8 +355,8 @@ function createTouchHarness({
 
   assert.deepEqual(
     mouseEvents,
-    [],
-    'the Android native mouse path must not be duplicated by JavaScript',
+    ['mousedown', 'mouseup'],
+    'Android must retain the reference APK JavaScript down/up pair',
   );
   assert.equal(
     leakedTouches,
@@ -234,7 +371,7 @@ function createTouchHarness({
 {
   const input = createElement({tagName: 'INPUT'});
   const harness = createTouchHarness({
-    hostConfig: {nativeSingleTouchMouse: true},
+    hostConfig: {touchAdapter: 'android-reference'},
   });
   let leakedNativeMouseEvents = 0;
   for (const type of ['mousemove', 'mousedown', 'mouseup']) {
@@ -266,6 +403,25 @@ function createTouchHarness({
     leakedNativeMouseEvents,
     0,
     'host-injected mouse events must not duplicate browser-owned native controls',
+  );
+
+  const secondTouch = createTouch(3, input, 32, 22);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [secondTouch],
+    changedTouches: [secondTouch],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [secondTouch],
+  }));
+  harness.advanceTime(1001);
+  harness.document.dispatchEvent(new TestMouseEvent('mousemove', {
+    cancelable: true,
+  }));
+  assert.equal(
+    leakedNativeMouseEvents,
+    1,
+    'compatibility suppression must expire so real mouse input stays native',
   );
 }
 
@@ -956,10 +1112,17 @@ for (const interruption of [
   interruption.trigger(harness, touch);
 
   assert.deepEqual(mouseUps, [], `${interruption.name} must not release the mouse`);
+  assert.equal(leakedCancellations, 0, 'game cancellations must fail closed');
+
+  const freshTouch = createTouch(22, harness.canvas, 210, 125);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [freshTouch],
+    changedTouches: [freshTouch],
+  }));
   assert.equal(
-    leakedCancellations,
-    interruption.name === 'touch cancellation' ? 2 : 0,
-    'APK-style touch cancellation is not intercepted for game input',
+    mouseUps.length,
+    0,
+    `${interruption.name} must clear internal state without a compensating up`,
   );
 }
 
@@ -1068,6 +1231,47 @@ for (const gameGesture of [
 
 {
   const harness = createTouchHarness();
+  const overlay = createElement({
+    id: 'gp-overlay',
+    classList: {
+      contains: (name) => name === 'gp-open',
+    },
+  });
+  const originalGetElementById = harness.document.getElementById;
+  harness.document.getElementById = (id) =>
+    id === 'gp-overlay' ? overlay : originalGetElementById(id);
+  let hides = 0;
+  harness.window.gpNext = {
+    hide() {
+      hides += 1;
+    },
+  };
+
+  const first = createTouch(77, harness.canvas, 100, 80);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [first],
+    changedTouches: [first],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [first],
+  }));
+  harness.advanceTime(100);
+  const second = createTouch(78, harness.canvas, 104, 82);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [second],
+    changedTouches: [second],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [second],
+  }));
+
+  assert.equal(hides, 1, 'GP-Next backdrop double-tap must keep closing the overlay');
+}
+
+{
+  const harness = createTouchHarness();
   const styles = harness.appendedElements.filter(
     (element) => element.tagName === 'STYLE',
   );
@@ -1075,7 +1279,7 @@ for (const gameGesture of [
   assert.match(styles[0].textContent, /#GameCanvas/);
   assert.match(styles[0].textContent, /touch-action:\s*none/);
 
-  harness.rerunTouchPatch();
+  harness.rerunTouchAdapter();
   assert.equal(
     harness.appendedElements.filter(
       (element) => element.tagName === 'STYLE',
@@ -1105,4 +1309,4 @@ for (const gameGesture of [
   );
 }
 
-console.log('touch patch input contract passes');
+console.log('touch input adapter contract passes');

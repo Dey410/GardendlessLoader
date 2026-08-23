@@ -7,7 +7,8 @@ void main() {
     'transport.js',
     'bootstrap.js',
     'logging.js',
-    'touch_patch.js',
+    'touch_state_machine.js',
+    'touch_input_adapter.js',
     'export_download_patch.js',
     'gp_next_core.js',
     'gp_next_compat_bridge.js',
@@ -87,7 +88,7 @@ void main() {
     expect(result.stdout, contains('game bridge concurrency'));
   });
 
-  test('shared touch patch passes executable behavior checks', () async {
+  test('shared touch adapter passes executable behavior checks', () async {
     final result = await Process.run(
       'node',
       const ['tool/check_touch_patch.mjs'],
@@ -98,8 +99,28 @@ void main() {
       0,
       reason: '${result.stdout}\n${result.stderr}',
     );
-    expect(result.stdout, contains('touch patch input contract passes'));
+    expect(result.stdout, contains('touch input adapter contract passes'));
   });
+
+  test(
+    'reference touch state machine passes executable behavior checks',
+    () async {
+      final result = await Process.run(
+        'node',
+        const ['tool/check_touch_state_machine.mjs'],
+      );
+
+      expect(
+        result.exitCode,
+        0,
+        reason: '${result.stdout}\n${result.stderr}',
+      );
+      expect(
+        result.stdout,
+        contains('reference touch state machine contract passes'),
+      );
+    },
+  );
 
   test('passive audio diagnostics preserve browser audio behavior', () async {
     final result = await Process.run(

@@ -85,7 +85,7 @@ class GameActivity : Activity() {
             "Installed Android System WebView lacks origin-scoped messaging"
         }
         webView = MouseGameWebView(this).apply {
-            nativeSingleTouchMouseEnabled = true
+            referenceTouchAdapterEnabled = true
             setBackgroundColor(Color.BLACK)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -134,6 +134,9 @@ class GameActivity : Activity() {
     private fun buildDocumentStartScript(): String {
         val config = JSONObject()
             .put("platform", "android")
+            .put("touchAdapter", "android-reference")
+            .put("touchWheelCssMultiplier", -4.5)
+            .put("touchDiagnosticsEnabled", false)
             .put("origin", session.origin)
             .put("activationGeneration", session.activationGeneration)
             .put("hasGpNext", session.hasGpNext)
@@ -141,14 +144,14 @@ class GameActivity : Activity() {
             .put("gpNextVersion", session.gpNextVersion ?: JSONObject.NULL)
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
-            .put("nativeSingleTouchMouse", true)
             .put("gpNextBaseDirectory", session.appRoot)
         val names = buildList {
             add("transport.js")
             add("bootstrap.js")
             add("logging.js")
             add("auto_sun.js")
-            add("touch_patch.js")
+            add("touch_state_machine.js")
+            add("touch_input_adapter.js")
             add("export_download_patch.js")
             if (session.hasGpNext && session.gpNextCompatible) {
                 add("gp_next_core.js")
