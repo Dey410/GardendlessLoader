@@ -379,6 +379,35 @@ for (const platform of ['android', 'ios', 'ohos']) {
     [dragLawnTile],
     `${platform} drag planting must commit at release without a second tap`,
   );
+
+  const sparseDragHarness = createTouchHarness({
+    hostConfig: {platform, touchAdapter: 'javascript'},
+  });
+  const sparseDragGame = attachPvzGePlacementModel(sparseDragHarness, {
+    seedCard,
+    lawnTiles: [firstLawnTile, dragLawnTile],
+  });
+  dispatchTouchStart(sparseDragHarness, 99, seedCard);
+  flushPvzGeFrame(sparseDragHarness, sparseDragGame);
+  flushPvzGeFrame(sparseDragHarness, sparseDragGame);
+  const sparseDragEnd = createTouch(
+    99,
+    sparseDragHarness.canvas,
+    dragLawnTile.clientX,
+    dragLawnTile.clientY,
+  );
+  // Some WebViews coalesce a fast drag so the distant release point arrives
+  // without an intermediate touchmove. The release coordinate must still
+  // classify and commit the gesture as a drag.
+  dispatchTouchEnd(sparseDragHarness, sparseDragEnd);
+  for (let frame = 0; frame < 4; frame += 1) {
+    flushPvzGeFrame(sparseDragHarness, sparseDragGame);
+  }
+  assert.deepEqual(
+    sparseDragGame.planted,
+    [dragLawnTile],
+    `${platform} coalesced drag must commit from its distant release point`,
+  );
 }
 
 for (const platform of ['android', 'ios', 'ohos']) {

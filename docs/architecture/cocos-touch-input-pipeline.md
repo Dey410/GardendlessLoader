@@ -25,7 +25,9 @@ a single tap, so normal finger jitter cannot create a duplicate click. PvZGE
 cleared `UI.MouseClickCoolingDown`, the adapter therefore completes one
 down/up pair at the release tile. This is the game-visible equivalent of
 selecting the card and clicking the target tile, without asking the user for a
-second physical tap.
+second physical tap. Both intermediate moves and the final release coordinate
+participate in the physical-distance test, so a WebView-coalesced fast drag
+does not degrade into a tap.
 
 The reference APK's JavaScript extension has its single-finger mouse synthesis
 disabled, but Loader does not copy that Android WebView implementation detail.

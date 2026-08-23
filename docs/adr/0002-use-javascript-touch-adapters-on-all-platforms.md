@@ -40,7 +40,9 @@ Primary input uses the same frame-synchronized sequence on all three platforms:
 5. For a gesture moved more than 20 physical pixels, let two game frames clear
    the game's click guard, then send one `mousedown`/`mouseup` pair at the
    release tile. PvZGE 0.13.0 plants from lawn `mousedown`, not from `mouseup`.
-   Sub-threshold finger jitter remains a single click.
+   Sub-threshold finger jitter remains a single click. The final release point
+   participates in this threshold even when the WebView coalesces all
+   intermediate `touchmove` events.
 
 A fast tap that ends before the delayed down completes its down/up pair after
 the positioning boundaries. Adding a second finger or cancelling the touch

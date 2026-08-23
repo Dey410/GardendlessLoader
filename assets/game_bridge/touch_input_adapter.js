@@ -244,6 +244,16 @@
     clearPrimaryGestureState();
   }
 
+  function updatePrimaryMoved(point) {
+    if (!primaryStartPoint) {
+      return;
+    }
+    const deltaX = point.clientX - primaryStartPoint.clientX;
+    const deltaY = point.clientY - primaryStartPoint.clientY;
+    primaryMoved = primaryMoved ||
+      Math.hypot(deltaX, deltaY) * pixelRatio() > backdropMoveThreshold;
+  }
+
   function releaseJavascriptPrimary(point) {
     if (!primaryCanvas) {
       return;
@@ -253,6 +263,7 @@
       return;
     }
     const canvas = primaryCanvas;
+    updatePrimaryMoved(point);
     if (!primaryMoved) {
       dispatchMouse(canvas, "mouseup", point, 0, 1);
       clearPrimaryGestureState();
@@ -322,12 +333,7 @@
     if (!primaryCanvas) {
       return;
     }
-    if (primaryStartPoint) {
-      const deltaX = point.clientX - primaryStartPoint.clientX;
-      const deltaY = point.clientY - primaryStartPoint.clientY;
-      primaryMoved = primaryMoved ||
-        Math.hypot(deltaX, deltaY) * pixelRatio() > backdropMoveThreshold;
-    }
+    updatePrimaryMoved(point);
     dispatchMouse(
       primaryCanvas,
       "mousemove",
