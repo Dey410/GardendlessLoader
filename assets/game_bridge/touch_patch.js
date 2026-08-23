@@ -34,11 +34,6 @@
   let lastGpNextBackdropTapAt = null;
   let lastGpNextBackdropTapPoint = null;
   let suppressNativeMouse = false;
-  let nativeMouseTraceActive = false;
-  let activeTouchTrace = null;
-  let nextTouchTraceId = 1;
-  let cocosInputTraceInstalled = false;
-  let cocosInputTraceInstallStarted = false;
 
   if (nativeSingleTouchMouse) {
     for (const type of ["mousemove", "mousedown", "mouseup"]) {
@@ -223,148 +218,16 @@
     });
   }
 
-  function traceNumber(value) {
-    return Number.isFinite(value) ? Math.round(value * 10) / 10 : null;
-  }
-
-  function traceInput(layer, type, point, button, buttons, phase) {
-    if (!activeTouchTrace || activeTouchTrace.events.length >= 80) {
-      return;
-    }
-    activeTouchTrace.events.push({
-      at: traceNumber(performance.now() - activeTouchTrace.startedAt),
-      layer: layer,
-      type: type,
-      phase: phase || "gesture",
-      x: point ? traceNumber(point.clientX) : null,
-      y: point ? traceNumber(point.clientY) : null,
-      button: Number.isFinite(button) ? button : null,
-      buttons: Number.isFinite(buttons) ? buttons : null
-    });
-  }
-
-  function finishTouchTrace(completion) {
-    if (!activeTouchTrace) {
-      return;
-    }
-    const trace = activeTouchTrace;
-    activeTouchTrace = null;
-    const logEvent = window.__gardendlessLogEvent;
-    if (typeof logEvent !== "function") {
-      return;
-    }
-    logEvent("touch_input_trace", "INFO", JSON.stringify({
-      version: 1,
-      id: trace.id,
-      path: trace.path,
-      moved: trace.moved,
-      completion: completion,
-      cocosHook: cocosInputTraceInstalled,
-      events: trace.events
-    }), {});
-  }
-
-  function finishTouchTraceAfterFrames(completion, remainingFrames, traceId) {
-    const expectedTraceId = traceId ||
-      (activeTouchTrace && activeTouchTrace.id);
-    if (!expectedTraceId) {
-      return;
-    }
-    requestAnimationFrame(function () {
-      if (!activeTouchTrace || activeTouchTrace.id !== expectedTraceId) {
-        return;
-      }
-      if (remainingFrames > 1) {
-        finishTouchTraceAfterFrames(
-          completion,
-          remainingFrames - 1,
-          expectedTraceId
-        );
-        return;
-      }
-      finishTouchTrace(completion);
-    });
-  }
-
-  function startTouchTrace(point, path) {
-    finishTouchTrace("superseded");
-    activeTouchTrace = {
-      id: nextTouchTraceId++,
-      path: path || "shared",
-      startedAt: performance.now(),
-      moved: false,
-      events: []
-    };
-    traceInput("touch", "touchstart", point, null, null, "gesture");
-  }
-
-  function cocosEventPoint(event) {
-    return {
-      clientX: typeof event.getLocationX === "function"
-        ? event.getLocationX() : null,
-      clientY: typeof event.getLocationY === "function"
-        ? event.getLocationY() : null
-    };
-  }
-
-  function installCocosInputTrace() {
-    if (cocosInputTraceInstalled || cocosInputTraceInstallStarted) {
-      return;
-    }
-    const system = window.System;
-    if (!system || typeof system.import !== "function") {
-      window.setTimeout(installCocosInputTrace, 100);
-      return;
-    }
-    cocosInputTraceInstallStarted = true;
-    system.import("cc").then(function (engine) {
-      const input = engine && engine.input;
-      const eventTypes = engine && engine.Input && engine.Input.EventType;
-      if (!input || typeof input.on !== "function" || !eventTypes) {
-        cocosInputTraceInstallStarted = false;
-        window.setTimeout(installCocosInputTrace, 100);
-        return;
-      }
-      const types = [
-        eventTypes.MOUSE_MOVE,
-        eventTypes.MOUSE_DOWN,
-        eventTypes.MOUSE_UP
-      ];
-      for (const type of types) {
-        input.on(type, function (event) {
-          const button = typeof event.getButton === "function"
-            ? event.getButton() : event.button;
-          traceInput(
-            "cocos",
-            type,
-            cocosEventPoint(event),
-            button,
-            null,
-            "observed"
-          );
-        });
-      }
-      cocosInputTraceInstalled = true;
-    }).catch(function () {
-      cocosInputTraceInstallStarted = false;
-      window.setTimeout(installCocosInputTrace, 250);
-    });
-  }
-
-  installCocosInputTrace();
-
-  function dispatchMouse(target, type, point, button, buttons, phase) {
-    traceInput("dispatch", type, point, button, buttons, phase);
+  function dispatchMouse(target, type, point, button, buttons) {
     target.dispatchEvent(mouseEvent(type, point, button, buttons));
   }
 
   function schedulePlantingClick(target, point) {
     requestAnimationFrame(function () {
-      dispatchMouse(target, "mousemove", point, 0, 0, "planting");
-      dispatchMouse(target, "mousedown", point, 0, 1, "planting");
+      dispatchMouse(target, "mousemove", point, 0, 0);
+      dispatchMouse(target, "mousedown", point, 0, 1);
       requestAnimationFrame(function () {
-        dispatchMouse(target, "mouseup", point, 0, 0, "planting");
-        finishTouchTraceAfterFrames("planting_click_completed", 1);
+        dispatchMouse(target, "mouseup", point, 0, 0);
       });
     });
   }
@@ -387,7 +250,6 @@
   }
 
   function beginLeftMouse(target, point) {
-    startTouchTrace(point);
     leftMouseActive = true;
     leftMouseTarget = target;
     leftMouseDownPoint = point;
@@ -407,8 +269,6 @@
         dispatchMouse(leftMouseTarget, "mouseup", upPoint, 0, 1);
         if (shouldAddPlantingClick) {
           schedulePlantingClick(leftMouseTarget, upPoint);
-        } else {
-          finishTouchTraceAfterFrames("tap_completed", 1);
         }
         clearLeftMouseState();
       }
@@ -433,8 +293,6 @@
     dispatchMouse(target, "mouseup", point, 0, 1);
     if (shouldAddPlantingClick) {
       schedulePlantingClick(target, point);
-    } else {
-      finishTouchTraceAfterFrames("tap_completed", 1);
     }
     clearLeftMouseState();
   }
@@ -443,7 +301,6 @@
     if (pendingLeftMouseDownFrame !== null) {
       cancelAnimationFrame(pendingLeftMouseDownFrame);
     }
-    finishTouchTrace("abandoned");
     clearLeftMouseState();
   }
 
@@ -500,10 +357,6 @@
     }
 
     if (event.touches.length === 2) {
-      if (nativeMouseTraceActive) {
-        nativeMouseTraceActive = false;
-        finishTouchTrace("native_multitouch");
-      }
       abandonLeftMouse();
       twoFingerStartPoint = averageTouchPoint(event.touches);
       twoFingerTarget = targetAtPoint(twoFingerStartPoint);
@@ -517,8 +370,6 @@
     lastWheelY = null;
     suppressNativeMouse = false;
     if (nativeSingleTouchMouse) {
-      nativeMouseTraceActive = true;
-      startTouchTrace(point, "native");
       event.preventDefault();
       event.stopImmediatePropagation();
       return;
@@ -589,18 +440,6 @@
       return;
     }
 
-    if (nativeSingleTouchMouse && nativeMouseTraceActive) {
-      const changedTouch = firstChangedTouch(event);
-      const point = changedTouch || averageTouchPoint(event.touches);
-      if (activeTouchTrace) {
-        activeTouchTrace.moved = true;
-      }
-      traceInput("touch", "touchmove", point, null, null, "gesture");
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-
     if (!leftMouseActive) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -610,10 +449,6 @@
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     leftMouseMoved = true;
-    if (activeTouchTrace) {
-      activeTouchTrace.moved = true;
-    }
-    traceInput("touch", "touchmove", point, null, null, "gesture");
     dispatchMouse(leftMouseTarget, "mousemove", point, 0,
       leftMouseDownDispatched ? 1 : 0);
     event.preventDefault();
@@ -651,15 +486,6 @@
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
     lastWheelY = null;
-    if (nativeSingleTouchMouse && nativeMouseTraceActive) {
-      nativeMouseTraceActive = false;
-      traceInput("touch", "touchend", point, null, null, "gesture");
-      finishTouchTraceAfterFrames("native_gesture_completed", 2);
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-    traceInput("touch", "touchend", point, null, null, "gesture");
     releaseLeftMouse(point);
     if (event.touches.length === 0 && twoFingerStartPoint) {
       if (!twoFingerMoved) {

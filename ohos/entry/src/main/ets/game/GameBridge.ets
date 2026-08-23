@@ -132,10 +132,8 @@ export class GameBridge {
             'javascript_uncaught_error',
             'javascript_unhandled_rejection',
             'javascript_console',
-            'touch_input_trace',
           ];
           const event = allowed.includes(requested) ? requested : 'javascript_console';
-          const isTouchTrace = event === 'touch_input_trace';
           const context: AppLogContext = {
             page: args.page ?? '',
             line: args.line ?? 0,
@@ -149,14 +147,14 @@ export class GameBridge {
           const logEvent: AppLogEvent = {
             source: 'javascript',
             level: args.level ?? 'ERROR',
-            category: isTouchTrace ? 'game.input' : 'game.javascript',
+            category: 'game.javascript',
             event: event,
-            outcome: isTouchTrace ? 'observed' : 'failed',
-            code: isTouchTrace || event === 'javascript_console' ? undefined : event,
+            outcome: 'failed',
+            code: event === 'javascript_console' ? undefined : event,
             message: args.message ?? '',
             gameSessionId: this.session.sessionId,
             context: context,
-            error: isTouchTrace ? undefined : logError,
+            error: logError,
           };
           appLogStore.emit(logEvent);
           this.complete(request.id, null);

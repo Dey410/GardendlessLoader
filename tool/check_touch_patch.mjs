@@ -73,10 +73,8 @@ function createTouchEvent(type, {touches, changedTouches}) {
 }
 
 function createTouchHarness({
-  cocosEngine = null,
   devicePixelRatio = 1,
   hostConfig = {},
-  logEvents = [],
   pointTarget = null,
 } = {}) {
   const appendedElements = [];
@@ -118,19 +116,7 @@ function createTouchHarness({
   });
   const window = new EventTarget();
   window.devicePixelRatio = devicePixelRatio;
-  window.setTimeout = () => 0;
   window.__gardendlessHostConfig = hostConfig;
-  window.__gardendlessLogEvent = (event, level, message) => {
-    logEvents.push({event, level, message: JSON.parse(message)});
-  };
-  if (cocosEngine) {
-    window.System = {
-      import: async (name) => {
-        assert.equal(name, 'cc');
-        return cocosEngine;
-      },
-    };
-  }
   const context = {
     Event,
     Math,
@@ -189,157 +175,8 @@ function createTouchHarness({
     rerunTouchPatch() {
       vm.runInContext(touchPatchSource, context);
     },
-    queueAnimationFrame(callback) {
-      context.requestAnimationFrame(callback);
-    },
-    async settleAsyncWork() {
-      await Promise.resolve();
-      await Promise.resolve();
-    },
     window,
   };
-}
-
-{
-  const listeners = new Map();
-  const cocosEngine = {
-    Input: {
-      EventType: {
-        MOUSE_DOWN: 'mouse-down',
-        MOUSE_MOVE: 'mouse-move',
-        MOUSE_UP: 'mouse-up',
-      },
-    },
-    input: {
-      on(type, listener) {
-        listeners.set(type, listener);
-      },
-    },
-  };
-  const logEvents = [];
-  const harness = createTouchHarness({cocosEngine, logEvents});
-  await harness.settleAsyncWork();
-  for (const type of ['mousemove', 'mousedown', 'mouseup']) {
-    harness.canvas.addEventListener(type, (event) => {
-      harness.queueAnimationFrame(() => {
-        listeners.get(`mouse-${type.slice(5)}`)?.({
-          button: event.button,
-          getLocationX: () => event.clientX,
-          getLocationY: () => event.clientY,
-        });
-      });
-    });
-  }
-
-  const start = createTouch(70, harness.canvas, 40, 40);
-  const end = createTouch(70, harness.canvas, 200, 120);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [start],
-    changedTouches: [start],
-  }));
-  harness.flushAnimationFrame();
-  harness.document.dispatchEvent(createTouchEvent('touchmove', {
-    touches: [end],
-    changedTouches: [end],
-  }));
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [end],
-  }));
-  harness.flushAnimationFrame();
-  harness.flushAnimationFrame();
-  harness.flushAnimationFrame();
-  harness.flushAnimationFrame();
-
-  assert.equal(logEvents.length, 1);
-  assert.equal(logEvents[0].event, 'touch_input_trace');
-  assert.equal(logEvents[0].level, 'INFO');
-  assert.equal(logEvents[0].message.moved, true);
-  assert.ok(
-    logEvents[0].message.events.some(
-      (event) => event.layer === 'dispatch' &&
-        event.phase === 'planting' && event.type === 'mouseup',
-    ),
-    'trace must show that the supplemental planting click was dispatched',
-  );
-  assert.ok(
-    logEvents[0].message.events.some(
-      (event) => event.layer === 'cocos' && event.type === 'mouse-up',
-    ),
-    'trace must show whether Cocos consumed a mouse-up',
-  );
-}
-
-{
-  const listeners = new Map();
-  const cocosEngine = {
-    Input: {
-      EventType: {
-        MOUSE_DOWN: 'mouse-down',
-        MOUSE_MOVE: 'mouse-move',
-        MOUSE_UP: 'mouse-up',
-      },
-    },
-    input: {
-      on(type, listener) {
-        listeners.set(type, listener);
-      },
-    },
-  };
-  const logEvents = [];
-  const harness = createTouchHarness({
-    cocosEngine,
-    hostConfig: {nativeSingleTouchMouse: true},
-    logEvents,
-  });
-  await harness.settleAsyncWork();
-
-  const start = createTouch(71, harness.canvas, 50, 50);
-  const end = createTouch(71, harness.canvas, 210, 130);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [start],
-    changedTouches: [start],
-  }));
-  listeners.get('mouse-move')?.({
-    button: 0,
-    getLocationX: () => 50,
-    getLocationY: () => 50,
-  });
-  listeners.get('mouse-down')?.({
-    button: 0,
-    getLocationX: () => 50,
-    getLocationY: () => 50,
-  });
-  harness.document.dispatchEvent(createTouchEvent('touchmove', {
-    touches: [end],
-    changedTouches: [end],
-  }));
-  listeners.get('mouse-move')?.({
-    button: 0,
-    getLocationX: () => 210,
-    getLocationY: () => 130,
-  });
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [end],
-  }));
-  listeners.get('mouse-up')?.({
-    button: 0,
-    getLocationX: () => 210,
-    getLocationY: () => 130,
-  });
-  harness.flushAnimationFrame();
-  harness.flushAnimationFrame();
-
-  assert.equal(logEvents.length, 1);
-  assert.equal(logEvents[0].message.path, 'native');
-  assert.equal(logEvents[0].message.moved, true);
-  assert.ok(
-    logEvents[0].message.events.some(
-      (event) => event.layer === 'cocos' && event.type === 'mouse-up',
-    ),
-    'native Android traces must include the Cocos mouse-up',
-  );
 }
 
 {

@@ -75,24 +75,21 @@ class GameBridge(
                 }
                 "host:log" -> {
                     val args = request.optJSONObject("args") ?: JSONObject()
-                    val requested = args.optString("event")
-                    val isTouchTrace = requested == "touch_input_trace"
-                    val event = requested.takeIf {
+                    val event = args.optString("event").takeIf {
                         it in setOf(
                             "javascript_uncaught_error",
                             "javascript_unhandled_rejection",
                             "javascript_console",
-                            "touch_input_trace",
                         )
                     } ?: "javascript_console"
                     AppLogStore.emit(
                         mapOf(
                             "source" to "javascript",
                             "level" to args.optString("level", "ERROR"),
-                            "category" to if (isTouchTrace) "game.input" else "game.javascript",
+                            "category" to "game.javascript",
                             "event" to event,
-                            "outcome" to if (isTouchTrace) "observed" else "failed",
-                            "code" to if (isTouchTrace || event == "javascript_console") null else event,
+                            "outcome" to "failed",
+                            "code" to if (event == "javascript_console") null else event,
                             "message" to args.optString("message"),
                             "gameSessionId" to session.sessionId,
                             "context" to mapOf(
@@ -100,15 +97,11 @@ class GameBridge(
                                 "line" to args.optInt("line"),
                                 "column" to args.optInt("column"),
                             ),
-                            "error" to if (isTouchTrace) {
-                                null
-                            } else {
-                                mapOf(
-                                    "type" to "JavaScriptError",
-                                    "message" to args.optString("message"),
-                                    "stackTrace" to args.optString("stack"),
-                                )
-                            },
+                            "error" to mapOf(
+                                "type" to "JavaScriptError",
+                                "message" to args.optString("message"),
+                                "stackTrace" to args.optString("stack"),
+                            ),
                         ),
                     )
                     respond(id, true, JSONObject.NULL)
