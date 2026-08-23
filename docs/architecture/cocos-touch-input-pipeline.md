@@ -23,9 +23,11 @@ iOS WKWebView, and HarmonyOS ArkWeb use the shared mapper. It emits the leading
 move immediately, defers the press to the next animation frame, and keeps
 move/up events on the original game canvas even if another DOM element covers
 the release point. After a moved gesture releases, the shared mapper waits one
-more animation frame and emits one `MOUSE_DOWN`/`MOUSE_UP` pair at the final
-point. This planting click replaces the extra tap otherwise required on those
-WebViews; stationary taps do not receive it.
+animation frame, emits `MOUSE_MOVE` and `MOUSE_DOWN` at the final point, then
+waits through another animation frame before `MOUSE_UP`. The game therefore
+observes the planting click as held input for a complete frame. It replaces the
+extra tap otherwise required on those WebViews; stationary taps do not receive
+it.
 
 The original game touch is consumed for game gestures, preventing Cocos from
 processing both touch and mouse input. Native form controls and the scoped

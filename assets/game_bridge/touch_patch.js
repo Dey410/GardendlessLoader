@@ -224,8 +224,11 @@
 
   function schedulePlantingClick(target, point) {
     requestAnimationFrame(function () {
+      dispatchMouse(target, "mousemove", point, 0, 0);
       dispatchMouse(target, "mousedown", point, 0, 1);
-      dispatchMouse(target, "mouseup", point, 0, 0);
+      requestAnimationFrame(function () {
+        dispatchMouse(target, "mouseup", point, 0, 0);
+      });
     });
   }
 
