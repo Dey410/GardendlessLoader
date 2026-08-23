@@ -5,35 +5,31 @@ APIs on every operating system. A one-finger gesture must reach Cocos in this
 order:
 
 ```text
-MOUSE_MOVE(point, no button)
-MOUSE_DOWN(point, left button)
-MOUSE_MOVE(point, left button) *
-MOUSE_UP(point, left button)
+MOUSE_MOVE(point, buttons=1)
+TOUCH_START(point)
+[MOUSE_MOVE(point, buttons=1), TOUCH_MOVE(point)] *
+MOUSE_UP(point, buttons=1)
+TOUCH_END(point)
 ```
 
-The leading move is required because the game updates its global mouse position
-from `MOUSE_MOVE`. Lawn selection and the later `MOUSE_UP` planting path must
-therefore use the current finger position rather than the previous mouse tile.
+The supplemental mouse event is dispatched during document capture, before the
+matching original touch continues to Cocos. The move keeps the game's global
+mouse position on the current lawn tile while the original touch owns selection,
+drag duration, and activation state.
 
-Android, iOS WKWebView, and HarmonyOS ArkWeb all use the shared mapper. It emits
-the leading move immediately, defers the press to the next animation frame, and
-routes every game mouse event to `GameCanvas`, matching the APK instead of
-retaining the DOM element touched at gesture start. When a moved gesture ends,
-the mapper finishes the
-drag with the APK-compatible `MOUSE_UP(buttons=1)`, then replays the same event
-sequence as a successful manual tap: after one frame it emits
-`MOUSE_MOVE(buttons=0)`, and after the next frame it emits
-`MOUSE_DOWN(buttons=1)`, `MOUSE_UP(buttons=1)`, and `click(buttons=0)` in the
-same batch. Synthetic down/up dispatch does not create the browser's final
-click automatically. Stationary taps keep their original direct path and are
-not replayed.
+Android, iOS WKWebView, and HarmonyOS ArkWeb all use this shared document-start
+mapper. Android native single-touch mouse injection stays disabled so it cannot
+duplicate the shared sequence. The mapper never synthesizes a single-touch
+`MOUSE_DOWN` or delayed replay/click, so a slow drag and a fast flick have the
+same game-visible ordering with no animation-frame race.
 
-The original game touch is consumed for game gestures, preventing Cocos from
-processing both touch and mouse input. Native form controls and the scoped
-GP-Next controls keep their native touch path. On Android, touch-derived native
-mouse events are suppressed for those controls after classification.
+Supplemental game mouse events always target `GameCanvas`. Original one-finger
+game touches are not prevented or stopped. Native form controls and the scoped
+GP-Next controls keep their native paths, while the existing two- and
+three-finger mappings remain separately classified.
 
-Automated checks cover event order, coordinates, button state, duplicate-input
-prevention, tap planting state, and drag planting state. Final planting feel and
-WebView event translation still require the complete device matrix in
+Automated checks cover the layered event order, coordinates, button state,
+original-touch propagation, absence of synthetic press/replay, tap planting,
+and duration-independent drag planting. Final planting feel and WebView event
+translation still require the complete device matrix in
 `docs/acceptance-checklist.md`.

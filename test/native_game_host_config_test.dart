@@ -16,6 +16,9 @@ void main() {
     final mouseWebViewFile = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/MouseGameWebView.kt',
     );
+    final touchPatch = File(
+      'assets/game_bridge/touch_patch.js',
+    ).readAsStringSync();
     final session = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameSessionCodec.kt',
     ).readAsStringSync();
@@ -36,7 +39,12 @@ void main() {
     expect(
       activity,
       isNot(contains('nativeSingleTouchMouseEnabled = true')),
-      reason: 'native injection currently blocks GP-Next Android touch input',
+      reason: 'Android must not duplicate the shared layered touch mapper',
+    );
+    expect(
+      touchPatch,
+      isNot(contains('nativeSingleTouchMouse')),
+      reason: 'the shared mapper must have one behavior on every platform',
     );
     expect(mouseWebView, contains('class MouseGameWebView'));
     expect(mouseWebView, contains('var nativeSingleTouchMouseEnabled = true'));
