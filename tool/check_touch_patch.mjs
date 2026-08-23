@@ -72,7 +72,11 @@ function createTouchEvent(type, {touches, changedTouches}) {
   return event;
 }
 
-function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
+function createTouchHarness({
+  devicePixelRatio = 1,
+  hostConfig = {},
+  pointTarget = null,
+} = {}) {
   const appendedElements = [];
   const frames = new Map();
   const mutationObservers = [];
@@ -112,6 +116,7 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
   });
   const window = new EventTarget();
   window.devicePixelRatio = devicePixelRatio;
+  window.__gardendlessHostConfig = hostConfig;
   const context = {
     Event,
     Math,
@@ -172,6 +177,57 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
     },
     window,
   };
+}
+
+{
+  const harness = createTouchHarness({
+    hostConfig: {nativeSingleTouchMouse: true},
+  });
+  const mouseEvents = [];
+  let leakedTouches = 0;
+  for (const type of ['mousedown', 'mousemove', 'mouseup']) {
+    harness.canvas.addEventListener(type, (event) => {
+      mouseEvents.push(event.type);
+    });
+  }
+  for (const type of ['touchstart', 'touchmove', 'touchend']) {
+    harness.document.addEventListener(type, () => {
+      leakedTouches += 1;
+    });
+  }
+
+  const start = createTouch(1, harness.canvas, 40, 40);
+  const move = createTouch(1, harness.canvas, 160, 100);
+  const startEvent = createTouchEvent('touchstart', {
+    touches: [start],
+    changedTouches: [start],
+  });
+  const moveEvent = createTouchEvent('touchmove', {
+    touches: [move],
+    changedTouches: [move],
+  });
+  const endEvent = createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [move],
+  });
+
+  harness.document.dispatchEvent(startEvent);
+  harness.document.dispatchEvent(moveEvent);
+  harness.document.dispatchEvent(endEvent);
+
+  assert.deepEqual(
+    mouseEvents,
+    [],
+    'the Android native mouse path must not be duplicated by JavaScript',
+  );
+  assert.equal(
+    leakedTouches,
+    0,
+    'native-mapped game touches must still be hidden from Cocos touch input',
+  );
+  assert.equal(startEvent.defaultPrevented, true);
+  assert.equal(moveEvent.defaultPrevented, true);
+  assert.equal(endEvent.defaultPrevented, true);
 }
 
 {

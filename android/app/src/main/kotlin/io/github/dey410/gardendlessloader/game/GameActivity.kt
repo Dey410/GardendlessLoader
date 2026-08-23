@@ -84,7 +84,7 @@ class GameActivity : Activity() {
         check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             "Installed Android System WebView lacks origin-scoped messaging"
         }
-        webView = WebView(this).apply {
+        webView = MouseGameWebView(this).apply {
             setBackgroundColor(Color.BLACK)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -140,6 +140,7 @@ class GameActivity : Activity() {
             .put("gpNextVersion", session.gpNextVersion ?: JSONObject.NULL)
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
+            .put("nativeSingleTouchMouse", true)
             .put("gpNextBaseDirectory", session.appRoot)
         val names = buildList {
             add("transport.js")

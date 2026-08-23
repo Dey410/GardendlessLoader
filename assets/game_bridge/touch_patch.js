@@ -11,6 +11,9 @@
   const gpNextBackdropTapMaxDuration = 250;
   const gpNextBackdropDoubleTapMaxDelay = 300;
   const gpNextBackdropDoubleTapMaxDistance = 24;
+  const nativeSingleTouchMouse =
+    window.__gardendlessHostConfig &&
+    window.__gardendlessHostConfig.nativeSingleTouchMouse === true;
   let lastWheelY = null;
   let leftMouseActive = false;
   let leftMouseDownDispatched = false;
@@ -291,6 +294,11 @@
     }
 
     lastWheelY = null;
+    if (nativeSingleTouchMouse) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     beginLeftMouse(target, point);
     event.preventDefault();
     event.stopImmediatePropagation();
