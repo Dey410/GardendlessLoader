@@ -123,6 +123,11 @@
       document;
   }
 
+  function gameMouseTarget(fallback) {
+    return document.getElementById("GameCanvas") || fallback ||
+      document.body || document;
+  }
+
   function isNativeTouchTarget(target) {
     let current = target;
     while (current && current !== document) {
@@ -374,7 +379,7 @@
       event.stopImmediatePropagation();
       return;
     }
-    beginLeftMouse(target, point);
+    beginLeftMouse(gameMouseTarget(target), point);
     event.preventDefault();
     event.stopImmediatePropagation();
   }, { capture: true, passive: false });

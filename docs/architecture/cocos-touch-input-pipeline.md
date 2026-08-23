@@ -17,8 +17,9 @@ therefore use the current finger position rather than the previous mouse tile.
 
 Android, iOS WKWebView, and HarmonyOS ArkWeb all use the shared mapper. It emits
 the leading move immediately, defers the press to the next animation frame, and
-keeps move/up events on the original game canvas even if another DOM element
-covers the release point. When a moved gesture ends, the mapper finishes the
+routes every game mouse event to `GameCanvas`, matching the APK instead of
+retaining the DOM element touched at gesture start. When a moved gesture ends,
+the mapper finishes the
 drag with the APK-compatible `MOUSE_UP(buttons=1)`, then replays the same event
 sequence as a successful manual tap: after one frame it emits
 `MOUSE_MOVE(buttons=0)`, and after the next frame it emits

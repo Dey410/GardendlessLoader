@@ -543,6 +543,54 @@ function createTouchHarness({
 }
 
 {
+  const initialOverlay = createElement({id: 'seed-card-overlay'});
+  const harness = createTouchHarness();
+  const canvasEvents = [];
+  const overlayEvents = [];
+  for (const type of ['mousemove', 'mousedown', 'mouseup']) {
+    harness.canvas.addEventListener(type, (event) => {
+      canvasEvents.push(event.type);
+    });
+    initialOverlay.addEventListener(type, (event) => {
+      overlayEvents.push(event.type);
+    });
+  }
+
+  const start = createTouch(111, initialOverlay, 50, 40);
+  const end = createTouch(111, initialOverlay, 220, 130);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [start],
+    changedTouches: [start],
+  }));
+  harness.flushAnimationFrame();
+  harness.document.dispatchEvent(createTouchEvent('touchmove', {
+    touches: [end],
+    changedTouches: [end],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [end],
+  }));
+  harness.flushAnimationFrame();
+  harness.flushAnimationFrame();
+
+  assert.deepEqual(canvasEvents, [
+    'mousemove',
+    'mousedown',
+    'mousemove',
+    'mouseup',
+    'mousemove',
+    'mousedown',
+    'mouseup',
+  ], 'game gestures must always reach the APK GameCanvas target');
+  assert.deepEqual(
+    overlayEvents,
+    [],
+    'the touch-down DOM target must not retain the game mouse sequence',
+  );
+}
+
+{
   const harness = createTouchHarness();
   const leftEvents = [];
   for (const type of ['mousemove', 'mousedown', 'mouseup']) {
