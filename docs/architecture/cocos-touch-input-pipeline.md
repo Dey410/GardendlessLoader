@@ -18,13 +18,14 @@ therefore use the current finger position rather than the previous mouse tile.
 For standard resources, Android produces the sequence with mouse-source
 `MotionEvent` objects in `MouseGameWebView`. The original touch is delivered
 first so the document-start bridge can classify native form targets;
-single-touch JavaScript mouse synthesis is disabled. This native path remains
-enabled for GP-Next resources; the document-start bridge suppresses injected
-mouse events only for selector-scoped native controls. iOS WKWebView and
-HarmonyOS ArkWeb use the shared mapper. It emits the leading move immediately,
-defers the press to the next animation frame, and keeps move/up events on the
-original game canvas even if another DOM element covers the release point.
-Both paths produce the same Cocos-visible sequence and planting result.
+single-touch JavaScript mouse synthesis is disabled. Android GP-Next resources,
+iOS WKWebView, and HarmonyOS ArkWeb use the shared mapper. It emits the leading
+move immediately, defers the press to the next animation frame, and keeps
+move/up events on the original game canvas even if another DOM element covers
+the release point. After a moved gesture releases, the shared mapper waits one
+more animation frame and emits one `MOUSE_DOWN`/`MOUSE_UP` pair at the final
+point. This planting click replaces the extra tap otherwise required on those
+WebViews; stationary taps do not receive it.
 
 The original game touch is consumed for game gestures, preventing Cocos from
 processing both touch and mouse input. Native form controls and the scoped

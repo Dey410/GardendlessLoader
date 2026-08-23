@@ -19,6 +19,7 @@
   let leftMouseDownDispatched = false;
   let leftMouseTarget = null;
   let leftMouseDownPoint = null;
+  let leftMouseMoved = false;
   let pendingLeftMouseDownFrame = null;
   let pendingLeftMouseUpPoint = null;
   let twoFingerStartPoint = null;
@@ -221,6 +222,13 @@
     target.dispatchEvent(mouseEvent(type, point, button, buttons));
   }
 
+  function schedulePlantingClick(target, point) {
+    requestAnimationFrame(function () {
+      dispatchMouse(target, "mousedown", point, 0, 1);
+      dispatchMouse(target, "mouseup", point, 0, 0);
+    });
+  }
+
   function resetTwoFingerGesture() {
     lastWheelY = null;
     twoFingerStartPoint = null;
@@ -233,6 +241,7 @@
     leftMouseDownDispatched = false;
     leftMouseTarget = null;
     leftMouseDownPoint = null;
+    leftMouseMoved = false;
     pendingLeftMouseDownFrame = null;
     pendingLeftMouseUpPoint = null;
   }
@@ -241,6 +250,7 @@
     leftMouseActive = true;
     leftMouseTarget = target;
     leftMouseDownPoint = point;
+    leftMouseMoved = false;
     pendingLeftMouseUpPoint = null;
     dispatchMouse(target, "mousemove", point, 0, 0);
     pendingLeftMouseDownFrame = requestAnimationFrame(function () {
@@ -252,7 +262,11 @@
       leftMouseDownDispatched = true;
       if (!leftMouseActive) {
         const upPoint = pendingLeftMouseUpPoint || leftMouseDownPoint;
+        const shouldAddPlantingClick = leftMouseMoved;
         dispatchMouse(leftMouseTarget, "mouseup", upPoint, 0, 1);
+        if (shouldAddPlantingClick) {
+          schedulePlantingClick(leftMouseTarget, upPoint);
+        }
         clearLeftMouseState();
       }
     });
@@ -271,7 +285,12 @@
       clearLeftMouseState();
       return;
     }
-    dispatchMouse(leftMouseTarget, "mouseup", point, 0, 1);
+    const target = leftMouseTarget;
+    const shouldAddPlantingClick = leftMouseMoved;
+    dispatchMouse(target, "mouseup", point, 0, 1);
+    if (shouldAddPlantingClick) {
+      schedulePlantingClick(target, point);
+    }
     clearLeftMouseState();
   }
 
@@ -426,6 +445,7 @@
 
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
+    leftMouseMoved = true;
     dispatchMouse(leftMouseTarget, "mousemove", point, 0,
       leftMouseDownDispatched ? 1 : 0);
     event.preventDefault();

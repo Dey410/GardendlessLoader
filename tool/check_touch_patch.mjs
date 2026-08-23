@@ -503,6 +503,50 @@ function createTouchHarness({
 
 {
   const harness = createTouchHarness();
+  const leftEvents = [];
+  for (const type of ['mousedown', 'mouseup']) {
+    harness.canvas.addEventListener(type, (event) => {
+      leftEvents.push({
+        type: event.type,
+        buttons: event.buttons,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    });
+  }
+
+  const start = createTouch(12, harness.canvas, 70, 60);
+  const end = createTouch(12, harness.canvas, 230, 140);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [start],
+    changedTouches: [start],
+  }));
+  harness.flushAnimationFrame();
+  harness.document.dispatchEvent(createTouchEvent('touchmove', {
+    touches: [end],
+    changedTouches: [end],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [end],
+  }));
+
+  assert.deepEqual(leftEvents, [
+    {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
+    {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
+  ], 'drag release must first finish the held left button');
+
+  harness.flushAnimationFrame();
+  assert.deepEqual(leftEvents, [
+    {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
+    {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
+    {type: 'mousedown', buttons: 1, clientX: 230, clientY: 140},
+    {type: 'mouseup', buttons: 0, clientX: 230, clientY: 140},
+  ], 'drag release must add one left click at the final planting point');
+}
+
+{
+  const harness = createTouchHarness();
   const draggedMoves = [];
   let leakedMoves = 0;
   harness.canvas.addEventListener('mousemove', (event) => {
