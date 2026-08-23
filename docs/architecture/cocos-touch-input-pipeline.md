@@ -23,10 +23,10 @@ the mapper finishes the
 drag with the APK-compatible `MOUSE_UP(buttons=1)`, then replays the same event
 sequence as a successful manual tap: after one frame it emits
 `MOUSE_MOVE(buttons=0)`, and after the next frame it emits
-`MOUSE_DOWN(buttons=1)` plus `MOUSE_UP(buttons=1)` in the same batch. This is
-deliberately different from the previous supplemental click, which omitted the
-reset move or split the manual tap's down/up across frames. Stationary taps keep
-their original direct path and are not replayed.
+`MOUSE_DOWN(buttons=1)`, `MOUSE_UP(buttons=1)`, and `click(buttons=0)` in the
+same batch. Synthetic down/up dispatch does not create the browser's final
+click automatically. Stationary taps keep their original direct path and are
+not replayed.
 
 The original game touch is consumed for game gestures, preventing Cocos from
 processing both touch and mouse input. Native form controls and the scoped

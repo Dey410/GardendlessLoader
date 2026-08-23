@@ -237,6 +237,7 @@
       requestAnimationFrame(function () {
         dispatchMouse(target, "mousedown", point, 0, 1);
         dispatchMouse(target, "mouseup", point, 0, 1);
+        dispatchMouse(target, "click", point, 0, 0);
       });
     });
   }

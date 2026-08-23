@@ -593,6 +593,7 @@ function createTouchHarness({
 {
   const harness = createTouchHarness();
   const leftEvents = [];
+  let plantedTiles = 0;
   for (const type of ['mousemove', 'mousedown', 'mouseup']) {
     harness.canvas.addEventListener(type, (event) => {
       leftEvents.push({
@@ -603,6 +604,11 @@ function createTouchHarness({
       });
     });
   }
+  harness.canvas.addEventListener('click', (event) => {
+    if (event.button === 0 && event.clientX === 230 && event.clientY === 140) {
+      plantedTiles += 1;
+    }
+  });
 
   const start = createTouch(12, harness.canvas, 70, 60);
   const end = createTouch(12, harness.canvas, 230, 140);
@@ -646,6 +652,11 @@ function createTouchHarness({
     {type: 'mousedown', buttons: 1, clientX: 230, clientY: 140},
     {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
   ], 'drag planting must replay the exact successful manual tap sequence');
+  assert.equal(
+    plantedTiles,
+    1,
+    'a moved one-finger release must complete one lawn planting activation',
+  );
 }
 
 {
