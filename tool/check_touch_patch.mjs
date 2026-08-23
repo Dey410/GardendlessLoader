@@ -201,6 +201,15 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
     touches: [touch],
     changedTouches: [touch],
   }));
+  assert.deepEqual(mouseEvents, [
+    {
+      type: 'mousedown',
+      button: 0,
+      buttons: 1,
+      clientX: 120,
+      clientY: 80,
+    },
+  ], 'single touch must press the left mouse immediately');
   harness.flushAnimationFrame();
   harness.document.dispatchEvent(createTouchEvent('touchend', {
     touches: [],
@@ -208,13 +217,6 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
   }));
 
   assert.deepEqual(mouseEvents, [
-    {
-      type: 'mousemove',
-      button: 0,
-      buttons: 0,
-      clientX: 120,
-      clientY: 80,
-    },
     {
       type: 'mousedown',
       button: 0,
@@ -225,7 +227,7 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
     {
       type: 'mouseup',
       button: 0,
-      buttons: 0,
+      buttons: 1,
       clientX: 120,
       clientY: 80,
     },
@@ -272,17 +274,18 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
     changedTouches: [lastMove],
   }));
 
-  assert.deepEqual(
-    draggedMoves,
-    [],
-    'drag moves should be coalesced until the next animation frame',
-  );
-  harness.flushAnimationFrame();
-  assert.deepEqual(draggedMoves, [{
-    clientX: 100,
-    clientY: 80,
-    target: harness.canvas,
-  }]);
+  assert.deepEqual(draggedMoves, [
+    {
+      clientX: 70,
+      clientY: 50,
+      target: harness.canvas,
+    },
+    {
+      clientX: 100,
+      clientY: 80,
+      target: harness.canvas,
+    },
+  ], 'every single-touch move must dispatch immediately');
   assert.equal(
     leakedMoves,
     0,
@@ -337,6 +340,16 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
     changedTouches: [firstMove],
   }));
 
+  assert.deepEqual(
+    rightClicks,
+    [],
+    'the APK waits until both fingers are lifted before right-clicking',
+  );
+
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [secondMove],
+  }));
   assert.deepEqual(rightClicks, [
     {
       type: 'mousedown',
@@ -359,10 +372,6 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
     'right clicks must target GameCanvas instead of the hit-tested element',
   );
 
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [secondMove],
-  }));
   assert.equal(
     rightClicks.length,
     2,
@@ -443,6 +452,7 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
       if (event.button === 0) {
         leftButtonEvents.push({
           type: event.type,
+          buttons: event.buttons,
           clientX: event.clientX,
           clientY: event.clientY,
         });
@@ -470,8 +480,7 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
     changedTouches: [secondStart],
   }));
   assert.deepEqual(leftButtonEvents, [
-    {type: 'mousedown', clientX: 40, clientY: 40},
-    {type: 'mouseup', clientX: 60, clientY: 60},
+    {type: 'mousedown', buttons: 1, clientX: 40, clientY: 40},
   ]);
 
   harness.document.dispatchEvent(createTouchEvent('touchend', {
@@ -490,9 +499,9 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
   }));
 
   assert.equal(
-    leftButtonEvents.filter((event) => event.type === 'mousedown').length,
+    leftButtonEvents.length,
     1,
-    'the remaining finger must not restart a left-button gesture',
+    'adding a second finger must not release or restart the left button',
   );
 }
 
@@ -527,28 +536,21 @@ function createTouchHarness({devicePixelRatio = 1, pointTarget = null} = {}) {
     touches: [unrelated],
     changedTouches: [unrelated],
   }));
-  harness.flushAnimationFrame();
   assert.deepEqual(
     dragMoves,
-    [],
-    'moving a non-active touch must not move the captured left button',
-  );
-
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [active],
-    changedTouches: [unrelated],
-  }));
-  assert.deepEqual(
-    mouseUps,
-    [],
-    'ending a non-active touch must not release the captured left button',
+    [{clientX: 150, clientY: 90}],
+    'the APK follows the sole current pointer without identifier capture',
   );
 
   harness.document.dispatchEvent(createTouchEvent('touchend', {
     touches: [],
-    changedTouches: [active],
+    changedTouches: [unrelated],
   }));
-  assert.deepEqual(mouseUps, [{clientX: 70, clientY: 50}]);
+  assert.deepEqual(
+    mouseUps,
+    [{clientX: 150, clientY: 90}],
+    'the APK releases at the sole current pointer position',
+  );
 }
 
 for (const interruption of [
@@ -602,15 +604,11 @@ for (const interruption of [
   interruption.trigger(harness, touch);
   interruption.trigger(harness, touch);
 
-  assert.deepEqual(
-    mouseUps,
-    [{button: 0, buttons: 0}],
-    `${interruption.name} must release the pressed mouse exactly once`,
-  );
+  assert.deepEqual(mouseUps, [], `${interruption.name} must not release the mouse`);
   assert.equal(
     leakedCancellations,
-    0,
-    'touch cancellation must not reach Cocos listeners',
+    interruption.name === 'touch cancellation' ? 2 : 0,
+    'APK-style touch cancellation is not intercepted for game input',
   );
 }
 
