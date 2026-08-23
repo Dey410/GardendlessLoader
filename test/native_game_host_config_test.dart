@@ -29,22 +29,22 @@ void main() {
     expect(activity, contains('webView = MouseGameWebView(this).apply'));
     expect(
       activity,
-      contains('nativeSingleTouchMouseEnabled = false'),
+      contains('nativeSingleTouchMouseEnabled = true'),
     );
     expect(
       activity,
-      contains('.put("nativeSingleTouchMouse", false)'),
-      reason: 'all Android sessions must use the shared cross-platform mapper',
+      contains('.put("nativeSingleTouchMouse", true)'),
+      reason: 'Android sessions must expose the native path to the touch patch',
     );
     expect(
       activity,
-      isNot(contains('nativeSingleTouchMouseEnabled = true')),
-      reason: 'Android must not duplicate the shared layered touch mapper',
+      isNot(contains('nativeSingleTouchMouseEnabled = false')),
+      reason: 'Android must route game touches through trusted host mouse input',
     );
     expect(
       touchPatch,
-      isNot(contains('nativeSingleTouchMouse')),
-      reason: 'the shared mapper must have one behavior on every platform',
+      contains('nativeSingleTouchMouse'),
+      reason: 'the shared mapper must suppress JS mouse synthesis on Android',
     );
     expect(mouseWebView, contains('class MouseGameWebView'));
     expect(mouseWebView, contains('var nativeSingleTouchMouseEnabled = true'));
@@ -56,18 +56,7 @@ void main() {
     expect(mouseWebView, contains('MotionEvent.ACTION_POINTER_DOWN'));
     expect(mouseWebView, contains('MotionEvent.BUTTON_PRIMARY'));
     expect(mouseWebView, contains('super.dispatchTouchEvent(mouseEvent)'));
-    expect(mouseWebView, contains('private fun pressLeftMouseAt('));
-    final pressStart = mouseWebView.indexOf('private fun pressLeftMouseAt(');
-    final pressEnd = mouseWebView.indexOf(
-      'private fun injectMouseEventAt(',
-      pressStart,
-    );
-    final pressBody = mouseWebView.substring(pressStart, pressEnd);
-    expect(
-      pressBody.indexOf('MotionEvent.ACTION_MOVE'),
-      lessThan(pressBody.indexOf('MotionEvent.ACTION_DOWN')),
-      reason: 'Cocos must receive the current pointer position before press',
-    );
+    expect(mouseWebView, isNot(contains('private fun pressLeftMouseAt(')));
     expect(
       mouseWebView.indexOf(
         'val touchHandled = super.dispatchTouchEvent(event)',

@@ -29,12 +29,16 @@ class MouseGameWebView @JvmOverloads constructor(
         if (pointerCount > maxTouches) {
             maxTouches = pointerCount
         }
-
         val touchHandled = super.dispatchTouchEvent(event)
         when (action) {
             MotionEvent.ACTION_DOWN -> {
                 if (pointerCount == 1) {
-                    pressLeftMouseAt(event.x, event.y)
+                    injectMouseEventAt(
+                        event.x,
+                        event.y,
+                        MotionEvent.ACTION_DOWN,
+                        MotionEvent.BUTTON_PRIMARY,
+                    )
                     isDragging = true
                 }
             }
@@ -79,24 +83,6 @@ class MouseGameWebView @JvmOverloads constructor(
         }
 
         return touchHandled
-    }
-
-    private fun pressLeftMouseAt(
-        x: Float,
-        y: Float,
-    ) {
-        injectMouseEventAt(
-            x,
-            y,
-            MotionEvent.ACTION_MOVE,
-            0,
-        )
-        injectMouseEventAt(
-            x,
-            y,
-            MotionEvent.ACTION_DOWN,
-            MotionEvent.BUTTON_PRIMARY,
-        )
     }
 
     private fun injectMouseEventAt(
