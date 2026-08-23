@@ -23,6 +23,11 @@ assert.match(
   /return touchHandled \|\| injectedMouseEvent/,
   'Android must keep the gesture routed after injecting a native mouse event',
 );
+assert.match(
+  androidMouseWebViewSource,
+  /event\.getToolType\(event\.actionIndex\) == MotionEvent\.TOOL_TYPE_MOUSE/,
+  'Android must bypass only an actual mouse tool, not mixed source flags',
+);
 
 class TestMouseEvent extends Event {
   constructor(type, options = {}) {

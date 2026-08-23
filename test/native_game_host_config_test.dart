@@ -51,6 +51,14 @@ void main() {
     expect(mouseWebView, contains('ReferenceNativeTouchStateMachine'));
     expect(mouseWebView, contains('InputDevice.SOURCE_MOUSE'));
     expect(mouseWebView, contains('MotionEvent.TOOL_TYPE_MOUSE'));
+    expect(
+      mouseWebView,
+      contains(
+        'event.getToolType(event.actionIndex) == MotionEvent.TOOL_TYPE_MOUSE',
+      ),
+      reason: 'mixed source flags must not make finger touches bypass mapping',
+    );
+    expect(mouseWebView, isNot(contains('event.isFromSource')));
     expect(mouseWebView, contains('MotionEvent.ACTION_DOWN'));
     expect(mouseWebView, contains('MotionEvent.ACTION_MOVE'));
     expect(mouseWebView, contains('MotionEvent.ACTION_UP'));

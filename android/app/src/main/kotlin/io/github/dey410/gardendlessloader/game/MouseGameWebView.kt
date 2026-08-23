@@ -21,7 +21,9 @@ class MouseGameWebView @JvmOverloads constructor(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!referenceTouchAdapterEnabled || event.isFromSource(InputDevice.SOURCE_MOUSE)) {
+        val isActualMouse = event.pointerCount > 0 &&
+            event.getToolType(event.actionIndex) == MotionEvent.TOOL_TYPE_MOUSE
+        if (!referenceTouchAdapterEnabled || isActualMouse) {
             return super.dispatchTouchEvent(event)
         }
 

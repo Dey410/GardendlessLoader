@@ -43,7 +43,8 @@ in-game distance and direction. Three or more fingers produce no game command.
 Cancellation produces no compensating mouse up. It clears internal candidates,
 ignores the interrupted gesture, and requires a fresh touch before input can
 restart. Real mouse and trackpad events bypass touch mapping; stylus input uses
-the single-touch path.
+the single-touch path. Android makes that distinction from the pointer tool type
+rather than source bit flags, which may be mixed by a WebView or input device.
 
 When `touchDiagnosticsEnabled` is true, a bounded in-memory trace records input
 coordinates, owner decisions, state transitions, and output command names. It
