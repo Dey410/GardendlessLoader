@@ -7,24 +7,36 @@ game commands: primary down/move/up, neutral move, secondary down/up, and
 scroll. DOM ownership, platform event construction, and diagnostics stay
 outside that interface.
 
-A one-finger gesture reaches Cocos in this order on every platform:
+A one-finger tap reaches Cocos in this order on every platform:
 
 ```text
+MOUSE_MOVE(point, buttons=0)
+two animation-frame boundaries
 MOUSE_DOWN(point, buttons=1)
-[MOUSE_MOVE(point, buttons=1)] *
 MOUSE_UP(point, buttons=1)
 ```
 
+A card-to-lawn gesture that moves more than 20 physical pixels first selects
+the card with that delayed mouse down, forwards held-button moves, and sends
+the original mouse up after the final positioning move. Smaller motion remains
+a single tap, so normal finger jitter cannot create a duplicate click. PvZGE
+0.13.0 places a selected plant only from
+`LnC.onMouseDown`; `LnC.onMouseUp` does not place it. After two game frames have
+cleared `UI.MouseClickCoolingDown`, the adapter therefore completes one
+down/up pair at the release tile. This is the game-visible equivalent of
+selecting the card and clicking the target tile, without asking the user for a
+second physical tap.
+
 The reference APK's JavaScript extension has its single-finger mouse synthesis
-disabled. Android therefore keeps one uninterrupted native mouse stream:
-`MouseGameWebView` executes primary down/move/up and two-finger scroll commands
-with Android `MotionEvent`s, while `touch_input_adapter.js` suppresses the
-original game touch stream and does not duplicate primary mouse events. iOS
-WKWebView and OpenHarmony ArkWeb execute the same game command types with
-JavaScript mouse and wheel events. Their primary adapter first emits a neutral
-positioning move, waits one animation frame before mouse down, and defers a
-dragged mouse up by one frame after the final move. This lets Cocos sample the
-new pointer position before it consumes selection or planting input.
+disabled, but Loader does not copy that Android WebView implementation detail.
+Android Chromium WebView, iOS WKWebView, and OpenHarmony ArkWeb all execute the
+shared commands with JavaScript mouse and wheel events. The primary adapter
+first emits a neutral positioning move and crosses two animation-frame
+boundaries before mouse down. The first boundary is not sufficient: `Mouse.ts`
+accepts the move synchronously, but `Square.ts` derives `Mouse.mouseInLnC` only
+in its next component update, and request-animation-frame callback order varies
+between engines. A fast tap that has already ended completes its down/up pair
+after those boundaries.
 
 The DOM adapter assigns each gesture to one owner at its first touch. Inputs,
 text areas, selects, editable content, and the explicit GP-Next selector list
@@ -43,8 +55,8 @@ in-game distance and direction. Three or more fingers produce no game command.
 Cancellation produces no compensating mouse up. It clears internal candidates,
 ignores the interrupted gesture, and requires a fresh touch before input can
 restart. Real mouse and trackpad events bypass touch mapping; stylus input uses
-the single-touch path. Android makes that distinction from the pointer tool type
-rather than source bit flags, which may be mixed by a WebView or input device.
+the single-touch path. Android uses a normal WebView and has no native
+touch-to-mouse runtime fallback.
 
 When `touchDiagnosticsEnabled` is true, a bounded in-memory trace records input
 coordinates, owner decisions, state transitions, and output command names. It

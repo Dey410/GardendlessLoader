@@ -10,23 +10,28 @@ const touchStateMachineSource = fs.readFileSync(
   new URL('../assets/game_bridge/touch_state_machine.js', import.meta.url),
   'utf8',
 );
-const androidMouseWebViewSource = fs.readFileSync(
+const androidGameActivitySource = fs.readFileSync(
   new URL(
-    '../android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/MouseGameWebView.kt',
+    '../android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
     import.meta.url,
   ),
   'utf8',
 );
 
 assert.match(
-  androidMouseWebViewSource,
-  /return touchHandled \|\| injectedMouseEvent/,
-  'Android must keep the gesture routed after injecting a native mouse event',
+  androidGameActivitySource,
+  /webView = WebView\(this\)\.apply/,
+  'Android must use a plain WebView without native touch-to-mouse injection',
 );
 assert.match(
-  androidMouseWebViewSource,
-  /event\.getToolType\(event\.actionIndex\) == MotionEvent\.TOOL_TYPE_MOUSE/,
-  'Android must bypass only an actual mouse tool, not mixed source flags',
+  androidGameActivitySource,
+  /\.put\("touchAdapter", "javascript"\)/,
+  'Android must select the shared JavaScript touch adapter',
+);
+assert.doesNotMatch(
+  touchAdapterSource,
+  /android-reference/,
+  'the shared adapter must not retain an Android-only execution branch',
 );
 
 class TestMouseEvent extends Event {
@@ -228,121 +233,188 @@ function createTouchHarness({
   };
 }
 
-for (const platform of ['ios', 'ohos']) {
-  const harness = createTouchHarness({
-    hostConfig: {platform, touchAdapter: 'javascript'},
-  });
-  const seedCard = {clientX: 60, clientY: 50};
-  const firstLawnTile = {clientX: 180, clientY: 90};
-  const dragLawnTile = {clientX: 240, clientY: 130};
-  let sampledPointer = {clientX: 0, clientY: 0};
-  let downPoint = null;
+function attachPvzGePlacementModel(harness, {seedCard, lawnTiles}) {
+  let pointer = {clientX: 0, clientY: 0};
+  let mouseInLnC = null;
   let selected = false;
+  let mouseClickCoolingDown = 0;
   const planted = [];
 
   harness.canvas.addEventListener('mousemove', (event) => {
-    const nextPointer = {clientX: event.clientX, clientY: event.clientY};
-    harness.scheduleAnimationFrame(() => {
-      sampledPointer = nextPointer;
-    });
+    // Mouse.ts updates Mouse.position synchronously from Cocos MOUSE_MOVE.
+    pointer = {clientX: event.clientX, clientY: event.clientY};
   });
   harness.canvas.addEventListener('mousedown', (event) => {
-    if (event.button === 0) {
-      downPoint = sampledPointer;
-    }
-  });
-  harness.canvas.addEventListener('mouseup', (event) => {
-    if (event.button !== 0 || !downPoint) {
+    // UI.ts consumes MOUSE_DOWN against Square.mouseInLnC. Lawn placement is
+    // not committed by MOUSE_UP in pvzge-lite 0.13.0.
+    if (event.button !== 0 || mouseClickCoolingDown > 0) {
       return;
     }
-    if (downPoint.clientX === seedCard.clientX &&
-        downPoint.clientY === seedCard.clientY) {
-      if (sampledPointer.clientX === seedCard.clientX &&
-          sampledPointer.clientY === seedCard.clientY) {
-        selected = true;
-      } else {
-        planted.push(sampledPointer);
-      }
-    } else if (selected) {
-      planted.push(sampledPointer);
+    mouseClickCoolingDown = 2;
+    if (event.clientX === seedCard.clientX &&
+        event.clientY === seedCard.clientY) {
+      selected = true;
+      return;
+    }
+    if (selected && mouseInLnC &&
+        mouseInLnC.clientX === event.clientX &&
+        mouseInLnC.clientY === event.clientY) {
+      planted.push(mouseInLnC);
       selected = false;
     }
-    downPoint = null;
   });
 
-  function dispatchTap(identifier, point, endBeforeFrame = false) {
-    const touch = createTouch(
-      identifier,
-      harness.canvas,
-      point.clientX,
-      point.clientY,
-    );
-    harness.document.dispatchEvent(createTouchEvent('touchstart', {
-      touches: [touch],
-      changedTouches: [touch],
-    }));
-    if (endBeforeFrame) {
-      harness.document.dispatchEvent(createTouchEvent('touchend', {
-        touches: [],
-        changedTouches: [touch],
-      }));
-      harness.flushAnimationFrame();
-    } else {
-      harness.flushAnimationFrame();
-      harness.document.dispatchEvent(createTouchEvent('touchend', {
-        touches: [],
-        changedTouches: [touch],
-      }));
-    }
+  function scheduleGameFrame() {
+    harness.scheduleAnimationFrame(() => {
+      // Square.ts derives mouseInLnC during Component.update, after Mouse.ts
+      // has accepted the DOM/Cocos move. UI.ts decrements its click guard in
+      // lateUpdate.
+      mouseInLnC = lawnTiles.find((tile) =>
+        tile.clientX === pointer.clientX && tile.clientY === pointer.clientY,
+      ) ?? null;
+      if (mouseClickCoolingDown > 0) {
+        mouseClickCoolingDown -= 1;
+      }
+    });
   }
 
-  dispatchTap(92, seedCard, true);
+  return {
+    get planted() {
+      return planted;
+    },
+    get selected() {
+      return selected;
+    },
+    scheduleGameFrame,
+  };
+}
+
+function dispatchTouchStart(harness, identifier, point) {
+  const touch = createTouch(
+    identifier,
+    harness.canvas,
+    point.clientX,
+    point.clientY,
+  );
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [touch],
+    changedTouches: [touch],
+  }));
+  return touch;
+}
+
+function dispatchTouchEnd(harness, touch) {
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [touch],
+  }));
+}
+
+function flushPvzGeFrame(harness, game) {
+  game.scheduleGameFrame();
+  harness.flushAnimationFrame();
+}
+
+for (const platform of ['android', 'ios', 'ohos']) {
+  const seedCard = {clientX: 60, clientY: 50};
+  const firstLawnTile = {clientX: 180, clientY: 90};
+  const dragLawnTile = {clientX: 240, clientY: 130};
+  const tapHarness = createTouchHarness({
+    hostConfig: {platform, touchAdapter: 'javascript'},
+  });
+  const tapGame = attachPvzGePlacementModel(tapHarness, {
+    seedCard,
+    lawnTiles: [firstLawnTile, dragLawnTile],
+  });
+
+  const cardTap = dispatchTouchStart(tapHarness, 92, seedCard);
+  dispatchTouchEnd(tapHarness, cardTap);
+  flushPvzGeFrame(tapHarness, tapGame);
+  flushPvzGeFrame(tapHarness, tapGame);
   assert.equal(
-    selected,
+    tapGame.selected,
     true,
     `the first ${platform} tap must select the plant card`,
   );
-  dispatchTap(93, firstLawnTile);
+
+  const lawnTap = dispatchTouchStart(tapHarness, 93, firstLawnTile);
+  dispatchTouchEnd(tapHarness, lawnTap);
+  // Register the game loop after the adapter's first RAF callback. A correct
+  // adapter must still allow one complete Square.update before MOUSE_DOWN.
+  flushPvzGeFrame(tapHarness, tapGame);
+  flushPvzGeFrame(tapHarness, tapGame);
   assert.deepEqual(
-    planted,
+    tapGame.planted,
     [firstLawnTile],
     `the second ${platform} tap must plant on its lawn tile immediately`,
   );
 
-  const dragStart = createTouch(
-    94,
-    harness.canvas,
-    seedCard.clientX,
-    seedCard.clientY,
-  );
+  const dragHarness = createTouchHarness({
+    hostConfig: {platform, touchAdapter: 'javascript'},
+  });
+  const dragGame = attachPvzGePlacementModel(dragHarness, {
+    seedCard,
+    lawnTiles: [firstLawnTile, dragLawnTile],
+  });
+  const dragStart = dispatchTouchStart(dragHarness, 94, seedCard);
+  flushPvzGeFrame(dragHarness, dragGame);
+  flushPvzGeFrame(dragHarness, dragGame);
   const dragEnd = createTouch(
     94,
-    harness.canvas,
+    dragHarness.canvas,
     dragLawnTile.clientX,
     dragLawnTile.clientY,
   );
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [dragStart],
-    changedTouches: [dragStart],
-  }));
-  harness.flushAnimationFrame();
-  harness.document.dispatchEvent(createTouchEvent('touchmove', {
+  dragHarness.document.dispatchEvent(createTouchEvent('touchmove', {
     touches: [dragEnd],
     changedTouches: [dragEnd],
   }));
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [dragEnd],
-  }));
-  harness.flushAnimationFrame();
+  flushPvzGeFrame(dragHarness, dragGame);
+  dispatchTouchEnd(dragHarness, dragEnd);
+  for (let frame = 0; frame < 4; frame += 1) {
+    flushPvzGeFrame(dragHarness, dragGame);
+  }
   assert.deepEqual(
-    planted,
-    [firstLawnTile, dragLawnTile],
+    dragGame.planted,
+    [dragLawnTile],
     `${platform} drag planting must commit at release without a second tap`,
   );
 }
 
-for (const platform of ['ios', 'ohos']) {
+for (const platform of ['android', 'ios', 'ohos']) {
+  const harness = createTouchHarness({
+    devicePixelRatio: 2,
+    hostConfig: {platform, touchAdapter: 'javascript'},
+  });
+  const primaryEvents = [];
+  for (const type of ['mousedown', 'mouseup']) {
+    harness.canvas.addEventListener(type, () => primaryEvents.push(type));
+  }
+  const start = dispatchTouchStart(
+    harness,
+    98,
+    {clientX: 100, clientY: 100},
+  );
+  harness.flushAnimationFrame();
+  harness.flushAnimationFrame();
+  const jitter = createTouch(98, harness.canvas, 106, 104);
+  harness.document.dispatchEvent(createTouchEvent('touchmove', {
+    touches: [jitter],
+    changedTouches: [jitter],
+  }));
+  dispatchTouchEnd(harness, jitter);
+  for (let frame = 0; frame < 4; frame += 1) {
+    harness.flushAnimationFrame();
+  }
+  assert.deepEqual(
+    primaryEvents,
+    ['mousedown', 'mouseup'],
+    `${platform} sub-threshold finger jitter must remain one click`,
+  );
+  assert.equal(start.identifier, jitter.identifier);
+}
+
+for (const platform of ['android', 'ios', 'ohos']) {
   const harness = createTouchHarness({
     hostConfig: {platform, touchAdapter: 'javascript'},
   });
@@ -361,10 +433,12 @@ for (const platform of ['ios', 'ohos']) {
     touches: [first],
     changedTouches: [first],
   }));
+  harness.flushAnimationFrame();
   harness.document.dispatchEvent(createTouchEvent('touchstart', {
     touches: [first, second],
     changedTouches: [second],
   }));
+  harness.flushAnimationFrame();
   harness.flushAnimationFrame();
 
   assert.deepEqual(
@@ -374,7 +448,7 @@ for (const platform of ['ios', 'ohos']) {
   );
 }
 
-for (const platform of ['ios', 'ohos']) {
+for (const platform of ['android', 'ios', 'ohos']) {
   const harness = createTouchHarness({
     hostConfig: {platform, touchAdapter: 'javascript'},
   });
@@ -392,10 +466,12 @@ for (const platform of ['ios', 'ohos']) {
     touches: [touch],
     changedTouches: [touch],
   }));
+  harness.flushAnimationFrame();
   harness.document.dispatchEvent(createTouchEvent('touchcancel', {
     touches: [],
     changedTouches: [touch],
   }));
+  harness.flushAnimationFrame();
   harness.flushAnimationFrame();
 
   assert.deepEqual(
@@ -513,115 +589,6 @@ for (const platform of ['ios', 'ohos']) {
     harness.stateMachineCreations,
     1,
     'the DOM adapter must delegate game gestures to the shared state machine',
-  );
-}
-
-{
-  const harness = createTouchHarness({
-    hostConfig: {touchAdapter: 'android-reference'},
-  });
-  const mouseEvents = [];
-  let leakedTouches = 0;
-  for (const type of ['mousedown', 'mousemove', 'mouseup']) {
-    harness.canvas.addEventListener(type, (event) => {
-      mouseEvents.push(event.type);
-    });
-  }
-  for (const type of ['touchstart', 'touchmove', 'touchend']) {
-    harness.document.addEventListener(type, () => {
-      leakedTouches += 1;
-    });
-  }
-
-  const start = createTouch(1, harness.canvas, 40, 40);
-  const move = createTouch(1, harness.canvas, 160, 100);
-  const startEvent = createTouchEvent('touchstart', {
-    touches: [start],
-    changedTouches: [start],
-  });
-  const moveEvent = createTouchEvent('touchmove', {
-    touches: [move],
-    changedTouches: [move],
-  });
-  const endEvent = createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [move],
-  });
-
-  harness.document.dispatchEvent(startEvent);
-  harness.document.dispatchEvent(moveEvent);
-  harness.document.dispatchEvent(endEvent);
-  harness.flushAnimationFrame();
-
-  assert.deepEqual(
-    mouseEvents,
-    [],
-    'Android single-touch input must stay on one complete native mouse stream',
-  );
-  assert.equal(
-    leakedTouches,
-    0,
-    'native-mapped game touches must still be hidden from Cocos touch input',
-  );
-  assert.equal(startEvent.defaultPrevented, true);
-  assert.equal(moveEvent.defaultPrevented, true);
-  assert.equal(endEvent.defaultPrevented, true);
-}
-
-{
-  const input = createElement({tagName: 'INPUT'});
-  const harness = createTouchHarness({
-    hostConfig: {touchAdapter: 'android-reference'},
-  });
-  let leakedNativeMouseEvents = 0;
-  for (const type of ['mousemove', 'mousedown', 'mouseup']) {
-    harness.document.addEventListener(type, () => {
-      leakedNativeMouseEvents += 1;
-    });
-  }
-
-  const touch = createTouch(2, input, 30, 20);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [touch],
-    changedTouches: [touch],
-  }));
-  harness.document.dispatchEvent(new TestMouseEvent('mousemove', {
-    cancelable: true,
-  }));
-  harness.document.dispatchEvent(new TestMouseEvent('mousedown', {
-    cancelable: true,
-  }));
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [touch],
-  }));
-  harness.document.dispatchEvent(new TestMouseEvent('mouseup', {
-    cancelable: true,
-  }));
-
-  assert.equal(
-    leakedNativeMouseEvents,
-    0,
-    'host-injected mouse events must not duplicate browser-owned native controls',
-  );
-
-  const secondTouch = createTouch(3, input, 32, 22);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [secondTouch],
-    changedTouches: [secondTouch],
-  }));
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [secondTouch],
-  }));
-  harness.advanceTime(1001);
-  harness.document.dispatchEvent(new TestMouseEvent('mousemove', {
-    cancelable: true,
-  }));
-  assert.equal(
-    leakedNativeMouseEvents,
-    1,
-    'compatibility suppression must expire so real mouse input stays native',
   );
 }
 

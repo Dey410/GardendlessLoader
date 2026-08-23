@@ -5,18 +5,13 @@
   window.__gardendlessTouchInputInstalled = true;
 
   const config = window.__gardendlessHostConfig || {};
-  const androidReferenceAdapter =
-    config.touchAdapter === "android-reference";
-  const frameSynchronizedJavascript =
-    config.touchAdapter === "javascript" &&
-    (config.platform === "ios" || config.platform === "ohos");
+  const frameSynchronizedJavascript = config.touchAdapter === "javascript";
   const diagnosticsEnabled = config.touchDiagnosticsEnabled === true;
   const touchActionStyleId = "gardendless-touch-action";
   const backdropMoveThreshold = 20;
   const backdropTapMaxDuration = 250;
   const backdropDoubleTapMaxDelay = 300;
   const backdropDoubleTapMaxDistance = 24;
-  const compatibilityMouseSuppressionWindow = 1000;
   const wheelCssMultiplier = Number.isFinite(config.touchWheelCssMultiplier)
     ? config.touchWheelCssMultiplier
     : -4.5;
@@ -28,9 +23,8 @@
   let backdropHadMultipleFingers = false;
   let lastBackdropTapAt = null;
   let lastBackdropTapPoint = null;
-  let suppressNativeCompatibilityMouse = false;
-  let suppressNativeCompatibilityMouseUntil = 0;
   let primaryCanvas = null;
+  let primaryStartPoint = null;
   let primaryDownFrame = null;
   let primaryDownDispatched = false;
   let primaryMoved = false;
@@ -220,6 +214,7 @@
 
   function clearPrimaryGestureState() {
     primaryCanvas = null;
+    primaryStartPoint = null;
     primaryDownFrame = null;
     primaryDownDispatched = false;
     primaryMoved = false;
@@ -233,7 +228,9 @@
     const pending = pendingPrimaryUp;
     pendingPrimaryUp = null;
     cancelAnimationFrame(pending.frame);
-    dispatchMouse(pending.canvas, "mouseup", pending.point, 0, 1);
+    if (!pending.upDispatched) {
+      dispatchMouse(pending.canvas, "mouseup", pending.point, 0, 1);
+    }
   }
 
   function cancelJavascriptPrimary() {
@@ -266,14 +263,33 @@
     const pending = {
       canvas: canvas,
       frame: null,
-      point: point
+      point: point,
+      upDispatched: false
     };
     pending.frame = requestAnimationFrame(function () {
       if (pendingPrimaryUp !== pending) {
         return;
       }
-      pendingPrimaryUp = null;
       dispatchMouse(canvas, "mouseup", point, 0, 1);
+      pending.upDispatched = true;
+      pending.frame = requestAnimationFrame(function () {
+        if (pendingPrimaryUp !== pending) {
+          return;
+        }
+        pending.frame = requestAnimationFrame(function () {
+          if (pendingPrimaryUp !== pending) {
+            return;
+          }
+          pending.frame = requestAnimationFrame(function () {
+            if (pendingPrimaryUp !== pending) {
+              return;
+            }
+            pendingPrimaryUp = null;
+            dispatchMouse(canvas, "mousedown", point, 0, 1);
+            dispatchMouse(canvas, "mouseup", point, 0, 1);
+          });
+        });
+      });
     });
     pendingPrimaryUp = pending;
   }
@@ -282,20 +298,23 @@
     finishPendingPrimaryUp();
     cancelJavascriptPrimary();
     primaryCanvas = canvas;
+    primaryStartPoint = point;
     primaryMoved = false;
     dispatchMouse(canvas, "mousemove", point, 0, 0);
     primaryDownFrame = requestAnimationFrame(function () {
-      primaryDownFrame = null;
-      if (!primaryCanvas) {
-        return;
-      }
-      dispatchMouse(primaryCanvas, "mousedown", point, 0, 1);
-      primaryDownDispatched = true;
-      if (pendingPrimaryUpPoint) {
-        const upPoint = pendingPrimaryUpPoint;
-        pendingPrimaryUpPoint = null;
-        releaseJavascriptPrimary(upPoint);
-      }
+      primaryDownFrame = requestAnimationFrame(function () {
+        primaryDownFrame = null;
+        if (!primaryCanvas) {
+          return;
+        }
+        dispatchMouse(primaryCanvas, "mousedown", point, 0, 1);
+        primaryDownDispatched = true;
+        if (pendingPrimaryUpPoint) {
+          const upPoint = pendingPrimaryUpPoint;
+          pendingPrimaryUpPoint = null;
+          releaseJavascriptPrimary(upPoint);
+        }
+      });
     });
   }
 
@@ -303,7 +322,12 @@
     if (!primaryCanvas) {
       return;
     }
-    primaryMoved = true;
+    if (primaryStartPoint) {
+      const deltaX = point.clientX - primaryStartPoint.clientX;
+      const deltaY = point.clientY - primaryStartPoint.clientY;
+      primaryMoved = primaryMoved ||
+        Math.hypot(deltaX, deltaY) * pixelRatio() > backdropMoveThreshold;
+    }
     dispatchMouse(
       primaryCanvas,
       "mousemove",
@@ -328,13 +352,6 @@
         x: command.point && command.point.clientX,
         y: command.point && command.point.clientY
       });
-      if (androidReferenceAdapter &&
-          (command.type === "primaryDown" ||
-           command.type === "primaryMove" ||
-           command.type === "primaryUp" ||
-           command.type === "neutralMove" || command.type === "scroll")) {
-        continue;
-      }
       if (command.type === "primaryDown") {
         if (frameSynchronizedJavascript) {
           beginJavascriptPrimary(canvas, command.point);
@@ -469,10 +486,6 @@
     const target = eventTarget(event);
     if (event.touches.length === 1 && isNativeTouchTarget(target)) {
       owner = "native";
-      suppressNativeCompatibilityMouse = androidReferenceAdapter;
-      suppressNativeCompatibilityMouseUntil = androidReferenceAdapter
-        ? performance.now() + compatibilityMouseSuppressionWindow
-        : 0;
       resetBackdropCandidate();
       recordTrace({event: "touch_owner", owner: owner});
       return;
@@ -586,8 +599,6 @@
       }
     }
     owner = "idle";
-    suppressNativeCompatibilityMouse = false;
-    suppressNativeCompatibilityMouseUntil = 0;
     resetBackdropTouch();
   }
 
@@ -603,27 +614,6 @@
         interrupt();
       }
     }).observe(document.documentElement, {childList: true, subtree: true});
-  }
-
-  if (androidReferenceAdapter) {
-    for (const type of ["mousemove", "mousedown", "mouseup", "wheel"]) {
-      document.addEventListener(type, function (event) {
-        if (suppressNativeCompatibilityMouse &&
-            performance.now() > suppressNativeCompatibilityMouseUntil) {
-          suppressNativeCompatibilityMouse = false;
-          suppressNativeCompatibilityMouseUntil = 0;
-        }
-        if (suppressNativeCompatibilityMouse || owner === "native" ||
-            owner === "backdrop" || owner === "failed") {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          if (type === "mouseup") {
-            suppressNativeCompatibilityMouse = false;
-            suppressNativeCompatibilityMouseUntil = 0;
-          }
-        }
-      }, {capture: true});
-    }
   }
 
   installTouchActionStyle();

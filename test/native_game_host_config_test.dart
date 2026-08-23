@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Android game path is a standalone origin-scoped native WebView', () {
+  test('Android game path uses the shared JavaScript touch adapter', () {
     final activity = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
     ).readAsStringSync();
@@ -13,9 +13,6 @@ void main() {
     final viewport = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameViewportLayout.kt',
     ).readAsStringSync();
-    final mouseWebViewFile = File(
-      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/MouseGameWebView.kt',
-    );
     final touchAdapter = File(
       'assets/game_bridge/touch_input_adapter.js',
     ).readAsStringSync();
@@ -23,72 +20,29 @@ void main() {
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameSessionCodec.kt',
     ).readAsStringSync();
 
-    expect(mouseWebViewFile.existsSync(), isTrue);
-    final mouseWebView = mouseWebViewFile.readAsStringSync();
     expect(activity, contains('class GameActivity : Activity()'));
-    expect(activity, contains('webView = MouseGameWebView(this).apply'));
+    expect(activity, contains('webView = WebView(this).apply'));
+    expect(activity, isNot(contains('MouseGameWebView')));
     expect(
       activity,
-      contains('referenceTouchAdapterEnabled = true'),
+      isNot(contains('referenceTouchAdapterEnabled')),
     );
     expect(
       activity,
-      contains('.put("touchAdapter", "android-reference")'),
-      reason: 'Android sessions must select the reference native adapter',
+      contains('.put("touchAdapter", "javascript")'),
+      reason: 'Android sessions must select the shared JavaScript adapter',
     );
     expect(
       activity,
-      isNot(contains('nativeSingleTouchMouse')),
-      reason: 'the retired all-native primary path must not remain configured',
+      isNot(contains('"android-reference"')),
+      reason: 'the native Android adapter must not remain a runtime fallback',
     );
     expect(
       touchAdapter,
-      contains('android-reference'),
-      reason: 'the shared adapter must suppress duplicate Android JS primary input',
+      isNot(contains('android-reference')),
+      reason:
+          'the shared adapter must not retain an Android-only execution branch',
     );
-    expect(mouseWebView, contains('class MouseGameWebView'));
-    expect(mouseWebView, contains('var referenceTouchAdapterEnabled = true'));
-    expect(mouseWebView, contains('ReferenceNativeTouchStateMachine'));
-    expect(mouseWebView, contains('InputDevice.SOURCE_MOUSE'));
-    expect(mouseWebView, contains('MotionEvent.TOOL_TYPE_MOUSE'));
-    expect(
-      mouseWebView,
-      contains(
-        'event.getToolType(event.actionIndex) == MotionEvent.TOOL_TYPE_MOUSE',
-      ),
-      reason: 'mixed source flags must not make finger touches bypass mapping',
-    );
-    expect(mouseWebView, isNot(contains('event.isFromSource')));
-    expect(mouseWebView, contains('MotionEvent.ACTION_DOWN'));
-    expect(mouseWebView, contains('MotionEvent.ACTION_MOVE'));
-    expect(mouseWebView, contains('MotionEvent.ACTION_UP'));
-    expect(mouseWebView, contains('MotionEvent.ACTION_POINTER_DOWN'));
-    expect(mouseWebView, contains('MotionEvent.BUTTON_PRIMARY'));
-    expect(mouseWebView, contains('MotionEvent.ACTION_SCROLL'));
-    expect(mouseWebView, contains('MotionEvent.AXIS_VSCROLL'));
-    expect(mouseWebView, contains('dispatchGenericMotionEvent'));
-    expect(mouseWebView, contains('SystemClock.uptimeMillis()'));
-    expect(mouseWebView, contains('private var mouseDownTime = 0L'));
-    expect(
-      mouseWebView,
-      contains('val gestureDownTime = mouseDownTime.takeIf'),
-      reason: 'Chromium must receive one downTime for the complete gesture',
-    );
-    expect(
-      mouseWebView,
-      isNot(contains('System.currentTimeMillis()')),
-      reason: 'Chromium MotionEvent timestamps must use Android uptime',
-    );
-    expect(mouseWebView, contains('super.dispatchTouchEvent(event)'));
-    expect(mouseWebView, isNot(contains('private fun pressLeftMouseAt(')));
-    expect(
-      mouseWebView.indexOf(
-        'val touchHandled = super.dispatchTouchEvent(event)',
-      ),
-      lessThan(mouseWebView.indexOf('touchStateMachine.handle(phase, points)')),
-      reason: 'JavaScript must classify native controls before mouse injection',
-    );
-    expect(mouseWebView, contains('setLongClickable(false)'));
     expect(activity, contains('setContentView(viewport)'));
     expect(viewport, contains('16.0 / 10.0'));
     expect(viewport, contains('17.0 / 9.0'));

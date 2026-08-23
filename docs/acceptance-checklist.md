@@ -26,24 +26,23 @@
 
 ## Touch input
 
-- On Android, each one-finger gesture reaches `GameCanvas` through one uninterrupted native `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP` stream with a stable `downTime`; JavaScript emits no duplicate primary event.
-- Android keeps the WebView gesture routed whenever it injects a native mouse command, even if the consumed original touch reports `handled=false`.
-- Two-tap planting works as two independent native clicks: the first tap selects the plant card and the second tap plants on the chosen lawn tile immediately.
-- Drag planting starts with native `MOUSE_DOWN` on the plant card, emits every current-point native `MOUSE_MOVE(buttons=1)`, and plants on native `MOUSE_UP` at the release tile without another tap.
-- A slow drag, long hold, and fast flick use `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP`; release occurs exactly once with no second down, synthetic `click`, delayed replay, or old-path fallback.
+- Android, iOS, and OpenHarmony all execute game touch commands through the shared JavaScript adapter; Android does not inject native mouse `MotionEvent`s or fall back to that path.
+- Each one-finger gesture positions the Cocos pointer and crosses two animation-frame boundaries before JavaScript `MOUSE_DOWN`, allowing `Square.update` to publish the intended `mouseInLnC` first.
+- Two-tap planting works as two independent JavaScript clicks: the first tap selects the plant card and the second tap plants on the chosen lawn tile immediately.
+- Drag planting that moves more than 20 physical pixels starts with JavaScript `MOUSE_DOWN` on the plant card, emits every current-point `MOUSE_MOVE(buttons=1)`, ends the original drag, then emits one delayed `MOUSE_DOWN → MOUSE_UP` pair at the release tile because PvZGE 0.13.0 does not plant from lawn `MOUSE_UP`; sub-threshold finger jitter remains one click.
+- A slow drag, long hold, and fast flick each plant exactly once at the current release tile; the delayed release-tile pair is cancelled rather than replayed if a new gesture, cancellation, or second-finger transition takes ownership.
 - Every game mouse event targets `GameCanvas`, even if the touch starts on or ends over another non-native DOM element; native form and GP-Next controls remain excluded before mapping.
-- On Android, adding a second finger follows the reference APK: it stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.
+- Adding a second finger stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.
 - `ACTION_CANCEL`/`touchcancel` does not synthesize `MOUSE_UP`; it clears internal candidates, consumes residual game touches, and requires a fresh gesture.
-- On Android, two-finger center movement of at most 20 physical pixels vertically remains a right-click candidate, regardless of horizontal movement.
+- Two-finger center movement of at most 20 physical pixels vertically remains a right-click candidate, regardless of horizontal movement.
 - A two-finger gesture whose center exceeds 20 physical pixels vertically scrolls and does not emit a right click; calibrate each platform for the same in-game direction and distance rather than the same raw constant.
-- On Android, a stationary two-finger gesture emits one right click to `GameCanvas` after both fingers are lifted, even when held longer than 250 ms.
-- On Android, text inputs, selects, editable content, and GP-Next controls retain native touch behavior.
+- A stationary two-finger gesture emits one right click to `GameCanvas` after both fingers are lifted, even when held longer than 250 ms.
+- Text inputs, selects, editable content, and GP-Next controls retain native touch behavior on every platform.
 - Real mouse and trackpad input remain native and are never mapped a second time; stylus input follows the one-finger path.
 - Removing `GameCanvas` or withholding the state-machine asset consumes game touches, emits no mouse events, records the failure, and never guesses another target.
 - With touch diagnostics enabled, the bounded trace contains input coordinates, owners, transitions, and command names, but no DOM text, form value, storage, or game data.
-- On iOS WKWebView, confirm a fast first tap selects a plant card, the second tap plants on the chosen lawn tile, and a card-to-lawn drag plants on release without another tap.
-- Repeat the same two-step and drag-planting checks on OpenHarmony ArkWeb; both JavaScript adapters must sample the positioning/final move on an animation frame before consuming down/up.
-- Repeat the complete remaining touch-input matrix above on iOS WKWebView and OpenHarmony ArkWeb before release.
+- On Android Chromium WebView, iOS WKWebView, and OpenHarmony ArkWeb, confirm a fast first tap selects a plant card, the second tap plants on the chosen lawn tile, and a card-to-lawn drag plants on release without another tap.
+- Repeat the complete touch-input matrix on all three WebView engines before release; every adapter must let the game publish the positioning/final move before consuming the placement down/up pair.
 
 ## Automatic sun collection
 

@@ -84,8 +84,7 @@ class GameActivity : Activity() {
         check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             "Installed Android System WebView lacks origin-scoped messaging"
         }
-        webView = MouseGameWebView(this).apply {
-            referenceTouchAdapterEnabled = true
+        webView = WebView(this).apply {
             setBackgroundColor(Color.BLACK)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -134,7 +133,7 @@ class GameActivity : Activity() {
     private fun buildDocumentStartScript(): String {
         val config = JSONObject()
             .put("platform", "android")
-            .put("touchAdapter", "android-reference")
+            .put("touchAdapter", "javascript")
             .put("touchWheelCssMultiplier", -4.5)
             .put("touchDiagnosticsEnabled", false)
             .put("origin", session.origin)
