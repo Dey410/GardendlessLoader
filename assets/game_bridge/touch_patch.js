@@ -13,7 +13,9 @@
   const gpNextBackdropDoubleTapMaxDistance = 24;
   let lastWheelY = null;
   let leftMouseActive = false;
+  let leftMouseMoved = false;
   let leftMouseTarget = null;
+  let pendingLeftMouseRelease = null;
   let twoFingerStartPoint = null;
   let twoFingerTarget = null;
   let twoFingerMoved = false;
@@ -212,11 +214,24 @@
 
   function clearLeftMouseState() {
     leftMouseActive = false;
+    leftMouseMoved = false;
     leftMouseTarget = null;
   }
 
+  function finishPendingLeftMouseRelease() {
+    if (!pendingLeftMouseRelease) {
+      return;
+    }
+    const pending = pendingLeftMouseRelease;
+    pendingLeftMouseRelease = null;
+    cancelAnimationFrame(pending.frame);
+    dispatchMouse(pending.target, "mouseup", pending.point, 0, 1);
+  }
+
   function beginLeftMouse(target, point) {
+    finishPendingLeftMouseRelease();
     leftMouseActive = true;
+    leftMouseMoved = false;
     leftMouseTarget = target;
     dispatchMouse(target, "mousedown", point, 0, 1);
   }
@@ -225,11 +240,32 @@
     if (!leftMouseActive) {
       return;
     }
-    dispatchMouse(leftMouseTarget, "mouseup", point, 0, 1);
+    const target = leftMouseTarget;
+    if (!leftMouseMoved) {
+      dispatchMouse(target, "mouseup", point, 0, 1);
+      clearLeftMouseState();
+      return;
+    }
+
+    dispatchMouse(target, "mousemove", point, 0, 1);
     clearLeftMouseState();
+    const pending = {
+      frame: null,
+      point: point,
+      target: target
+    };
+    pending.frame = requestAnimationFrame(function () {
+      if (pendingLeftMouseRelease !== pending) {
+        return;
+      }
+      pendingLeftMouseRelease = null;
+      dispatchMouse(target, "mouseup", point, 0, 1);
+    });
+    pendingLeftMouseRelease = pending;
   }
 
   function abandonLeftMouse() {
+    finishPendingLeftMouseRelease();
     clearLeftMouseState();
   }
 
@@ -369,6 +405,7 @@
 
     const changedTouch = firstChangedTouch(event);
     const point = changedTouch || averageTouchPoint(event.touches);
+    leftMouseMoved = true;
     dispatchMouse(leftMouseTarget, "mousemove", point, 0, 1);
     event.preventDefault();
     event.stopImmediatePropagation();

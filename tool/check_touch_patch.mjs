@@ -73,6 +73,7 @@ function createTouchEvent(type, {touches, changedTouches}) {
 }
 
 function createTouchHarness({
+  beforeAnimationFrame = null,
   devicePixelRatio = 1,
   hostConfig = {},
   pointTarget = null,
@@ -158,6 +159,9 @@ function createTouchHarness({
       const pending = Array.from(frames.values());
       frames.clear();
       now += 16;
+      if (beforeAnimationFrame) {
+        beforeAnimationFrame();
+      }
       for (const callback of pending) {
         callback(now);
       }
@@ -214,10 +218,11 @@ function createTouchHarness({
   harness.document.dispatchEvent(startEvent);
   harness.document.dispatchEvent(moveEvent);
   harness.document.dispatchEvent(endEvent);
+  harness.flushAnimationFrame();
 
   assert.deepEqual(
     mouseEvents,
-    ['mousedown', 'mousemove', 'mouseup'],
+    ['mousedown', 'mousemove', 'mousemove', 'mouseup'],
     'the shared mapper must not branch back to Android native injection',
   );
   assert.equal(
@@ -304,8 +309,9 @@ function createTouchHarness({
   assert.deepEqual(gameTimeline, [
     'mouse:mousedown:1',
     'mouse:mousemove:1',
+    'mouse:mousemove:1',
     'mouse:mouseup:1',
-  ], 'slow and fast drags must share the exact APK mouse-only sequence');
+  ], 'drag release must synchronize the final Cocos pointer before mouse-up');
 }
 
 {
@@ -383,10 +389,15 @@ function createTouchHarness({
 }
 
 {
-  const harness = createTouchHarness();
   const plantedTiles = [];
   let cocosPointer = {clientX: 0, clientY: 0};
+  let mouseInTile = null;
   let leftPressed = false;
+  const harness = createTouchHarness({
+    beforeAnimationFrame() {
+      mouseInTile = cocosPointer;
+    },
+  });
   harness.canvas.addEventListener('mousemove', (event) => {
     cocosPointer = {clientX: event.clientX, clientY: event.clientY};
   });
@@ -394,11 +405,12 @@ function createTouchHarness({
     if (event.button === 0 && event.buttons === 1) {
       leftPressed = true;
       cocosPointer = {clientX: event.clientX, clientY: event.clientY};
+      mouseInTile = cocosPointer;
     }
   });
   harness.canvas.addEventListener('mouseup', (event) => {
-    if (event.button === 0 && leftPressed) {
-      plantedTiles.push(cocosPointer);
+    if (event.button === 0 && leftPressed && mouseInTile) {
+      plantedTiles.push(mouseInTile);
     }
     leftPressed = false;
   });
@@ -434,13 +446,14 @@ function createTouchHarness({
     touches: [],
     changedTouches: [dragEnd],
   }));
+  harness.flushAnimationFrame();
   assert.deepEqual(
     plantedTiles,
     [
       {clientX: 180, clientY: 90},
       {clientX: 240, clientY: 130},
     ],
-    'slow drag planting must release the held mouse at the final pointer tile',
+    'drag release must wait for Cocos Square.update to resolve mouseInLnC',
   );
 }
 
@@ -481,14 +494,15 @@ function createTouchHarness({
   assert.deepEqual(canvasEvents, [
     {type: 'mousedown', clientX: 60, clientY: 50},
     {type: 'mousemove', clientX: 240, clientY: 130},
-    {type: 'mouseup', clientX: 240, clientY: 130},
-  ], 'the exact APK drag must stay on GameCanvas');
+    {type: 'mousemove', clientX: 240, clientY: 130},
+  ], 'the final pointer synchronization must stay on GameCanvas');
   harness.flushAnimationFrame();
   assert.deepEqual(canvasEvents, [
     {type: 'mousedown', clientX: 60, clientY: 50},
     {type: 'mousemove', clientX: 240, clientY: 130},
+    {type: 'mousemove', clientX: 240, clientY: 130},
     {type: 'mouseup', clientX: 240, clientY: 130},
-  ], 'the exact APK drag must not schedule any replay frames');
+  ], 'the held mouse must release once after Cocos resolves mouseInLnC');
   assert.deepEqual(
     coveringEvents,
     [],
@@ -530,6 +544,7 @@ function createTouchHarness({
 
   assert.deepEqual(canvasEvents, [
     'mousedown',
+    'mousemove',
     'mousemove',
     'mouseup',
   ], 'game gestures must always reach the APK GameCanvas target');
@@ -577,16 +592,17 @@ function createTouchHarness({
   assert.deepEqual(leftEvents, [
     {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
     {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
-    {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
-  ], 'drag release must match the APK supplemental mouse sequence');
+    {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
+  ], 'drag release must keep the mouse held through final pointer sync');
 
   harness.flushAnimationFrame();
   harness.flushAnimationFrame();
   assert.deepEqual(leftEvents, [
     {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
     {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
+    {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
     {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
-  ], 'drag planting must remain independent of animation frames');
+  ], 'drag planting must release exactly once on the next game frame');
   assert.equal(
     syntheticClicks,
     0,
@@ -901,6 +917,7 @@ function createTouchHarness({
     touches: [],
     changedTouches: [unrelated],
   }));
+  harness.flushAnimationFrame();
   assert.deepEqual(
     mouseUps,
     [{clientX: 150, clientY: 90}],
