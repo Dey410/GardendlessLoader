@@ -223,13 +223,16 @@
   }
 
   function releaseLeftMouseAtFinalPoint(target, point, moved) {
+    dispatchMouse(target, "mouseup", point, 0, 1);
     if (!moved) {
-      dispatchMouse(target, "mouseup", point, 0, 1);
       return;
     }
-    dispatchMouse(target, "mousemove", point, 0, 1);
     requestAnimationFrame(function () {
-      dispatchMouse(target, "mouseup", point, 0, 1);
+      dispatchMouse(target, "mousemove", point, 0, 0);
+      requestAnimationFrame(function () {
+        dispatchMouse(target, "mousedown", point, 0, 1);
+        dispatchMouse(target, "mouseup", point, 0, 1);
+      });
     });
   }
 

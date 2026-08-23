@@ -29,7 +29,7 @@
 - On Android, iOS, and HarmonyOS, a one-finger press reaches Cocos as `MOUSE_MOVE` at the current point followed by left-button `MOUSE_DOWN`.
 - On Android, iOS, and HarmonyOS, a one-finger tap ends with left-button `MOUSE_UP`, plants on the current lawn tile, and collects a sun exactly once instead of using a stale pointer position.
 - On Android, iOS, and HarmonyOS, one-finger dragging emits every current-point `MOUSE_MOVE` with the left button held and plants at the final Cocos pointer position.
-- On Android, iOS, and HarmonyOS, drag release repeats the final `MOUSE_MOVE` with the original left button held, waits a complete animation frame, and then emits the gesture's only `MOUSE_UP`; it does not add a second click.
+- On Android, iOS, and HarmonyOS, a moved drag ends with `MOUSE_UP(buttons=1)`, then replays the exact successful manual-tap sequence at the final point: a separate `MOUSE_MOVE(buttons=0)` frame followed by same-frame `MOUSE_DOWN(buttons=1)` and `MOUSE_UP(buttons=1)`; stationary taps are not replayed.
 - A transparent or overlapping DOM element at the release point cannot steal the drag's final `MOUSE_MOVE` or `MOUSE_UP` from `GameCanvas`.
 - On Android, adding a second finger follows the reference APK: it stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.
 - On Android, `ACTION_CANCEL` follows the reference APK and does not synthesize `MOUSE_UP` or clear the left-drag state.

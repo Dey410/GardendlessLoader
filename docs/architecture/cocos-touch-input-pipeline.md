@@ -18,11 +18,14 @@ therefore use the current finger position rather than the previous mouse tile.
 Android, iOS WKWebView, and HarmonyOS ArkWeb all use the shared mapper. It emits
 the leading move immediately, defers the press to the next animation frame, and
 keeps move/up events on the original game canvas even if another DOM element
-covers the release point. When a moved gesture ends, the mapper emits one final
-`MOUSE_MOVE` with the original left button still held, waits one animation
-frame, and then emits the gesture's only `MOUSE_UP`. This prevents an early
-release from reaching the planting path before the lawn has consumed the final
-pointer position. Stationary taps keep their direct down/up path.
+covers the release point. When a moved gesture ends, the mapper finishes the
+drag with the APK-compatible `MOUSE_UP(buttons=1)`, then replays the same event
+sequence as a successful manual tap: after one frame it emits
+`MOUSE_MOVE(buttons=0)`, and after the next frame it emits
+`MOUSE_DOWN(buttons=1)` plus `MOUSE_UP(buttons=1)` in the same batch. This is
+deliberately different from the previous supplemental click, which omitted the
+reset move or split the manual tap's down/up across frames. Stationary taps keep
+their original direct path and are not replayed.
 
 The original game touch is consumed for game gestures, preventing Cocos from
 processing both touch and mouse input. Native form controls and the scoped
