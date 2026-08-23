@@ -7,6 +7,9 @@
   const config = window.__gardendlessHostConfig || {};
   const androidReferenceAdapter =
     config.touchAdapter === "android-reference";
+  const frameSynchronizedJavascript =
+    config.touchAdapter === "javascript" &&
+    (config.platform === "ios" || config.platform === "ohos");
   const diagnosticsEnabled = config.touchDiagnosticsEnabled === true;
   const touchActionStyleId = "gardendless-touch-action";
   const backdropMoveThreshold = 20;
@@ -27,6 +30,12 @@
   let lastBackdropTapPoint = null;
   let suppressNativeCompatibilityMouse = false;
   let suppressNativeCompatibilityMouseUntil = 0;
+  let primaryCanvas = null;
+  let primaryDownFrame = null;
+  let primaryDownDispatched = false;
+  let primaryMoved = false;
+  let pendingPrimaryUpPoint = null;
+  let pendingPrimaryUp = null;
 
   function recordTrace(entry) {
     if (!diagnosticsEnabled) {
@@ -209,9 +218,105 @@
     canvas.dispatchEvent(mouseEvent(type, point, button, buttons));
   }
 
+  function clearPrimaryGestureState() {
+    primaryCanvas = null;
+    primaryDownFrame = null;
+    primaryDownDispatched = false;
+    primaryMoved = false;
+    pendingPrimaryUpPoint = null;
+  }
+
+  function finishPendingPrimaryUp() {
+    if (!pendingPrimaryUp) {
+      return;
+    }
+    const pending = pendingPrimaryUp;
+    pendingPrimaryUp = null;
+    cancelAnimationFrame(pending.frame);
+    dispatchMouse(pending.canvas, "mouseup", pending.point, 0, 1);
+  }
+
+  function cancelJavascriptPrimary() {
+    if (primaryDownFrame !== null) {
+      cancelAnimationFrame(primaryDownFrame);
+    }
+    if (pendingPrimaryUp) {
+      cancelAnimationFrame(pendingPrimaryUp.frame);
+      pendingPrimaryUp = null;
+    }
+    clearPrimaryGestureState();
+  }
+
+  function releaseJavascriptPrimary(point) {
+    if (!primaryCanvas) {
+      return;
+    }
+    if (!primaryDownDispatched) {
+      pendingPrimaryUpPoint = point;
+      return;
+    }
+    const canvas = primaryCanvas;
+    if (!primaryMoved) {
+      dispatchMouse(canvas, "mouseup", point, 0, 1);
+      clearPrimaryGestureState();
+      return;
+    }
+    dispatchMouse(canvas, "mousemove", point, 0, 1);
+    clearPrimaryGestureState();
+    const pending = {
+      canvas: canvas,
+      frame: null,
+      point: point
+    };
+    pending.frame = requestAnimationFrame(function () {
+      if (pendingPrimaryUp !== pending) {
+        return;
+      }
+      pendingPrimaryUp = null;
+      dispatchMouse(canvas, "mouseup", point, 0, 1);
+    });
+    pendingPrimaryUp = pending;
+  }
+
+  function beginJavascriptPrimary(canvas, point) {
+    finishPendingPrimaryUp();
+    cancelJavascriptPrimary();
+    primaryCanvas = canvas;
+    primaryMoved = false;
+    dispatchMouse(canvas, "mousemove", point, 0, 0);
+    primaryDownFrame = requestAnimationFrame(function () {
+      primaryDownFrame = null;
+      if (!primaryCanvas) {
+        return;
+      }
+      dispatchMouse(primaryCanvas, "mousedown", point, 0, 1);
+      primaryDownDispatched = true;
+      if (pendingPrimaryUpPoint) {
+        const upPoint = pendingPrimaryUpPoint;
+        pendingPrimaryUpPoint = null;
+        releaseJavascriptPrimary(upPoint);
+      }
+    });
+  }
+
+  function moveJavascriptPrimary(point) {
+    if (!primaryCanvas) {
+      return;
+    }
+    primaryMoved = true;
+    dispatchMouse(
+      primaryCanvas,
+      "mousemove",
+      point,
+      0,
+      primaryDownDispatched ? 1 : 0
+    );
+  }
+
   function executeCommands(commands) {
     const canvas = gameCanvas();
     if (!canvas) {
+      cancelJavascriptPrimary();
       owner = "failed";
       reportFailure("touch_target_missing");
       return;
@@ -231,12 +336,25 @@
         continue;
       }
       if (command.type === "primaryDown") {
-        dispatchMouse(canvas, "mousedown", command.point, 0, 1);
+        if (frameSynchronizedJavascript) {
+          beginJavascriptPrimary(canvas, command.point);
+        } else {
+          dispatchMouse(canvas, "mousedown", command.point, 0, 1);
+        }
       } else if (command.type === "primaryMove") {
-        dispatchMouse(canvas, "mousemove", command.point, 0, 1);
+        if (frameSynchronizedJavascript) {
+          moveJavascriptPrimary(command.point);
+        } else {
+          dispatchMouse(canvas, "mousemove", command.point, 0, 1);
+        }
       } else if (command.type === "primaryUp") {
-        dispatchMouse(canvas, "mouseup", command.point, 0, 1);
+        if (frameSynchronizedJavascript) {
+          releaseJavascriptPrimary(command.point);
+        } else {
+          dispatchMouse(canvas, "mouseup", command.point, 0, 1);
+        }
       } else if (command.type === "neutralMove") {
+        cancelJavascriptPrimary();
         dispatchMouse(canvas, "mousemove", command.point, 0, 0);
       } else if (command.type === "secondaryDown") {
         dispatchMouse(canvas, "mousedown", command.point, 2, 2);
@@ -266,6 +384,9 @@
       return;
     }
     try {
+      if (phase === "cancel") {
+        cancelJavascriptPrimary();
+      }
       const input = {
         phase: phase,
         points: pointsFrom(event.touches),
@@ -283,6 +404,7 @@
       });
       executeCommands(machine.handle(input));
     } catch (_) {
+      cancelJavascriptPrimary();
       owner = "failed";
       reportFailure("touch_adapter_execution_failed");
     }
@@ -448,6 +570,7 @@
   }, {capture: true, passive: false});
 
   function interrupt() {
+    cancelJavascriptPrimary();
     if (owner === "game" && machine) {
       try {
         executeCommands(machine.handle({

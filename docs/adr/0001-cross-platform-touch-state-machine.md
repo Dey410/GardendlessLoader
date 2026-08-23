@@ -38,7 +38,8 @@ Platform adapters execute the commands according to host capability:
   and touch suppression; a tested Kotlin state module drives one complete
   native primary down/move/up stream plus `AXIS_VSCROLL` events.
 - iOS and OpenHarmony execute the same command types as JavaScript mouse and
-  wheel events.
+  wheel events, with animation-frame boundaries around primary down and dragged
+  primary up so Cocos samples the intended pointer coordinates first.
 
 Platform-specific scroll constants are allowed only to match the same in-game
 direction and distance. They do not change gesture classification.

@@ -27,6 +27,7 @@
 ## Touch input
 
 - On Android, each one-finger gesture reaches `GameCanvas` through one uninterrupted native `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP` stream with a stable `downTime`; JavaScript emits no duplicate primary event.
+- Android keeps the WebView gesture routed whenever it injects a native mouse command, even if the consumed original touch reports `handled=false`.
 - Two-tap planting works as two independent native clicks: the first tap selects the plant card and the second tap plants on the chosen lawn tile immediately.
 - Drag planting starts with native `MOUSE_DOWN` on the plant card, emits every current-point native `MOUSE_MOVE(buttons=1)`, and plants on native `MOUSE_UP` at the release tile without another tap.
 - A slow drag, long hold, and fast flick use `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP`; release occurs exactly once with no second down, synthetic `click`, delayed replay, or old-path fallback.
@@ -40,8 +41,9 @@
 - Real mouse and trackpad input remain native and are never mapped a second time; stylus input follows the one-finger path.
 - Removing `GameCanvas` or withholding the state-machine asset consumes game touches, emits no mouse events, records the failure, and never guesses another target.
 - With touch diagnostics enabled, the bounded trace contains input coordinates, owners, transitions, and command names, but no DOM text, form value, storage, or game data.
-- Repeat the complete touch-input matrix above on iOS WKWebView before release.
-- Repeat the complete touch-input matrix above on OpenHarmony ArkWeb before release.
+- On iOS WKWebView, confirm a fast first tap selects a plant card, the second tap plants on the chosen lawn tile, and a card-to-lawn drag plants on release without another tap.
+- Repeat the same two-step and drag-planting checks on OpenHarmony ArkWeb; both JavaScript adapters must sample the positioning/final move on an animation frame before consuming down/up.
+- Repeat the complete remaining touch-input matrix above on iOS WKWebView and OpenHarmony ArkWeb before release.
 
 ## Automatic sun collection
 

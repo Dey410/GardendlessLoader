@@ -21,7 +21,10 @@ disabled. Android therefore keeps one uninterrupted native mouse stream:
 with Android `MotionEvent`s, while `touch_input_adapter.js` suppresses the
 original game touch stream and does not duplicate primary mouse events. iOS
 WKWebView and OpenHarmony ArkWeb execute the same game command types with
-JavaScript mouse and wheel events.
+JavaScript mouse and wheel events. Their primary adapter first emits a neutral
+positioning move, waits one animation frame before mouse down, and defers a
+dragged mouse up by one frame after the final move. This lets Cocos sample the
+new pointer position before it consumes selection or planting input.
 
 The DOM adapter assigns each gesture to one owner at its first touch. Inputs,
 text areas, selects, editable content, and the explicit GP-Next selector list

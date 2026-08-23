@@ -30,7 +30,9 @@ class MouseGameWebView @JvmOverloads constructor(
         val points = List(event.pointerCount) { index ->
             NativeTouchPoint(event.getX(index), event.getY(index))
         }
-        for (command in touchStateMachine.handle(phase, points)) {
+        val commands = touchStateMachine.handle(phase, points)
+        val injectedMouseEvent = commands.isNotEmpty()
+        for (command in commands) {
             when (command) {
                 is NativeTouchCommand.Down -> injectMouseButton(
                     action = MotionEvent.ACTION_DOWN,
@@ -44,7 +46,7 @@ class MouseGameWebView @JvmOverloads constructor(
                 is NativeTouchCommand.Scroll -> injectMouseScroll(command)
             }
         }
-        return touchHandled
+        return touchHandled || injectedMouseEvent
     }
 
     private fun injectMouseButton(
