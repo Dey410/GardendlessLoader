@@ -26,9 +26,9 @@
 
 ## Touch input
 
-- On Android, a one-finger press immediately reaches `GameCanvas` as the reference JavaScript `MOUSE_DOWN`, with no leading positioning move or RAF delay.
-- On Android, a one-finger tap ends with one reference JavaScript `MOUSE_UP`, plants on the current lawn tile, and collects a sun exactly once.
-- On Android, one-finger dragging emits every current-point native `MOUSE_MOVE(buttons=1)` between that JavaScript down/up pair and plants at the release position without another tap.
+- On Android, each one-finger gesture reaches `GameCanvas` through one uninterrupted native `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP` stream with a stable `downTime`; JavaScript emits no duplicate primary event.
+- Two-tap planting works as two independent native clicks: the first tap selects the plant card and the second tap plants on the chosen lawn tile immediately.
+- Drag planting starts with native `MOUSE_DOWN` on the plant card, emits every current-point native `MOUSE_MOVE(buttons=1)`, and plants on native `MOUSE_UP` at the release tile without another tap.
 - A slow drag, long hold, and fast flick use `MOUSE_DOWN → MOUSE_MOVE* → MOUSE_UP`; release occurs exactly once with no second down, synthetic `click`, delayed replay, or old-path fallback.
 - Every game mouse event targets `GameCanvas`, even if the touch starts on or ends over another non-native DOM element; native form and GP-Next controls remain excluded before mapping.
 - On Android, adding a second finger follows the reference APK: it stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.

@@ -13,6 +13,7 @@ class MouseGameWebView @JvmOverloads constructor(
 ) : WebView(context, attrs) {
     var referenceTouchAdapterEnabled = true
     private val touchStateMachine = ReferenceNativeTouchStateMachine()
+    private var mouseDownTime = 0L
 
     init {
         setLongClickable(false)
@@ -31,11 +32,38 @@ class MouseGameWebView @JvmOverloads constructor(
         }
         for (command in touchStateMachine.handle(phase, points)) {
             when (command) {
+                is NativeTouchCommand.Down -> injectMouseButton(
+                    action = MotionEvent.ACTION_DOWN,
+                    point = command.point,
+                )
                 is NativeTouchCommand.Move -> injectMouseMove(command)
+                is NativeTouchCommand.Up -> injectMouseButton(
+                    action = MotionEvent.ACTION_UP,
+                    point = command.point,
+                )
                 is NativeTouchCommand.Scroll -> injectMouseScroll(command)
             }
         }
         return touchHandled
+    }
+
+    private fun injectMouseButton(
+        action: Int,
+        point: NativeTouchPoint,
+    ) {
+        val event = obtainMouseEvent(
+            action = action,
+            point = point,
+            buttonState = MotionEvent.BUTTON_PRIMARY,
+        )
+        try {
+            super.dispatchTouchEvent(event)
+        } finally {
+            event.recycle()
+            if (action == MotionEvent.ACTION_UP) {
+                mouseDownTime = 0L
+            }
+        }
     }
 
     private fun injectMouseMove(command: NativeTouchCommand.Move) {
@@ -85,8 +113,12 @@ class MouseGameWebView @JvmOverloads constructor(
             },
         )
         val now = SystemClock.uptimeMillis()
+        if (action == MotionEvent.ACTION_DOWN) {
+            mouseDownTime = now
+        }
+        val gestureDownTime = mouseDownTime.takeIf { it > 0L } ?: now
         return MotionEvent.obtain(
-            now,
+            gestureDownTime,
             now,
             action,
             1,

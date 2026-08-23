@@ -34,7 +34,7 @@ void main() {
     expect(
       activity,
       contains('.put("touchAdapter", "android-reference")'),
-      reason: 'Android sessions must select the reference hybrid adapter',
+      reason: 'Android sessions must select the reference native adapter',
     );
     expect(
       activity,
@@ -44,7 +44,7 @@ void main() {
     expect(
       touchAdapter,
       contains('android-reference'),
-      reason: 'the shared adapter must expose the reference Android command split',
+      reason: 'the shared adapter must suppress duplicate Android JS primary input',
     );
     expect(mouseWebView, contains('class MouseGameWebView'));
     expect(mouseWebView, contains('var referenceTouchAdapterEnabled = true'));
@@ -53,12 +53,19 @@ void main() {
     expect(mouseWebView, contains('MotionEvent.TOOL_TYPE_MOUSE'));
     expect(mouseWebView, contains('MotionEvent.ACTION_DOWN'));
     expect(mouseWebView, contains('MotionEvent.ACTION_MOVE'));
+    expect(mouseWebView, contains('MotionEvent.ACTION_UP'));
     expect(mouseWebView, contains('MotionEvent.ACTION_POINTER_DOWN'));
+    expect(mouseWebView, contains('MotionEvent.BUTTON_PRIMARY'));
     expect(mouseWebView, contains('MotionEvent.ACTION_SCROLL'));
     expect(mouseWebView, contains('MotionEvent.AXIS_VSCROLL'));
     expect(mouseWebView, contains('dispatchGenericMotionEvent'));
     expect(mouseWebView, contains('SystemClock.uptimeMillis()'));
-    expect(mouseWebView, isNot(contains('private var mouseDownTime')));
+    expect(mouseWebView, contains('private var mouseDownTime = 0L'));
+    expect(
+      mouseWebView,
+      contains('val gestureDownTime = mouseDownTime.takeIf'),
+      reason: 'Chromium must receive one downTime for the complete gesture',
+    );
     expect(
       mouseWebView,
       isNot(contains('System.currentTimeMillis()')),

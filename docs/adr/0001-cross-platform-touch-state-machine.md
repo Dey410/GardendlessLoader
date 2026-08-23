@@ -10,11 +10,13 @@ Accepted
 
 ## Context
 
-The Android reference APK combines JavaScript mouse down/up events with native
-WebView mouse moves and generic scroll events. Copying that implementation to
-iOS WKWebView and OpenHarmony ArkWeb is not possible because their public input
-injection capabilities differ. The Loader must also preserve native form and
-GP-Next interaction instead of routing every WebView touch to the game.
+The Android reference APK disables JavaScript single-finger mouse synthesis and
+uses native WebView mouse down/move/up plus generic scroll events. Its
+JavaScript extension still suppresses original game touches and synthesizes the
+secondary click. Copying that implementation to iOS WKWebView and OpenHarmony
+ArkWeb is not possible because their public input injection capabilities
+differ. The Loader must also preserve native form and GP-Next interaction
+instead of routing every WebView touch to the game.
 
 The compatibility target is therefore the event sequence observed by Cocos,
 including gesture transitions, coordinates, button state, right-click
@@ -32,9 +34,9 @@ diagnostic traces. It runs the shared JavaScript state module on all platforms.
 
 Platform adapters execute the commands according to host capability:
 
-- Android keeps the reference hybrid: JavaScript targets down/up/right-click at
-  `GameCanvas`; a tested Kotlin state module drives native mouse moves and
-  `AXIS_VSCROLL` events.
+- Android keeps the reference division: JavaScript owns right-click synthesis
+  and touch suppression; a tested Kotlin state module drives one complete
+  native primary down/move/up stream plus `AXIS_VSCROLL` events.
 - iOS and OpenHarmony execute the same command types as JavaScript mouse and
   wheel events.
 

@@ -224,7 +224,9 @@
         y: command.point && command.point.clientY
       });
       if (androidReferenceAdapter &&
-          (command.type === "primaryMove" ||
+          (command.type === "primaryDown" ||
+           command.type === "primaryMove" ||
+           command.type === "primaryUp" ||
            command.type === "neutralMove" || command.type === "scroll")) {
         continue;
       }

@@ -355,8 +355,8 @@ function createTouchHarness({
 
   assert.deepEqual(
     mouseEvents,
-    ['mousedown', 'mouseup'],
-    'Android must retain the reference APK JavaScript down/up pair',
+    [],
+    'Android single-touch input must stay on one complete native mouse stream',
   );
   assert.equal(
     leakedTouches,

@@ -15,12 +15,13 @@ MOUSE_DOWN(point, buttons=1)
 MOUSE_UP(point, buttons=1)
 ```
 
-The reference APK uses JavaScript for primary down/up and Android mouse
-`MotionEvent`s for moves. Android keeps that split: `touch_input_adapter.js`
-targets JavaScript down/up at `GameCanvas`, while `MouseGameWebView` executes
-only the native move and two-finger scroll commands produced by its tested
-reference adapter. iOS WKWebView and OpenHarmony ArkWeb execute the same command
-types with JavaScript mouse and wheel events.
+The reference APK's JavaScript extension has its single-finger mouse synthesis
+disabled. Android therefore keeps one uninterrupted native mouse stream:
+`MouseGameWebView` executes primary down/move/up and two-finger scroll commands
+with Android `MotionEvent`s, while `touch_input_adapter.js` suppresses the
+original game touch stream and does not duplicate primary mouse events. iOS
+WKWebView and OpenHarmony ArkWeb execute the same game command types with
+JavaScript mouse and wheel events.
 
 The DOM adapter assigns each gesture to one owner at its first touch. Inputs,
 text areas, selects, editable content, and the explicit GP-Next selector list

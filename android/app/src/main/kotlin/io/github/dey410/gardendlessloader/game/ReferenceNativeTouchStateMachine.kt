@@ -15,9 +15,17 @@ internal enum class NativeTouchPhase {
 }
 
 internal sealed interface NativeTouchCommand {
+    data class Down(
+        val point: NativeTouchPoint,
+    ) : NativeTouchCommand
+
     data class Move(
         val point: NativeTouchPoint,
         val buttons: Int,
+    ) : NativeTouchCommand
+
+    data class Up(
+        val point: NativeTouchPoint,
     ) : NativeTouchCommand
 
     data class Scroll(
@@ -60,14 +68,26 @@ internal class ReferenceNativeTouchStateMachine {
             NativeTouchPhase.DOWN -> {
                 reset()
                 primaryActive = points.size == 1
-                emptyList()
+                if (primaryActive) {
+                    listOf(NativeTouchCommand.Down(points.single()))
+                } else {
+                    emptyList()
+                }
             }
 
             NativeTouchPhase.MOVE -> handleMove(points)
             NativeTouchPhase.POINTER_DOWN -> handlePointerDown(points)
-            NativeTouchPhase.UP,
-            NativeTouchPhase.POINTER_UP,
-            -> {
+            NativeTouchPhase.UP -> {
+                val commands = if (primaryActive && points.size == 1) {
+                    listOf(NativeTouchCommand.Up(points.single()))
+                } else {
+                    emptyList()
+                }
+                reset()
+                commands
+            }
+
+            NativeTouchPhase.POINTER_UP -> {
                 reset()
                 emptyList()
             }

@@ -6,17 +6,47 @@ import org.junit.Test
 
 class ReferenceNativeTouchStateMachineTest {
     @Test
-    fun `single finger uses JavaScript down and up with native moves only`() {
+    fun `drag planting uses one complete native stream through release point`() {
         val machine = ReferenceNativeTouchStateMachine()
         val start = NativeTouchPoint(40f, 30f)
         val moved = NativeTouchPoint(180f, 90f)
 
-        assertTrue(machine.handle(NativeTouchPhase.DOWN, listOf(start)).isEmpty())
+        assertEquals(
+            listOf(NativeTouchCommand.Down(start)),
+            machine.handle(NativeTouchPhase.DOWN, listOf(start)),
+        )
         assertEquals(
             listOf(NativeTouchCommand.Move(moved, buttons = 1)),
             machine.handle(NativeTouchPhase.MOVE, listOf(moved)),
         )
-        assertTrue(machine.handle(NativeTouchPhase.UP, emptyList()).isEmpty())
+        assertEquals(
+            listOf(NativeTouchCommand.Up(moved)),
+            machine.handle(NativeTouchPhase.UP, listOf(moved)),
+        )
+    }
+
+    @Test
+    fun `two tap planting emits a complete native click for both taps`() {
+        val machine = ReferenceNativeTouchStateMachine()
+        val seedCard = NativeTouchPoint(40f, 30f)
+        val lawnTile = NativeTouchPoint(180f, 90f)
+
+        assertEquals(
+            listOf(NativeTouchCommand.Down(seedCard)),
+            machine.handle(NativeTouchPhase.DOWN, listOf(seedCard)),
+        )
+        assertEquals(
+            listOf(NativeTouchCommand.Up(seedCard)),
+            machine.handle(NativeTouchPhase.UP, listOf(seedCard)),
+        )
+        assertEquals(
+            listOf(NativeTouchCommand.Down(lawnTile)),
+            machine.handle(NativeTouchPhase.DOWN, listOf(lawnTile)),
+        )
+        assertEquals(
+            listOf(NativeTouchCommand.Up(lawnTile)),
+            machine.handle(NativeTouchPhase.UP, listOf(lawnTile)),
+        )
     }
 
     @Test
@@ -104,7 +134,10 @@ class ReferenceNativeTouchStateMachineTest {
             ).isEmpty(),
         )
         assertTrue(machine.handle(NativeTouchPhase.UP, emptyList()).isEmpty())
-        assertTrue(machine.handle(NativeTouchPhase.DOWN, listOf(first)).isEmpty())
+        assertEquals(
+            listOf(NativeTouchCommand.Down(first)),
+            machine.handle(NativeTouchPhase.DOWN, listOf(first)),
+        )
         assertEquals(
             listOf(
                 NativeTouchCommand.Move(
