@@ -245,9 +245,10 @@ final class GameHostController: UIViewController,
     ]
     let requested = arguments["event"] as? String ?? "javascript_console"
     let isAudio = audioEvents.contains(requested)
-    let event = isAudio || javascriptEvents.contains(requested)
+    let isTouchTrace = requested == "touch_input_trace"
+    let event = isAudio || isTouchTrace || javascriptEvents.contains(requested)
       ? requested : "javascript_console"
-    let context = isAudio
+    let context = isAudio || isTouchTrace
       ? arguments["context"] as? [String: Any] ?? [:]
       : [
         "page": arguments["page"] as? String ?? "",
@@ -257,15 +258,17 @@ final class GameHostController: UIViewController,
     logStore.emit([
       "source": "javascript",
       "level": arguments["level"] as? String ?? "ERROR",
-      "category": isAudio ? "game.audio" : "game.javascript",
+      "category": isAudio ? "game.audio"
+        : isTouchTrace ? "game.input" : "game.javascript",
       "event": event,
       "outcome": isAudio
-        ? arguments["outcome"] as? String ?? "observed" : "failed",
+        ? arguments["outcome"] as? String ?? "observed"
+        : isTouchTrace ? "observed" : "failed",
       "code": event.contains("failed") ? event : NSNull(),
       "message": arguments["message"] as? String ?? "",
       "gameSessionId": session.sessionId,
       "context": context,
-      "error": isAudio ? NSNull() : [
+      "error": isAudio || isTouchTrace ? NSNull() : [
         "type": "JavaScriptError",
         "message": arguments["message"] as? String ?? "",
         "stackTrace": arguments["stack"] as? String ?? "",

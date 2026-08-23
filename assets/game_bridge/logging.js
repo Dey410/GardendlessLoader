@@ -41,6 +41,8 @@
     }).catch(function () {});
   }
 
+  window.__gardendlessLogEvent = emit;
+
   window.addEventListener("error", function (event) {
     emit("javascript_uncaught_error", "ERROR", event.message, {
       stack: event.error && event.error.stack,

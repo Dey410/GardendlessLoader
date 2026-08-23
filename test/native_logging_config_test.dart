@@ -86,6 +86,22 @@ void main() {
     expect(sharedScript, contains('javascript_console'));
   });
 
+  test('all game hosts preserve touch input traces as observations', () {
+    final sources = <String>[
+      File(
+        'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameBridge.kt',
+      ).readAsStringSync(),
+      File('ios/Runner/GameHostController.swift').readAsStringSync(),
+      File('ohos/entry/src/main/ets/game/GameBridge.ets').readAsStringSync(),
+    ];
+
+    for (final source in sources) {
+      expect(source, contains('touch_input_trace'));
+      expect(source, contains('game.input'));
+      expect(source, contains('observed'));
+    }
+  });
+
   test('all native resource handlers log stable failure codes', () {
     final sources = <String>[
       File(
