@@ -29,10 +29,10 @@
 - On Android, iOS, and HarmonyOS, a one-finger press reaches Cocos as `MOUSE_MOVE` at the current point followed by left-button `MOUSE_DOWN`.
 - On Android, iOS, and HarmonyOS, a one-finger tap ends with left-button `MOUSE_UP`, plants on the current lawn tile, and collects a sun exactly once instead of using a stale pointer position.
 - On Android, iOS, and HarmonyOS, one-finger dragging emits every current-point `MOUSE_MOVE` with the left button held and plants at the final Cocos pointer position.
-- On shared-mapped Android GP-Next, iOS, and HarmonyOS sessions, drag release adds exactly one left click at the final point, with press and release separated by a complete animation frame; stationary taps do not add it.
-- On shared-mapped sessions, a transparent or overlapping DOM element at the release point cannot steal the drag's final `MOUSE_MOVE` or `MOUSE_UP` from `GameCanvas`.
+- On Android, iOS, and HarmonyOS, drag release repeats the final `MOUSE_MOVE` with the original left button held, waits a complete animation frame, and then emits the gesture's only `MOUSE_UP`; it does not add a second click.
+- A transparent or overlapping DOM element at the release point cannot steal the drag's final `MOUSE_MOVE` or `MOUSE_UP` from `GameCanvas`.
 - On Android, adding a second finger follows the reference APK: it stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.
-- On Android, `ACTION_CANCEL` follows the reference APK and does not synthesize `MOUSE_UP` or clear its native drag state.
+- On Android, `ACTION_CANCEL` follows the reference APK and does not synthesize `MOUSE_UP` or clear the left-drag state.
 - On Android, two-finger center movement of at most 20 physical pixels vertically remains a right-click candidate, regardless of horizontal movement.
 - On Android, a two-finger gesture whose center exceeds 20 physical pixels vertically scrolls at the configured `-4.5` multiplier and does not emit a right click.
 - On Android, a stationary two-finger gesture emits one right click to `GameCanvas` after both fingers are lifted, even when held longer than 250 ms.

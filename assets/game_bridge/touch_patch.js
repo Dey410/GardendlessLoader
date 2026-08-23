@@ -222,13 +222,14 @@
     target.dispatchEvent(mouseEvent(type, point, button, buttons));
   }
 
-  function schedulePlantingClick(target, point) {
+  function releaseLeftMouseAtFinalPoint(target, point, moved) {
+    if (!moved) {
+      dispatchMouse(target, "mouseup", point, 0, 1);
+      return;
+    }
+    dispatchMouse(target, "mousemove", point, 0, 1);
     requestAnimationFrame(function () {
-      dispatchMouse(target, "mousemove", point, 0, 0);
-      dispatchMouse(target, "mousedown", point, 0, 1);
-      requestAnimationFrame(function () {
-        dispatchMouse(target, "mouseup", point, 0, 0);
-      });
+      dispatchMouse(target, "mouseup", point, 0, 1);
     });
   }
 
@@ -265,11 +266,11 @@
       leftMouseDownDispatched = true;
       if (!leftMouseActive) {
         const upPoint = pendingLeftMouseUpPoint || leftMouseDownPoint;
-        const shouldAddPlantingClick = leftMouseMoved;
-        dispatchMouse(leftMouseTarget, "mouseup", upPoint, 0, 1);
-        if (shouldAddPlantingClick) {
-          schedulePlantingClick(leftMouseTarget, upPoint);
-        }
+        releaseLeftMouseAtFinalPoint(
+          leftMouseTarget,
+          upPoint,
+          leftMouseMoved
+        );
         clearLeftMouseState();
       }
     });
@@ -289,11 +290,7 @@
       return;
     }
     const target = leftMouseTarget;
-    const shouldAddPlantingClick = leftMouseMoved;
-    dispatchMouse(target, "mouseup", point, 0, 1);
-    if (shouldAddPlantingClick) {
-      schedulePlantingClick(target, point);
-    }
+    releaseLeftMouseAtFinalPoint(target, point, leftMouseMoved);
     clearLeftMouseState();
   }
 

@@ -15,19 +15,14 @@ The leading move is required because the game updates its global mouse position
 from `MOUSE_MOVE`. Lawn selection and the later `MOUSE_UP` planting path must
 therefore use the current finger position rather than the previous mouse tile.
 
-For standard resources, Android produces the sequence with mouse-source
-`MotionEvent` objects in `MouseGameWebView`. The original touch is delivered
-first so the document-start bridge can classify native form targets;
-single-touch JavaScript mouse synthesis is disabled. Android GP-Next resources,
-iOS WKWebView, and HarmonyOS ArkWeb use the shared mapper. It emits the leading
-move immediately, defers the press to the next animation frame, and keeps
-move/up events on the original game canvas even if another DOM element covers
-the release point. After a moved gesture releases, the shared mapper waits one
-animation frame, emits `MOUSE_MOVE` and `MOUSE_DOWN` at the final point, then
-waits through another animation frame before `MOUSE_UP`. The game therefore
-observes the planting click as held input for a complete frame. It replaces the
-extra tap otherwise required on those WebViews; stationary taps do not receive
-it.
+Android, iOS WKWebView, and HarmonyOS ArkWeb all use the shared mapper. It emits
+the leading move immediately, defers the press to the next animation frame, and
+keeps move/up events on the original game canvas even if another DOM element
+covers the release point. When a moved gesture ends, the mapper emits one final
+`MOUSE_MOVE` with the original left button still held, waits one animation
+frame, and then emits the gesture's only `MOUSE_UP`. This prevents an early
+release from reaching the planting path before the lawn has consumed the final
+pointer position. Stationary taps keep their direct down/up path.
 
 The original game touch is consumed for game gestures, preventing Cocos from
 processing both touch and mouse input. Native form controls and the scoped

@@ -26,12 +26,12 @@ void main() {
     expect(activity, contains('webView = MouseGameWebView(this).apply'));
     expect(
       activity,
-      contains('nativeSingleTouchMouseEnabled = !session.hasGpNext'),
+      contains('nativeSingleTouchMouseEnabled = false'),
     );
     expect(
       activity,
-      contains('.put("nativeSingleTouchMouse", !session.hasGpNext)'),
-      reason: 'GP-Next Android sessions must retain working shared touch input',
+      contains('.put("nativeSingleTouchMouse", false)'),
+      reason: 'all Android sessions must use the shared cross-platform mapper',
     );
     expect(
       activity,

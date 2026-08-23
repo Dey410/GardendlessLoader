@@ -446,6 +446,12 @@ function createTouchHarness({
   harness.flushAnimationFrame();
   assert.deepEqual(
     plantedTiles,
+    [{clientX: 180, clientY: 90}],
+    'drag release must remain held while Cocos consumes the final position',
+  );
+  harness.flushAnimationFrame();
+  assert.deepEqual(
+    plantedTiles,
     [
       {clientX: 180, clientY: 90},
       {clientX: 240, clientY: 130},
@@ -492,8 +498,16 @@ function createTouchHarness({
     {type: 'mousemove', clientX: 60, clientY: 50},
     {type: 'mousedown', clientX: 60, clientY: 50},
     {type: 'mousemove', clientX: 240, clientY: 130},
+    {type: 'mousemove', clientX: 240, clientY: 130},
+  ], 'drag release must hold the final canvas position for one game frame');
+  harness.flushAnimationFrame();
+  assert.deepEqual(canvasEvents, [
+    {type: 'mousemove', clientX: 60, clientY: 50},
+    {type: 'mousedown', clientX: 60, clientY: 50},
+    {type: 'mousemove', clientX: 240, clientY: 130},
+    {type: 'mousemove', clientX: 240, clientY: 130},
     {type: 'mouseup', clientX: 240, clientY: 130},
-  ], 'a drag must release on the pressed game canvas at the final coordinates');
+  ], 'a drag must release once on the pressed canvas after the held frame');
   assert.deepEqual(
     coveringEvents,
     [],
@@ -535,29 +549,17 @@ function createTouchHarness({
     {type: 'mousemove', buttons: 0, clientX: 70, clientY: 60},
     {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
     {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
-    {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
-  ], 'drag release must first finish the held left button');
+    {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
+  ], 'drag release must keep the original left press held at the final point');
 
   harness.flushAnimationFrame();
   assert.deepEqual(leftEvents, [
     {type: 'mousemove', buttons: 0, clientX: 70, clientY: 60},
     {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
     {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
-    {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
-    {type: 'mousemove', buttons: 0, clientX: 230, clientY: 140},
-    {type: 'mousedown', buttons: 1, clientX: 230, clientY: 140},
-  ], 'the planting click must stay held for a complete Cocos frame');
-
-  harness.flushAnimationFrame();
-  assert.deepEqual(leftEvents, [
-    {type: 'mousemove', buttons: 0, clientX: 70, clientY: 60},
-    {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
     {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
     {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
-    {type: 'mousemove', buttons: 0, clientX: 230, clientY: 140},
-    {type: 'mousedown', buttons: 1, clientX: 230, clientY: 140},
-    {type: 'mouseup', buttons: 0, clientX: 230, clientY: 140},
-  ], 'drag release must finish one cross-frame click at the planting point');
+  ], 'drag release must emit one mouse-up after the final held frame');
 }
 
 {
@@ -867,6 +869,12 @@ function createTouchHarness({
     touches: [],
     changedTouches: [unrelated],
   }));
+  assert.deepEqual(
+    mouseUps,
+    [],
+    'the final pointer position must remain held for one Cocos frame',
+  );
+  harness.flushAnimationFrame();
   assert.deepEqual(
     mouseUps,
     [{clientX: 150, clientY: 90}],
