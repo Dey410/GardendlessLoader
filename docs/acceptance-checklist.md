@@ -14,6 +14,9 @@
 - The entry URL includes `?generation=<activationGeneration>` while the platform origin remains stable.
 - The in-game export button opens a save-location picker and writes a `.json` save file.
 - The exported `.json` save file can be imported back by the game.
+- A GP-Next ZIP with root `pack.json` is stored unchanged, while a ZIP whose complete meaningful payload is inside one wrapper directory is stored with that directory removed.
+- Wrapped GP-Next normalization ignores `.DS_Store` and `__MACOSX`, never changes the selected source file, and leaves an existing installed pack unchanged when validation fails or replacement is declined.
+- A GP-Next ZIP with multiple wrapper candidates, meaningful files outside the wrapper, deeper nesting, unsafe paths, symbolic links, or normalized path collisions is rejected.
 - iPad/iOS export uses the document picker instead of a share sheet.
 - Android and HarmonyOS export use a document save picker instead of silently doing nothing.
 - Web export uses the browser download flow.

@@ -89,6 +89,8 @@ GardendlessLoader/
 
 At rest, only the active slot contains game files. During an update, at most one copy of the old resources and one candidate copy are retained. The manifest switches atomically only after the candidate passes validation; the old slot is then cleaned. Because `gp-next` is outside both slots, updating game resources does not remove imported patches or Mods.
 
+A GP-Next ZIP pack may place `pack.json` directly at the archive root or inside exactly one top-level wrapper directory. For the wrapped form, the Loader strips that one directory from its internal copy and ignores `.DS_Store` and `__MACOSX` metadata; the selected source file is not modified. Archives with multiple candidates, unrelated files outside the wrapper, or deeper nesting are rejected.
+
 ## Current Status
 
 | Capability | Android | iOS | HarmonyOS / OpenHarmony |
