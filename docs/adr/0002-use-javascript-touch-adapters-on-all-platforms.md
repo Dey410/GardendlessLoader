@@ -38,13 +38,13 @@ Primary input uses the same frame-synchronized sequence on all three platforms:
 4. After a final drag move, wait one animation frame before the original
    `mouseup`.
 5. For a gesture moved more than 20 physical pixels, wait for both two
-   animation-frame boundaries and 100 ms after the original `mouseup`, then
+   animation-frame boundaries and 50 ms after the original `mouseup`, then
    send one `mousedown`/`mouseup` pair at the release tile. The time condition
-   prevents a 60/120 Hz WebView from outrunning a 30 Hz Cocos click guard.
-   PvZGE 0.13.0 plants from lawn `mousedown`, not from `mouseup`. Sub-threshold
-   finger jitter remains a single click. The final release point participates
-   in this threshold even when the WebView coalesces all intermediate
-   `touchmove` events.
+   covers the validated 60 Hz WebView / 30 Hz Cocos model; higher refresh-rate
+   ratios require device acceptance. PvZGE 0.13.0 plants from lawn `mousedown`,
+   not from `mouseup`. Sub-threshold finger jitter remains a single click. The
+   final release point participates in this threshold even when the WebView
+   coalesces all intermediate `touchmove` events.
 
 A fast tap that ends before the delayed down completes its down/up pair after
 the positioning boundaries. Adding a second finger or cancelling the touch

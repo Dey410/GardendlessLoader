@@ -22,11 +22,12 @@ the original mouse up after the final positioning move. Smaller motion remains
 a single tap, so normal finger jitter cannot create a duplicate click. PvZGE
 0.13.0 places a selected plant only from
 `LnC.onMouseDown`; `LnC.onMouseUp` does not place it. After the original mouse
-up, the adapter waits for at least two animation-frame boundaries and 100 ms
+up, the adapter waits for at least two animation-frame boundaries and 50 ms
 before completing one down/up pair at the release tile. The elapsed-time guard
-lets two Cocos `lateUpdate` ticks clear `UI.MouseClickCoolingDown` even when a
-high-refresh WebView presents frames faster than the game loop. This is the
-game-visible equivalent of
+lets two Cocos `lateUpdate` ticks clear `UI.MouseClickCoolingDown` in the
+validated 60 Hz WebView / 30 Hz game-loop model. Higher display-to-game refresh
+ratios retain a narrower timing margin and require device acceptance. This is
+the game-visible equivalent of
 selecting the card and clicking the target tile, without asking the user for a
 second physical tap. Both intermediate moves and the final release coordinate
 participate in the physical-distance test, so a WebView-coalesced fast drag

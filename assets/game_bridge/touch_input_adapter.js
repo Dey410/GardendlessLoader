@@ -12,7 +12,7 @@
   const backdropTapMaxDuration = 250;
   const backdropDoubleTapMaxDelay = 300;
   const backdropDoubleTapMaxDistance = 24;
-  const dragCommitMinimumDelayMilliseconds = 100;
+  const dragCommitMinimumDelayMilliseconds = 50;
   const dragCommitMinimumFrames = 2;
   const wheelCssMultiplier = Number.isFinite(config.touchWheelCssMultiplier)
     ? config.touchWheelCssMultiplier

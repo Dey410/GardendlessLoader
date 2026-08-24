@@ -33,6 +33,11 @@ assert.doesNotMatch(
   /android-reference/,
   'the shared adapter must not retain an Android-only execution branch',
 );
+assert.match(
+  touchAdapterSource,
+  /dragCommitMinimumDelayMilliseconds = 50;/,
+  'drag placement must use the accepted 50 ms minimum release delay',
+);
 
 class TestMouseEvent extends Event {
   constructor(type, options = {}) {
@@ -419,7 +424,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
   );
 
   const mixedRateHarness = createTouchHarness({
-    animationFrameMilliseconds: 8,
+    animationFrameMilliseconds: 16,
     hostConfig: {platform, touchAdapter: 'javascript'},
   });
   const mixedRateGame = attachPvzGePlacementModel(mixedRateHarness, {
@@ -443,8 +448,8 @@ for (const platform of ['android', 'ios', 'ohos']) {
   flushPvzGeFrame(mixedRateHarness, mixedRateGame);
   dispatchTouchEnd(mixedRateHarness, mixedRateEnd);
   for (let browserFrame = 1; browserFrame <= 20; browserFrame += 1) {
-    // Model a 120 Hz WebView whose Cocos game loop updates at 30 Hz.
-    if (browserFrame % 4 === 0) {
+    // Model a 60 Hz WebView whose Cocos game loop updates at 30 Hz.
+    if (browserFrame % 2 === 0) {
       mixedRateGame.scheduleGameFrame();
     }
     mixedRateHarness.flushAnimationFrame();
