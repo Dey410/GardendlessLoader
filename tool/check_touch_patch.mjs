@@ -100,6 +100,7 @@ function createTouchEvent(type, {touches, changedTouches}) {
 }
 
 function createTouchHarness({
+  animationFrameMilliseconds = 16,
   canvasAvailable = true,
   devicePixelRatio = 1,
   hostConfig = {},
@@ -203,7 +204,7 @@ function createTouchHarness({
     flushAnimationFrame() {
       const pending = Array.from(frames.values());
       frames.clear();
-      now += 16;
+      now += animationFrameMilliseconds;
       for (const callback of pending) {
         callback(now);
       }
@@ -261,6 +262,14 @@ function attachPvzGePlacementModel(harness, {seedCard, lawnTiles}) {
         mouseInLnC.clientY === event.clientY) {
       planted.push(mouseInLnC);
       selected = false;
+    }
+  });
+  harness.canvas.addEventListener('mouseup', (event) => {
+    // UI.ts applies the same two-tick guard to an accepted MOUSE_UP. This is
+    // the release-side cooldown that can outlive several high-refresh browser
+    // frames when Cocos updates more slowly.
+    if (event.button === 0 && mouseClickCoolingDown === 0) {
+      mouseClickCoolingDown = 2;
     }
   });
 
@@ -371,7 +380,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
   }));
   flushPvzGeFrame(dragHarness, dragGame);
   dispatchTouchEnd(dragHarness, dragEnd);
-  for (let frame = 0; frame < 4; frame += 1) {
+  for (let frame = 0; frame < 8; frame += 1) {
     flushPvzGeFrame(dragHarness, dragGame);
   }
   assert.deepEqual(
@@ -400,13 +409,50 @@ for (const platform of ['android', 'ios', 'ohos']) {
   // without an intermediate touchmove. The release coordinate must still
   // classify and commit the gesture as a drag.
   dispatchTouchEnd(sparseDragHarness, sparseDragEnd);
-  for (let frame = 0; frame < 4; frame += 1) {
+  for (let frame = 0; frame < 8; frame += 1) {
     flushPvzGeFrame(sparseDragHarness, sparseDragGame);
   }
   assert.deepEqual(
     sparseDragGame.planted,
     [dragLawnTile],
     `${platform} coalesced drag must commit from its distant release point`,
+  );
+
+  const mixedRateHarness = createTouchHarness({
+    animationFrameMilliseconds: 8,
+    hostConfig: {platform, touchAdapter: 'javascript'},
+  });
+  const mixedRateGame = attachPvzGePlacementModel(mixedRateHarness, {
+    seedCard,
+    lawnTiles: [firstLawnTile, dragLawnTile],
+  });
+  dispatchTouchStart(mixedRateHarness, 100, seedCard);
+  flushPvzGeFrame(mixedRateHarness, mixedRateGame);
+  flushPvzGeFrame(mixedRateHarness, mixedRateGame);
+  flushPvzGeFrame(mixedRateHarness, mixedRateGame);
+  const mixedRateEnd = createTouch(
+    100,
+    mixedRateHarness.canvas,
+    dragLawnTile.clientX,
+    dragLawnTile.clientY,
+  );
+  mixedRateHarness.document.dispatchEvent(createTouchEvent('touchmove', {
+    touches: [mixedRateEnd],
+    changedTouches: [mixedRateEnd],
+  }));
+  flushPvzGeFrame(mixedRateHarness, mixedRateGame);
+  dispatchTouchEnd(mixedRateHarness, mixedRateEnd);
+  for (let browserFrame = 1; browserFrame <= 20; browserFrame += 1) {
+    // Model a 120 Hz WebView whose Cocos game loop updates at 30 Hz.
+    if (browserFrame % 4 === 0) {
+      mixedRateGame.scheduleGameFrame();
+    }
+    mixedRateHarness.flushAnimationFrame();
+  }
+  assert.deepEqual(
+    mixedRateGame.planted,
+    [dragLawnTile],
+    `${platform} drag commit must wait for a slower Cocos game loop`,
   );
 }
 

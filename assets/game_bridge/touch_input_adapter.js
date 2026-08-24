@@ -12,6 +12,8 @@
   const backdropTapMaxDuration = 250;
   const backdropDoubleTapMaxDelay = 300;
   const backdropDoubleTapMaxDistance = 24;
+  const dragCommitMinimumDelayMilliseconds = 100;
+  const dragCommitMinimumFrames = 2;
   const wheelCssMultiplier = Number.isFinite(config.touchWheelCssMultiplier)
     ? config.touchWheelCssMultiplier
     : -4.5;
@@ -254,6 +256,24 @@
       Math.hypot(deltaX, deltaY) * pixelRatio() > backdropMoveThreshold;
   }
 
+  function scheduleDraggedPrimaryCommit(pending) {
+    pending.frame = requestAnimationFrame(function () {
+      if (pendingPrimaryUp !== pending) {
+        return;
+      }
+      pending.framesAfterUp += 1;
+      const elapsed = performance.now() - pending.upDispatchedAt;
+      if (pending.framesAfterUp < dragCommitMinimumFrames ||
+          elapsed < dragCommitMinimumDelayMilliseconds) {
+        scheduleDraggedPrimaryCommit(pending);
+        return;
+      }
+      pendingPrimaryUp = null;
+      dispatchMouse(pending.canvas, "mousedown", pending.point, 0, 1);
+      dispatchMouse(pending.canvas, "mouseup", pending.point, 0, 1);
+    });
+  }
+
   function releaseJavascriptPrimary(point) {
     if (!primaryCanvas) {
       return;
@@ -275,7 +295,9 @@
       canvas: canvas,
       frame: null,
       point: point,
-      upDispatched: false
+      upDispatched: false,
+      upDispatchedAt: null,
+      framesAfterUp: 0
     };
     pending.frame = requestAnimationFrame(function () {
       if (pendingPrimaryUp !== pending) {
@@ -283,24 +305,8 @@
       }
       dispatchMouse(canvas, "mouseup", point, 0, 1);
       pending.upDispatched = true;
-      pending.frame = requestAnimationFrame(function () {
-        if (pendingPrimaryUp !== pending) {
-          return;
-        }
-        pending.frame = requestAnimationFrame(function () {
-          if (pendingPrimaryUp !== pending) {
-            return;
-          }
-          pending.frame = requestAnimationFrame(function () {
-            if (pendingPrimaryUp !== pending) {
-              return;
-            }
-            pendingPrimaryUp = null;
-            dispatchMouse(canvas, "mousedown", point, 0, 1);
-            dispatchMouse(canvas, "mouseup", point, 0, 1);
-          });
-        });
-      });
+      pending.upDispatchedAt = performance.now();
+      scheduleDraggedPrimaryCommit(pending);
     });
     pendingPrimaryUp = pending;
   }
