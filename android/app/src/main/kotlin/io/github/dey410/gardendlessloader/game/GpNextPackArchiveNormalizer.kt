@@ -1,13 +1,15 @@
 package io.github.dey410.gardendlessloader.game
 
 import java.io.File
+import java.io.RandomAccessFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 object GpNextPackArchiveNormalizer {
-    fun prepare(source: File, directory: File, displayName: String): File =
-        ZipFile(source).use { zip ->
+    fun prepare(source: File, directory: File, displayName: String): File {
+        requireSafeCentralDirectory(source, displayName)
+        return ZipFile(source).use { zip ->
             val meaningful = zip.entries().asSequence().mapNotNull { entry ->
                 val path = safeArchivePath(entry.name)
                 if (isMetadataArtifact(path)) null else ArchiveEntry(entry, path)
@@ -65,6 +67,61 @@ object GpNextPackArchiveNormalizer {
                 throw error
             }
         }
+    }
+
+    private fun requireSafeCentralDirectory(source: File, displayName: String) {
+        RandomAccessFile(source, "r").use { archive ->
+            val size = archive.length()
+            require(size >= 22) { "$displayName 不是有效的 ZIP" }
+            val tailLength = minOf(size, 65_557L).toInt()
+            val tail = ByteArray(tailLength)
+            archive.seek(size - tailLength)
+            archive.readFully(tail)
+            val eocd = (tail.size - 22 downTo 0).firstOrNull { offset ->
+                uint32LE(tail, offset) == 0x06054b50L &&
+                    offset + 22 + uint16LE(tail, offset + 20) == tail.size
+            } ?: throw IllegalArgumentException("$displayName 不是有效的 ZIP")
+            val entryCount = uint16LE(tail, eocd + 10)
+            val centralSize = uint32LE(tail, eocd + 12)
+            val centralOffset = uint32LE(tail, eocd + 16)
+            require(
+                entryCount != 0xffff &&
+                    centralSize != 0xffffffffL &&
+                    centralOffset != 0xffffffffL,
+            ) {
+                "暂不支持 ZIP64 格式"
+            }
+
+            archive.seek(centralOffset)
+            repeat(entryCount) {
+                val header = ByteArray(46)
+                archive.readFully(header)
+                require(uint32LE(header, 0) == 0x02014b50L) {
+                    "$displayName 的 ZIP 中央目录无效"
+                }
+                require(uint16LE(header, 8) and 0x0001 == 0) {
+                    "$displayName 已加密，无法导入"
+                }
+                val externalAttributes = uint32LE(header, 38)
+                val unixType = ((externalAttributes ushr 16).toInt() and 0xf000)
+                require(unixType != 0xa000) { "$displayName 包含不支持的符号链接" }
+                val nameLength = uint16LE(header, 28)
+                val extraLength = uint16LE(header, 30)
+                val commentLength = uint16LE(header, 32)
+                archive.seek(archive.filePointer + nameLength + extraLength + commentLength)
+            }
+        }
+    }
+
+    private fun uint16LE(bytes: ByteArray, offset: Int): Int =
+        (bytes[offset].toInt() and 0xff) or
+            ((bytes[offset + 1].toInt() and 0xff) shl 8)
+
+    private fun uint32LE(bytes: ByteArray, offset: Int): Long =
+        (bytes[offset].toLong() and 0xff) or
+            ((bytes[offset + 1].toLong() and 0xff) shl 8) or
+            ((bytes[offset + 2].toLong() and 0xff) shl 16) or
+            ((bytes[offset + 3].toLong() and 0xff) shl 24)
 
     private fun safeArchivePath(value: String): String {
         val normalized = value.replace('\\', '/')

@@ -214,6 +214,23 @@ final class GpNextTests: XCTestCase {
     )
   }
 
+  func testPackageImporterRejectsPathsThatCollideAfterNormalization() throws {
+    let duplicate = root.appendingPathComponent("duplicate.zip")
+    try TestZipWriter.write(
+      [
+        .file("Amber/pack.json", data: Data("{}".utf8)),
+        .file("Amber/jsons/a.json", data: Data("{}".utf8)),
+        .file("Amber/jsons/./a.json", data: Data("{}".utf8)),
+      ],
+      to: duplicate
+    )
+
+    let importer = GpNextPackageImporter(gpNextRoot: session.gpNextRoot)
+    XCTAssertThrowsError(
+      try importer.importPackage(duplicate) { _ in true }
+    )
+  }
+
   func testPackageImporterRejectsBadPayloads() throws {
     let importer = GpNextPackageImporter(
       gpNextRoot: session.gpNextRoot

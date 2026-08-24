@@ -137,6 +137,10 @@ export class GpNextPackArchiveNormalizer {
         const commentLength = this.uint16LE(header, 32);
         const externalAttributes = this.uint32LE(header, 38);
         const localHeaderOffset = this.uint32LE(header, 42);
+        const unixType = (externalAttributes >>> 16) & 0xf000;
+        if (unixType === 0xa000) {
+          throw new Error(`${displayName} 包含不支持的符号链接`);
+        }
         if (compressedSize === 0xffffffff || uncompressedSize === 0xffffffff ||
           localHeaderOffset === 0xffffffff) {
           throw new Error('暂不支持 ZIP64 格式');

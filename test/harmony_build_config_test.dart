@@ -307,6 +307,7 @@ void main() {
         normalizer, contains("parts.length === 2 && parts[1] === 'pack.json'"));
     expect(normalizer, contains("parts.includes('__MACOSX')"));
     expect(normalizer, contains("parts[parts.length - 1] === '.DS_Store'"));
+    expect(normalizer, contains('unixType === 0xa000'));
     expect(normalizer, contains('规范化后包含重复路径'));
     expect(
       gameBridge,
