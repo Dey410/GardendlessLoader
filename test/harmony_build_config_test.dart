@@ -255,6 +255,9 @@ void main() {
     final gpNextCore = File(
       'ohos/entry/src/main/ets/game/GpNextNativeCore.ets',
     ).readAsStringSync();
+    final gpNextPackNormalizer = File(
+      'ohos/entry/src/main/ets/game/GpNextPackArchiveNormalizer.ets',
+    ).readAsStringSync();
     final gameHostPlugin = File(
       'ohos/entry/src/main/ets/plugins/GameHostPlugin.ets',
     ).readAsStringSync();
@@ -262,6 +265,7 @@ void main() {
       gamePage,
       gameBridge,
       gpNextCore,
+      gpNextPackNormalizer,
       gameHostPlugin,
     ].join('\n');
 
@@ -285,6 +289,31 @@ void main() {
     expect(gpNextCore, contains('class GpNextDirectoryEntry'));
     expect(arkTsSources, isNot(contains('writeTextSync')));
     expect(arkTsSources, isNot(contains('throw error;')));
+  });
+
+  test('OpenHarmony normalizes one wrapper directory in GP-Next packs', () {
+    final gameBridge = File(
+      'ohos/entry/src/main/ets/game/GameBridge.ets',
+    ).readAsStringSync();
+    final normalizerFile = File(
+      'ohos/entry/src/main/ets/game/GpNextPackArchiveNormalizer.ets',
+    );
+
+    expect(normalizerFile.existsSync(), isTrue);
+    final normalizer = normalizerFile.readAsStringSync();
+    expect(normalizer, contains('class GpNextPackArchiveNormalizer'));
+    expect(normalizer, contains("path === 'pack.json'"));
+    expect(
+        normalizer, contains("parts.length === 2 && parts[1] === 'pack.json'"));
+    expect(normalizer, contains("parts.includes('__MACOSX')"));
+    expect(normalizer, contains("parts[parts.length - 1] === '.DS_Store'"));
+    expect(normalizer, contains('规范化后包含重复路径'));
+    expect(
+      gameBridge,
+      contains(
+          'GpNextPackArchiveNormalizer.prepare(incoming, directory, name)'),
+    );
+    expect(gameBridge, isNot(contains('zipContainsRootPackJson')));
   });
 
   test('GitHub Actions exports a HAP artifact', () {

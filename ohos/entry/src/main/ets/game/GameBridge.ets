@@ -7,6 +7,7 @@ import { webview } from '@kit.ArkWeb';
 import { appLogStore, AppLogContext, AppLogError, AppLogEvent } from '../logging/AppLogStore';
 import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientation';
 import { ExportDocumentSpec } from './ExportDocumentSpec';
+import { GpNextPackArchiveNormalizer } from './GpNextPackArchiveNormalizer';
 import { GameSession } from './GameSession';
 import { GpNextNativeCore, GpNextValue } from './GpNextNativeCore';
 
@@ -379,14 +380,13 @@ export class GameBridge {
         if (directory.length === 0) throw new Error(`不支持的 GP-Next 文件：${name}`);
         const destination = `${directory}/${name}`;
         const incoming = `${directory}/.${name}.incoming-${Date.now()}`;
+        let prepared = incoming;
         try {
           this.copyFile(uri, incoming);
           if (extension === 'json') {
             JSON.parse(fs.readTextSync(incoming));
           } else if (extension === 'zip') {
-            if (!this.zipContainsRootPackJson(incoming)) {
-              throw new Error(`${name} 缺少根目录 pack.json`);
-            }
+            prepared = GpNextPackArchiveNormalizer.prepare(incoming, directory, name);
           } else if (fs.statSync(incoming).size === 0) {
             throw new Error(`${name} 是空文件`);
           }
@@ -397,7 +397,7 @@ export class GameBridge {
           const backup = `${directory}/.${name}.backup-${Date.now()}`;
           if (existed) fs.renameSync(destination, backup);
           try {
-            fs.renameSync(incoming, destination);
+            fs.renameSync(prepared, destination);
             if (existed) fs.unlinkSync(backup);
           } catch (error) {
             if (existed && !this.fileExists(destination) && this.fileExists(backup)) {
@@ -407,6 +407,7 @@ export class GameBridge {
           }
         } finally {
           if (this.fileExists(incoming)) fs.unlinkSync(incoming);
+          if (prepared !== incoming && this.fileExists(prepared)) fs.unlinkSync(prepared);
         }
       }
       this.complete(id, null);
@@ -506,62 +507,6 @@ export class GameBridge {
       ],
     });
     return result.index === 1;
-  }
-
-  private zipContainsRootPackJson(path: string): boolean {
-    let file: fs.File | null = null;
-    try {
-      const size = fs.statSync(path).size;
-      if (size < 22) return false;
-      file = fs.openSync(path, fs.OpenMode.READ_ONLY);
-      const tailLength = Math.min(size, 65557);
-      const tailBuffer = new ArrayBuffer(tailLength);
-      const tailCount = fs.readSync(file.fd, tailBuffer, { offset: size - tailLength, length: tailLength });
-      if (tailCount !== tailLength) return false;
-      const tail = new Uint8Array(tailBuffer);
-      let eocd = -1;
-      for (let index = tail.length - 22; index >= 0; index--) {
-        if (tail[index] === 0x50 && tail[index + 1] === 0x4b &&
-          tail[index + 2] === 0x05 && tail[index + 3] === 0x06) {
-          eocd = index;
-          break;
-        }
-      }
-      if (eocd < 0) return false;
-      const entryCount = this.uint16LE(tail, eocd + 10);
-      let offset = this.uint32LE(tail, eocd + 16);
-      const decoder = util.TextDecoder.create('utf-8');
-      for (let entry = 0; entry < entryCount; entry++) {
-        const headerBuffer = new ArrayBuffer(46);
-        if (fs.readSync(file.fd, headerBuffer, { offset: offset, length: 46 }) !== 46) return false;
-        const header = new Uint8Array(headerBuffer);
-        if (this.uint32LE(header, 0) !== 0x02014b50) return false;
-        const nameLength = this.uint16LE(header, 28);
-        const extraLength = this.uint16LE(header, 30);
-        const commentLength = this.uint16LE(header, 32);
-        const nameBuffer = new ArrayBuffer(nameLength);
-        if (fs.readSync(file.fd, nameBuffer, { offset: offset + 46, length: nameLength }) !== nameLength) {
-          return false;
-        }
-        const name = decoder.decodeToString(new Uint8Array(nameBuffer)).replace(/\\/g, '/');
-        if (name === 'pack.json') return true;
-        offset += 46 + nameLength + extraLength + commentLength;
-      }
-      return false;
-    } catch (_error) {
-      return false;
-    } finally {
-      if (file != null) fs.closeSync(file.fd);
-    }
-  }
-
-  private uint16LE(bytes: Uint8Array, offset: number): number {
-    return bytes[offset] | (bytes[offset + 1] << 8);
-  }
-
-  private uint32LE(bytes: Uint8Array, offset: number): number {
-    return (bytes[offset] | (bytes[offset + 1] << 8) |
-      (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)) >>> 0;
   }
 
   private complete(id: string, value: BridgeValue): void {
