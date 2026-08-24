@@ -1,6 +1,7 @@
 import Foundation
 import GardendlessCore
 import GardendlessGPNext
+import GardendlessImport
 import XCTest
 
 final class GpNextTests: XCTestCase {
@@ -161,6 +162,55 @@ final class GpNextTests: XCTestCase {
     XCTAssertEqual(
       try Data(contentsOf: destination),
       try Data(contentsOf: other)
+    )
+  }
+
+  func testPackageImporterNormalizesOneWrapperDirectory() throws {
+    let wrapped = root.appendingPathComponent("wrapped.zip")
+    try TestZipWriter.write(
+      [
+        .file(
+          "Amber 2.0/pack.json",
+          data: Data(#"{"name":"Amber"}"#.utf8)
+        ),
+        .file(
+          "Amber 2.0/jsons/config/patching.json",
+          data: Data(#"{"defaultMode":"merge"}"#.utf8)
+        ),
+        .file("Amber 2.0/jsons/.DS_Store", data: Data("junk".utf8)),
+        .file("__MACOSX/._Amber 2.0", data: Data("junk".utf8)),
+      ],
+      to: wrapped
+    )
+
+    let importer = GpNextPackageImporter(gpNextRoot: session.gpNextRoot)
+    _ = try importer.importPackage(wrapped) { _ in true }
+
+    let destination = session.gpNextRoot
+      .appendingPathComponent("packs/wrapped.zip")
+    let entries = try ZipArchiveReader.read(from: destination)
+      .filter { !$0.isDirectory }
+      .map(\.name)
+      .sorted()
+    XCTAssertEqual(
+      entries,
+      ["jsons/config/patching.json", "pack.json"]
+    )
+  }
+
+  func testPackageImporterRejectsAmbiguousWrapperDirectories() throws {
+    let ambiguous = root.appendingPathComponent("ambiguous.zip")
+    try TestZipWriter.write(
+      [
+        .file("Amber/pack.json", data: Data("{}".utf8)),
+        .file("Other/readme.txt", data: Data("other".utf8)),
+      ],
+      to: ambiguous
+    )
+
+    let importer = GpNextPackageImporter(gpNextRoot: session.gpNextRoot)
+    XCTAssertThrowsError(
+      try importer.importPackage(ambiguous) { _ in true }
     )
   }
 

@@ -3,6 +3,7 @@ import GardendlessCore
 
 public struct ZipEntry {
   public let name: String
+  public let crc32: UInt32
   public let compressionMethod: UInt16
   public let compressedSize: UInt64
   public let uncompressedSize: UInt64
@@ -11,6 +12,7 @@ public struct ZipEntry {
 
   public init(
     name: String,
+    crc32: UInt32,
     compressionMethod: UInt16,
     compressedSize: UInt64,
     uncompressedSize: UInt64,
@@ -18,6 +20,7 @@ public struct ZipEntry {
     externalAttributes: UInt32
   ) {
     self.name = name
+    self.crc32 = crc32
     self.compressionMethod = compressionMethod
     self.compressedSize = compressedSize
     self.uncompressedSize = uncompressedSize
@@ -80,6 +83,7 @@ public enum ZipArchiveReader {
       }
 
       let compressionMethod = uint16(header, 10)
+      let crc32 = uint32(header, 16)
       let compressedSize = uint32(header, 20)
       let uncompressedSize = uint32(header, 24)
       let fileNameLength = Int(uint16(header, 28))
@@ -110,6 +114,7 @@ public enum ZipArchiveReader {
       entries.append(
         ZipEntry(
           name: name,
+          crc32: crc32,
           compressionMethod: compressionMethod,
           compressedSize: UInt64(compressedSize),
           uncompressedSize: UInt64(uncompressedSize),
@@ -139,7 +144,7 @@ public enum ZipArchiveReader {
     throw GameError.failed(.zipInvalid, "无效的 ZIP 文件")
   }
 
-  static func localFileDataOffset(
+  public static func localFileDataOffset(
     for entry: ZipEntry,
     in zipFile: FileHandle
   ) throws -> UInt64 {

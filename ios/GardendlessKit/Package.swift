@@ -39,7 +39,7 @@ let package = Package(
     ),
     .target(
       name: "GardendlessGPNext",
-      dependencies: ["GardendlessCore"],
+      dependencies: ["GardendlessCore", "GardendlessImport"],
       path: "Sources/GardendlessGPNext"
     ),
     .target(
