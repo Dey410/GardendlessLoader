@@ -51,10 +51,13 @@
 
 ## Automatic sun collection
 
-- With any valid resource (standard or GP-Next), a gray `自动收集` panel is attached directly above `开始游戏`; only the panel's top corners and the button's bottom corners are rounded.
+- With any valid resource, launch controls start collapsed and neither `自动收集` nor `JS Modding` is present in the widget or semantics tree.
+- The separate 56-by-72 arrow region on the right of `开始游戏` expands or collapses the controls without starting the game; its tooltip and icon reflect the current state.
+- Expanding a standard resource shows only `自动收集`; the gray panel is attached directly above `开始游戏`, with only the panel's top corners and the button's bottom corners rounded.
 - The whole panel and its switch toggle the setting; the enabled switch uses the launcher's blue accent.
-- With no valid resource, the panel is absent and the start button keeps all four rounded corners.
-- During an import over an existing standard resource, the panel remains visible at reduced opacity and cannot be changed.
+- With no valid resource, the panel is absent, the arrow is disabled, and the start button keeps all four rounded corners.
+- During an import over an existing standard resource, an already expanded panel remains visible at reduced opacity and cannot be changed.
+- Collapsing hides every setting row, and re-entering the Loader home page always restores the collapsed presentation without changing persisted setting values.
 - Restarting the Loader preserves the current resource's choice; every successful import resets it to off, while failed or cancelled imports preserve it.
 - When enabled, continuously valid gameplay waits three seconds before sending `A` keydown, sends keyup after 50 ms, then repeats every three seconds.
 - Leaving gameplay, pausing, entering an air-raid/special stage, focusing a native input/select/editable element, backgrounding, or losing window focus cancels the pending cycle.
@@ -62,6 +65,19 @@
 - A GP-Next session starts Loader automatic collection when the manifest value is enabled, independently of GP-Next's own auto-collect control.
 - Failure to import the game-state modules disables automatic collection and logs the failure once without affecting gameplay.
 - The removed legacy in-game menu and its former 1.5-second unscoped collector are absent from Android, iOS, HarmonyOS, and shared assets.
+
+## GP-Next JS Modding
+
+- `JS Modding` defaults to off for new, old, and malformed Loader preference/session data.
+- The row appears only after expanding controls for a compatible GP-Next resource whose fingerprint includes the JS Mod loader; standard and incompatible resources never show it.
+- The whole row and its switch update the Loader-owned choice without a confirmation dialog, and the enabled switch uses the launcher's blue accent.
+- The choice survives Loader restarts and successful game-resource updates, but takes effect only on the next game launch.
+- Android, iOS, and HarmonyOS pass the same boolean through `GameSession` and load `js_modding.js` only for a compatible GP-Next session.
+- At document start, before GP-Next initializes, the shared script changes only `gp-next-settings.experimental.jsModding` and preserves all other valid settings and experimental flags.
+- Enabling writes exact boolean `true`; disabling writes exact boolean `false`; malformed settings JSON is replaced with the smallest valid settings object without blocking game startup.
+- Standard and incompatible resources do not read or write `gp-next-settings`, even if the Loader preference remains enabled from an earlier compatible resource.
+- The locked in-game JS Modding control never overrides the Loader choice; there is no bidirectional synchronization.
+- Imported JS Mods are treated as executable game content and are not evaluated by the Loader itself; device acceptance uses only trusted test packages.
 
 ## Failure paths
 
