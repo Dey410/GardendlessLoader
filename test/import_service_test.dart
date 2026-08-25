@@ -105,7 +105,10 @@ void main() {
       target: target,
     );
     await manifestStore.write(
-      (await manifestStore.read()).copyWith(autoCollectSunEnabled: true),
+      (await manifestStore.read()).copyWith(
+        autoCollectSunEnabled: true,
+        jsModdingEnabled: true,
+      ),
     );
 
     target = await importService.beginImport(
@@ -127,6 +130,7 @@ void main() {
     expect(manifest.gameVersion, '0.12.0');
     expect(manifest.transactionState, TransactionState.idle);
     expect(manifest.autoCollectSunEnabled, isFalse);
+    expect(manifest.jsModdingEnabled, isTrue);
     expect(await paths.slotADir.list().isEmpty, isTrue);
     expect(
       await File(p.join(paths.slotBDir.path, 'index.html')).exists(),

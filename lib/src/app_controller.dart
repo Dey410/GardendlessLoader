@@ -163,6 +163,7 @@ class AppController extends ChangeNotifier {
   bool get watermarkEnabled => _watermarkEnabled;
   bool get detailedAudioDiagnosticsEnabled => _detailedAudioDiagnosticsEnabled;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
+  bool get jsModdingEnabled => _manifest.jsModdingEnabled;
   GameHostPlatform get gameHostPlatform {
     final configured = _gameHostPlatform;
     if (configured != null) {
@@ -901,6 +902,7 @@ class AppController extends ChangeNotifier {
       gpNextVersion: gpNextVersion,
       watermarkEnabled: _watermarkEnabled,
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
+      jsModdingEnabled: _manifest.jsModdingEnabled,
       detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
@@ -1105,6 +1107,27 @@ class AppController extends ChangeNotifier {
     }
     final manifestStore = _requireManifestStore();
     _manifest = _manifest.copyWith(autoCollectSunEnabled: enabled);
+    final manifest = _manifest;
+    notifyListeners();
+    final previousWrite = _manifestPreferenceWrite;
+    final currentWrite = () async {
+      try {
+        await previousWrite;
+      } catch (_) {
+        // A later choice must still be persisted after an earlier write fails.
+      }
+      await manifestStore.write(manifest);
+    }();
+    _manifestPreferenceWrite = currentWrite;
+    await currentWrite;
+  }
+
+  Future<void> setJsModdingEnabled(bool enabled) async {
+    if (_manifest.jsModdingEnabled == enabled) {
+      return;
+    }
+    final manifestStore = _requireManifestStore();
+    _manifest = _manifest.copyWith(jsModdingEnabled: enabled);
     final manifest = _manifest;
     notifyListeners();
     final previousWrite = _manifestPreferenceWrite;

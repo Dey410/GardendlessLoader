@@ -46,6 +46,7 @@ class GameSession {
     required this.gpNextVersion,
     required this.watermarkEnabled,
     this.autoCollectSunEnabled = false,
+    this.jsModdingEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
     required this.allowedRemoteHosts,
     required this.gpNextRoot,
@@ -79,6 +80,7 @@ class GameSession {
       gpNextVersion: json['gpNextVersion'] as String?,
       watermarkEnabled: _requiredBool(json, 'watermarkEnabled'),
       autoCollectSunEnabled: json['autoCollectSunEnabled'] as bool? ?? false,
+      jsModdingEnabled: json['jsModdingEnabled'] as bool? ?? false,
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       allowedRemoteHosts: normalizedRemoteHosts,
@@ -99,6 +101,7 @@ class GameSession {
   final String? gpNextVersion;
   final bool watermarkEnabled;
   final bool autoCollectSunEnabled;
+  final bool jsModdingEnabled;
   final bool detailedAudioDiagnosticsEnabled;
   final List<String> allowedRemoteHosts;
   final String gpNextRoot;
@@ -131,6 +134,7 @@ class GameSession {
       'gpNextVersion': gpNextVersion,
       'watermarkEnabled': watermarkEnabled,
       'autoCollectSunEnabled': autoCollectSunEnabled,
+      'jsModdingEnabled': jsModdingEnabled,
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
       'allowedRemoteHosts': normalizedRemoteHosts,
       'gpNextRoot': gpNextRoot,
@@ -150,6 +154,7 @@ class GameSession {
       gpNextVersion: gpNextVersion,
       watermarkEnabled: watermarkEnabled,
       autoCollectSunEnabled: autoCollectSunEnabled,
+      jsModdingEnabled: jsModdingEnabled,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
       allowedRemoteHosts: allowedRemoteHosts,
       gpNextRoot: gpNextRoot,
@@ -170,6 +175,7 @@ class GameSession {
         other.gpNextVersion == gpNextVersion &&
         other.watermarkEnabled == watermarkEnabled &&
         other.autoCollectSunEnabled == autoCollectSunEnabled &&
+        other.jsModdingEnabled == jsModdingEnabled &&
         other.detailedAudioDiagnosticsEnabled ==
             detailedAudioDiagnosticsEnabled &&
         _listEquals(other.allowedRemoteHosts, allowedRemoteHosts) &&
@@ -189,6 +195,7 @@ class GameSession {
         gpNextVersion,
         watermarkEnabled,
         autoCollectSunEnabled,
+        jsModdingEnabled,
         detailedAudioDiagnosticsEnabled,
         Object.hashAll(allowedRemoteHosts),
         gpNextRoot,

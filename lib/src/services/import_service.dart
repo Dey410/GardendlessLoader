@@ -163,6 +163,7 @@ class ImportService {
         lastSelfCheckAt: now,
       );
       manifest = ResourceManifest.initial().copyWith(
+        jsModdingEnabled: manifest.jsModdingEnabled,
         generation: activationGeneration,
         activeSlot: target.slot,
         transactionSlot: oldSlot,
@@ -352,6 +353,7 @@ class ImportService {
         lastSelfCheckAt: now,
       );
       manifest = ResourceManifest.initial().copyWith(
+        jsModdingEnabled: manifest.jsModdingEnabled,
         generation: activationGeneration,
         activeSlot: candidateSlot,
         transactionSlot: oldSlot,
@@ -456,6 +458,7 @@ class ImportService {
       }
     }
     final recovered = ResourceManifest.initial().copyWith(
+      jsModdingEnabled: manifest.jsModdingEnabled,
       generation: generation,
       activeSlot: selected.slot,
       transactionSlot: otherCandidate?.slot,
@@ -582,6 +585,7 @@ class ImportService {
       lastSelfCheckAt: manifest.lastSelfCheckAt,
     );
     manifest = ResourceManifest.initial().copyWith(
+      jsModdingEnabled: manifest.jsModdingEnabled,
       generation: activationGeneration,
       activeSlot: targetSlot,
       gameVersion: gameVersion,
