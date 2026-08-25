@@ -2120,7 +2120,7 @@ class _HealthRow extends StatelessWidget {
   }
 }
 
-class _GameLaunchControls extends StatelessWidget {
+class _GameLaunchControls extends StatefulWidget {
   const _GameLaunchControls({
     required this.controller,
     required this.onStartGame,
@@ -2130,84 +2130,151 @@ class _GameLaunchControls extends StatelessWidget {
   final Future<void> Function() onStartGame;
 
   @override
+  State<_GameLaunchControls> createState() => _GameLaunchControlsState();
+}
+
+class _GameLaunchControlsState extends State<_GameLaunchControls> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    final showAutoCollectSun = controller.hasCurrentResource;
+    final controller = widget.controller;
+    final showPanel = _expanded && controller.hasCurrentResource;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showAutoCollectSun)
-          _AutoCollectSunControl(
-            enabled: !controller.busy,
-            value: controller.autoCollectSunEnabled,
-            onChanged: controller.setAutoCollectSunEnabled,
-          ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.bottomCenter,
+          child: showPanel
+              ? _GameControlsPanel(controller: controller)
+              : const SizedBox(width: 272),
+        ),
         _StartGameButton(
           enabled: controller.canStartGame && !controller.busy,
-          joinedAtTop: showAutoCollectSun,
-          onPressed: onStartGame,
+          joinedAtTop: showPanel,
+          canExpand: controller.hasCurrentResource,
+          expanded: showPanel,
+          onPressed: widget.onStartGame,
+          onToggleExpanded: () {
+            setState(() => _expanded = !_expanded);
+          },
         ),
       ],
     );
   }
 }
 
-class _AutoCollectSunControl extends StatelessWidget {
-  const _AutoCollectSunControl({
+class _GameControlsPanel extends StatelessWidget {
+  const _GameControlsPanel({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final showJsModding = controller.gpNextCompatible;
+    return Material(
+      key: const ValueKey('home-game-controls-panel'),
+      color: LauncherVisuals.separator(context).withValues(alpha: 0.64),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: 272,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _GameSettingControl(
+              key: const ValueKey('home-auto-collect-sun'),
+              switchKey: const ValueKey('home-auto-collect-sun-switch'),
+              enabled: !controller.busy,
+              value: controller.autoCollectSunEnabled,
+              icon: Icons.wb_sunny_rounded,
+              iconColor: LauncherVisuals.warning,
+              label: '自动收集',
+              onChanged: controller.setAutoCollectSunEnabled,
+            ),
+            if (showJsModding) ...[
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: LauncherVisuals.primaryText(context)
+                    .withValues(alpha: 0.08),
+              ),
+              _GameSettingControl(
+                key: const ValueKey('home-js-modding'),
+                switchKey: const ValueKey('home-js-modding-switch'),
+                enabled: !controller.busy,
+                value: controller.jsModdingEnabled,
+                icon: Icons.extension_rounded,
+                iconColor: LauncherVisuals.accentBlue,
+                label: 'JS Modding',
+                onChanged: controller.setJsModdingEnabled,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GameSettingControl extends StatelessWidget {
+  const _GameSettingControl({
+    super.key,
+    required this.switchKey,
     required this.enabled,
     required this.value,
+    required this.icon,
+    required this.iconColor,
+    required this.label,
     required this.onChanged,
   });
 
+  final Key switchKey;
   final bool enabled;
   final bool value;
+  final IconData icon;
+  final Color iconColor;
+  final String label;
   final Future<void> Function(bool enabled) onChanged;
 
   @override
   Widget build(BuildContext context) {
-    const borderRadius = BorderRadius.vertical(top: Radius.circular(28));
     return Opacity(
       opacity: enabled ? 1 : 0.55,
-      child: Material(
-        key: const ValueKey('home-auto-collect-sun'),
-        color: LauncherVisuals.separator(context).withValues(alpha: 0.64),
-        shape: const RoundedRectangleBorder(borderRadius: borderRadius),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: enabled ? () => unawaited(onChanged(!value)) : null,
-          child: SizedBox(
-            width: 272,
-            height: 54,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 17),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.wb_sunny_rounded,
-                    size: 23,
-                    color: LauncherVisuals.warning,
+      child: InkWell(
+        onTap: enabled ? () => unawaited(onChanged(!value)) : null,
+        child: SizedBox(
+          height: 54,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 17),
+            child: Row(
+              children: [
+                Icon(icon, size: 23, color: iconColor),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: LauncherVisuals.primaryText(context),
+                          fontWeight: FontWeight.w800,
+                        ),
                   ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Text(
-                      '自动收集',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: LauncherVisuals.primaryText(context),
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                  ),
-                  Switch(
-                    key: const ValueKey('home-auto-collect-sun-switch'),
-                    value: value,
-                    onChanged: enabled
-                        ? (nextValue) => unawaited(onChanged(nextValue))
-                        : null,
-                    activeTrackColor: LauncherVisuals.accentBlue,
-                    activeThumbColor: Colors.white,
-                  ),
-                ],
-              ),
+                ),
+                Switch(
+                  key: switchKey,
+                  value: value,
+                  onChanged: enabled
+                      ? (nextValue) => unawaited(onChanged(nextValue))
+                      : null,
+                  activeTrackColor: LauncherVisuals.accentBlue,
+                  activeThumbColor: Colors.white,
+                ),
+              ],
             ),
           ),
         ),
@@ -2220,37 +2287,83 @@ class _StartGameButton extends StatelessWidget {
   const _StartGameButton({
     required this.enabled,
     required this.joinedAtTop,
+    required this.canExpand,
+    required this.expanded,
     required this.onPressed,
+    required this.onToggleExpanded,
   });
 
   final bool enabled;
   final bool joinedAtTop;
+  final bool canExpand;
+  final bool expanded;
   final Future<void> Function() onPressed;
+  final VoidCallback onToggleExpanded;
 
   @override
   Widget build(BuildContext context) {
     final borderRadius = joinedAtTop
         ? const BorderRadius.vertical(bottom: Radius.circular(28))
         : BorderRadius.circular(28);
-    final button = FilledButton.icon(
-      key: const ValueKey('home-start-game-button'),
-      onPressed: enabled ? onPressed : null,
-      icon: const Icon(Icons.play_arrow_rounded, size: 32),
-      label: const Text('开始游戏'),
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(272, 72),
-        padding: const EdgeInsets.symmetric(horizontal: 30),
-        backgroundColor: LauncherVisuals.accentBlue,
-        foregroundColor: Colors.white,
-        disabledBackgroundColor:
-            LauncherVisuals.separator(context).withValues(alpha: 0.78),
-        disabledForegroundColor: LauncherVisuals.secondaryText(context),
-        shape: RoundedRectangleBorder(borderRadius: borderRadius),
-        textStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
+    final foregroundColor =
+        enabled ? Colors.white : LauncherVisuals.secondaryText(context);
+    final button = Material(
+      color: enabled
+          ? LauncherVisuals.accentBlue
+          : LauncherVisuals.separator(context).withValues(alpha: 0.78),
+      shape: RoundedRectangleBorder(borderRadius: borderRadius),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: 272,
+        height: 72,
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                key: const ValueKey('home-start-game-button'),
+                onPressed: enabled ? onPressed : null,
+                icon: const Icon(Icons.play_arrow_rounded, size: 32),
+                label: const Text('开始游戏'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(72),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: foregroundColor,
+                  disabledBackgroundColor: Colors.transparent,
+                  disabledForegroundColor: foregroundColor,
+                  shape: const RoundedRectangleBorder(),
+                  textStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0,
+                      ),
+                  elevation: 0,
+                ),
+              ),
             ),
-        elevation: 0,
+            Container(
+              width: 1,
+              height: 30,
+              color: foregroundColor.withValues(alpha: 0.22),
+            ),
+            SizedBox(
+              width: 56,
+              height: 72,
+              child: IconButton(
+                key: const ValueKey('home-game-controls-expander'),
+                onPressed: canExpand ? onToggleExpanded : null,
+                tooltip: expanded ? '收起游戏功能' : '展开游戏功能',
+                color: foregroundColor,
+                disabledColor: foregroundColor.withValues(alpha: 0.45),
+                icon: Icon(
+                  expanded
+                      ? Icons.keyboard_arrow_down_rounded
+                      : Icons.keyboard_arrow_up_rounded,
+                  size: 30,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
