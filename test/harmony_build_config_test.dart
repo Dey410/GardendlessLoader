@@ -317,6 +317,21 @@ void main() {
     expect(gameBridge, isNot(contains('zipContainsRootPackJson')));
   });
 
+  test('OpenHarmony GP-Next normalizer avoids static this references', () {
+    final normalizer = File(
+      'ohos/entry/src/main/ets/game/GpNextPackArchiveNormalizer.ets',
+    ).readAsStringSync();
+    final staticClass = normalizer.substring(
+      normalizer.indexOf('export class GpNextPackArchiveNormalizer'),
+    );
+
+    expect(
+      RegExp(r'\bthis\.').allMatches(staticClass),
+      isEmpty,
+      reason: 'ArkTS rejects this inside static methods as stand-alone this',
+    );
+  });
+
   test('GitHub Actions exports a HAP artifact', () {
     final workflow = File(
       '.github/workflows/build-mobile.yml',

@@ -45,7 +45,7 @@ class NormalizedPackZipEntry {
 
 export class GpNextPackArchiveNormalizer {
   static prepare(source: string, directory: string, displayName: string): string {
-    const entries = this.readEntries(source, displayName);
+    const entries = GpNextPackArchiveNormalizer.readEntries(source, displayName);
     if (entries.some((entry: PackZipEntry): boolean =>
       !entry.isDirectory && entry.path === 'pack.json')) {
       return source;
@@ -59,13 +59,13 @@ export class GpNextPackArchiveNormalizer {
         candidates.add(parts[0]);
       }
     }
-    if (candidates.size !== 1) throw new Error(this.missingRootPack(displayName));
+    if (candidates.size !== 1) throw new Error(GpNextPackArchiveNormalizer.missingRootPack(displayName));
     let wrapper = '';
     for (const candidate of candidates) wrapper = candidate;
     const prefix = `${wrapper}/`;
     if (!entries.every((entry: PackZipEntry): boolean =>
       entry.path === wrapper || entry.path.startsWith(prefix))) {
-      throw new Error(this.missingRootPack(displayName));
+      throw new Error(GpNextPackArchiveNormalizer.missingRootPack(displayName));
     }
 
     const names: Set<string> = new Set<string>();
@@ -81,12 +81,12 @@ export class GpNextPackArchiveNormalizer {
     }
     if (!normalized.some((entry: NormalizedPackZipEntry): boolean =>
       !entry.source.isDirectory && entry.name === 'pack.json')) {
-      throw new Error(this.missingRootPack(displayName));
+      throw new Error(GpNextPackArchiveNormalizer.missingRootPack(displayName));
     }
 
     const output = `${directory}/.${displayName}.normalized-${Date.now()}`;
     try {
-      this.writeArchive(source, output, normalized);
+      GpNextPackArchiveNormalizer.writeArchive(source, output, normalized);
       return output;
     } catch (error) {
       try { fs.unlinkSync(output); } catch (_cleanupError) {}
@@ -101,20 +101,20 @@ export class GpNextPackArchiveNormalizer {
       if (size < 22) throw new Error(`${displayName} 不是有效的 ZIP`);
       file = fs.openSync(path, fs.OpenMode.READ_ONLY);
       const tailLength = Math.min(size, 65557);
-      const tail = this.read(file, size - tailLength, tailLength);
+      const tail = GpNextPackArchiveNormalizer.read(file, size - tailLength, tailLength);
       let eocd = -1;
       for (let index = tail.length - 22; index >= 0; index--) {
-        if (this.uint32LE(tail, index) !== 0x06054b50) continue;
-        const commentLength = this.uint16LE(tail, index + 20);
+        if (GpNextPackArchiveNormalizer.uint32LE(tail, index) !== 0x06054b50) continue;
+        const commentLength = GpNextPackArchiveNormalizer.uint16LE(tail, index + 20);
         if (index + 22 + commentLength === tail.length) {
           eocd = index;
           break;
         }
       }
       if (eocd < 0) throw new Error(`${displayName} 不是有效的 ZIP`);
-      const entryCount = this.uint16LE(tail, eocd + 10);
-      const centralSize = this.uint32LE(tail, eocd + 12);
-      let offset = this.uint32LE(tail, eocd + 16);
+      const entryCount = GpNextPackArchiveNormalizer.uint16LE(tail, eocd + 10);
+      const centralSize = GpNextPackArchiveNormalizer.uint32LE(tail, eocd + 12);
+      let offset = GpNextPackArchiveNormalizer.uint32LE(tail, eocd + 16);
       if (entryCount === 0xffff || centralSize === 0xffffffff || offset === 0xffffffff) {
         throw new Error('暂不支持 ZIP64 格式');
       }
@@ -122,21 +122,21 @@ export class GpNextPackArchiveNormalizer {
       const decoder = util.TextDecoder.create('utf-8');
       const entries: PackZipEntry[] = [];
       for (let index = 0; index < entryCount; index++) {
-        const header = this.read(file, offset, 46);
-        if (this.uint32LE(header, 0) !== 0x02014b50) {
+        const header = GpNextPackArchiveNormalizer.read(file, offset, 46);
+        if (GpNextPackArchiveNormalizer.uint32LE(header, 0) !== 0x02014b50) {
           throw new Error(`${displayName} 的 ZIP 中央目录无效`);
         }
-        const flags = this.uint16LE(header, 8);
+        const flags = GpNextPackArchiveNormalizer.uint16LE(header, 8);
         if ((flags & 0x0001) !== 0) throw new Error(`${displayName} 已加密，无法导入`);
-        const compressionMethod = this.uint16LE(header, 10);
-        const crc32 = this.uint32LE(header, 16);
-        const compressedSize = this.uint32LE(header, 20);
-        const uncompressedSize = this.uint32LE(header, 24);
-        const nameLength = this.uint16LE(header, 28);
-        const extraLength = this.uint16LE(header, 30);
-        const commentLength = this.uint16LE(header, 32);
-        const externalAttributes = this.uint32LE(header, 38);
-        const localHeaderOffset = this.uint32LE(header, 42);
+        const compressionMethod = GpNextPackArchiveNormalizer.uint16LE(header, 10);
+        const crc32 = GpNextPackArchiveNormalizer.uint32LE(header, 16);
+        const compressedSize = GpNextPackArchiveNormalizer.uint32LE(header, 20);
+        const uncompressedSize = GpNextPackArchiveNormalizer.uint32LE(header, 24);
+        const nameLength = GpNextPackArchiveNormalizer.uint16LE(header, 28);
+        const extraLength = GpNextPackArchiveNormalizer.uint16LE(header, 30);
+        const commentLength = GpNextPackArchiveNormalizer.uint16LE(header, 32);
+        const externalAttributes = GpNextPackArchiveNormalizer.uint32LE(header, 38);
+        const localHeaderOffset = GpNextPackArchiveNormalizer.uint32LE(header, 42);
         const unixType = (externalAttributes >>> 16) & 0xf000;
         if (unixType === 0xa000) {
           throw new Error(`${displayName} 包含不支持的符号链接`);
@@ -145,10 +145,10 @@ export class GpNextPackArchiveNormalizer {
           localHeaderOffset === 0xffffffff) {
           throw new Error('暂不支持 ZIP64 格式');
         }
-        const nameBytes = this.read(file, offset + 46, nameLength);
+        const nameBytes = GpNextPackArchiveNormalizer.read(file, offset + 46, nameLength);
         const name = decoder.decodeToString(nameBytes).replace(/\\/g, '/');
-        const archivePath = this.safeArchivePath(name);
-        if (!this.isMetadataArtifact(archivePath)) {
+        const archivePath = GpNextPackArchiveNormalizer.safeArchivePath(name);
+        if (!GpNextPackArchiveNormalizer.isMetadataArtifact(archivePath)) {
           entries.push(new PackZipEntry(
             archivePath,
             name.endsWith('/'),
@@ -184,32 +184,32 @@ export class GpNextPackArchiveNormalizer {
       );
       let outputOffset = 0;
       for (const entry of entries) {
-        const nameBytes = this.utf8(entry.name);
+        const nameBytes = GpNextPackArchiveNormalizer.utf8(entry.name);
         if (nameBytes.length > 0xffff) throw new Error('GP-Next ZIP 文件名过长');
         entry.localHeaderOffset = outputOffset;
-        const header = this.localHeader(entry.source, nameBytes);
-        this.write(output, outputOffset, header);
+        const header = GpNextPackArchiveNormalizer.localHeader(entry.source, nameBytes);
+        GpNextPackArchiveNormalizer.write(output, outputOffset, header);
         outputOffset += header.length;
-        const dataOffset = this.localDataOffset(source, entry.source);
-        this.copy(source, dataOffset, output, outputOffset, entry.source.compressedSize);
+        const dataOffset = GpNextPackArchiveNormalizer.localDataOffset(source, entry.source);
+        GpNextPackArchiveNormalizer.copy(source, dataOffset, output, outputOffset, entry.source.compressedSize);
         outputOffset += entry.source.compressedSize;
         if (outputOffset > 0xffffffff) throw new Error('暂不支持 ZIP64 格式');
       }
 
       const centralOffset = outputOffset;
       for (const entry of entries) {
-        const central = this.centralHeader(entry, this.utf8(entry.name));
-        this.write(output, outputOffset, central);
+        const central = GpNextPackArchiveNormalizer.centralHeader(entry, GpNextPackArchiveNormalizer.utf8(entry.name));
+        GpNextPackArchiveNormalizer.write(output, outputOffset, central);
         outputOffset += central.length;
       }
       const centralSize = outputOffset - centralOffset;
       if (outputOffset > 0xffffffff || centralSize > 0xffffffff) {
         throw new Error('暂不支持 ZIP64 格式');
       }
-      this.write(
+      GpNextPackArchiveNormalizer.write(
         output,
         outputOffset,
-        this.endOfCentralDirectory(entries.length, centralSize, centralOffset),
+        GpNextPackArchiveNormalizer.endOfCentralDirectory(entries.length, centralSize, centralOffset),
       );
     } finally {
       if (source != null) fs.closeSync(source.fd);
@@ -218,10 +218,10 @@ export class GpNextPackArchiveNormalizer {
   }
 
   private static localDataOffset(file: fs.File, entry: PackZipEntry): number {
-    const header = this.read(file, entry.localHeaderOffset, 30);
-    if (this.uint32LE(header, 0) !== 0x04034b50) throw new Error('ZIP 本地文件头无效');
+    const header = GpNextPackArchiveNormalizer.read(file, entry.localHeaderOffset, 30);
+    if (GpNextPackArchiveNormalizer.uint32LE(header, 0) !== 0x04034b50) throw new Error('ZIP 本地文件头无效');
     return entry.localHeaderOffset + 30 +
-      this.uint16LE(header, 26) + this.uint16LE(header, 28);
+      GpNextPackArchiveNormalizer.uint16LE(header, 26) + GpNextPackArchiveNormalizer.uint16LE(header, 28);
   }
 
   private static copy(
@@ -234,39 +234,39 @@ export class GpNextPackArchiveNormalizer {
     let copied = 0;
     while (copied < byteCount) {
       const length = Math.min(64 * 1024, byteCount - copied);
-      const bytes = this.read(source, sourceOffset + copied, length);
-      this.write(output, outputOffset + copied, bytes);
+      const bytes = GpNextPackArchiveNormalizer.read(source, sourceOffset + copied, length);
+      GpNextPackArchiveNormalizer.write(output, outputOffset + copied, bytes);
       copied += length;
     }
   }
 
   private static localHeader(entry: PackZipEntry, name: Uint8Array): Uint8Array {
     const bytes = new Uint8Array(30 + name.length);
-    this.setUint32LE(bytes, 0, 0x04034b50);
-    this.setUint16LE(bytes, 4, 20);
-    this.setUint16LE(bytes, 6, 0x0800);
-    this.setUint16LE(bytes, 8, entry.compressionMethod);
-    this.setUint32LE(bytes, 14, entry.crc32);
-    this.setUint32LE(bytes, 18, entry.compressedSize);
-    this.setUint32LE(bytes, 22, entry.uncompressedSize);
-    this.setUint16LE(bytes, 26, name.length);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 0, 0x04034b50);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 4, 20);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 6, 0x0800);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 8, entry.compressionMethod);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 14, entry.crc32);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 18, entry.compressedSize);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 22, entry.uncompressedSize);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 26, name.length);
     bytes.set(name, 30);
     return bytes;
   }
 
   private static centralHeader(entry: NormalizedPackZipEntry, name: Uint8Array): Uint8Array {
     const bytes = new Uint8Array(46 + name.length);
-    this.setUint32LE(bytes, 0, 0x02014b50);
-    this.setUint16LE(bytes, 4, 0x0314);
-    this.setUint16LE(bytes, 6, 20);
-    this.setUint16LE(bytes, 8, 0x0800);
-    this.setUint16LE(bytes, 10, entry.source.compressionMethod);
-    this.setUint32LE(bytes, 16, entry.source.crc32);
-    this.setUint32LE(bytes, 20, entry.source.compressedSize);
-    this.setUint32LE(bytes, 24, entry.source.uncompressedSize);
-    this.setUint16LE(bytes, 28, name.length);
-    this.setUint32LE(bytes, 38, entry.source.externalAttributes);
-    this.setUint32LE(bytes, 42, entry.localHeaderOffset);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 0, 0x02014b50);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 4, 0x0314);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 6, 20);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 8, 0x0800);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 10, entry.source.compressionMethod);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 16, entry.source.crc32);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 20, entry.source.compressedSize);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 24, entry.source.uncompressedSize);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 28, name.length);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 38, entry.source.externalAttributes);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 42, entry.localHeaderOffset);
     bytes.set(name, 46);
     return bytes;
   }
@@ -277,11 +277,11 @@ export class GpNextPackArchiveNormalizer {
     centralOffset: number,
   ): Uint8Array {
     const bytes = new Uint8Array(22);
-    this.setUint32LE(bytes, 0, 0x06054b50);
-    this.setUint16LE(bytes, 8, entryCount);
-    this.setUint16LE(bytes, 10, entryCount);
-    this.setUint32LE(bytes, 12, centralSize);
-    this.setUint32LE(bytes, 16, centralOffset);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 0, 0x06054b50);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 8, entryCount);
+    GpNextPackArchiveNormalizer.setUint16LE(bytes, 10, entryCount);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 12, centralSize);
+    GpNextPackArchiveNormalizer.setUint32LE(bytes, 16, centralOffset);
     return bytes;
   }
 
