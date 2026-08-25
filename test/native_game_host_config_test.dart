@@ -51,6 +51,7 @@ void main() {
     expect(activity, contains('add("touch_input_adapter.js")'));
     expect(activity, isNot(contains('add("touch_patch.js")')));
     expect(activity, contains('add("auto_sun.js")'));
+    expect(activity, contains('add("js_modding.js")'));
     expect(
       activity.indexOf('add("bootstrap.js")'),
       lessThan(activity.indexOf('add("auto_sun.js")')),
@@ -62,11 +63,20 @@ void main() {
       ),
     );
     expect(session, contains('val autoCollectSunEnabled: Boolean'));
+    expect(session, contains('val jsModdingEnabled: Boolean'));
     expect(
       session,
       contains(
         'autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled")',
       ),
+    );
+    expect(
+      activity,
+      contains('.put("jsModdingEnabled", session.jsModdingEnabled)'),
+    );
+    expect(
+      session,
+      contains('jsModdingEnabled = json.optBoolean("jsModdingEnabled", false)'),
     );
     expect(activity, contains('settings.allowFileAccess = false'));
     expect(bridge, contains('sourceOrigin.toString() != session.origin'));
@@ -138,6 +148,7 @@ void main() {
     expect(controller, isNot(contains('"touch_patch.js"')));
     expect(controller, contains('"touchAdapter": "javascript"'));
     expect(controller, contains('"auto_sun.js"'));
+    expect(controller, contains('names.append("js_modding.js")'));
     expect(
       controller.indexOf('"bootstrap.js"'),
       lessThan(controller.indexOf('"auto_sun.js"')),
@@ -156,12 +167,21 @@ void main() {
       ),
     );
     expect(session, contains('let autoCollectSunEnabled: Bool'));
+    expect(session, contains('let jsModdingEnabled: Bool'));
     expect(session, contains('let detailedAudioDiagnosticsEnabled: Bool'));
     expect(
       session,
       contains(
         'autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled")',
       ),
+    );
+    expect(
+      controller,
+      contains('"jsModdingEnabled": session.jsModdingEnabled'),
+    );
+    expect(
+      session,
+      contains('jsModdingEnabled: json["jsModdingEnabled"] as? Bool ?? false'),
     );
     expect(controller, contains('setURLSchemeHandler'));
     expect(handler, contains('WKURLSchemeHandler'));
@@ -227,6 +247,7 @@ void main() {
     expect(page, isNot(contains("'touch_patch.js'")));
     expect(page, contains("touchAdapter: 'javascript'"));
     expect(page, contains("'auto_sun.js'"));
+    expect(page, contains("names.push('js_modding.js')"));
     expect(
       page.indexOf("'bootstrap.js'"),
       lessThan(page.indexOf("'auto_sun.js'")),
@@ -236,10 +257,20 @@ void main() {
       contains('autoCollectSunEnabled: session.autoCollectSunEnabled'),
     );
     expect(session, contains('autoCollectSunEnabled: boolean;'));
+    expect(session, contains('jsModdingEnabled?: boolean;'));
     expect(session, contains('readonly autoCollectSunEnabled: boolean;'));
+    expect(session, contains('readonly jsModdingEnabled: boolean;'));
     expect(
       session,
       contains('this.autoCollectSunEnabled = value.autoCollectSunEnabled;'),
+    );
+    expect(
+      page,
+      contains('jsModdingEnabled: session.jsModdingEnabled'),
+    );
+    expect(
+      session,
+      contains('this.jsModdingEnabled = value.jsModdingEnabled === true;'),
     );
     expect(page, contains('.fileAccess(false)'));
     expect(page, contains('const minimumAspectRatio = 16 / 10'));

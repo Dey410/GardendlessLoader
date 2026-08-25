@@ -14,6 +14,7 @@ public struct GameSession: Codable, Equatable {
   public let gpNextVersion: String?
   public let watermarkEnabled: Bool
   public let autoCollectSunEnabled: Bool
+  public let jsModdingEnabled: Bool
   public let detailedAudioDiagnosticsEnabled: Bool
   public let allowedRemoteHosts: Set<String>
   public let gpNextRoot: URL
@@ -33,6 +34,7 @@ public struct GameSession: Codable, Equatable {
     gpNextVersion: String?,
     watermarkEnabled: Bool,
     autoCollectSunEnabled: Bool,
+    jsModdingEnabled: Bool = false,
     detailedAudioDiagnosticsEnabled: Bool = false,
     allowedRemoteHosts: Set<String>,
     gpNextRoot: URL,
@@ -47,6 +49,7 @@ public struct GameSession: Codable, Equatable {
     self.gpNextVersion = gpNextVersion
     self.watermarkEnabled = watermarkEnabled
     self.autoCollectSunEnabled = autoCollectSunEnabled
+    self.jsModdingEnabled = jsModdingEnabled
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
     self.allowedRemoteHosts = allowedRemoteHosts
     self.gpNextRoot = gpNextRoot
@@ -88,6 +91,7 @@ public enum GameSessionDecoder {
       gpNextVersion: json["gpNextVersion"] as? String,
       watermarkEnabled: try requiredBool(json, "watermarkEnabled"),
       autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled"),
+      jsModdingEnabled: json["jsModdingEnabled"] as? Bool ?? false,
       detailedAudioDiagnosticsEnabled:
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
       allowedRemoteHosts: Set(hosts.map { $0.lowercased() }),

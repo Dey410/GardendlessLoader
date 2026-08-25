@@ -687,6 +687,7 @@ final class GameHostController: UIViewController,
       "gpNextVersion": session.gpNextVersion ?? NSNull(),
       "watermarkEnabled": session.watermarkEnabled,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
+      "jsModdingEnabled": session.jsModdingEnabled,
       "detailedAudioDiagnosticsEnabled":
         session.detailedAudioDiagnosticsEnabled,
       "gpNextBaseDirectory": session.appRoot.path,
@@ -706,6 +707,7 @@ final class GameHostController: UIViewController,
       "export_download_patch.js",
     ]
     if session.hasGpNext && session.gpNextCompatible {
+      names.append("js_modding.js")
       names.append("gp_next_core.js")
       names.append("gp_next_compat_bridge.js")
     }

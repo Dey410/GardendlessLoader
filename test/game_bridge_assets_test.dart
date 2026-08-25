@@ -14,6 +14,7 @@ void main() {
     'gp_next_compat_bridge.js',
     'watermark.js',
     'auto_sun.js',
+    'js_modding.js',
   ];
 
   test('ships one platform-independent document-start script source', () {
@@ -37,6 +38,21 @@ void main() {
     final source = File('assets/game_bridge/watermark.js').readAsStringSync();
 
     expect(source, contains('pointerEvents: "none"'));
+  });
+
+  test('JS Modding launch setting passes executable behavior checks',
+      () async {
+    final result = await Process.run(
+      'node',
+      const ['tool/check_js_modding.mjs'],
+    );
+
+    expect(
+      result.exitCode,
+      0,
+      reason: '${result.stdout}\n${result.stderr}',
+    );
+    expect(result.stdout, contains('JS Modding settings contract passes'));
   });
 
   test('large exports are streamed through bounded bridge chunks', () {

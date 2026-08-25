@@ -218,6 +218,7 @@ struct GamePage {
       gpNextVersion: session.gpNextVersion,
       watermarkEnabled: session.watermarkEnabled,
       autoCollectSunEnabled: session.autoCollectSunEnabled,
+      jsModdingEnabled: session.jsModdingEnabled,
       gpNextBaseDirectory: session.appRoot,
     });
     const names: string[] = [
@@ -230,6 +231,7 @@ struct GamePage {
       'export_download_patch.js',
     ];
     if (session.hasGpNext && session.gpNextCompatible) {
+      names.push('js_modding.js');
       names.push('gp_next_core.js');
       names.push('gp_next_compat_bridge.js');
     }

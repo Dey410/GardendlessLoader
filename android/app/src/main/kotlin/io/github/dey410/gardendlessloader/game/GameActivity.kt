@@ -142,6 +142,7 @@ class GameActivity : Activity() {
             .put("gpNextVersion", session.gpNextVersion ?: JSONObject.NULL)
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
+            .put("jsModdingEnabled", session.jsModdingEnabled)
             .put("gpNextBaseDirectory", session.appRoot)
         val names = buildList {
             add("transport.js")
@@ -152,6 +153,7 @@ class GameActivity : Activity() {
             add("touch_input_adapter.js")
             add("export_download_patch.js")
             if (session.hasGpNext && session.gpNextCompatible) {
+                add("js_modding.js")
                 add("gp_next_core.js")
                 add("gp_next_compat_bridge.js")
             }
