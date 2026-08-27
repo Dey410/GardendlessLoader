@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "announcement": {
-    "id": "2026-08-10-v0.7.6",
-    "title": "v0.7.6 重要更新",
-    "message": "(加载器和资源包都要用新的！！！！)GardendlessLoader v0.7.6 已发布：iOS GameHost 重构为模块化 GardendlessKit，增强本地资源加载、ZIP 导入、结构化日志、GP-Next 与音频能力；修复自动收集阳光、触控、启动稳定性问题；改进 Android 与 OpenHarmony 文件选择器的方向和并发处理，并精简不再维护的平台工程。重要：建议升级前导出重要存档。",
+    "id": "2026-08-27-v0.8.1",
+    "title": "v0.8.1 重要更新",
+    "message": "GardendlessLoader v0.8.1 已发布：重构 Android、iOS 与 HarmonyOS/OpenHarmony 跨平台触控，改进点按选卡、点击种植及拖拽松手种植；iOS 音频改由 Cocos WebAudio/HTMLMediaElement 播放，并新增详细音频诊断；GP-Next 新增 JS Modding 启动开关，支持自动整理仅含一层外壳目录的补丁 ZIP。重要：JS Mod 会执行游戏代码，请只使用可信来源；升级前建议导出重要存档。",
     "links": [
       {
         "label": "GitHub",
