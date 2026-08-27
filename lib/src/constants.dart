@@ -13,7 +13,7 @@ const remoteAnnouncementUrl =
 const remoteAboutContentUrl =
     'https://raw.githubusercontent.com/Dey410/GardendlessLoader/main/about_content.json'; // 远程关于内容 URL
 const resourceFolderName = 'GardendlessLoader'; // 资源文件夹名称
-const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.7.6');
+const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.8.1');
 const announcementTimeout = Duration(seconds: 3); //公告请求超时时间
 const announcementMaxBytes = 32 * 1024; //公告请求最大响应体大小，32KB应该足够了
 const aboutContentTimeout = Duration(seconds: 3); //关于内容请求超时时间
