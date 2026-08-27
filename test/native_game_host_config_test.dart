@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Android game path is a standalone origin-scoped native WebView', () {
+  test('Android game path uses the shared JavaScript touch adapter', () {
     final activity = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
     ).readAsStringSync();
@@ -13,17 +13,45 @@ void main() {
     final viewport = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameViewportLayout.kt',
     ).readAsStringSync();
+    final touchAdapter = File(
+      'assets/game_bridge/touch_input_adapter.js',
+    ).readAsStringSync();
     final session = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameSessionCodec.kt',
     ).readAsStringSync();
 
     expect(activity, contains('class GameActivity : Activity()'));
+    expect(activity, contains('webView = WebView(this).apply'));
+    expect(activity, isNot(contains('MouseGameWebView')));
+    expect(
+      activity,
+      isNot(contains('referenceTouchAdapterEnabled')),
+    );
+    expect(
+      activity,
+      contains('.put("touchAdapter", "javascript")'),
+      reason: 'Android sessions must select the shared JavaScript adapter',
+    );
+    expect(
+      activity,
+      isNot(contains('"android-reference"')),
+      reason: 'the native Android adapter must not remain a runtime fallback',
+    );
+    expect(
+      touchAdapter,
+      isNot(contains('android-reference')),
+      reason:
+          'the shared adapter must not retain an Android-only execution branch',
+    );
     expect(activity, contains('setContentView(viewport)'));
     expect(viewport, contains('16.0 / 10.0'));
     expect(viewport, contains('17.0 / 9.0'));
     expect(activity, contains('addDocumentStartJavaScript'));
-    expect(activity, contains('add("touch_patch.js")'));
+    expect(activity, contains('add("touch_state_machine.js")'));
+    expect(activity, contains('add("touch_input_adapter.js")'));
+    expect(activity, isNot(contains('add("touch_patch.js")')));
     expect(activity, contains('add("auto_sun.js")'));
+    expect(activity, contains('add("js_modding.js")'));
     expect(
       activity.indexOf('add("bootstrap.js")'),
       lessThan(activity.indexOf('add("auto_sun.js")')),
@@ -35,11 +63,20 @@ void main() {
       ),
     );
     expect(session, contains('val autoCollectSunEnabled: Boolean'));
+    expect(session, contains('val jsModdingEnabled: Boolean'));
     expect(
       session,
       contains(
         'autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled")',
       ),
+    );
+    expect(
+      activity,
+      contains('.put("jsModdingEnabled", session.jsModdingEnabled)'),
+    );
+    expect(
+      session,
+      contains('jsModdingEnabled = json.optBoolean("jsModdingEnabled", false)'),
     );
     expect(activity, contains('settings.allowFileAccess = false'));
     expect(bridge, contains('sourceOrigin.toString() != session.origin'));
@@ -105,16 +142,13 @@ void main() {
         ),
       ),
     );
-    expect(
-      controller,
-      matches(
-        RegExp(
-          r'contentController\.add\(\s*audioBridge,\s*contentWorld: \.page,\s*name: AudioScriptBridge\.name\s*\)',
-        ),
-      ),
-    );
-    expect(controller, contains('"touch_patch.js"'));
+    expect(controller, isNot(contains('AudioScriptBridge')));
+    expect(controller, contains('"touch_state_machine.js"'));
+    expect(controller, contains('"touch_input_adapter.js"'));
+    expect(controller, isNot(contains('"touch_patch.js"')));
+    expect(controller, contains('"touchAdapter": "javascript"'));
     expect(controller, contains('"auto_sun.js"'));
+    expect(controller, contains('names.append("js_modding.js")'));
     expect(
       controller.indexOf('"bootstrap.js"'),
       lessThan(controller.indexOf('"auto_sun.js"')),
@@ -123,12 +157,31 @@ void main() {
       controller,
       contains('"autoCollectSunEnabled": session.autoCollectSunEnabled'),
     );
+    expect(
+      controller,
+      matches(
+        RegExp(
+          r'"detailedAudioDiagnosticsEnabled":\s*'
+          r'session\.detailedAudioDiagnosticsEnabled',
+        ),
+      ),
+    );
     expect(session, contains('let autoCollectSunEnabled: Bool'));
+    expect(session, contains('let jsModdingEnabled: Bool'));
+    expect(session, contains('let detailedAudioDiagnosticsEnabled: Bool'));
     expect(
       session,
       contains(
         'autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled")',
       ),
+    );
+    expect(
+      controller,
+      contains('"jsModdingEnabled": session.jsModdingEnabled'),
+    );
+    expect(
+      session,
+      contains('jsModdingEnabled: json["jsModdingEnabled"] as? Bool ?? false'),
     );
     expect(controller, contains('setURLSchemeHandler'));
     expect(handler, contains('WKURLSchemeHandler'));
@@ -137,7 +190,12 @@ void main() {
       contains(
           'maxConcurrentOperationCount = configuration.resourceQueueConcurrency'),
     );
-    expect(handler, contains('maxConcurrentOperationCount = 2'));
+    expect(
+      handler,
+      contains(
+        'maxConcurrentOperationCount = configuration.audioQueueConcurrency',
+      ),
+    );
     expect('$handler\n$mime', contains('"ftypM4A"'));
     expect('$handler\n$mime', contains('"ftypisom"'));
     expect('$handler\n$mime', contains('"ftypmp42"'));
@@ -184,8 +242,12 @@ void main() {
     expect(page, contains('scriptRules: [GameSession.ORIGIN]'));
     expect(page, isNot(contains(r'`${GameSession.ORIGIN}/*`')));
     expect(page, isNot(contains('.javaScriptOnDocumentStart(')));
-    expect(page, contains("'touch_patch.js'"));
+    expect(page, contains("'touch_state_machine.js'"));
+    expect(page, contains("'touch_input_adapter.js'"));
+    expect(page, isNot(contains("'touch_patch.js'")));
+    expect(page, contains("touchAdapter: 'javascript'"));
     expect(page, contains("'auto_sun.js'"));
+    expect(page, contains("names.push('js_modding.js')"));
     expect(
       page.indexOf("'bootstrap.js'"),
       lessThan(page.indexOf("'auto_sun.js'")),
@@ -195,10 +257,20 @@ void main() {
       contains('autoCollectSunEnabled: session.autoCollectSunEnabled'),
     );
     expect(session, contains('autoCollectSunEnabled: boolean;'));
+    expect(session, contains('jsModdingEnabled?: boolean;'));
     expect(session, contains('readonly autoCollectSunEnabled: boolean;'));
+    expect(session, contains('readonly jsModdingEnabled: boolean;'));
     expect(
       session,
       contains('this.autoCollectSunEnabled = value.autoCollectSunEnabled;'),
+    );
+    expect(
+      page,
+      contains('jsModdingEnabled: session.jsModdingEnabled'),
+    );
+    expect(
+      session,
+      contains('this.jsModdingEnabled = value.jsModdingEnabled === true;'),
     );
     expect(page, contains('.fileAccess(false)'));
     expect(page, contains('const minimumAspectRatio = 16 / 10'));

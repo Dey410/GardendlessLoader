@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/models.dart';
-import 'package:gardendless_loader/src/services/cocos_audio_facade_patcher.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
 import 'package:gardendless_loader/src/services/resource_self_check.dart';
@@ -63,62 +62,31 @@ void main() {
     expect(await paths.slotBDir.list().isEmpty, isTrue);
   });
 
-  test('applies the audio facade patch before activating the candidate',
+  test('keeps the imported Cocos audio bundle byte-for-byte unchanged',
       () async {
-    final patcher = _RecordingAudioPatcher(
-      const CocosAudioFacadePatchResult(
-        CocosAudioFacadePatchStatus.applied,
-        '已启用测试音频补丁',
-      ),
-    );
-    importService = ImportService(
-      validator: ResourceValidator(),
-      audioFacadePatcher: patcher,
-    );
     final target = await importService.beginImport(
       paths: paths,
       manifestStore: manifestStore,
     );
     await _writeValidResource(target.directory);
-
-    final manifest = await importService.completeImport(
-      paths: paths,
-      manifestStore: manifestStore,
-      target: target,
-    );
-
-    expect(patcher.appliedRoots, [target.directory.path]);
-    expect(manifest.activeSlot, target.slot);
-  });
-
-  test('audio patch mismatch warns but does not block activation', () async {
-    const warning = '资源包音频入口已变化，iOS 原生音频补丁未应用';
-    importService = ImportService(
-      validator: ResourceValidator(),
-      audioFacadePatcher: _RecordingAudioPatcher(
-        const CocosAudioFacadePatchResult(
-          CocosAudioFacadePatchStatus.unsupported,
-          warning,
-        ),
+    await File(p.join(target.directory.path, 'src', 'settings.json'))
+        .writeAsString('{"platform":"web-mobile","CocosEngine":"3.8.4"}');
+    final engine = File(
+      p.join(
+        target.directory.path,
+        'cocos-js',
+        '_virtual_cc-23be142f.js',
       ),
     );
-    final target = await importService.beginImport(
-      paths: paths,
-      manifestStore: manifestStore,
-    );
-    await _writeValidResource(target.directory);
-    final progress = <ImportProgress>[];
+    await engine.writeAsString(_supportedCocosAudioBundle);
 
-    final manifest = await importService.completeImport(
+    await importService.completeImport(
       paths: paths,
       manifestStore: manifestStore,
       target: target,
-      onProgress: progress.add,
     );
 
-    expect(manifest.activeSlot, target.slot);
-    expect(progress.map((item) => item.message), contains(warning));
-    expect(progress.last.phase, ImportPhase.completed);
+    expect(await engine.readAsString(), _supportedCocosAudioBundle);
   });
 
   test('successful update activates the inactive slot and clears the old slot',
@@ -137,7 +105,10 @@ void main() {
       target: target,
     );
     await manifestStore.write(
-      (await manifestStore.read()).copyWith(autoCollectSunEnabled: true),
+      (await manifestStore.read()).copyWith(
+        autoCollectSunEnabled: true,
+        jsModdingEnabled: true,
+      ),
     );
 
     target = await importService.beginImport(
@@ -159,6 +130,7 @@ void main() {
     expect(manifest.gameVersion, '0.12.0');
     expect(manifest.transactionState, TransactionState.idle);
     expect(manifest.autoCollectSunEnabled, isFalse);
+    expect(manifest.jsModdingEnabled, isTrue);
     expect(await paths.slotADir.list().isEmpty, isTrue);
     expect(
       await File(p.join(paths.slotBDir.path, 'index.html')).exists(),
@@ -608,15 +580,17 @@ class _FailingSelfCheck implements ResourceSelfCheck {
   }
 }
 
-class _RecordingAudioPatcher implements CocosAudioFacadePatchApplying {
-  _RecordingAudioPatcher(this.result);
-
-  final CocosAudioFacadePatchResult result;
-  final appliedRoots = <String>[];
-
-  @override
-  Future<CocosAudioFacadePatchResult> apply(Directory root) async {
-    appliedRoots.add(root.path);
-    return result;
-  }
-}
+const _supportedCocosAudioBundle = '''
+function __pvzgeUseDomAudio(e){return!1}System.register
+t.load=function(e){return new Promise((function(i,n){t.loadNative(e).then((function(e){i(new t(e))})).catch(n)}))}
+t.loadNative=function(t){return new Promise((function(e,i){var n=document.createElement("audio");n.preload="none",n.__pvzgeLazySrc=t,e(n)}))}
+t.loadOneShotAudio=function(e,i){return new Promise((function(n,r){t.loadNative(e).then((function(t){var e=new v9(t,i);n(e)})).catch(r)}))}
+t.load=function(e,i){return new Promise((function(n,r){E9.support&&!__pvzgeUseDomAudio(e)?D9.load(e).then((function(e){n(new t(e))})).catch(r):(E9.support||tt(5201),y9.load(e).then((function(e){n(new t(e))})).catch(r))}))}
+t.loadNative=function(t,e){returnE9.support&&!__pvzgeUseDomAudio(t)?D9.loadNative(t):(E9.support||tt(5201),y9.loadNative(t))}
+t.loadOneShotAudio=function(t,e,i){return new Promise((function(n,r){E9.support&&!__pvzgeUseDomAudio(t)?D9.loadOneShotAudio(t,e).then((function(t){n(new B9(t))})).catch(r):(E9.support||tt(5201),y9.loadOneShotAudio(t,e).then((function(t){n(new B9(t))})).catch(r))}))}
+return{uuid:this._uuid,audioLoadMode:this.loadMode,ext:this._native,__isNative__:!0}
+P9.load(t,{audioLoadMode:e.audioLoadMode})
+P9.loadOneShotAudio(t._nativeAsset.url,this._volume*e,{audioLoadMode:t.loadMode})
+P9.loadOneShotAudio(this._nativeAsset.url,t)
+e.destroy=function(){bB.off(AB.EVENT_PAUSE,this._onInterruptedBegin,this),bB.off(AB.EVENT_RESUME,this._onInterruptedEnd,this),this._domAudio.removeEventListener("ended",this._onEnded),this._domAudio=null}
+''';

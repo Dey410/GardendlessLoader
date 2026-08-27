@@ -15,7 +15,6 @@ let package = Package(
     .library(name: "GardendlessBridge", targets: ["GardendlessBridge"]),
     .library(name: "GardendlessImport", targets: ["GardendlessImport"]),
     .library(name: "GardendlessGPNext", targets: ["GardendlessGPNext"]),
-    .library(name: "GardendlessAudio", targets: ["GardendlessAudio"]),
     .library(name: "GardendlessLogging", targets: ["GardendlessLogging"]),
   ],
   targets: [
@@ -40,17 +39,8 @@ let package = Package(
     ),
     .target(
       name: "GardendlessGPNext",
-      dependencies: ["GardendlessCore"],
+      dependencies: ["GardendlessCore", "GardendlessImport"],
       path: "Sources/GardendlessGPNext"
-    ),
-    .target(
-      name: "GardendlessAudio",
-      dependencies: ["GardendlessCore", "SfxExceptionGuard"],
-      path: "Sources/GardendlessAudio"
-    ),
-    .target(
-      name: "SfxExceptionGuard",
-      path: "Sources/SfxExceptionGuard"
     ),
     .target(
       name: "GardendlessLogging",
@@ -64,9 +54,7 @@ let package = Package(
         "GardendlessBridge",
         "GardendlessImport",
         "GardendlessGPNext",
-        "GardendlessAudio",
         "GardendlessLogging",
-        "SfxExceptionGuard",
       ],
       path: "Tests/GardendlessKitTests",
       resources: [

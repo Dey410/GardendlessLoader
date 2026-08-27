@@ -1,5 +1,4 @@
 import XCTest
-@testable import GardendlessAudio
 @testable import GardendlessBridge
 @testable import GardendlessGPNext
 @testable import GardendlessImport
@@ -29,10 +28,4 @@ final class ConstantsTests: XCTestCase {
     )
   }
 
-  func testAudioLimits() {
-    XCTAssertEqual(AudioPlaybackLimits.voicePoolSize, 48)
-    XCTAssertEqual(AudioPlaybackLimits.rateVoiceCount, 6)
-    XCTAssertEqual(AudioPlaybackLimits.longChannelCount, 8)
-    XCTAssertTrue(AudioPlaybackLimits.excludedTokens.contains("bgm"))
-  }
 }

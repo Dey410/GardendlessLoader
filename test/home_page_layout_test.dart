@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/constants.dart';
+import 'package:gardendless_loader/src/game_host/game_host.dart';
 import 'package:gardendless_loader/src/logging/app_logger.dart';
 import 'package:gardendless_loader/src/logging/log_event_catalog.dart';
 import 'package:gardendless_loader/src/models.dart';
@@ -83,6 +84,10 @@ void main() {
 
       expect(
           find.byKey(const ValueKey('resource-progress-region')), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('home-game-controls-expander')),
+      );
+      await tester.pumpAndSettle();
 
       await tester.runAsync(() async {
         importFuture = controller.importResources();
@@ -326,24 +331,36 @@ void main() {
   );
 
   testWidgets(
-    'standard resources offer automatic sun collection above game start',
+    'standard resources expand automatic collection without launching',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(915, 412);
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final controller = await _readyController(tester);
+      final host = _RecordingGameHost();
+      final controller = await _readyController(tester, gameHost: host);
       await tester.pumpWidget(
         MaterialApp(home: HomePage(controller: controller)),
       );
       await tester.pump();
 
       final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
+      final jsModding = find.byKey(const ValueKey('home-js-modding'));
       final startGame = find.byKey(const ValueKey('home-start-game-button'));
+      final expander =
+          find.byKey(const ValueKey('home-game-controls-expander'));
 
+      expect(autoCollect, findsNothing);
+      expect(jsModding, findsNothing);
+      expect(find.text('自动收集'), findsNothing);
+
+      await tester.tap(expander);
+      await tester.pumpAndSettle();
+
+      expect(host.launchCount, 0);
       expect(autoCollect, findsOneWidget);
-      expect(find.text('自动收集'), findsOneWidget);
+      expect(jsModding, findsNothing);
       expect(tester.getRect(autoCollect).bottom, tester.getRect(startGame).top);
 
       await tester.tap(autoCollect);
@@ -363,7 +380,7 @@ void main() {
   );
 
   testWidgets(
-    'GP-Next resources offer automatic sun collection above game start',
+    'compatible GP-Next resources expand both game controls',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(915, 412);
@@ -377,25 +394,47 @@ void main() {
       await tester.pump();
 
       final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
+      final jsModding = find.byKey(const ValueKey('home-js-modding'));
       final startGame = find.byKey(const ValueKey('home-start-game-button'));
 
       expect(controller.hasGpNext, isTrue);
-      expect(autoCollect, findsOneWidget);
-      expect(find.text('自动收集'), findsOneWidget);
-      expect(tester.getRect(autoCollect).bottom, tester.getRect(startGame).top);
+      expect(controller.gpNextCompatible, isTrue);
+      expect(autoCollect, findsNothing);
+      expect(jsModding, findsNothing);
 
-      await tester.tap(autoCollect);
+      await tester.tap(
+        find.byKey(const ValueKey('home-game-controls-expander')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(autoCollect, findsOneWidget);
+      expect(jsModding, findsOneWidget);
+      expect(find.text('自动收集'), findsOneWidget);
+      expect(find.text('JS Modding'), findsOneWidget);
+      expect(tester.getRect(jsModding).bottom, tester.getRect(startGame).top);
+
+      await tester.tap(jsModding);
       await tester.pump();
 
-      expect(controller.autoCollectSunEnabled, isTrue);
+      expect(controller.jsModdingEnabled, isTrue);
       expect(
         tester
             .widget<Switch>(
-              find.byKey(const ValueKey('home-auto-collect-sun-switch')),
+              find.byKey(const ValueKey('home-js-modding-switch')),
             )
             .value,
         isTrue,
       );
+
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(controller: controller)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(autoCollect, findsNothing);
+      expect(jsModding, findsNothing);
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );
@@ -528,6 +567,22 @@ void main() {
       await tester.pump();
 
       expect(find.text('日志信息'), findsOneWidget);
+      expect(find.text('详细音频诊断'), findsOneWidget);
+      expect(
+        find.text('记录每个音频的加载、解码和播放事件；仅在排查问题时开启'),
+        findsOneWidget,
+      );
+      final diagnosticsSwitch = find.byKey(
+        const ValueKey('detailed-audio-diagnostics-switch'),
+      );
+      expect(diagnosticsSwitch, findsOneWidget);
+      expect(tester.widget<Switch>(diagnosticsSwitch).value, isFalse);
+
+      await tester.tap(diagnosticsSwitch);
+      await tester.pumpAndSettle();
+
+      expect(controller.detailedAudioDiagnosticsEnabled, isTrue);
+      expect(tester.widget<Switch>(diagnosticsSwitch).value, isTrue);
       expect(find.text('复制日志信息'), findsOneWidget);
       expect(
         find.textContaining('[INFO] app', findRichText: true),
@@ -685,6 +740,14 @@ void main() {
         findsNothing,
       );
       expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const ValueKey('home-game-controls-expander')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
         tester.getRect(find.byKey(const ValueKey('app-version-pill'))).right,
         lessThan(tester.getRect(find.text('需导入')).left),
       );
@@ -772,6 +835,7 @@ Future<AppController> _readyController(
   DiagnosticsService? diagnosticsService,
   AppLogger? appLogger,
   bool gpNext = false,
+  GameHost? gameHost,
 }) async {
   return (await tester.runAsync(() async {
     final root = await Directory.systemTemp.createTemp('gl_home_layout_');
@@ -804,10 +868,20 @@ import('./config-test.js');
       appLogger: appLogger,
       updateCheckService: _noUpdateService(),
       gameUpdateCheckService: _noGameUpdateService(),
+      gameHost: gameHost,
     );
     await controller.initialize();
     return controller;
   }))!;
+}
+
+class _RecordingGameHost implements GameHost {
+  int launchCount = 0;
+
+  @override
+  Future<void> launch(GameSession session) async {
+    launchCount += 1;
+  }
 }
 
 Future<AppController> _emptyController(WidgetTester tester) async {

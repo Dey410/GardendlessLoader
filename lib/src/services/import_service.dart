@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models.dart';
-import 'cocos_audio_facade_patcher.dart';
 import 'game_update_check_service.dart';
 import 'manifest_store.dart';
 import 'resource_self_check.dart';
@@ -24,19 +23,16 @@ class ImportService {
   ImportService({
     required ResourceValidator validator,
     ResourceSelfCheck? selfCheck,
-    CocosAudioFacadePatchApplying? audioFacadePatcher,
     GameUpdateCheckService? gameUpdateCheckService,
     OldSlotCleaner? oldSlotCleaner,
   })  : _validator = validator,
         _selfCheck = selfCheck ?? FileResourceSelfCheck(),
-        _audioFacadePatcher = audioFacadePatcher ?? CocosAudioFacadePatcher(),
         _gameUpdateCheckService =
             gameUpdateCheckService ?? GameUpdateCheckService(),
         _oldSlotCleaner = oldSlotCleaner;
 
   final ResourceValidator _validator;
   final ResourceSelfCheck _selfCheck;
-  final CocosAudioFacadePatchApplying _audioFacadePatcher;
   final GameUpdateCheckService _gameUpdateCheckService;
   final OldSlotCleaner? _oldSlotCleaner;
 
@@ -122,16 +118,6 @@ class ImportService {
           validation.errorMessage ?? '导入资源校验失败',
         );
       }
-      final audioPatch = await _audioFacadePatcher.apply(target.directory);
-      if (audioPatch.status == CocosAudioFacadePatchStatus.applied ||
-          audioPatch.status == CocosAudioFacadePatchStatus.unsupported) {
-        report(
-          ImportProgress(
-            phase: ImportPhase.validating,
-            message: audioPatch.message,
-          ),
-        );
-      }
       final stats = await _validator.scanStats(
         target.directory,
         detectedTitle: validation.detectedTitle,
@@ -177,6 +163,7 @@ class ImportService {
         lastSelfCheckAt: now,
       );
       manifest = ResourceManifest.initial().copyWith(
+        jsModdingEnabled: manifest.jsModdingEnabled,
         generation: activationGeneration,
         activeSlot: target.slot,
         transactionSlot: oldSlot,
@@ -366,6 +353,7 @@ class ImportService {
         lastSelfCheckAt: now,
       );
       manifest = ResourceManifest.initial().copyWith(
+        jsModdingEnabled: manifest.jsModdingEnabled,
         generation: activationGeneration,
         activeSlot: candidateSlot,
         transactionSlot: oldSlot,
@@ -470,6 +458,7 @@ class ImportService {
       }
     }
     final recovered = ResourceManifest.initial().copyWith(
+      jsModdingEnabled: manifest.jsModdingEnabled,
       generation: generation,
       activeSlot: selected.slot,
       transactionSlot: otherCandidate?.slot,
@@ -596,6 +585,7 @@ class ImportService {
       lastSelfCheckAt: manifest.lastSelfCheckAt,
     );
     manifest = ResourceManifest.initial().copyWith(
+      jsModdingEnabled: manifest.jsModdingEnabled,
       generation: activationGeneration,
       activeSlot: targetSlot,
       gameVersion: gameVersion,
