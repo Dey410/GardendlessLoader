@@ -58,6 +58,8 @@ You can obtain an importable resource package in the following ways:
 
 To update the resources, select another ZIP. New resources are written to the inactive slot and become active only after validation and the filesystem self-check succeed.
 
+The separate arrow on the right side of **Start Game** expands the launch controls. Standard resources show **Auto Collect Sun**. A compatible GP-Next resource that contains the JS Mod loader also shows **JS Modding**. The panel starts collapsed whenever the Loader home page is entered, and changing either setting affects the next game launch.
+
 ### In-game Touch Controls
 
 | Gesture | Mapping |
@@ -68,7 +70,9 @@ To update the resources, select another ZIP. New resources are written to the in
 | Three or more fingers | Cancel the current touch mapping |
 | Physical mouse and keyboard | Handled natively by the system WebView |
 
-When **Auto Collect Sun** is enabled in the game menu, the app simulates one `A` key press approximately every 3 seconds while gameplay is active. It does not trigger when the game is paused, the app is in the background, or a text input has focus.
+When **Auto Collect Sun** is enabled in the launch controls, the app simulates one `A` key press approximately every 3 seconds while gameplay is active. It does not trigger when the game is paused, the app is in the background, or a text input has focus.
+
+**JS Modding** is off by default. Its choice is stored by the Loader across restarts and game-resource updates. On the next compatible GP-Next launch, the Loader synchronizes only `experimental.jsModding` in `gp-next-settings` before GP-Next initializes. JS Mods execute code inside the game, so import them only from sources you trust.
 
 > [!IMPORTANT]
 > Some of the project's UI, logic, and platform adaptation were developed with the assistance of AI tools and are continually improved through code review, automated tests, and device acceptance testing. If you encounter unexpected behavior, include the diagnostic summary when reporting it.
@@ -89,6 +93,8 @@ GardendlessLoader/
 
 At rest, only the active slot contains game files. During an update, at most one copy of the old resources and one candidate copy are retained. The manifest switches atomically only after the candidate passes validation; the old slot is then cleaned. Because `gp-next` is outside both slots, updating game resources does not remove imported patches or Mods.
 
+A GP-Next ZIP pack may place `pack.json` directly at the archive root or inside exactly one top-level wrapper directory. For the wrapped form, the Loader strips that one directory from its internal copy and ignores `.DS_Store` and `__MACOSX` metadata; the selected source file is not modified. Archives with multiple candidates, unrelated files outside the wrapper, or deeper nesting are rejected.
+
 ## Current Status
 
 | Capability | Android | iOS | HarmonyOS / OpenHarmony |
@@ -98,6 +104,7 @@ At rest, only the active slot contains game files. During an update, at most one
 | A/B slot updates and recovery | ✅ | ✅ | ✅ |
 | Touch, keyboard/mouse, and game bridge | ✅ | ✅ | ✅ |
 | GP-Next bridge and patch import | ✅ | ✅ | ✅ |
+| GP-Next JS Modding launch control | ✅ | ✅ | ✅ |
 | CI artifacts | APK | Unsigned IPA | Unsigned HAP (conditional) |
 
 > [!NOTE]

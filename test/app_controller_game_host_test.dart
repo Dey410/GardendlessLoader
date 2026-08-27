@@ -41,12 +41,16 @@ void main() {
     );
     await controller.initialize();
     await controller.setAutoCollectSunEnabled(true);
+    await controller.setJsModdingEnabled(true);
+    await controller.setDetailedAudioDiagnosticsEnabled(true);
 
     await controller.startGame();
 
     expect(host.session?.sessionId, 'session-42');
     expect(host.session?.resourceRoot, paths.slotADir.path);
     expect(host.session?.autoCollectSunEnabled, isTrue);
+    expect(host.session?.jsModdingEnabled, isTrue);
+    expect(host.session?.detailedAudioDiagnosticsEnabled, isTrue);
     expect(host.session?.entryUri.toString(),
         'https://appassets.androidplatform.net/index.html?generation=42');
     expect(
@@ -120,8 +124,7 @@ void main() {
     expect(await sessionStore.exitResultFile.exists(), isFalse);
   });
 
-  test('keeps Loader automatic collection enabled for a GP-Next session',
-      () async {
+  test('keeps Loader game controls enabled for a GP-Next session', () async {
     final root = await Directory.systemTemp.createTemp('gl_gpnext_host_');
     addTearDown(() async {
       if (await root.exists()) {
@@ -138,6 +141,7 @@ void main() {
       ResourceManifest.initial().copyWith(
         activeSlot: ResourceSlot.slotA,
         autoCollectSunEnabled: true,
+        jsModdingEnabled: true,
         resourceStatus: ResourceStatus.ready,
       ),
     );
@@ -154,6 +158,7 @@ void main() {
 
     expect(host.session?.hasGpNext, isTrue);
     expect(host.session?.autoCollectSunEnabled, isTrue);
+    expect(host.session?.jsModdingEnabled, isTrue);
   });
 }
 

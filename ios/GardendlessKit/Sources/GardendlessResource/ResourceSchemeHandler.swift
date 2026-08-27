@@ -55,7 +55,7 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     let audio = OperationQueue()
     audio.name = "io.github.dey410.gardendless.audio-resource"
     audio.qualityOfService = .userInitiated
-    audio.maxConcurrentOperationCount = 2
+    audio.maxConcurrentOperationCount = configuration.audioQueueConcurrency
     audioQueue = audio
   }
 

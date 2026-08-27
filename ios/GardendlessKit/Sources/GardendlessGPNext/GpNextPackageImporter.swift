@@ -58,6 +58,8 @@ public final class GpNextPackageImporter {
     try FileManager.default.copyItem(at: source, to: incoming)
     defer { try? FileManager.default.removeItem(at: incoming) }
 
+    var prepared = incoming
+    var normalized: URL?
     if ext == "json" {
       _ = try JSONSerialization.jsonObject(with: Data(contentsOf: incoming))
     } else if ext == "json5" {
@@ -66,11 +68,18 @@ public final class GpNextPackageImporter {
         throw GameError.failed(.gpNextForbidden, "\(name) 是空文件")
       }
     } else {
-      guard zipContainsRootPackJSON(incoming) else {
-        throw GameError.failed(
-          .gpNextForbidden,
-          "\(name) 缺少根目录 pack.json"
-        )
+      prepared = try GpNextPackArchiveNormalizer.prepare(
+        incoming,
+        in: destinationDirectory,
+        displayName: name
+      )
+      if prepared != incoming {
+        normalized = prepared
+      }
+    }
+    defer {
+      if let normalized {
+        try? FileManager.default.removeItem(at: normalized)
       }
     }
 
@@ -87,7 +96,7 @@ public final class GpNextPackageImporter {
       try FileManager.default.moveItem(at: destination, to: backup)
     }
     do {
-      try FileManager.default.moveItem(at: incoming, to: destination)
+      try FileManager.default.moveItem(at: prepared, to: destination)
       if existed {
         try? FileManager.default.removeItem(at: backup)
       }
@@ -98,67 +107,6 @@ public final class GpNextPackageImporter {
       throw error
     }
     return name
-  }
-
-  public func zipContainsRootPackJSON(_ url: URL) -> Bool {
-    guard let handle = try? FileHandle(forReadingFrom: url),
-          let size = try? handle.seekToEnd(),
-          size >= 22 else {
-      return false
-    }
-    defer { try? handle.close() }
-    let tailSize = min(
-      size,
-      UInt64(GpNextConstants.maxImportScanTailBytes)
-    )
-    try? handle.seek(toOffset: size - tailSize)
-    guard let tail = try? handle.read(upToCount: Int(tailSize)) else {
-      return false
-    }
-    let bytes = [UInt8](tail)
-    guard let end = stride(
-      from: bytes.count - 22,
-      through: 0,
-      by: -1
-    ).first(where: {
-      bytes[$0] == 0x50
-        && bytes[$0 + 1] == 0x4b
-        && bytes[$0 + 2] == 0x05
-        && bytes[$0 + 3] == 0x06
-    }) else {
-      return false
-    }
-    let centralOffset = UInt64(bytes[end + 16])
-      | UInt64(bytes[end + 17]) << 8
-      | UInt64(bytes[end + 18]) << 16
-      | UInt64(bytes[end + 19]) << 24
-    let count = Int(bytes[end + 10]) | Int(bytes[end + 11]) << 8
-    try? handle.seek(toOffset: centralOffset)
-    for _ in 0..<count {
-      guard let header = try? handle.read(upToCount: 46),
-            header.count == 46 else {
-        return false
-      }
-      let value = [UInt8](header)
-      guard value[0...3].elementsEqual([0x50, 0x4b, 0x01, 0x02]) else {
-        return false
-      }
-      let nameLength = Int(value[28]) | Int(value[29]) << 8
-      let extraLength = Int(value[30]) | Int(value[31]) << 8
-      let commentLength = Int(value[32]) | Int(value[33]) << 8
-      guard let nameData = try? handle.read(upToCount: nameLength) else {
-        return false
-      }
-      if String(data: nameData, encoding: .utf8)?
-        .replacingOccurrences(of: "\\", with: "/") == "pack.json" {
-        return true
-      }
-      let current = (try? handle.offset()) ?? 0
-      try? handle.seek(
-        toOffset: current + UInt64(extraLength + commentLength)
-      )
-    }
-    return false
   }
 
   private func safeFileName(_ value: String) -> String {

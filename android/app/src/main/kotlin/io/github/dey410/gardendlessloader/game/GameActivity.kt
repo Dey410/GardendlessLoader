@@ -31,7 +31,6 @@ import java.io.BufferedOutputStream
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.zip.ZipFile
 import kotlin.concurrent.thread
 
 class GameActivity : Activity() {
@@ -133,6 +132,9 @@ class GameActivity : Activity() {
     private fun buildDocumentStartScript(): String {
         val config = JSONObject()
             .put("platform", "android")
+            .put("touchAdapter", "javascript")
+            .put("touchWheelCssMultiplier", -4.5)
+            .put("touchDiagnosticsEnabled", false)
             .put("origin", session.origin)
             .put("activationGeneration", session.activationGeneration)
             .put("hasGpNext", session.hasGpNext)
@@ -140,15 +142,18 @@ class GameActivity : Activity() {
             .put("gpNextVersion", session.gpNextVersion ?: JSONObject.NULL)
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
+            .put("jsModdingEnabled", session.jsModdingEnabled)
             .put("gpNextBaseDirectory", session.appRoot)
         val names = buildList {
             add("transport.js")
             add("bootstrap.js")
             add("logging.js")
             add("auto_sun.js")
-            add("touch_patch.js")
+            add("touch_state_machine.js")
+            add("touch_input_adapter.js")
             add("export_download_patch.js")
             if (session.hasGpNext && session.gpNextCompatible) {
+                add("js_modding.js")
                 add("gp_next_core.js")
                 add("gp_next_compat_bridge.js")
             }
@@ -504,9 +509,14 @@ class GameActivity : Activity() {
                 requireNotNull(input) { "无法读取 $name" }
                 incoming.outputStream().use { output -> input.copyTo(output, 128 * 1024) }
             }
+            var prepared = incoming
             try {
                 if (extension == "zip") {
-                    ZipFile(incoming).use { zip -> require(zip.getEntry("pack.json") != null) { "$name 缺少根目录 pack.json" } }
+                    prepared = GpNextPackArchiveNormalizer.prepare(
+                        incoming,
+                        destinationDirectory,
+                        name,
+                    )
                 } else if (extension == "json") {
                     val text = incoming.readText()
                     runCatching { JSONObject(text) }.recoverCatching { org.json.JSONArray(text) }.getOrThrow()
@@ -518,7 +528,7 @@ class GameActivity : Activity() {
                 val backup = File(destinationDirectory, ".$name.backup-${System.nanoTime()}")
                 if (destination.exists() && !destination.renameTo(backup)) error("无法暂存旧文件")
                 try {
-                    if (!incoming.renameTo(destination)) error("无法激活新文件")
+                    if (!prepared.renameTo(destination)) error("无法激活新文件")
                     if (backup.exists()) backup.delete()
                 } catch (error: Exception) {
                     if (!destination.exists() && backup.exists()) backup.renameTo(destination)
@@ -527,6 +537,7 @@ class GameActivity : Activity() {
                 imported.add(name)
             } finally {
                 if (incoming.exists()) incoming.delete()
+                if (prepared != incoming && prepared.exists()) prepared.delete()
             }
         }
         return imported

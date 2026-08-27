@@ -26,6 +26,10 @@ import 'services/update_check_service.dart';
 
 typedef ImportAwakeModeSetter = Future<void> Function(bool enabled);
 typedef ImportAwakeModeGetter = Future<bool> Function();
+typedef ImportCompletionTimerFactory = Timer Function(
+  Duration duration,
+  void Function() callback,
+);
 
 //AppController 是整个应用的核心控制器，负责管理应用的状态、处理业务逻辑，并与 UI 进行交互。它使用 ChangeNotifier 来通知 UI 更新。
 class AppController extends ChangeNotifier {
@@ -45,6 +49,7 @@ class AppController extends ChangeNotifier {
     ResourcePickerService? resourcePickerService,
     ImportAwakeModeGetter? importAwakeModeGetter,
     ImportAwakeModeSetter? importAwakeModeSetter,
+    ImportCompletionTimerFactory? importCompletionTimerFactory,
     Duration importCompletionVisibilityDuration = const Duration(seconds: 2),
     Duration importProgressTickInterval = const Duration(seconds: 1),
   })  : _pathsService = pathsService ?? AppPathsService(),
@@ -65,6 +70,8 @@ class AppController extends ChangeNotifier {
             importAwakeModeGetter ?? _defaultImportAwakeModeGetter,
         _importAwakeModeSetter =
             importAwakeModeSetter ?? _defaultImportAwakeModeSetter,
+        _importCompletionTimerFactory =
+            importCompletionTimerFactory ?? Timer.new,
         _importCompletionVisibilityDuration =
             importCompletionVisibilityDuration,
         _importProgressTickInterval = importProgressTickInterval {
@@ -89,6 +96,7 @@ class AppController extends ChangeNotifier {
   final ResourcePickerService _resourcePickerService;
   final ImportAwakeModeGetter _importAwakeModeGetter;
   final ImportAwakeModeSetter _importAwakeModeSetter;
+  final ImportCompletionTimerFactory _importCompletionTimerFactory;
   final Duration _importCompletionVisibilityDuration;
   final Duration _importProgressTickInterval;
   late final ImportService _importService;
@@ -126,6 +134,7 @@ class AppController extends ChangeNotifier {
   bool _gameUpdateDetected = false;
   bool _updateCheckInProgress = false;
   bool _watermarkEnabled = true;
+  bool _detailedAudioDiagnosticsEnabled = false;
   bool _initialized = false;
   bool _busy = false;
   String? _message;
@@ -152,7 +161,9 @@ class AppController extends ChangeNotifier {
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
   bool get watermarkEnabled => _watermarkEnabled;
+  bool get detailedAudioDiagnosticsEnabled => _detailedAudioDiagnosticsEnabled;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
+  bool get jsModdingEnabled => _manifest.jsModdingEnabled;
   GameHostPlatform get gameHostPlatform {
     final configured = _gameHostPlatform;
     if (configured != null) {
@@ -227,7 +238,10 @@ class AppController extends ChangeNotifier {
         final exitResult = await _gameSessionStore!.consumeExitResult();
         _emitInitializationStage('settings');
         _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
-        _watermarkEnabled = await _appSettingsStore!.readWatermarkEnabled();
+        final appSettings = await _appSettingsStore!.read();
+        _watermarkEnabled = appSettings.watermarkEnabled;
+        _detailedAudioDiagnosticsEnabled =
+            appSettings.detailedAudioDiagnosticsEnabled;
         _emitInitializationStage('manifest');
         _manifestStore = ManifestStore(_paths!.manifestFile);
         _manifest = await _manifestStore!.read();
@@ -646,13 +660,13 @@ class AppController extends ChangeNotifier {
           ? '导入成功，旧槽清理将在下次启动重试'
           : '导入成功';
       _importProgressTickTimer?.cancel();
-      _scheduleCompletedProgressReset();
       if (restoreAwakeModeAfterImport) {
         await _setImportAwakeMode(false);
         restoreAwakeModeAfterImport = false;
       }
       await refresh();
       await _checkGameForUpdate(reuseLatestVersion: true);
+      _scheduleCompletedProgressReset();
       _appLogger?.emit(
         level: LogLevel.info,
         category: 'resource.import',
@@ -836,13 +850,16 @@ class AppController extends ChangeNotifier {
 
   void _scheduleCompletedProgressReset() {
     _importCompletionTimer?.cancel();
-    _importCompletionTimer = Timer(_importCompletionVisibilityDuration, () {
-      if (_importProgress.phase != ImportPhase.completed) {
-        return;
-      }
-      _importProgress = ImportProgress.idle;
-      notifyListeners();
-    });
+    _importCompletionTimer = _importCompletionTimerFactory(
+      _importCompletionVisibilityDuration,
+      () {
+        if (_importProgress.phase != ImportPhase.completed) {
+          return;
+        }
+        _importProgress = ImportProgress.idle;
+        notifyListeners();
+      },
+    );
   }
 
   @override
@@ -885,6 +902,8 @@ class AppController extends ChangeNotifier {
       gpNextVersion: gpNextVersion,
       watermarkEnabled: _watermarkEnabled,
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
+      jsModdingEnabled: _manifest.jsModdingEnabled,
+      detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -1042,7 +1061,41 @@ class AppController extends ChangeNotifier {
       } catch (_) {
         // A later choice must still be persisted after an earlier write fails.
       }
-      await appSettingsStore.writeWatermarkEnabled(enabled);
+      await appSettingsStore.write(
+        AppSettings(
+          watermarkEnabled: enabled,
+          detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
+        ),
+      );
+    }();
+    _appSettingsWrite = currentWrite;
+    await currentWrite;
+  }
+
+  Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) async {
+    if (_detailedAudioDiagnosticsEnabled == enabled) {
+      return;
+    }
+    final appSettingsStore = _appSettingsStore;
+    if (appSettingsStore == null) {
+      throw StateError('AppSettingsStore 尚未初始化');
+    }
+
+    _detailedAudioDiagnosticsEnabled = enabled;
+    notifyListeners();
+    final previousWrite = _appSettingsWrite;
+    final currentWrite = () async {
+      try {
+        await previousWrite;
+      } catch (_) {
+        // A later choice must still be persisted after an earlier write fails.
+      }
+      await appSettingsStore.write(
+        AppSettings(
+          watermarkEnabled: _watermarkEnabled,
+          detailedAudioDiagnosticsEnabled: enabled,
+        ),
+      );
     }();
     _appSettingsWrite = currentWrite;
     await currentWrite;
@@ -1054,6 +1107,27 @@ class AppController extends ChangeNotifier {
     }
     final manifestStore = _requireManifestStore();
     _manifest = _manifest.copyWith(autoCollectSunEnabled: enabled);
+    final manifest = _manifest;
+    notifyListeners();
+    final previousWrite = _manifestPreferenceWrite;
+    final currentWrite = () async {
+      try {
+        await previousWrite;
+      } catch (_) {
+        // A later choice must still be persisted after an earlier write fails.
+      }
+      await manifestStore.write(manifest);
+    }();
+    _manifestPreferenceWrite = currentWrite;
+    await currentWrite;
+  }
+
+  Future<void> setJsModdingEnabled(bool enabled) async {
+    if (_manifest.jsModdingEnabled == enabled) {
+      return;
+    }
+    final manifestStore = _requireManifestStore();
+    _manifest = _manifest.copyWith(jsModdingEnabled: enabled);
     final manifest = _manifest;
     notifyListeners();
     final previousWrite = _manifestPreferenceWrite;

@@ -11,6 +11,7 @@ export interface GameSessionPayload {
   gpNextVersion?: string;
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
+  jsModdingEnabled?: boolean;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
   exportTemporaryRoot: string;
@@ -27,6 +28,7 @@ export class GameSession {
   readonly gpNextVersion: string | null;
   readonly watermarkEnabled: boolean;
   readonly autoCollectSunEnabled: boolean;
+  readonly jsModdingEnabled: boolean;
   readonly allowedRemoteHosts: Set<string>;
   readonly gpNextRoot: string;
   readonly exportTemporaryRoot: string;
@@ -51,6 +53,7 @@ export class GameSession {
     this.gpNextVersion = value.gpNextVersion ?? null;
     this.watermarkEnabled = value.watermarkEnabled;
     this.autoCollectSunEnabled = value.autoCollectSunEnabled;
+    this.jsModdingEnabled = value.jsModdingEnabled === true;
     this.allowedRemoteHosts = new Set<string>();
     for (const host of value.allowedRemoteHosts) {
       const normalized = host.toLowerCase();

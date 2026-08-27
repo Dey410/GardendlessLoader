@@ -55,6 +55,19 @@ void main() {
     expect(restored.autoCollectSunEnabled, isTrue);
   });
 
+  test('persists the Loader JS Modding choice', () async {
+    final temp = await Directory.systemTemp.createTemp('gl_manifest_');
+    addTearDown(() => temp.delete(recursive: true));
+    final store = ManifestStore(File(p.join(temp.path, 'manifest.json')));
+
+    await store.write(
+      ResourceManifest.initial().copyWith(jsModdingEnabled: true),
+    );
+
+    final restored = await store.read();
+    expect(restored.jsModdingEnabled, isTrue);
+  });
+
   test('persists GP-Next compatibility metadata', () async {
     final temp = await Directory.systemTemp.createTemp('gl_manifest_');
     addTearDown(() => temp.delete(recursive: true));
@@ -83,6 +96,7 @@ void main() {
 
     expect(restored.buildProfile, ResourceBuildProfile.standardWeb);
     expect(restored.hasGpNext, isFalse);
+    expect(restored.jsModdingEnabled, isFalse);
   });
 
   test('can clear stale GP-Next metadata when activating a standard build', () {

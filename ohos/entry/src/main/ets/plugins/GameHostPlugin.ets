@@ -25,6 +25,7 @@ interface GameSessionArguments {
   gpNextVersion?: string;
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
+  jsModdingEnabled: boolean;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
   exportTemporaryRoot: string;
@@ -83,6 +84,7 @@ export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHa
       gpNextCompatible: call.argument('gpNextCompatible') as boolean,
       watermarkEnabled: call.argument('watermarkEnabled') as boolean,
       autoCollectSunEnabled: call.argument('autoCollectSunEnabled') as boolean,
+      jsModdingEnabled: call.argument('jsModdingEnabled') as boolean,
       allowedRemoteHosts: call.argument('allowedRemoteHosts') as string[],
       gpNextRoot: call.argument('gpNextRoot') as string,
       exportTemporaryRoot: call.argument('exportTemporaryRoot') as string,

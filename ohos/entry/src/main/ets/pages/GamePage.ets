@@ -208,6 +208,9 @@ struct GamePage {
   private buildDocumentStartScript(session: GameSession): string {
     const config = JSON.stringify({
       platform: 'ohos',
+      touchAdapter: 'javascript',
+      touchWheelCssMultiplier: -4.5,
+      touchDiagnosticsEnabled: false,
       origin: GameSession.ORIGIN,
       activationGeneration: session.activationGeneration,
       hasGpNext: session.hasGpNext,
@@ -215,6 +218,7 @@ struct GamePage {
       gpNextVersion: session.gpNextVersion,
       watermarkEnabled: session.watermarkEnabled,
       autoCollectSunEnabled: session.autoCollectSunEnabled,
+      jsModdingEnabled: session.jsModdingEnabled,
       gpNextBaseDirectory: session.appRoot,
     });
     const names: string[] = [
@@ -222,10 +226,12 @@ struct GamePage {
       'bootstrap.js',
       'logging.js',
       'auto_sun.js',
-      'touch_patch.js',
+      'touch_state_machine.js',
+      'touch_input_adapter.js',
       'export_download_patch.js',
     ];
     if (session.hasGpNext && session.gpNextCompatible) {
+      names.push('js_modding.js');
       names.push('gp_next_core.js');
       names.push('gp_next_compat_bridge.js');
     }
