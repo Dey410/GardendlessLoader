@@ -1048,6 +1048,71 @@ for (const platform of ['android', 'ios', 'ohos']) {
 }
 
 {
+  const harness = createTouchHarness({
+    hostConfig: {platform: 'ios', touchAdapter: 'javascript'},
+  });
+  const draggedMoves = [];
+  harness.canvas.addEventListener('mousemove', (event) => {
+    if (event.buttons === 1) {
+      draggedMoves.push({clientX: event.clientX, clientY: event.clientY});
+    }
+  });
+
+  const start = createTouch(21, harness.canvas, 40, 30);
+  harness.document.dispatchEvent(createTouchEvent('touchstart', {
+    touches: [start],
+    changedTouches: [start],
+  }));
+  harness.flushAnimationFrame();
+  harness.flushAnimationFrame();
+
+  for (const [clientX, clientY] of [[70, 50], [85, 65], [100, 80]]) {
+    const move = createTouch(21, harness.canvas, clientX, clientY);
+    harness.document.dispatchEvent(createTouchEvent('touchmove', {
+      touches: [move],
+      changedTouches: [move],
+    }));
+  }
+
+  assert.deepEqual(
+    draggedMoves,
+    [],
+    'JavaScript touch moves must wait for the next browser frame',
+  );
+  harness.flushAnimationFrame();
+  assert.deepEqual(
+    draggedMoves,
+    [{clientX: 100, clientY: 80}],
+    'a touch-move burst must dispatch only its latest point',
+  );
+
+  const pendingMove = createTouch(21, harness.canvas, 130, 95);
+  const release = createTouch(21, harness.canvas, 140, 105);
+  harness.document.dispatchEvent(createTouchEvent('touchmove', {
+    touches: [pendingMove],
+    changedTouches: [pendingMove],
+  }));
+  harness.document.dispatchEvent(createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [release],
+  }));
+  assert.deepEqual(
+    draggedMoves,
+    [
+      {clientX: 100, clientY: 80},
+      {clientX: 140, clientY: 105},
+    ],
+    'touch release must synchronously commit the final pointer position',
+  );
+  harness.flushAnimationFrame();
+  assert.equal(
+    draggedMoves.length,
+    2,
+    'touch release must cancel the pending move frame',
+  );
+}
+
+{
   const pointTarget = createElement({id: 'point-target'});
   const harness = createTouchHarness({pointTarget});
   const rightClicks = [];

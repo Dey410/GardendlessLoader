@@ -28,6 +28,8 @@
   let primaryCanvas = null;
   let primaryStartPoint = null;
   let primaryDownFrame = null;
+  let primaryMoveFrame = null;
+  let pendingPrimaryMovePoint = null;
   let primaryDownDispatched = false;
   let primaryMoved = false;
   let pendingPrimaryUpPoint = null;
@@ -215,9 +217,14 @@
   }
 
   function clearPrimaryGestureState() {
+    if (primaryMoveFrame !== null) {
+      cancelAnimationFrame(primaryMoveFrame);
+    }
     primaryCanvas = null;
     primaryStartPoint = null;
     primaryDownFrame = null;
+    primaryMoveFrame = null;
+    pendingPrimaryMovePoint = null;
     primaryDownDispatched = false;
     primaryMoved = false;
     pendingPrimaryUpPoint = null;
@@ -277,6 +284,11 @@
   function releaseJavascriptPrimary(point) {
     if (!primaryCanvas) {
       return;
+    }
+    if (primaryMoveFrame !== null) {
+      cancelAnimationFrame(primaryMoveFrame);
+      primaryMoveFrame = null;
+      pendingPrimaryMovePoint = null;
     }
     if (!primaryDownDispatched) {
       pendingPrimaryUpPoint = point;
@@ -340,13 +352,25 @@
       return;
     }
     updatePrimaryMoved(point);
-    dispatchMouse(
-      primaryCanvas,
-      "mousemove",
-      point,
-      0,
-      primaryDownDispatched ? 1 : 0
-    );
+    pendingPrimaryMovePoint = point;
+    if (primaryMoveFrame !== null) {
+      return;
+    }
+    primaryMoveFrame = requestAnimationFrame(function () {
+      primaryMoveFrame = null;
+      const pendingPoint = pendingPrimaryMovePoint;
+      pendingPrimaryMovePoint = null;
+      if (!primaryCanvas || !pendingPoint) {
+        return;
+      }
+      dispatchMouse(
+        primaryCanvas,
+        "mousemove",
+        pendingPoint,
+        0,
+        primaryDownDispatched ? 1 : 0
+      );
+    });
   }
 
   function executeCommands(commands) {

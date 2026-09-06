@@ -123,7 +123,11 @@ void main() {
     );
     expect(
       infoPlist,
-      isNot(contains('CADisableMinimumFrameDurationOnPhone')),
+      matches(
+        RegExp(
+          r'<key>CADisableMinimumFrameDurationOnPhone</key>\s*<false/>',
+        ),
+      ),
     );
     expect(highRefreshHeader.existsSync(), isFalse);
     expect(controller, contains('WKUserScript('));
