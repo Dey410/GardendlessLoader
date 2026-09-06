@@ -109,22 +109,23 @@ void main() {
     ).readAsStringSync();
     final bridgingHeader =
         File('ios/Runner/Runner-Bridging-Header.h').readAsStringSync();
-    final highRefreshHeader =
-        File('ios/Runner/WebKitHighRefreshRate.h').readAsStringSync();
+    final infoPlist = File('ios/Runner/Info.plist').readAsStringSync();
+    final highRefreshHeader = File('ios/Runner/WebKitHighRefreshRate.h');
 
     expect(delegate, contains('engine?.destroyContext()'));
     expect(
       controller,
-      contains('_ = GDLDisableWebKit60FPSPreference(configuration)'),
+      isNot(contains('GDLDisableWebKit60FPSPreference')),
     );
     expect(
       bridgingHeader,
-      contains('#import "WebKitHighRefreshRate.h"'),
+      isNot(contains('#import "WebKitHighRefreshRate.h"')),
     );
     expect(
-      highRefreshHeader,
-      contains('PreferPageRenderingUpdatesNear60FPSEnabled'),
+      infoPlist,
+      isNot(contains('CADisableMinimumFrameDurationOnPhone')),
     );
+    expect(highRefreshHeader.existsSync(), isFalse);
     expect(controller, contains('WKUserScript('));
     expect(controller, contains('GameViewportView(webView: webView)'));
     expect(controller, contains('16.0 / 10.0'));
