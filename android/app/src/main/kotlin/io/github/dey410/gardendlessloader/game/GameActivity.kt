@@ -10,6 +10,8 @@ import android.os.Bundle
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.provider.OpenableColumns
+import android.system.Os
+import android.system.OsConstants
 import android.util.Base64
 import android.view.View
 import android.view.WindowManager
@@ -700,14 +702,14 @@ class GameActivity : Activity() {
     private fun clearGpNextSelection() {
         val root = gpNextSelectionRoot()
         if (!root.exists()) return
-        require(!root.isSymbolicLink()) { "选择暂存目录不能是符号链接" }
+        require(!root.isSelectionSymbolicLink()) { "选择暂存目录不能是符号链接" }
         deleteSelectionTree(root)
     }
 
     private fun deleteSelectionTree(directory: File) {
-        require(!directory.isSymbolicLink()) { "选择暂存区包含符号链接" }
+        require(!directory.isSelectionSymbolicLink()) { "选择暂存区包含符号链接" }
         directory.listFiles().orEmpty().forEach { child ->
-            require(!child.isSymbolicLink()) { "选择暂存区包含符号链接" }
+            require(!child.isSelectionSymbolicLink()) { "选择暂存区包含符号链接" }
             if (child.isDirectory) deleteSelectionTree(child)
             else require(child.delete()) { "无法清理选择暂存文件" }
         }
@@ -795,3 +797,7 @@ class GameActivity : Activity() {
         private const val MAX_SELECTION_BYTES = 512L * 1024 * 1024
     }
 }
+
+private fun File.isSelectionSymbolicLink(): Boolean = runCatching {
+    OsConstants.S_ISLNK(Os.lstat(path).st_mode)
+}.getOrDefault(false)

@@ -114,4 +114,25 @@ void main() {
     expect(contract, contains('it != "text/plain"'));
     expect(contract, contains('it != "application/octet-stream"'));
   });
+
+  test('Android GP-Next selection cleanup owns a visible symlink check', () {
+    final activity = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
+    ).readAsStringSync();
+
+    expect(
+      'isSelectionSymbolicLink()'.allMatches(activity),
+      hasLength(4),
+      reason:
+          'The helper plus staging root, directory, and child checks must exist',
+    );
+    expect(
+      activity,
+      contains('private fun File.isSelectionSymbolicLink(): Boolean'),
+      reason: 'GameActivity cannot call private extensions from other files',
+    );
+    expect(activity, isNot(contains('!root.isSymbolicLink()')));
+    expect(activity, isNot(contains('!directory.isSymbolicLink()')));
+    expect(activity, isNot(contains('!child.isSymbolicLink()')));
+  });
 }
