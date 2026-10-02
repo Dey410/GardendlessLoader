@@ -14,7 +14,6 @@ void main() {
     'gp_next_compat_bridge.js',
     'watermark.js',
     'auto_sun.js',
-    'js_modding.js',
   ];
 
   test('ships one platform-independent document-start script source', () {
@@ -40,19 +39,13 @@ void main() {
     expect(source, contains('pointerEvents: "none"'));
   });
 
-  test('JS Modding launch setting passes executable behavior checks',
-      () async {
-    final result = await Process.run(
-      'node',
-      const ['tool/check_js_modding.mjs'],
-    );
-
-    expect(
-      result.exitCode,
-      0,
-      reason: '${result.stdout}\n${result.stderr}',
-    );
-    expect(result.stdout, contains('JS Modding settings contract passes'));
+  test('leaves the game-owned JS Modding preference untouched', () {
+    expect(File('assets/game_bridge/js_modding.js').existsSync(), isFalse);
+    final combined = scripts
+        .map((name) => File('assets/game_bridge/$name').readAsStringSync())
+        .join('\n');
+    expect(combined, isNot(contains('gp-next-settings')));
+    expect(combined, isNot(contains('jsModdingEnabled')));
   });
 
   test('large exports are streamed through bounded bridge chunks', () {
@@ -87,6 +80,8 @@ void main() {
     expect(source, contains('const userInteractionTimeoutMs = 5 * 60 * 1000'));
     expect(source, contains('command === "host:exportCommit"'));
     expect(source, contains('command === "plugin:opener|open_path"'));
+    expect(source, contains('command === "plugin:dialog|open"'));
+    expect(source, contains('command === "plugin:fs|write_file"'));
     expect(source, isNot(contains('setInterval(')));
   });
 
@@ -102,6 +97,14 @@ void main() {
       reason: '${result.stdout}\n${result.stderr}',
     );
     expect(result.stdout, contains('game bridge concurrency'));
+  });
+
+  test('large GP-Next writes stay below the native message limit', () {
+    final source =
+        File('assets/game_bridge/gp_next_core.js').readAsStringSync();
+
+    expect(source, contains('const writeChunkBytes = 96 * 1024'));
+    expect(source, contains('__gardendlessTransfer'));
   });
 
   test('shared touch adapter passes executable behavior checks', () async {

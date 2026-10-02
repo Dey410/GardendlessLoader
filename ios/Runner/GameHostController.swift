@@ -6,6 +6,7 @@ import GardendlessGPNext
 import GardendlessLogging
 import GardendlessResource
 import UIKit
+import UniformTypeIdentifiers
 import WebKit
 
 enum GameViewportSize {
@@ -68,6 +69,7 @@ final class GameHostController: UIViewController,
   private let schemeHandler: ResourceSchemeHandler
   private let exportCoordinator: ExportCoordinator
   private let gpNextRouter: GpNextCommandRouter?
+  private let gpNextSelectionStager: GpNextSelectionStager?
   private let logStore: LogStore
 
   private var webView: WKWebView!
@@ -75,6 +77,7 @@ final class GameHostController: UIViewController,
   private var navigationPolicy: NavigationPolicy!
   private var pendingExport: (id: String, file: URL)?
   private var pendingGpNextImportId: String?
+  private var pendingGpNextSelection: (id: String, directory: Bool)?
   private var exiting = false
   private var cleanedUp = false
 
@@ -113,6 +116,9 @@ final class GameHostController: UIViewController,
     )
     gpNextRouter = session.hasGpNext && session.gpNextCompatible
       ? try GpNextCommandRouter(session: session)
+      : nil
+    gpNextSelectionStager = session.hasGpNext && session.gpNextCompatible
+      ? GpNextSelectionStager(gpNextRoot: session.gpNextRoot)
       : nil
     super.init(nibName: nil, bundle: nil)
     modalPresentationStyle = .fullScreen
@@ -429,6 +435,8 @@ final class GameHostController: UIViewController,
         present(picker, animated: true)
       case .importPackages:
         beginGpNextImport(id: id)
+      case .openSelection(let directory):
+        beginGpNextSelection(id: id, directory: directory)
       }
     } catch {
       scriptBridge.fail(
@@ -440,7 +448,9 @@ final class GameHostController: UIViewController,
   }
 
   private func beginGpNextImport(id: String) {
-    guard pendingGpNextImportId == nil, pendingExport == nil else {
+    guard pendingGpNextImportId == nil,
+          pendingGpNextSelection == nil,
+          pendingExport == nil else {
       scriptBridge.fail(
         id: id,
         code: "gp_next_import_busy",
@@ -455,6 +465,39 @@ final class GameHostController: UIViewController,
     )
     picker.delegate = self
     picker.allowsMultipleSelection = true
+    picker.modalPresentationStyle = .formSheet
+    present(picker, animated: true)
+  }
+
+  private func beginGpNextSelection(id: String, directory: Bool) {
+    guard pendingGpNextImportId == nil,
+          pendingGpNextSelection == nil,
+          pendingExport == nil,
+          let gpNextSelectionStager else {
+      scriptBridge.fail(
+        id: id,
+        code: "gp_next_selection_busy",
+        message: "Another picker is active"
+      )
+      return
+    }
+    do {
+      try gpNextSelectionStager.clear()
+    } catch {
+      scriptBridge.fail(
+        id: id,
+        code: "gp_next_selection_cleanup_failed",
+        message: error.localizedDescription
+      )
+      return
+    }
+    pendingGpNextSelection = (id, directory)
+    let picker = UIDocumentPickerViewController(
+      forOpeningContentTypes: [directory ? .folder : .zip],
+      asCopy: true
+    )
+    picker.delegate = self
+    picker.allowsMultipleSelection = false
     picker.modalPresentationStyle = .formSheet
     present(picker, animated: true)
   }
@@ -512,6 +555,12 @@ final class GameHostController: UIViewController,
   // MARK: UIDocumentPickerDelegate
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    if let selection = pendingGpNextSelection {
+      pendingGpNextSelection = nil
+      try? gpNextSelectionStager?.clear()
+      scriptBridge.complete(id: selection.id, value: NSNull())
+      return
+    }
     if let id = pendingGpNextImportId {
       pendingGpNextImportId = nil
       scriptBridge.fail(
@@ -535,6 +584,39 @@ final class GameHostController: UIViewController,
     _ controller: UIDocumentPickerViewController,
     didPickDocumentsAt urls: [URL]
   ) {
+    if let selection = pendingGpNextSelection {
+      pendingGpNextSelection = nil
+      guard let url = urls.first, let gpNextSelectionStager else {
+        scriptBridge.complete(id: selection.id, value: NSNull())
+        return
+      }
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        guard let self else { return }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+          if accessed { url.stopAccessingSecurityScopedResource() }
+        }
+        do {
+          let staged = try gpNextSelectionStager.stage(
+            url,
+            directory: selection.directory
+          )
+          DispatchQueue.main.async {
+            self.scriptBridge.complete(id: selection.id, value: staged.path)
+          }
+        } catch {
+          try? gpNextSelectionStager.clear()
+          DispatchQueue.main.async {
+            self.scriptBridge.fail(
+              id: selection.id,
+              code: "gp_next_selection_failed",
+              message: error.localizedDescription
+            )
+          }
+        }
+      }
+      return
+    }
     if let id = pendingGpNextImportId {
       pendingGpNextImportId = nil
       importGpNextPackages(urls, id: id)
@@ -643,6 +725,8 @@ final class GameHostController: UIViewController,
       try? FileManager.default.removeItem(at: export.file)
       pendingExport = nil
     }
+    pendingGpNextSelection = nil
+    try? gpNextSelectionStager?.clear()
     exportCoordinator.cancelActive()
     webView.configuration.userContentController.removeScriptMessageHandler(
       forName: ScriptMessageBridge.name,
@@ -686,7 +770,6 @@ final class GameHostController: UIViewController,
       "gpNextVersion": session.gpNextVersion ?? NSNull(),
       "watermarkEnabled": session.watermarkEnabled,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
-      "jsModdingEnabled": session.jsModdingEnabled,
       "detailedAudioDiagnosticsEnabled":
         session.detailedAudioDiagnosticsEnabled,
       "gpNextBaseDirectory": session.appRoot.path,
@@ -706,7 +789,6 @@ final class GameHostController: UIViewController,
       "export_download_patch.js",
     ]
     if session.hasGpNext && session.gpNextCompatible {
-      names.append("js_modding.js")
       names.append("gp_next_core.js")
       names.append("gp_next_compat_bridge.js")
     }

@@ -37,6 +37,7 @@ function createTransportHarness({nativeAvailable = true} = {}) {
       constructor(type) { this.type = type; }
     },
     JSON,
+    Math,
     Map,
     Promise,
     Set,
@@ -209,6 +210,20 @@ function createTransportHarness({nativeAvailable = true} = {}) {
     JSON.stringify(nativeCalls[1].payload.args.__gardendlessBytes),
     JSON.stringify([1, 2, 255]),
   );
+
+  const largeBytes = new Uint8Array(300 * 1024).fill(255);
+  await window.__TAURI_INTERNALS__.invoke(
+    'plugin:fs|write_file',
+    largeBytes,
+    {headers: {path: 'gp-next/installed/pending/mod.bin'}},
+  );
+  const chunks = nativeCalls.slice(2);
+  assert(chunks.length > 1, 'large GP-Next writes must be chunked');
+  assert(chunks.every((call) => call.command === 'plugin:fs|write_file'));
+  assert(chunks.every(
+    (call) => call.payload.args.__gardendlessBytes.length <= 96 * 1024,
+  ));
+  assert.equal(chunks.at(-1).payload.args.__gardendlessTransfer.final, true);
 }
 
 console.log('game bridge concurrency, timeout, validation, teardown, and GP-Next forwarding pass');

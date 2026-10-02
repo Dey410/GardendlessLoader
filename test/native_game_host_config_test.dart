@@ -10,6 +10,9 @@ void main() {
     final bridge = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameBridge.kt',
     ).readAsStringSync();
+    final gpNext = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GpNextNativeCore.kt',
+    ).readAsStringSync();
     final viewport = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameViewportLayout.kt',
     ).readAsStringSync();
@@ -51,7 +54,7 @@ void main() {
     expect(activity, contains('add("touch_input_adapter.js")'));
     expect(activity, isNot(contains('add("touch_patch.js")')));
     expect(activity, contains('add("auto_sun.js")'));
-    expect(activity, contains('add("js_modding.js")'));
+    expect(activity, isNot(contains('add("js_modding.js")')));
     expect(
       activity.indexOf('add("bootstrap.js")'),
       lessThan(activity.indexOf('add("auto_sun.js")')),
@@ -63,25 +66,28 @@ void main() {
       ),
     );
     expect(session, contains('val autoCollectSunEnabled: Boolean'));
-    expect(session, contains('val jsModdingEnabled: Boolean'));
+    expect(session, isNot(contains('jsModdingEnabled')));
     expect(
       session,
       contains(
         'autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled")',
       ),
     );
-    expect(
-      activity,
-      contains('.put("jsModdingEnabled", session.jsModdingEnabled)'),
-    );
-    expect(
-      session,
-      contains('jsModdingEnabled = json.optBoolean("jsModdingEnabled", false)'),
-    );
+    expect(activity, isNot(contains('jsModdingEnabled')));
     expect(activity, contains('settings.allowFileAccess = false'));
     expect(bridge, contains('sourceOrigin.toString() != session.origin'));
     expect(bridge, contains('removeActive = false'));
     expect(activity, isNot(contains('HttpServer')));
+    for (final command in const [
+      'plugin:dialog|open',
+      'plugin:fs|lstat',
+      'plugin:fs|rename',
+      'plugin:fs|write_file',
+    ]) {
+      expect(gpNext, contains(command), reason: command);
+    }
+    expect(activity, contains('selection.zip'));
+    expect(activity, contains('"selection"'));
   });
 
   test('iOS game path destroys Flutter and uses a custom WKURLSchemeHandler',
@@ -103,6 +109,15 @@ void main() {
     ).readAsStringSync();
     final session = File(
       'ios/GardendlessKit/Sources/GardendlessCore/GameSession.swift',
+    ).readAsStringSync();
+    final gpNextRouter = File(
+      'ios/GardendlessKit/Sources/GardendlessGPNext/GpNextCommandRouter.swift',
+    ).readAsStringSync();
+    final gpNextFileSystem = File(
+      'ios/GardendlessKit/Sources/GardendlessGPNext/GpNextFileSystem.swift',
+    ).readAsStringSync();
+    final gpNextSelectionStager = File(
+      'ios/GardendlessKit/Sources/GardendlessGPNext/GpNextSelectionStager.swift',
     ).readAsStringSync();
     final policy = File(
       'ios/GardendlessKit/Sources/GardendlessCore/NetworkPolicy.swift',
@@ -153,7 +168,7 @@ void main() {
     expect(controller, isNot(contains('"touch_patch.js"')));
     expect(controller, contains('"touchAdapter": "javascript"'));
     expect(controller, contains('"auto_sun.js"'));
-    expect(controller, contains('names.append("js_modding.js")'));
+    expect(controller, isNot(contains('js_modding.js')));
     expect(
       controller.indexOf('"bootstrap.js"'),
       lessThan(controller.indexOf('"auto_sun.js"')),
@@ -172,7 +187,7 @@ void main() {
       ),
     );
     expect(session, contains('let autoCollectSunEnabled: Bool'));
-    expect(session, contains('let jsModdingEnabled: Bool'));
+    expect(session, isNot(contains('jsModdingEnabled')));
     expect(session, contains('let detailedAudioDiagnosticsEnabled: Bool'));
     expect(
       session,
@@ -180,14 +195,7 @@ void main() {
         'autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled")',
       ),
     );
-    expect(
-      controller,
-      contains('"jsModdingEnabled": session.jsModdingEnabled'),
-    );
-    expect(
-      session,
-      contains('jsModdingEnabled: json["jsModdingEnabled"] as? Bool ?? false'),
-    );
+    expect(controller, isNot(contains('jsModdingEnabled')));
     expect(controller, contains('setURLSchemeHandler'));
     expect(handler, contains('WKURLSchemeHandler'));
     expect(
@@ -221,6 +229,17 @@ void main() {
     expect(policy, isNot(contains('unless-domain')));
     expect(scriptBridge, contains('duplicate_request_id'));
     expect(handler, isNot(contains('HttpServer')));
+    for (final command in const [
+      'plugin:dialog|open',
+      'plugin:fs|lstat',
+      'plugin:fs|rename',
+      'plugin:fs|write_file',
+    ]) {
+      expect('$gpNextRouter\n$gpNextFileSystem', contains(command),
+          reason: command);
+    }
+    expect(gpNextSelectionStager, contains('selection.zip'));
+    expect(gpNextSelectionStager, contains('"selection"'));
   });
 
   test('OpenHarmony game path is a native ArkWeb Ability with scheme takeover',
@@ -239,6 +258,12 @@ void main() {
     final session = File(
       'ohos/entry/src/main/ets/game/GameSession.ets',
     ).readAsStringSync();
+    final gpNext = File(
+      'ohos/entry/src/main/ets/game/GpNextNativeCore.ets',
+    ).readAsStringSync();
+    final gameBridge = File(
+      'ohos/entry/src/main/ets/game/GameBridge.ets',
+    ).readAsStringSync();
 
     expect(
       page,
@@ -252,7 +277,7 @@ void main() {
     expect(page, isNot(contains("'touch_patch.js'")));
     expect(page, contains("touchAdapter: 'javascript'"));
     expect(page, contains("'auto_sun.js'"));
-    expect(page, contains("names.push('js_modding.js')"));
+    expect(page, isNot(contains('js_modding.js')));
     expect(
       page.indexOf("'bootstrap.js'"),
       lessThan(page.indexOf("'auto_sun.js'")),
@@ -262,21 +287,13 @@ void main() {
       contains('autoCollectSunEnabled: session.autoCollectSunEnabled'),
     );
     expect(session, contains('autoCollectSunEnabled: boolean;'));
-    expect(session, contains('jsModdingEnabled?: boolean;'));
     expect(session, contains('readonly autoCollectSunEnabled: boolean;'));
-    expect(session, contains('readonly jsModdingEnabled: boolean;'));
+    expect(session, isNot(contains('jsModdingEnabled')));
     expect(
       session,
       contains('this.autoCollectSunEnabled = value.autoCollectSunEnabled;'),
     );
-    expect(
-      page,
-      contains('jsModdingEnabled: session.jsModdingEnabled'),
-    );
-    expect(
-      session,
-      contains('this.jsModdingEnabled = value.jsModdingEnabled === true;'),
-    );
+    expect(page, isNot(contains('jsModdingEnabled')));
     expect(page, contains('.fileAccess(false)'));
     expect(page, contains('const minimumAspectRatio = 16 / 10'));
     expect(page, contains('const maximumAspectRatio = 17 / 9'));
@@ -310,6 +327,16 @@ void main() {
     );
     expect(page, isNot(contains('FlutterPage')));
     expect('$page\n$handler', isNot(contains('[DEBUG-OHOS-')));
+    for (final command in const [
+      'plugin:dialog|open',
+      'plugin:fs|lstat',
+      'plugin:fs|rename',
+      'plugin:fs|write_file',
+    ]) {
+      expect(gpNext, contains(command), reason: command);
+    }
+    expect(gameBridge, contains('selection.zip'));
+    expect(gameBridge, contains('/selection'));
   });
 
   test('production graph has no Dart socket server or Flutter WebView package',

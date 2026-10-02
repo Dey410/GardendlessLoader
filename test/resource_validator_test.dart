@@ -122,32 +122,78 @@ void main() {
     expect(result.gpNextCompatible, isTrue);
   });
 
-  test(
-    'disables the GP-Next bridge when a required module is missing',
-    () async {
-      await _writeGpNextResource(
-        temp,
-        version: '1.4.2',
-        includeJsModLoader: false,
-      );
+  test('detects GP-Next when the entry imports a local GP-Next module',
+      () async {
+    await _writeGpNextResource(
+      temp,
+      version: '1.5.2',
+      splitGpNextEntry: true,
+    );
 
-      final result = await validator.validate(temp);
+    final result = await validator.validate(temp);
 
-      expect(result.isValid, isTrue);
-      expect(result.hasGpNext, isTrue);
-      expect(result.gpNextCompatible, isFalse);
-      expect(
-        result.gpNextCompatibilityError,
-        'GP-Next 缺少兼容模块：JS mod loader module',
-      );
-    },
-  );
+    expect(result.isValid, isTrue);
+    expect(result.buildProfile, ResourceBuildProfile.gpNext);
+    expect(result.gpNextCompatible, isTrue);
+  });
+
+  test('does not follow a GP-Next module outside the resource root', () async {
+    await _writeGpNextResource(
+      temp,
+      version: '1.5.2',
+      splitGpNextEntry: true,
+      gpNextModuleReference: '../../gp-next-escaped.js',
+    );
+    await File(
+      p.join(temp.parent.path, 'gp-next-escaped.js'),
+    ).writeAsString(_gpNextModuleSource());
+
+    final result = await validator.validate(temp);
+
+    expect(result.isValid, isFalse);
+    expect(result.errorCode, 'index_fingerprint_mismatch');
+  });
+
+  test('does not require the game-owned JS mod loader', () async {
+    await _writeGpNextResource(
+      temp,
+      version: '1.5.2',
+      includeJsModLoader: false,
+    );
+
+    final result = await validator.validate(temp);
+
+    expect(result.isValid, isTrue);
+    expect(result.hasGpNext, isTrue);
+    expect(result.gpNextCompatible, isTrue);
+  });
+
+  test('disables the GP-Next bridge when the patcher is missing', () async {
+    await _writeGpNextResource(
+      temp,
+      version: '1.5.2',
+      includePatcher: false,
+    );
+
+    final result = await validator.validate(temp);
+
+    expect(result.isValid, isTrue);
+    expect(result.hasGpNext, isTrue);
+    expect(result.gpNextCompatible, isFalse);
+    expect(
+      result.gpNextCompatibilityError,
+      'GP-Next 缺少兼容模块：patcher module',
+    );
+  });
 }
 
 Future<void> _writeGpNextResource(
   Directory root, {
   required String version,
   bool includeJsModLoader = true,
+  bool includePatcher = true,
+  bool splitGpNextEntry = false,
+  String gpNextModuleReference = './gp-next-test.js',
 }) async {
   await _writeValidResource(
     root,
@@ -158,19 +204,42 @@ Future<void> _writeGpNextResource(
 </html>
 ''',
   );
-  await File(p.join(root.path, 'assets', 'index-test.js')).writeAsString('''
-console.info('GP-Next loading...');
-window.gpNext = {};
-function loadAllPatches() {}
-import('./patcher-test.js');
-import('./file-loader-test.js');
-${includeJsModLoader ? 'import(\'./js-mod-loader-test.js\');' : ''}
-import('./config-test.js');
-''');
+  await File(p.join(root.path, 'assets', 'index-test.js')).writeAsString(
+    splitGpNextEntry
+        ? "import('$gpNextModuleReference');"
+        : _gpNextModuleSource(
+            includeJsModLoader: includeJsModLoader,
+            includePatcher: includePatcher,
+          ),
+  );
+  if (splitGpNextEntry && !gpNextModuleReference.contains('..')) {
+    await File(
+      p.join(root.path, 'assets', 'gp-next-test.js'),
+    ).writeAsString(
+      _gpNextModuleSource(
+        includeJsModLoader: includeJsModLoader,
+        includePatcher: includePatcher,
+      ),
+    );
+  }
   await File(
     p.join(root.path, 'assets', 'config-test.js'),
   ).writeAsString("export const version = '$version';");
 }
+
+String _gpNextModuleSource({
+  bool includeJsModLoader = true,
+  bool includePatcher = true,
+}) =>
+    '''
+console.info('GP-Next loading...');
+window.gpNext = {};
+function loadAllPatches() {}
+${includePatcher ? "import('./patcher-test.js');" : ''}
+import('./file-loader-test.js');
+${includeJsModLoader ? 'import(\'./js-mod-loader-test.js\');' : ''}
+import('./config-test.js');
+''';
 
 Future<void> _writeValidResource(
   Directory root, {

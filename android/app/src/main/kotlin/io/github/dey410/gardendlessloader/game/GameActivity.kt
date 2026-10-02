@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.Settings
 import android.provider.OpenableColumns
 import android.util.Base64
@@ -42,6 +43,7 @@ class GameActivity : Activity() {
     private var pendingExport: PendingExport? = null
     private var chunkedExport: ChunkedExport? = null
     private var pendingGpImportRequestId: String? = null
+    private var pendingGpSelection: PendingGpSelection? = null
     private var returning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -142,7 +144,6 @@ class GameActivity : Activity() {
             .put("gpNextVersion", session.gpNextVersion ?: JSONObject.NULL)
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
-            .put("jsModdingEnabled", session.jsModdingEnabled)
             .put("gpNextBaseDirectory", session.appRoot)
         val names = buildList {
             add("transport.js")
@@ -153,7 +154,6 @@ class GameActivity : Activity() {
             add("touch_input_adapter.js")
             add("export_download_patch.js")
             if (session.hasGpNext && session.gpNextCompatible) {
-                add("js_modding.js")
                 add("gp_next_core.js")
                 add("gp_next_compat_bridge.js")
             }
@@ -295,7 +295,7 @@ class GameActivity : Activity() {
     }
 
     fun beginGpNextPackageImport(requestId: String) {
-        if (pendingGpImportRequestId != null) {
+        if (pendingGpImportRequestId != null || pendingGpSelection != null) {
             bridge.fail(requestId, "gp_next_import_busy", "已有 GP-Next 文件选择正在进行")
             return
         }
@@ -308,6 +308,35 @@ class GameActivity : Activity() {
         }
         launchDocumentPicker(intent, REQUEST_GP_NEXT_IMPORT) {
             pendingGpImportRequestId = null
+            bridge.fail(requestId, "gp_next_picker_failed", it.message ?: it.toString())
+        }
+    }
+
+    fun beginGpNextSelection(requestId: String, directory: Boolean) {
+        if (pendingGpSelection != null || pendingGpImportRequestId != null || pendingExport != null) {
+            bridge.fail(requestId, "gp_next_selection_busy", "已有文件选择正在进行")
+            return
+        }
+        runCatching { clearGpNextSelection() }.onFailure {
+            bridge.fail(requestId, "gp_next_selection_cleanup_failed", it.message ?: it.toString())
+            return
+        }
+        pendingGpSelection = PendingGpSelection(requestId, directory)
+        val intent = if (directory) {
+            Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+        } else {
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/zip"
+                putExtra(
+                    Intent.EXTRA_MIME_TYPES,
+                    arrayOf("application/zip", "application/x-zip-compressed"),
+                )
+            }
+        }
+        launchDocumentPicker(intent, REQUEST_GP_NEXT_SELECTION) {
+            pendingGpSelection = null
+            runCatching { clearGpNextSelection() }
             bridge.fail(requestId, "gp_next_picker_failed", it.message ?: it.toString())
         }
     }
@@ -339,11 +368,38 @@ class GameActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == REQUEST_FILE_CHOOSER ||
             requestCode == REQUEST_EXPORT ||
-            requestCode == REQUEST_GP_NEXT_IMPORT
+            requestCode == REQUEST_GP_NEXT_IMPORT ||
+            requestCode == REQUEST_GP_NEXT_SELECTION
         ) {
             restoreGameOrientation()
         }
         when (requestCode) {
+            REQUEST_GP_NEXT_SELECTION -> {
+                val selection = pendingGpSelection
+                pendingGpSelection = null
+                if (selection == null) return
+                if (resultCode != RESULT_OK || data?.data == null) {
+                    runCatching { clearGpNextSelection() }
+                    bridge.complete(selection.requestId, null)
+                    return
+                }
+                thread(name = "GardendlessGpNextSelection") {
+                    runCatching { stageGpNextSelection(data.data!!, selection.directory) }
+                        .onSuccess { path -> runOnUiThread {
+                            bridge.complete(selection.requestId, path.path)
+                        } }
+                        .onFailure { error ->
+                            runCatching { clearGpNextSelection() }
+                            runOnUiThread {
+                                bridge.fail(
+                                    selection.requestId,
+                                    "gp_next_selection_failed",
+                                    error.message ?: error.toString(),
+                                )
+                            }
+                        }
+                }
+            }
             REQUEST_GP_NEXT_IMPORT -> {
                 val requestId = pendingGpImportRequestId
                 pendingGpImportRequestId = null
@@ -437,8 +493,11 @@ class GameActivity : Activity() {
         chunkedExport = null
         pendingExport?.file?.delete()
         pendingExport = null
+        pendingGpSelection = null
+        runCatching { clearGpNextSelection() }
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
+        if (::gpNextCore.isInitialized) gpNextCore.destroy()
         if (::bridge.isInitialized) bridge.destroy()
         if (::webView.isInitialized) {
             webView.stopLoading()
@@ -543,6 +602,120 @@ class GameActivity : Activity() {
         return imported
     }
 
+    private fun stageGpNextSelection(uri: Uri, directory: Boolean): File {
+        clearGpNextSelection()
+        val stagingRoot = gpNextSelectionRoot()
+        require(stagingRoot.mkdirs()) { "无法创建 GP-Next 选择暂存目录" }
+        val budget = SelectionCopyBudget()
+        return if (directory) {
+            val destination = File(stagingRoot, "selection")
+            require(destination.mkdir()) { "无法创建 GP-Next 目录暂存区" }
+            copyDocumentTree(uri, destination, budget)
+            destination
+        } else {
+            val displayName = documentDisplayName(uri)
+            require(displayName.lowercase().endsWith(".zip")) { "请选择 ZIP 格式的 Mod 包" }
+            val destination = File(stagingRoot, "selection.zip")
+            copyDocumentFile(uri, destination, budget)
+            destination
+        }
+    }
+
+    private fun copyDocumentTree(treeUri: Uri, destination: File, budget: SelectionCopyBudget) {
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
+        copyDocumentChildren(treeUri, rootUri, destination, budget, mutableSetOf())
+    }
+
+    private fun copyDocumentChildren(
+        treeUri: Uri,
+        parentUri: Uri,
+        destination: File,
+        budget: SelectionCopyBudget,
+        visited: MutableSet<String>,
+    ) {
+        val parentId = DocumentsContract.getDocumentId(parentUri)
+        require(visited.add(parentId)) { "选择的目录包含循环引用" }
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
+        val columns = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+        )
+        val cursor = requireNotNull(contentResolver.query(childrenUri, columns, null, null, null)) {
+            "无法读取选择的目录"
+        }
+        cursor.use {
+            val idColumn = it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameColumn = it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val mimeColumn = it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            while (it.moveToNext()) {
+                budget.addEntry()
+                val documentId = it.getString(idColumn)
+                val name = requireSafeSelectionName(it.getString(nameColumn))
+                val mime = it.getString(mimeColumn)
+                val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+                val target = File(destination, name)
+                require(target.parentFile == destination && !target.exists()) { "选择的目录包含重复路径" }
+                if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    require(target.mkdir()) { "无法创建目录：$name" }
+                    copyDocumentChildren(treeUri, childUri, target, budget, visited)
+                } else {
+                    copyDocumentFile(childUri, target, budget)
+                }
+            }
+        }
+    }
+
+    private fun copyDocumentFile(uri: Uri, destination: File, budget: SelectionCopyBudget) {
+        contentResolver.openInputStream(uri).use { input ->
+            requireNotNull(input) { "无法读取选择的文件" }
+            destination.outputStream().buffered().use { output ->
+                val buffer = ByteArray(128 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    budget.addBytes(count)
+                    output.write(buffer, 0, count)
+                }
+            }
+        }
+    }
+
+    private fun documentDisplayName(uri: Uri): String =
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            ?: uri.lastPathSegment
+            ?: "selection.zip"
+
+    private fun requireSafeSelectionName(value: String?): String {
+        val name = value?.trim().orEmpty()
+        require(name.isNotEmpty() && name != "." && name != "..") { "选择内容包含无效名称" }
+        require(!name.contains('/') && !name.contains('\\') && !name.contains('\u0000')) {
+            "选择内容包含无效名称"
+        }
+        return name
+    }
+
+    private fun clearGpNextSelection() {
+        val root = gpNextSelectionRoot()
+        if (!root.exists()) return
+        require(!root.isSymbolicLink()) { "选择暂存目录不能是符号链接" }
+        deleteSelectionTree(root)
+    }
+
+    private fun deleteSelectionTree(directory: File) {
+        require(!directory.isSymbolicLink()) { "选择暂存区包含符号链接" }
+        directory.listFiles().orEmpty().forEach { child ->
+            require(!child.isSymbolicLink()) { "选择暂存区包含符号链接" }
+            if (child.isDirectory) deleteSelectionTree(child)
+            else require(child.delete()) { "无法清理选择暂存文件" }
+        }
+        require(directory.delete()) { "无法清理选择暂存目录" }
+    }
+
+    private fun gpNextSelectionRoot(): File = File(session.gpNextRoot, ".gardendless-selection")
+
     private fun confirmReplacement(name: String): Boolean {
         val latch = CountDownLatch(1)
         var confirmed = false
@@ -581,6 +754,23 @@ class GameActivity : Activity() {
 
     private data class PendingExport(val requestId: String, val file: File)
 
+    private data class PendingGpSelection(val requestId: String, val directory: Boolean)
+
+    private class SelectionCopyBudget {
+        private var entries = 0
+        private var bytes = 0L
+
+        fun addEntry() {
+            entries += 1
+            require(entries <= MAX_SELECTION_ENTRIES) { "选择的 Mod 包文件数量过多" }
+        }
+
+        fun addBytes(count: Int) {
+            bytes += count
+            require(bytes <= MAX_SELECTION_BYTES) { "选择的 Mod 包超过 512 MiB" }
+        }
+    }
+
     private data class ChunkedExport(
         val token: String,
         val file: File,
@@ -597,8 +787,11 @@ class GameActivity : Activity() {
         private const val REQUEST_FILE_CHOOSER = 4101
         private const val REQUEST_EXPORT = 4102
         private const val REQUEST_GP_NEXT_IMPORT = 4103
+        private const val REQUEST_GP_NEXT_SELECTION = 4104
         private const val MAX_EXPORT_BYTES = 512L * 1024 * 1024
         private const val MAX_EXPORT_CHUNK_BYTES = 256 * 1024
         private const val USER_INTERACTION_TIMEOUT_MINUTES = 5L
+        private const val MAX_SELECTION_ENTRIES = 10_000
+        private const val MAX_SELECTION_BYTES = 512L * 1024 * 1024
     }
 }

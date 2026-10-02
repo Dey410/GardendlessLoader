@@ -155,8 +155,9 @@ void main() {
     expect(importer, contains('withDocumentPickerOrientation('));
     expect(
       'await withDocumentPickerOrientation('.allMatches(gameBridge),
-      hasLength(2),
-      reason: 'GP-Next import and save export must both adapt orientation',
+      hasLength(3),
+      reason:
+          'GP-Next legacy import, 0.15 selection, and save export must adapt orientation',
     );
     expect(gamePage, contains('withDocumentPickerOrientation('));
   });
@@ -216,16 +217,17 @@ void main() {
     );
     expect(
       'this.pickerActive = true'.allMatches(gameBridge),
-      hasLength(2),
-      reason: 'Save export and GP-Next import must both reserve the picker',
+      hasLength(3),
+      reason: 'Every save/import/selection flow must reserve the picker',
     );
     expect(
       'this.pickerActive = false'.allMatches(gameBridge),
-      hasLength(2),
-      reason: 'Both finally blocks must release the picker',
+      hasLength(3),
+      reason: 'Every picker finally block must release the picker',
     );
     expect(gameBridge, contains("this.fail(id, 'export_in_progress'"));
     expect(gameBridge, contains("this.fail(id, 'gp_next_import_busy'"));
+    expect(gameBridge, contains("this.fail(id, 'gp_next_selection_busy'"));
   });
 
   test('OpenHarmony GameAbility owns LocalStorage before loading GamePage', () {

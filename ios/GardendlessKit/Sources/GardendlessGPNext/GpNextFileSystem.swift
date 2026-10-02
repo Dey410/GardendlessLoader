@@ -77,6 +77,43 @@ public final class GpNextFileSystem {
     return Array(try Data(contentsOf: url))
   }
 
+  public func lstat(
+    path: String,
+    options: [String: Any]
+  ) throws -> [String: Any] {
+    let url = try resolver.resolve(path, options: options)
+    try resolver.assertNoSymlink(url)
+    let values = try url.resourceValues(
+      forKeys: [
+        .isRegularFileKey,
+        .isDirectoryKey,
+        .isSymbolicLinkKey,
+        .fileSizeKey,
+        .isWritableKey,
+      ]
+    )
+    return [
+      "isFile": values.isRegularFile == true,
+      "isDirectory": values.isDirectory == true,
+      "isSymlink": values.isSymbolicLink == true,
+      "size": values.fileSize ?? 0,
+      "mtime": NSNull(),
+      "atime": NSNull(),
+      "birthtime": NSNull(),
+      "readonly": values.isWritable == false,
+      "fileAttributes": NSNull(),
+      "dev": 0,
+      "ino": 0,
+      "mode": 0,
+      "nlink": 0,
+      "uid": 0,
+      "gid": 0,
+      "rdev": 0,
+      "blksize": 0,
+      "blocks": 0,
+    ]
+  }
+
   public func exists(path: String, options: [String: Any]) throws -> Bool {
     let url = try resolver.resolve(path, options: options)
     return FileManager.default.fileExists(atPath: url.path)
@@ -115,6 +152,33 @@ public final class GpNextFileSystem {
     try FileManager.default.removeItem(at: url)
   }
 
+  public func rename(
+    oldPath: String,
+    newPath: String,
+    options: [String: Any]
+  ) throws {
+    let oldOptions = baseDirectoryOptions(options["oldPathBaseDir"])
+    let newOptions = baseDirectoryOptions(options["newPathBaseDir"])
+    let source = try resolver.resolve(oldPath, options: oldOptions)
+    let destination = try resolver.resolve(newPath, options: newOptions)
+    try resolver.assertNoSymlink(source)
+    try resolver.assertNoSymlink(destination)
+    guard source != gpNextRoot else {
+      throw GameError.failed(.gpNextForbidden, "不允许移动 GP-Next 根目录")
+    }
+    guard FileManager.default.fileExists(atPath: source.path) else {
+      throw GameError.failed(.gpNextForbidden, "源路径不存在：\(source.path)")
+    }
+    guard !FileManager.default.fileExists(atPath: destination.path) else {
+      throw GameError.failed(.gpNextForbidden, "目标路径已存在：\(destination.path)")
+    }
+    try FileManager.default.createDirectory(
+      at: destination.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.moveItem(at: source, to: destination)
+  }
+
   public func writeFile(
     path: String,
     bytes: [UInt8],
@@ -136,6 +200,18 @@ public final class GpNextFileSystem {
   public func writeFileAndReturnPath(
     rawPath: String?,
     bytes: [NSNumber],
+    options: [String: Any]
+  ) throws -> URL {
+    let url = try resolveWritePath(rawPath: rawPath, options: options)
+    try Data(bytes.map { UInt8(truncating: $0) }).write(
+      to: url,
+      options: .atomic
+    )
+    return url
+  }
+
+  public func resolveWritePath(
+    rawPath: String?,
     options: [String: Any]
   ) throws -> URL {
     let headers = options["headers"] as? [String: Any] ?? [:]
@@ -160,10 +236,10 @@ public final class GpNextFileSystem {
       withIntermediateDirectories: true
     )
     try resolver.assertNoSymlink(url)
-    try Data(bytes.map { UInt8(truncating: $0) }).write(
-      to: url,
-      options: .atomic
-    )
     return url
+  }
+
+  private func baseDirectoryOptions(_ value: Any?) -> [String: Any] {
+    value.map { ["baseDir": $0] } ?? [:]
   }
 }

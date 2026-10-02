@@ -380,7 +380,7 @@ void main() {
   );
 
   testWidgets(
-    'compatible GP-Next resources expand both game controls',
+    'compatible GP-Next resources leave JS Modding to the game',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(915, 412);
@@ -394,13 +394,12 @@ void main() {
       await tester.pump();
 
       final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
-      final jsModding = find.byKey(const ValueKey('home-js-modding'));
       final startGame = find.byKey(const ValueKey('home-start-game-button'));
 
       expect(controller.hasGpNext, isTrue);
       expect(controller.gpNextCompatible, isTrue);
       expect(autoCollect, findsNothing);
-      expect(jsModding, findsNothing);
+      expect(find.text('JS Modding'), findsNothing);
 
       await tester.tap(
         find.byKey(const ValueKey('home-game-controls-expander')),
@@ -408,23 +407,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(autoCollect, findsOneWidget);
-      expect(jsModding, findsOneWidget);
       expect(find.text('自动收集'), findsOneWidget);
-      expect(find.text('JS Modding'), findsOneWidget);
-      expect(tester.getRect(jsModding).bottom, tester.getRect(startGame).top);
-
-      await tester.tap(jsModding);
-      await tester.pump();
-
-      expect(controller.jsModdingEnabled, isTrue);
-      expect(
-        tester
-            .widget<Switch>(
-              find.byKey(const ValueKey('home-js-modding-switch')),
-            )
-            .value,
-        isTrue,
-      );
+      expect(find.text('JS Modding'), findsNothing);
+      expect(tester.getRect(autoCollect).bottom, tester.getRect(startGame).top);
 
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       await tester.pump();
@@ -434,7 +419,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(autoCollect, findsNothing);
-      expect(jsModding, findsNothing);
+      expect(find.text('JS Modding'), findsNothing);
     },
     timeout: const Timeout(Duration(seconds: 5)),
   );

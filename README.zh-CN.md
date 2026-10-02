@@ -58,7 +58,7 @@ GardendlessLoader 是一个使用 Flutter 开发的本地资源加载器，可�
 
 更新资源时再次选择 ZIP 即可。新资源会写入空闲槽，只有通过校验和自检后才会成为激活资源。
 
-“开始游戏”右侧的独立箭头用于展开启动控件。标准资源只显示“自动收集”；检测到 JS Mod 加载器的兼容 GP-Next 资源还会显示“JS Modding”。每次进入 Loader 主页时面板默认收起，两项设置都从下一次启动游戏开始生效。
+“开始游戏”右侧的独立箭头用于展开启动控件，并显示“自动收集”。每次进入 Loader 主页时面板默认收起，设置从下一次启动游戏开始生效。
 
 ### 游戏内触摸操作
 
@@ -72,7 +72,7 @@ GardendlessLoader 是一个使用 Flutter 开发的本地资源加载器，可�
 
 在启动控件中启用“自动收集”后，应用会在游戏进行中约每 3 秒模拟一次 `A` 键；游戏暂停、应用进入后台或输入框获得焦点时不会触发。
 
-“JS Modding”默认关闭，其选择由 Loader 持久化，重启应用或更新游戏资源后仍会保留。下一次启动兼容 GP-Next 资源时，Loader 会在 GP-Next 初始化前仅同步 `gp-next-settings` 中的 `experimental.jsModding`。JS Mod 会在游戏中执行代码，请只导入可信来源的 Mod。
+JS Modding 现在完全由游戏内的 GP-Next 管理。Loader 不再显示或持久化第二个开关，不再把该状态放入 `GameSession`，也不会读写 `gp-next-settings`；因此升级 Loader 时，游戏内原来开启或关闭的状态都保持不变。JS Mod 会在游戏中执行代码，请只导入可信来源的 Mod。
 
 > [!IMPORTANT]
 > 本项目的界面、逻辑和平台适配中有部分内容借助人工智能工具完成，并持续通过代码审查、自动化测试和设备验收改进。
@@ -89,6 +89,7 @@ GardendlessLoader/
   gp-next/
     packs/         # 持久化的 GP-Next ZIP 补丁包
     patches/       # 持久化的 JSON/JSON5 单文件补丁
+    installed/     # GP-Next 0.15 按内容摘要保存的 Mod 包
   manifest.json    # 激活槽、事务状态、资源统计和游戏版本
 ```
 
@@ -105,7 +106,8 @@ GP-Next ZIP 补丁包既可以把 `pack.json` 直接放在压缩包根目录，�
 | A/B 双槽更新与恢复 | ✅ | ✅ | ✅ |
 | 触摸、键鼠与游戏桥 | ✅ | ✅ | ✅ |
 | GP-Next 桥接与补丁导入 | ✅ | ✅ | ✅ |
-| GP-Next JS Modding 启动开关 | ✅ | ✅ | ✅ |
+| GP-Next 0.15 ZIP/文件夹 Mod 安装 | ✅ | ✅ | ✅ |
+| 游戏内管理 JS Modding | ✅ | ✅ | ✅ |
 | CI 构建产物 | APK | 未签名 IPA | 未签名 HAP |
 
 > [!NOTE]
@@ -115,7 +117,7 @@ GP-Next ZIP 补丁包既可以把 `pack.json` 直接放在压缩包根目录，�
 ## 已知限制
 
 - 应用不会代替用户下载或分发游戏资源，使用前必须手动导入 ZIP。
-- GP-Next 兼容性依据所需功能模块的指纹进行检测，不按版本号硬编码；已通过检测不代表所有功能都能兼容后续版本。
+- GP-Next 兼容性会检查入口包及其明确引用的本地 `gp-next-*.js` 模块中的必要功能指纹，不按版本号硬编码。桥接层实现 GP-Next 0.15 实际使用的命令；后续版本若改变协议，仍需重新核查。
 - HarmonyOS 的构建和设备兼容性取决于 OpenHarmony Flutter SDK 与 DevEco 工具链。
 - 不同系统 WebView 的媒体、音频和输入行为可能存在平台差异。
 - iOS 高刷新率兼容使用 WebKit 私有 SPI，仅适合侧载构建，可能随系统更新失效，也可能无法通过 App Store 审核。详情见 [iOS 部署说明](docs/deployment.md)。

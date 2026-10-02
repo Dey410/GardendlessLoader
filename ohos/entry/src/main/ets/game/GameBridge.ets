@@ -188,6 +188,8 @@ export class GameBridge {
 
   destroy(): void {
     this.clearChunkedExport();
+    if (this.gpNextCore != null) this.gpNextCore.destroy();
+    try { this.clearGpNextSelection(); } catch (_error) {}
     this.destroyed = true;
     this.activeIds.clear();
     this.controller.runJavaScript(
@@ -285,6 +287,8 @@ export class GameBridge {
         );
       } else if (result.importRequested === true) {
         this.importGpNextPackages(request.id);
+      } else if (result.selectionDirectory != null) {
+        this.selectGpNextPackage(request.id, result.selectionDirectory);
       } else {
         this.complete(request.id, result.value);
       }
@@ -416,6 +420,116 @@ export class GameBridge {
     } finally {
       this.pickerActive = false;
     }
+  }
+
+  private async selectGpNextPackage(id: string, directory: boolean): Promise<void> {
+    if (this.pickerActive) {
+      this.fail(id, 'gp_next_selection_busy', 'Another import or export picker is active');
+      return;
+    }
+    this.pickerActive = true;
+    try {
+      this.clearGpNextSelection();
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = 1;
+      options.selectMode = directory
+        ? picker.DocumentSelectMode.FOLDER
+        : picker.DocumentSelectMode.FILE;
+      if (!directory) options.fileSuffixFilters = ['Mod ZIP|.zip'];
+      const selected = await withDocumentPickerOrientation(
+        this.context,
+        (): Promise<string[]> => new picker.DocumentViewPicker().select(options),
+      );
+      if (selected == null || selected.length === 0) {
+        this.clearGpNextSelection();
+        this.complete(id, null);
+        return;
+      }
+      const source = selected[0];
+      const stagingRoot = `${this.session.gpNextRoot}/.gardendless-selection`;
+      this.ensureDirectory(stagingRoot);
+      const budget = new SelectionCopyBudget();
+      if (directory) {
+        const destination = `${stagingRoot}/selection`;
+        this.ensureDirectory(destination);
+        this.copySelectionDirectory(source, destination, budget);
+        this.complete(id, destination);
+      } else {
+        const name = this.safeFileName(source);
+        if (!name.toLowerCase().endsWith('.zip')) throw new Error('请选择 ZIP 格式的 Mod 包');
+        const destination = `${stagingRoot}/selection.zip`;
+        this.copySelectionFile(source, destination, budget);
+        this.complete(id, destination);
+      }
+    } catch (error) {
+      try { this.clearGpNextSelection(); } catch (_cleanupError) {}
+      this.fail(id, 'gp_next_selection_failed', (error as Error).message);
+    } finally {
+      this.pickerActive = false;
+    }
+  }
+
+  private copySelectionDirectory(
+    source: string,
+    destination: string,
+    budget: SelectionCopyBudget,
+  ): void {
+    const stat = fs.lstatSync(source);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('请选择一个 Mod 目录');
+    for (const name of fs.listFileSync(source)) {
+      const safeName = this.requireSafeSelectionName(name);
+      budget.addEntry();
+      const sourceChild = `${source.replace(/\/$/, '')}/${encodeURIComponent(safeName)}`;
+      const destinationChild = `${destination}/${safeName}`;
+      const childStat = fs.lstatSync(sourceChild);
+      if (childStat.isSymbolicLink()) throw new Error('选择内容包含符号链接');
+      if (childStat.isDirectory()) {
+        this.ensureDirectory(destinationChild);
+        this.copySelectionDirectory(sourceChild, destinationChild, budget);
+      } else if (childStat.isFile()) {
+        this.copySelectionFile(sourceChild, destinationChild, budget);
+      } else {
+        throw new Error('选择内容包含不支持的文件类型');
+      }
+    }
+  }
+
+  private copySelectionFile(
+    source: string,
+    destination: string,
+    budget: SelectionCopyBudget,
+  ): void {
+    const stat = fs.lstatSync(source);
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('选择内容包含不支持的文件类型');
+    budget.addBytes(stat.size);
+    this.copyFile(source, destination);
+  }
+
+  private clearGpNextSelection(): void {
+    const root = `${this.session.gpNextRoot}/.gardendless-selection`;
+    if (!this.fileExists(root)) return;
+    this.removeSelectionTree(root);
+  }
+
+  private removeSelectionTree(path: string): void {
+    const stat = fs.lstatSync(path);
+    if (stat.isSymbolicLink()) throw new Error('选择暂存区包含符号链接');
+    if (stat.isDirectory()) {
+      for (const name of fs.listFileSync(path)) {
+        this.removeSelectionTree(`${path}/${name}`);
+      }
+      fs.rmdirSync(path);
+    } else {
+      fs.unlinkSync(path);
+    }
+  }
+
+  private requireSafeSelectionName(value: string): string {
+    const name = value.trim();
+    if (name.length === 0 || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
+      throw new Error('选择内容包含无效名称');
+    }
+    return name;
   }
 
   private async exportFile(id: string, args: BridgeArguments): Promise<void> {
@@ -561,6 +675,21 @@ export class GameBridge {
     return cleaned.length === 0 || cleaned === '.' || cleaned === '..'
       ? 'gardendless-export.json'
       : cleaned;
+  }
+}
+
+class SelectionCopyBudget {
+  private entries: number = 0;
+  private bytes: number = 0;
+
+  addEntry(): void {
+    this.entries += 1;
+    if (this.entries > 10000) throw new Error('选择的 Mod 包文件数量过多');
+  }
+
+  addBytes(count: number): void {
+    this.bytes += count;
+    if (this.bytes > 512 * 1024 * 1024) throw new Error('选择的 Mod 包超过 512 MiB');
   }
 }
 

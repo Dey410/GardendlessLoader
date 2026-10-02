@@ -58,7 +58,7 @@ You can obtain an importable resource package in the following ways:
 
 To update the resources, select another ZIP. New resources are written to the inactive slot and become active only after validation and the filesystem self-check succeed.
 
-The separate arrow on the right side of **Start Game** expands the launch controls. Standard resources show **Auto Collect Sun**. A compatible GP-Next resource that contains the JS Mod loader also shows **JS Modding**. The panel starts collapsed whenever the Loader home page is entered, and changing either setting affects the next game launch.
+The separate arrow on the right side of **Start Game** expands the launch controls and shows **Auto Collect Sun**. The panel starts collapsed whenever the Loader home page is entered, and changing the setting affects the next game launch.
 
 ### In-game Touch Controls
 
@@ -72,7 +72,7 @@ The separate arrow on the right side of **Start Game** expands the launch contro
 
 When **Auto Collect Sun** is enabled in the launch controls, the app simulates one `A` key press approximately every 3 seconds while gameplay is active. It does not trigger when the game is paused, the app is in the background, or a text input has focus.
 
-**JS Modding** is off by default. Its choice is stored by the Loader across restarts and game-resource updates. On the next compatible GP-Next launch, the Loader synchronizes only `experimental.jsModding` in `gp-next-settings` before GP-Next initializes. JS Mods execute code inside the game, so import them only from sources you trust.
+JS Modding is controlled entirely by GP-Next in the game. The Loader does not display or persist a second switch, does not place the setting in `GameSession`, and does not read or write `gp-next-settings`. An existing enabled or disabled choice therefore remains unchanged during a Loader update. JS Mods execute code inside the game, so import them only from sources you trust.
 
 > [!IMPORTANT]
 > Some of the project's UI, logic, and platform adaptation were developed with the assistance of AI tools and are continually improved through code review, automated tests, and device acceptance testing. If you encounter unexpected behavior, include the diagnostic summary when reporting it.
@@ -88,6 +88,7 @@ GardendlessLoader/
   gp-next/
     packs/         # persistent GP-Next ZIP patch packs
     patches/       # persistent JSON/JSON5 single-file patches
+    installed/     # GP-Next 0.15 content-addressed Mod packages
   manifest.json    # active slot, transaction state, resource stats, and game version
 ```
 
@@ -104,7 +105,8 @@ A GP-Next ZIP pack may place `pack.json` directly at the archive root or inside 
 | A/B slot updates and recovery | ✅ | ✅ | ✅ |
 | Touch, keyboard/mouse, and game bridge | ✅ | ✅ | ✅ |
 | GP-Next bridge and patch import | ✅ | ✅ | ✅ |
-| GP-Next JS Modding launch control | ✅ | ✅ | ✅ |
+| GP-Next 0.15 ZIP/folder Mod installation | ✅ | ✅ | ✅ |
+| Game-owned JS Modding control | ✅ | ✅ | ✅ |
 | CI artifacts | APK | Unsigned IPA | Unsigned HAP (conditional) |
 
 > [!NOTE]
@@ -114,7 +116,7 @@ A GP-Next ZIP pack may place `pack.json` directly at the archive root or inside 
 ## Known Limitations
 
 - The app does not download or distribute game resources on the user's behalf. A ZIP must be imported manually before use.
-- GP-Next compatibility is detected from required module fingerprints rather than a hard-coded version number. Passing detection does not guarantee that every feature will remain compatible with later versions.
+- GP-Next compatibility is detected from required module fingerprints in the entry bundle and its explicitly referenced local `gp-next-*.js` module, rather than a hard-coded version number. The bridge implements the commands used by GP-Next 0.15; passing detection does not guarantee compatibility with later protocol changes.
 - HarmonyOS build and device compatibility depend on the OpenHarmony Flutter SDK and DevEco toolchain.
 - Media, audio, and input behavior may differ between system WebView implementations.
 - The iOS high-refresh-rate compatibility layer uses private WebKit SPI. It is intended only for sideloaded builds, may stop working after system updates, and may not pass App Store review. See the [iOS deployment guide](docs/deployment.md).

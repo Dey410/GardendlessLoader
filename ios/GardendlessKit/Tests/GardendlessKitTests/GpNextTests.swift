@@ -93,6 +93,40 @@ final class GpNextTests: XCTestCase {
     XCTAssertFalse(try fs.exists(path: sub, options: [:]))
   }
 
+  func testFileSystemSupports015MetadataAndAtomicInstallCommands() throws {
+    let fs = try GpNextFileSystem(session: session)
+    let pending = session.gpNextRoot
+      .appendingPathComponent("installed/pending-test")
+      .path
+    let installed = session.gpNextRoot
+      .appendingPathComponent("installed/final-test")
+      .path
+    let payload = session.gpNextRoot
+      .appendingPathComponent("installed/pending-test/mod.js")
+      .path
+
+    try fs.mkdir(path: pending, options: ["baseDir": 14])
+    try fs.writeFile(
+      path: payload,
+      bytes: Array("export {}".utf8),
+      options: ["baseDir": 14]
+    )
+
+    let metadata = try fs.lstat(path: payload, options: ["baseDir": 14])
+    XCTAssertEqual(metadata["isFile"] as? Bool, true)
+    XCTAssertEqual(metadata["isDirectory"] as? Bool, false)
+    XCTAssertEqual(metadata["isSymlink"] as? Bool, false)
+    XCTAssertEqual(metadata["size"] as? NSNumber, 9)
+
+    try fs.rename(
+      oldPath: pending,
+      newPath: installed,
+      options: ["oldPathBaseDir": 14, "newPathBaseDir": 14]
+    )
+    XCTAssertFalse(try fs.exists(path: pending, options: [:]))
+    XCTAssertTrue(try fs.exists(path: installed, options: [:]))
+  }
+
   func testRemoveRejectsRootAndSymbolicLinks() throws {
     let fs = try GpNextFileSystem(session: session)
     XCTAssertThrowsError(
@@ -163,6 +197,34 @@ final class GpNextTests: XCTestCase {
       try Data(contentsOf: destination),
       try Data(contentsOf: other)
     )
+  }
+
+  func testSelectionStagerUsesThe015SelectionNamesAndCleansPreviousData() throws {
+    let sourceDirectory = root.appendingPathComponent("source-mod")
+    try FileManager.default.createDirectory(
+      at: sourceDirectory,
+      withIntermediateDirectories: true
+    )
+    try Data("export {}".utf8).write(
+      to: sourceDirectory.appendingPathComponent("mod.js")
+    )
+    let zip = root.appendingPathComponent("mod.zip")
+    try Data("zip".utf8).write(to: zip)
+    let stager = GpNextSelectionStager(gpNextRoot: session.gpNextRoot)
+
+    let directory = try stager.stage(sourceDirectory, directory: true)
+    XCTAssertEqual(directory.lastPathComponent, "selection")
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: directory.appendingPathComponent("mod.js").path
+      )
+    )
+
+    let archive = try stager.stage(zip, directory: false)
+    XCTAssertEqual(archive.lastPathComponent, "selection.zip")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+    try stager.clear()
+    XCTAssertFalse(FileManager.default.fileExists(atPath: archive.path))
   }
 
   func testPackageImporterNormalizesOneWrapperDirectory() throws {
@@ -298,6 +360,81 @@ final class GpNextTests: XCTestCase {
     XCTAssertEqual(
       try Data(contentsOf: file),
       Data("{}".utf8)
+    )
+  }
+
+  func testRouterSupports015OpenAndBinaryInstallCommands() throws {
+    let router = try GpNextCommandRouter(session: session)
+
+    let directory = try router.dispatch([
+      "command": "plugin:dialog|open",
+      "args": [
+        "options": ["directory": true, "recursive": true, "multiple": false]
+      ],
+      "options": [:] as [String: Any],
+    ])
+    guard case .openSelection(let isDirectory) = directory else {
+      return XCTFail("expected openSelection action")
+    }
+    XCTAssertTrue(isDirectory)
+
+    let path = session.gpNextRoot
+      .appendingPathComponent("installed/pending-test/mod.js")
+      .path
+    _ = try router.dispatch([
+      "command": "plugin:fs|write_file",
+      "args": [
+        "__gardendlessBytes": Array("x".utf8).map { NSNumber(value: $0) },
+      ],
+      "options": [
+        "headers": [
+          "path": path.addingPercentEncoding(
+            withAllowedCharacters: .alphanumerics
+          )!,
+          "options": "{\"baseDir\":14}",
+        ],
+      ] as [String: Any],
+    ])
+    XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: path)), Data("x".utf8))
+  }
+
+  func testRouterStreamsLarge015BinaryWritesInBoundedChunks() throws {
+    let router = try GpNextCommandRouter(session: session)
+    let path = session.gpNextRoot
+      .appendingPathComponent("installed/pending-test/large.bin")
+      .path
+    let payload = [UInt8](repeating: 255, count: 220 * 1024)
+    let chunkSize = 96 * 1024
+    var index = 0
+    for offset in stride(from: 0, to: payload.count, by: chunkSize) {
+      let end = min(payload.count, offset + chunkSize)
+      _ = try router.dispatch([
+        "command": "plugin:fs|write_file",
+        "args": [
+          "__gardendlessBytes": payload[offset..<end].map {
+            NSNumber(value: $0)
+          },
+          "__gardendlessTransfer": [
+            "token": "gp-write-test",
+            "index": index,
+            "totalBytes": payload.count,
+            "final": end == payload.count,
+          ],
+        ],
+        "options": [
+          "headers": [
+            "path": path.addingPercentEncoding(
+              withAllowedCharacters: .alphanumerics
+            )!,
+            "options": "{\"baseDir\":14}",
+          ],
+        ] as [String: Any],
+      ])
+      index += 1
+    }
+    XCTAssertEqual(
+      try Data(contentsOf: URL(fileURLWithPath: path)),
+      Data(payload)
     )
   }
 

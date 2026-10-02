@@ -66,18 +66,22 @@
 - Failure to import the game-state modules disables automatic collection and logs the failure once without affecting gameplay.
 - The removed legacy in-game menu and its former 1.5-second unscoped collector are absent from Android, iOS, HarmonyOS, and shared assets.
 
-## GP-Next JS Modding
+## GP-Next 0.15 and JS Modding ownership
 
-- `JS Modding` defaults to off for new, old, and malformed Loader preference/session data.
-- The row appears only after expanding controls for a compatible GP-Next resource whose fingerprint includes the JS Mod loader; standard and incompatible resources never show it.
-- The whole row and its switch update the Loader-owned choice without a confirmation dialog, and the enabled switch uses the launcher's blue accent.
-- The choice survives Loader restarts and successful game-resource updates, but takes effect only on the next game launch.
-- Android, iOS, and HarmonyOS pass the same boolean through `GameSession` and load `js_modding.js` only for a compatible GP-Next session.
-- At document start, before GP-Next initializes, the shared script changes only `gp-next-settings.experimental.jsModding` and preserves all other valid settings and experimental flags.
-- Enabling writes exact boolean `true`; disabling writes exact boolean `false`; malformed settings JSON is replaced with the smallest valid settings object without blocking game startup.
-- Standard and incompatible resources do not read or write `gp-next-settings`, even if the Loader preference remains enabled from an earlier compatible resource.
-- The locked in-game JS Modding control never overrides the Loader choice; there is no bidirectional synchronization.
-- Imported JS Mods are treated as executable game content and are not evaluated by the Loader itself; device acceptance uses only trusted test packages.
+- A 0.15 resource whose entry bundle explicitly references a local `gp-next-*.js` bundle is detected as GP-Next when the required patcher and file-loader fingerprints are in that referenced bundle.
+- A missing JS Mod loader fingerprint does not make the resource incompatible; a missing patcher or file-loader fingerprint still does.
+- Expanding Loader launch controls never shows `JS Modding`, including for a compatible GP-Next resource.
+- Legacy Manifest and prepared-session JSON containing `jsModdingEnabled` is accepted, but the field is ignored and omitted from the next persisted value.
+- Android, iOS, and HarmonyOS do not pass a JS Modding field through `GameSession`, do not load `js_modding.js`, and never read or write `gp-next-settings`.
+- An existing game-owned enabled or disabled state remains unchanged. The user manages all later changes with the in-game switch.
+- Android, iOS, and HarmonyOS expose the same 0.15 command set: `plugin:dialog|open`, `plugin:fs|lstat`, `plugin:fs|rename`, and `plugin:fs|write_file`.
+- `plugin:dialog|open` supports one ZIP or one folder. Native code copies it into the GP-Next sandbox and returns a path ending in `selection.zip` or `selection` respectively.
+- The previous selection is removed before the next picker opens. Cancellation, staging failure, and GameHost exit also remove selection staging; cancellation resolves to `null`.
+- Selected content rejects symbolic links, invalid names, more than 10,000 entries, or more than 512 MiB before the game installs it.
+- File operations remain confined to AppData base directory 14 and the `gp-next` root; traversal, foreign base directories, root moves/removals, and overwrite-by-rename are rejected consistently.
+- Large binary writes are split into 96 KiB bridge requests, committed only after every byte arrives, and abandoned transfers are cleaned on failure or GameHost exit.
+- On a real device for each maintained platform, install the same trusted test Mod once from ZIP and once from a folder, restart the game, and verify GP-Next can load the installed content from `gp-next/installed`.
+- Imported JS Mods are executable game content and are not evaluated by the Loader itself; device acceptance uses only trusted test packages.
 
 ## Failure paths
 

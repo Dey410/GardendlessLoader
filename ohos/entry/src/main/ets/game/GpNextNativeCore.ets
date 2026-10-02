@@ -8,20 +8,36 @@ export interface GpNextResult {
   exportPath?: string;
   openUrl?: string;
   importRequested?: boolean;
+  selectionDirectory?: boolean;
 }
 
 interface GpNextArguments {
   path?: string;
+  oldPath?: string;
+  newPath?: string;
   url?: string;
   directory?: number;
   options?: GpNextOptions;
   __gardendlessBytes?: number[];
+  __gardendlessTransfer?: GpNextWriteTransfer;
+}
+
+interface GpNextWriteTransfer {
+  token: string;
+  index?: number;
+  totalBytes?: number;
+  final?: boolean;
+  abort?: boolean;
 }
 
 interface GpNextOptions {
   baseDir?: number;
   recursive?: boolean;
+  directory?: boolean;
+  multiple?: boolean;
   defaultPath?: string;
+  oldPathBaseDir?: number;
+  newPathBaseDir?: number;
   headers?: GpNextHeaders;
 }
 
@@ -54,6 +70,7 @@ export class GpNextNativeCore {
   private readonly session: GameSession;
   private readonly root: string;
   private readonly pendingExports: Set<string> = new Set<string>();
+  private readonly pendingWrites: Map<string, PendingWrite> = new Map<string, PendingWrite>();
 
   constructor(session: GameSession) {
     this.session = session;
@@ -76,13 +93,24 @@ export class GpNextNativeCore {
       case 'plugin:fs|read_file':
       case 'plugin:fs|read_text_file':
         return { value: this.readFile(this.resolve(args.path, args.options ?? options)) };
+      case 'plugin:fs|lstat':
+        return { value: this.fileInfo(this.resolve(args.path, args.options ?? options)) };
       case 'plugin:fs|exists':
         return { value: this.exists(this.resolve(args.path, args.options ?? options)) };
       case 'plugin:fs|remove':
         this.remove(this.resolve(args.path, args.options ?? options), (args.options ?? options).recursive !== false);
         return { value: null };
+      case 'plugin:fs|write_file':
       case 'plugin:fs|write_text_file':
         return this.writeFile(args, options);
+      case 'plugin:fs|rename':
+        this.rename(args, args.options ?? options);
+        return { value: null };
+      case 'plugin:dialog|open': {
+        const dialogOptions = args.options ?? {};
+        if (dialogOptions.multiple === true) throw new Error('GP-Next 仅支持选择一个 Mod 包');
+        return { value: null, selectionDirectory: dialogOptions.directory === true };
+      }
       case 'plugin:dialog|save':
         return { value: this.prepareExport(args) };
       case 'plugin:opener|open_url':
@@ -140,7 +168,35 @@ export class GpNextNativeCore {
     }
   }
 
+  private fileInfo(path: string): Object {
+    this.assertNoSymlink(path);
+    const stat = fs.lstatSync(path);
+    return {
+      isFile: stat.isFile(),
+      isDirectory: stat.isDirectory(),
+      isSymlink: stat.isSymbolicLink(),
+      size: stat.isFile() ? stat.size : 0,
+      mtime: null,
+      atime: null,
+      birthtime: null,
+      readonly: false,
+      fileAttributes: null,
+      dev: 0,
+      ino: 0,
+      mode: 0,
+      nlink: 0,
+      uid: 0,
+      gid: 0,
+      rdev: 0,
+      blksize: 0,
+      blocks: 0,
+    };
+  }
+
   private writeFile(args: GpNextArguments, options: GpNextOptions): GpNextResult {
+    if (args.__gardendlessTransfer != null) {
+      return this.writeFileChunk(args, options, args.__gardendlessTransfer);
+    }
     const headers = options.headers ?? {};
     let headerOptions: GpNextOptions = {};
     if (headers.options != null && headers.options !== 'undefined') {
@@ -175,12 +231,106 @@ export class GpNextNativeCore {
     return { value: null };
   }
 
+  private writeFileChunk(
+    args: GpNextArguments,
+    options: GpNextOptions,
+    transfer: GpNextWriteTransfer,
+  ): GpNextResult {
+    if (!/^[A-Za-z0-9-]{1,96}$/.test(transfer.token)) {
+      throw new Error('GP-Next 分块写入 token 无效');
+    }
+    if (transfer.abort === true) {
+      this.clearPendingWrite(transfer.token);
+      return { value: null };
+    }
+    const bytes = args.__gardendlessBytes;
+    const index = transfer.index ?? -1;
+    const total = transfer.totalBytes ?? -1;
+    if (bytes == null || bytes.length > 96 * 1024 || total < 0 || total > 512 * 1024 * 1024) {
+      throw new Error('GP-Next 写入分块无效');
+    }
+    const headers = options.headers ?? {};
+    let headerOptions: GpNextOptions = {};
+    if (headers.options != null && headers.options !== 'undefined') {
+      try {
+        headerOptions = JSON.parse(headers.options) as GpNextOptions;
+      } catch (_error) {
+      }
+    }
+    const path = this.resolve(
+      headers.path == null ? args.path : decodeURIComponent(headers.path),
+      headerOptions,
+    );
+    let state: PendingWrite;
+    if (index === 0) {
+      if (this.pendingWrites.has(transfer.token)) throw new Error('GP-Next 分块写入已存在');
+      this.ensureDirectory(path.substring(0, path.lastIndexOf('/')));
+      const temporary = `${path.substring(0, path.lastIndexOf('/'))}/.gardendless-write-${transfer.token}`;
+      if (this.exists(temporary)) throw new Error('GP-Next 分块临时文件已存在');
+      state = new PendingWrite(path, temporary, total);
+      this.pendingWrites.set(transfer.token, state);
+    } else {
+      const existing = this.pendingWrites.get(transfer.token);
+      if (existing == null) throw new Error('GP-Next 分块写入不存在');
+      state = existing;
+    }
+    if (state.path !== path || state.nextIndex !== index || state.expectedBytes !== total) {
+      throw new Error('GP-Next 分块写入顺序无效');
+    }
+    const encoded = new Uint8Array(bytes.length);
+    for (let position = 0; position < bytes.length; position++) encoded[position] = bytes[position];
+    let file: fs.File | null = null;
+    try {
+      const mode = index === 0
+        ? fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC
+        : fs.OpenMode.READ_WRITE;
+      file = fs.openSync(state.temporary, mode);
+      fs.writeSync(file.fd, encoded.buffer, { offset: state.written, length: encoded.length });
+    } finally {
+      if (file != null) fs.closeSync(file.fd);
+    }
+    state.written += encoded.length;
+    state.nextIndex += 1;
+    if (state.written > state.expectedBytes) throw new Error('GP-Next 分块写入超出声明大小');
+    if (transfer.final !== true) return { value: null };
+    if (state.written !== state.expectedBytes) throw new Error('GP-Next 分块写入不完整');
+    this.pendingWrites.delete(transfer.token);
+    fs.renameSync(state.temporary, state.path);
+    if (this.pendingExports.has(path)) {
+      this.pendingExports.delete(path);
+      return { value: null, exportPath: path };
+    }
+    return { value: null };
+  }
+
+  private clearPendingWrite(token: string): void {
+    const state = this.pendingWrites.get(token);
+    this.pendingWrites.delete(token);
+    if (state != null && this.exists(state.temporary)) fs.unlinkSync(state.temporary);
+  }
+
+  destroy(): void {
+    for (const token of this.pendingWrites.keys()) this.clearPendingWrite(token);
+  }
+
   private prepareExport(args: GpNextArguments): string {
     const name = this.safeFileName(args.options?.defaultPath ?? 'gardendless-export.json');
     this.ensureDirectory(this.session.exportTemporaryRoot);
     const path = `${this.session.exportTemporaryRoot}/${name}`;
     this.pendingExports.add(path);
     return path;
+  }
+
+  private rename(args: GpNextArguments, options: GpNextOptions): void {
+    const source = this.resolve(args.oldPath, { baseDir: options.oldPathBaseDir });
+    const destination = this.resolve(args.newPath, { baseDir: options.newPathBaseDir });
+    if (source === this.root) throw new Error('不允许移动 GP-Next 根目录');
+    if (!this.exists(source)) throw new Error(`源路径不存在：${source}`);
+    if (this.exists(destination)) throw new Error(`目标路径已存在：${destination}`);
+    this.ensureDirectory(destination.substring(0, destination.lastIndexOf('/')));
+    this.assertNoSymlink(source);
+    this.assertNoSymlink(destination);
+    fs.renameSync(source, destination);
   }
 
   private exists(path: string): boolean {
@@ -266,5 +416,19 @@ export class GpNextNativeCore {
     return cleaned.length === 0 || cleaned === '.' || cleaned === '..'
       ? 'gardendless-export.json'
       : cleaned;
+  }
+}
+
+class PendingWrite {
+  readonly path: string;
+  readonly temporary: string;
+  readonly expectedBytes: number;
+  written: number = 0;
+  nextIndex: number = 0;
+
+  constructor(path: string, temporary: string, expectedBytes: number) {
+    this.path = path;
+    this.temporary = temporary;
+    this.expectedBytes = expectedBytes;
   }
 }

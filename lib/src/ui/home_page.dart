@@ -2174,7 +2174,6 @@ class _GameControlsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showJsModding = controller.gpNextCompatible;
     return Material(
       key: const ValueKey('home-game-controls-panel'),
       color: LauncherVisuals.separator(context).withValues(alpha: 0.64),
@@ -2197,24 +2196,6 @@ class _GameControlsPanel extends StatelessWidget {
               label: '自动收集',
               onChanged: controller.setAutoCollectSunEnabled,
             ),
-            if (showJsModding) ...[
-              Divider(
-                height: 1,
-                thickness: 1,
-                color: LauncherVisuals.primaryText(context)
-                    .withValues(alpha: 0.08),
-              ),
-              _GameSettingControl(
-                key: const ValueKey('home-js-modding'),
-                switchKey: const ValueKey('home-js-modding-switch'),
-                enabled: !controller.busy,
-                value: controller.jsModdingEnabled,
-                icon: Icons.extension_rounded,
-                iconColor: LauncherVisuals.accentBlue,
-                label: 'JS Modding',
-                onChanged: controller.setJsModdingEnabled,
-              ),
-            ],
           ],
         ),
       ),
