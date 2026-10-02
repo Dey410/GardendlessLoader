@@ -1466,6 +1466,53 @@ for (const interruption of [
   assert.equal(end.defaultPrevented, false);
 }
 
+{
+  const harness = createTouchHarness();
+  const recoveryScreen = createElement({className: 'gp-recovery-screen'});
+  const recoveryButton = createElement({
+    parentElement: recoveryScreen,
+    tagName: 'BUTTON',
+  });
+  let nativeTouches = 0;
+  let canvasMouseDowns = 0;
+  harness.document.addEventListener('touchstart', () => {
+    nativeTouches += 1;
+  });
+  harness.document.addEventListener('touchend', () => {
+    nativeTouches += 1;
+  });
+  harness.canvas.addEventListener('mousedown', () => {
+    canvasMouseDowns += 1;
+  });
+  const touch = createTouch(62, recoveryButton, 90, 70);
+  const start = createTouchEvent('touchstart', {
+    touches: [touch],
+    changedTouches: [touch],
+  });
+  const end = createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [touch],
+  });
+
+  harness.document.dispatchEvent(start);
+  harness.flushAnimationFrame();
+  harness.flushAnimationFrame();
+  harness.document.dispatchEvent(end);
+
+  assert.equal(
+    nativeTouches,
+    2,
+    'GP-Next startup recovery controls must retain native touch input',
+  );
+  assert.equal(start.defaultPrevented, false);
+  assert.equal(end.defaultPrevented, false);
+  assert.equal(
+    canvasMouseDowns,
+    0,
+    'recovery controls must not redirect touches to GameCanvas',
+  );
+}
+
 for (const gameGesture of [
   {
     name: 'two-finger gesture',
