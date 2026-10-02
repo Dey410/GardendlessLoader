@@ -52,6 +52,27 @@ interface GpNextRequest {
   options?: GpNextOptions;
 }
 
+interface GpNextFileInfo {
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
+  size: number;
+  mtime: Object | null;
+  atime: Object | null;
+  birthtime: Object | null;
+  readonly: boolean;
+  fileAttributes: Object | null;
+  dev: number;
+  ino: number;
+  mode: number;
+  nlink: number;
+  uid: number;
+  gid: number;
+  rdev: number;
+  blksize: number;
+  blocks: number;
+}
+
 class GpNextDirectoryEntry {
   readonly name: string;
   readonly isFile: boolean;
@@ -168,7 +189,7 @@ export class GpNextNativeCore {
     }
   }
 
-  private fileInfo(path: string): Object {
+  private fileInfo(path: string): GpNextFileInfo {
     this.assertNoSymlink(path);
     const stat = fs.lstatSync(path);
     return {

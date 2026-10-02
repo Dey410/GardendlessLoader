@@ -289,6 +289,12 @@ void main() {
     expect(gameHostPlugin, isNot(contains('call.argument as Object')));
     expect(gameHostPlugin, isNot(contains('call.arguments')));
     expect(gpNextCore, contains('class GpNextDirectoryEntry'));
+    expect(gpNextCore, contains('interface GpNextFileInfo'));
+    expect(
+      gpNextCore,
+      contains('private fileInfo(path: string): GpNextFileInfo'),
+      reason: 'ArkTS object literals must target an explicit interface',
+    );
     expect(arkTsSources, isNot(contains('writeTextSync')));
     expect(arkTsSources, isNot(contains('throw error;')));
   });
