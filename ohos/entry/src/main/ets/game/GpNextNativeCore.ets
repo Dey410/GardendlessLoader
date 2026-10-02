@@ -387,18 +387,36 @@ export class GpNextNativeCore {
     }
     let raw = value.trim().replace(/\\/g, '/');
     if (raw.startsWith('file://')) raw = raw.substring(7);
-    const combined = raw.startsWith('/') ? raw : `${this.session.appRoot}/${raw}`;
-    const parts: string[] = [];
-    for (const part of combined.split('/')) {
-      if (part.length === 0) continue;
-      if (part === '.' || part === '..') throw new Error('GP-Next 路径超出 Loader 沙箱');
-      parts.push(part);
+    let normalized: string;
+    if (raw.startsWith('/')) {
+      const parts: string[] = [];
+      for (const part of raw.split('/')) {
+        if (part.length === 0) continue;
+        if (part === '.' || part === '..') throw new Error('GP-Next 路径超出 Loader 沙箱');
+        parts.push(part);
+      }
+      normalized = `/${parts.join('/')}`;
+    } else {
+      normalized = this.resolveRelativeGpNextPath(raw);
     }
-    const normalized = `/${parts.join('/')}`;
     if (normalized !== this.root && !normalized.startsWith(`${this.root}/`)) {
       throw new Error('GP-Next 路径超出 Loader 沙箱');
     }
     this.assertNoSymlink(normalized);
+    return normalized;
+  }
+
+  private resolveRelativeGpNextPath(raw: string): string {
+    const parts = raw.split('/').filter((part: string): boolean => part.length > 0);
+    if (parts.length === 0 || parts[0] !== 'gp-next') {
+      throw new Error('GP-Next 路径超出 Loader 沙箱');
+    }
+    let normalized = this.root;
+    for (let index = 1; index < parts.length; index++) {
+      const part = parts[index];
+      if (part === '.' || part === '..') throw new Error('GP-Next 路径超出 Loader 沙箱');
+      normalized = `${normalized}/${part}`;
+    }
     return normalized;
   }
 

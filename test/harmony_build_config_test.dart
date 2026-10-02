@@ -340,6 +340,17 @@ void main() {
     );
   });
 
+  test('OpenHarmony resolves AppData GP-Next paths from the explicit root', () {
+    final source = File(
+      'ohos/entry/src/main/ets/game/GpNextNativeCore.ets',
+    ).readAsStringSync();
+
+    expect(source, contains('private resolveRelativeGpNextPath(raw: string): string'));
+    expect(source, contains("parts[0] !== 'gp-next'"));
+    expect(source, contains('let normalized = this.root;'));
+    expect(source, isNot(contains(r'`${this.session.appRoot}/${raw}`')));
+  });
+
   test('GitHub Actions exports a HAP artifact', () {
     final workflow = File(
       '.github/workflows/build-mobile.yml',

@@ -14,7 +14,6 @@ class GpNextNativeCore(
     private val bridge: GameBridge,
 ) {
     private val root = File(session.gpNextRoot).absoluteFile
-    private val appRoot = File(session.appRoot).absoluteFile
     private val pendingExports = mutableSetOf<String>()
     private val pendingWrites = mutableMapOf<String, PendingWrite>()
 
@@ -308,13 +307,7 @@ class GpNextNativeCore(
             "不允许访问 Tauri baseDir $baseDir"
         }
         val normalizedRaw = decodeFilePath(raw).replace('\\', '/')
-        val candidate = if (normalizedRaw.startsWith('/')) {
-            File(normalizedRaw).absoluteFile
-        } else {
-            File(appRoot, normalizedRaw).absoluteFile
-        }
-        require(!normalizedRaw.split('/').any { it == ".." }) { "GP-Next 路径超出 Loader 沙箱" }
-        require(candidate.isInside(root)) { "GP-Next 路径超出 Loader 沙箱" }
+        val candidate = resolveGpNextSandboxPath(root, normalizedRaw)
         ensureNoSymlink(candidate)
         return candidate
     }

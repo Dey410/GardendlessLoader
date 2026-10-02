@@ -48,8 +48,8 @@ final class GpNextTests: XCTestCase {
     XCTAssertTrue(try fs.exists(path: packs, options: [:]))
     XCTAssertTrue(try fs.exists(path: patches, options: [:]))
 
-    // Relative paths resolve against the app root and therefore stay outside
-    // the gp-next sandbox unless they are absolute paths inside it.
+    // Relative AppData paths must start at the gp-next namespace; unrelated
+    // relative paths and absolute paths outside the explicit root stay blocked.
     XCTAssertThrowsError(try fs.exists(path: "packs", options: [:]))
     let outside = root.appendingPathComponent("slot-a").path
     XCTAssertThrowsError(try fs.exists(path: outside, options: [:]))
@@ -59,6 +59,72 @@ final class GpNextTests: XCTestCase {
         options: ["baseDir": 13]
       )
     )
+  }
+
+  func testAppDataGpNextPathUsesTheExplicitSandboxRoot() throws {
+    let detachedRoot = root
+      .appendingPathComponent("detached")
+      .appendingPathComponent("gp-next")
+    try FileManager.default.createDirectory(
+      at: detachedRoot,
+      withIntermediateDirectories: true
+    )
+    let resolver = try GpNextPathResolver(gpNextRoot: detachedRoot)
+
+    let resolved = try resolver.resolve(
+      "gp-next/configuration-state.json",
+      options: ["baseDir": GpNextConstants.appDataBaseDirectoryID]
+    )
+
+    XCTAssertEqual(
+      resolved.path,
+      detachedRoot.appendingPathComponent("configuration-state.json").path
+    )
+    XCTAssertThrowsError(
+      try resolver.resolve("settings.json", options: ["baseDir": 14])
+    )
+    XCTAssertThrowsError(
+      try resolver.resolve(
+        "gp-next/../settings.json",
+        options: ["baseDir": 14]
+      )
+    )
+    XCTAssertThrowsError(
+      try resolver.resolve(
+        "gp-next/./settings.json",
+        options: ["baseDir": 14]
+      )
+    )
+
+    let detachedSession = GameSession(
+      sessionId: "detached-session",
+      resourceRoot: root.appendingPathComponent("slot-a"),
+      entryURL: URL(
+        string: "gardendless-game://localhost/index.html?generation=1"
+      )!,
+      activationGeneration: 1,
+      hasGpNext: true,
+      gpNextCompatible: true,
+      gpNextVersion: "0.15.0",
+      watermarkEnabled: true,
+      autoCollectSunEnabled: false,
+      allowedRemoteHosts: [],
+      gpNextRoot: detachedRoot,
+      exportTemporaryRoot: detachedRoot.appendingPathComponent(".exports")
+    )
+    let router = try GpNextCommandRouter(session: detachedSession)
+    let action = try router.dispatch([
+      "command": "plugin:fs|exists",
+      "args": [
+        "path": "gp-next/configuration-state.json",
+        "options": ["baseDir": 14],
+      ],
+      "options": [:] as [String: Any],
+    ])
+    guard case .value(let value) = action else {
+      return XCTFail("expected filesystem result")
+    }
+    XCTAssertEqual(value as? Bool, false)
   }
 
   func testFileSystemRoundTrip() throws {

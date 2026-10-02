@@ -19,10 +19,7 @@ public final class GpNextFileSystem {
       at: root.appendingPathComponent("patches", isDirectory: true),
       withIntermediateDirectories: true
     )
-    resolver = try GpNextPathResolver(
-      appRoot: session.appRoot,
-      gpNextRoot: root
-    )
+    resolver = try GpNextPathResolver(gpNextRoot: root)
     gpNextRoot = root.standardizedFileURL
   }
 

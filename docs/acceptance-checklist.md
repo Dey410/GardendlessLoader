@@ -79,6 +79,7 @@
 - The previous selection is removed before the next picker opens. Cancellation, staging failure, and GameHost exit also remove selection staging; cancellation resolves to `null`.
 - Selected content rejects symbolic links, invalid names, more than 10,000 entries, or more than 512 MiB before the game installs it.
 - File operations remain confined to AppData base directory 14 and the `gp-next` root; traversal, foreign base directories, root moves/removals, and overwrite-by-rename are rejected consistently.
+- Android, iOS, and HarmonyOS resolve `AppData/gp-next/...` directly from the session's explicit `gpNextRoot`; resolution does not depend on the resource slot's parent path matching that root.
 - Large binary writes are split into 96 KiB bridge requests, committed only after every byte arrives, and abandoned transfers are cleaned on failure or GameHost exit.
 - On a real device for each maintained platform, install the same trusted test Mod once from ZIP and once from a folder, restart the game, and verify GP-Next can load the installed content from `gp-next/installed`.
 - Imported JS Mods are executable game content and are not evaluated by the Loader itself; device acceptance uses only trusted test packages.
