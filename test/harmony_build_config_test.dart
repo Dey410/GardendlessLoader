@@ -345,8 +345,9 @@ void main() {
       'ohos/entry/src/main/ets/game/GpNextNativeCore.ets',
     ).readAsStringSync();
 
-    expect(source, contains('private resolveRelativeGpNextPath(raw: string): string'));
-    expect(source, contains("parts[0] !== 'gp-next'"));
+    expect(source,
+        contains('private resolveGpNextNamespacePath(raw: string): string'));
+    expect(source, contains("parts.indexOf('gp-next')"));
     expect(source, contains('let normalized = this.root;'));
     expect(source, isNot(contains(r'`${this.session.appRoot}/${raw}`')));
   });

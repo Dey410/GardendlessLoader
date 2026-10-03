@@ -127,6 +127,45 @@ final class GpNextTests: XCTestCase {
     XCTAssertEqual(value as? Bool, false)
   }
 
+  func testAppDataAbsolutePathsAreRebasedOntoTheCurrentSandboxRoot() throws {
+    let detachedRoot = root
+      .appendingPathComponent("current-container")
+      .appendingPathComponent("Documents")
+      .appendingPathComponent("gp-next")
+    try FileManager.default.createDirectory(
+      at: detachedRoot,
+      withIntermediateDirectories: true
+    )
+    let resolver = try GpNextPathResolver(gpNextRoot: detachedRoot)
+    let expected = detachedRoot.appendingPathComponent(
+      "configuration-state.json"
+    )
+
+    for value in [
+      "/var/mobile/Containers/Data/Application/OLD/Documents/gp-next/configuration-state.json",
+      "/private/var/mobile/Containers/Data/Application/OLD/Documents/gp-next/configuration-state.json",
+      "file:///var/mobile/Containers/Data/Application/OLD/Documents/gp-next/configuration-state.json",
+    ] {
+      XCTAssertEqual(
+        try resolver.resolve(value, options: ["baseDir": 14]).path,
+        expected.path
+      )
+    }
+
+    XCTAssertThrowsError(
+      try resolver.resolve(
+        "/var/mobile/Containers/Data/Application/OLD/Documents/settings.json",
+        options: ["baseDir": 14]
+      )
+    )
+    XCTAssertThrowsError(
+      try resolver.resolve(
+        "/var/mobile/Containers/Data/Application/OLD/Documents/gp-next/../settings.json",
+        options: ["baseDir": 14]
+      )
+    )
+  }
+
   func testFileSystemRoundTrip() throws {
     let fs = try GpNextFileSystem(session: session)
     let sub = session.gpNextRoot

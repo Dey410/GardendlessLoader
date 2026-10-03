@@ -772,7 +772,8 @@ final class GameHostController: UIViewController,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
       "detailedAudioDiagnosticsEnabled":
         session.detailedAudioDiagnosticsEnabled,
-      "gpNextBaseDirectory": session.appRoot.path,
+      "gpNextBaseDirectory": session.gpNextRoot
+        .deletingLastPathComponent().path,
     ]
     let configData = try! JSONSerialization.data(withJSONObject: config)
     var source = "window.__gardendlessHostConfig="

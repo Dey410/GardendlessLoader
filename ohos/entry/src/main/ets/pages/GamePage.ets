@@ -218,7 +218,7 @@ struct GamePage {
       gpNextVersion: session.gpNextVersion,
       watermarkEnabled: session.watermarkEnabled,
       autoCollectSunEnabled: session.autoCollectSunEnabled,
-      gpNextBaseDirectory: session.appRoot,
+      gpNextBaseDirectory: this.gpNextBaseDirectory(session),
     });
     const names: string[] = [
       'transport.js',
@@ -242,6 +242,11 @@ struct GamePage {
       source += `\n${util.TextDecoder.create('utf-8').decodeToString(bytes)}`;
     }
     return source;
+  }
+
+  private gpNextBaseDirectory(session: GameSession): string {
+    const separator = session.gpNextRoot.lastIndexOf('/');
+    return separator > 0 ? session.gpNextRoot.substring(0, separator) : session.appRoot;
   }
 
   private writeLaunchFailure(message: string): void {

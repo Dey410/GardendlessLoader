@@ -146,7 +146,10 @@ class GameActivity : Activity() {
             .put("gpNextVersion", session.gpNextVersion ?: JSONObject.NULL)
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
-            .put("gpNextBaseDirectory", session.appRoot)
+            .put(
+                "gpNextBaseDirectory",
+                File(session.gpNextRoot).parentFile?.absolutePath ?: session.appRoot,
+            )
         val names = buildList {
             add("transport.js")
             add("bootstrap.js")

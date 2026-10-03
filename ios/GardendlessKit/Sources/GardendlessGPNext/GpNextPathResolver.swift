@@ -42,28 +42,18 @@ public final class GpNextPathResolver {
         "GP-Next 路径超出 Loader 沙箱"
       )
     }
-    let candidate: URL
-    if raw.hasPrefix("/") {
-      candidate = URL(fileURLWithPath: raw).standardizedFileURL
-    } else {
-      guard components.first == "gp-next" else {
-        throw GameError.failed(
-          .gpNextForbidden,
-          "GP-Next 路径超出 Loader 沙箱"
-        )
-      }
-      candidate = components.dropFirst().reduce(gpNextRoot) { result, component in
-        result.appendingPathComponent(component)
-      }.standardizedFileURL
-    }
-    let rootPath = gpNextRoot.path
-    guard candidate.path == rootPath
-            || candidate.path.hasPrefix(rootPath + "/") else {
+    guard let namespaceIndex = components.firstIndex(of: "gp-next"),
+          raw.hasPrefix("/") || namespaceIndex == components.startIndex else {
       throw GameError.failed(
         .gpNextForbidden,
         "GP-Next 路径超出 Loader 沙箱"
       )
     }
+    let candidate = components[components.index(after: namespaceIndex)...]
+      .reduce(gpNextRoot) { result, component in
+        result.appendingPathComponent(component)
+      }
+      .standardizedFileURL
     try assertNoSymlink(candidate)
     return candidate
   }

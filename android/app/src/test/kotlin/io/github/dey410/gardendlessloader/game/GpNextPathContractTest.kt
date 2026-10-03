@@ -29,4 +29,20 @@ class GpNextPathContractTest {
             resolveGpNextSandboxPath(root, "gp-next/./settings.json")
         }
     }
+
+    @Test
+    fun `absolute AppData paths are rebased onto the current sandbox root`() {
+        val expected = File(root, "configuration-state.json").absoluteFile
+        val staleContainer =
+            "/data/user/0/old.loader/files/gp-next/configuration-state.json"
+
+        assertEquals(expected, resolveGpNextSandboxPath(root, staleContainer))
+        assertEquals(expected, resolveGpNextSandboxPath(root, "file://$staleContainer"))
+        assertThrows(IllegalArgumentException::class.java) {
+            resolveGpNextSandboxPath(root, "/data/user/0/old.loader/files/settings.json")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            resolveGpNextSandboxPath(root, "/data/user/0/old.loader/files/gp-next/../settings.json")
+        }
+    }
 }

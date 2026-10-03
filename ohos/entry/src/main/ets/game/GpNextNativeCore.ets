@@ -387,34 +387,23 @@ export class GpNextNativeCore {
     }
     let raw = value.trim().replace(/\\/g, '/');
     if (raw.startsWith('file://')) raw = raw.substring(7);
-    let normalized: string;
-    if (raw.startsWith('/')) {
-      const parts: string[] = [];
-      for (const part of raw.split('/')) {
-        if (part.length === 0) continue;
-        if (part === '.' || part === '..') throw new Error('GP-Next 路径超出 Loader 沙箱');
-        parts.push(part);
-      }
-      normalized = `/${parts.join('/')}`;
-    } else {
-      normalized = this.resolveRelativeGpNextPath(raw);
-    }
-    if (normalized !== this.root && !normalized.startsWith(`${this.root}/`)) {
-      throw new Error('GP-Next 路径超出 Loader 沙箱');
-    }
+    const normalized = this.resolveGpNextNamespacePath(raw);
     this.assertNoSymlink(normalized);
     return normalized;
   }
 
-  private resolveRelativeGpNextPath(raw: string): string {
+  private resolveGpNextNamespacePath(raw: string): string {
     const parts = raw.split('/').filter((part: string): boolean => part.length > 0);
-    if (parts.length === 0 || parts[0] !== 'gp-next') {
+    for (const part of parts) {
+      if (part === '.' || part === '..') throw new Error('GP-Next 路径超出 Loader 沙箱');
+    }
+    const namespaceIndex = parts.indexOf('gp-next');
+    if (namespaceIndex < 0 || (!raw.startsWith('/') && namespaceIndex !== 0)) {
       throw new Error('GP-Next 路径超出 Loader 沙箱');
     }
     let normalized = this.root;
-    for (let index = 1; index < parts.length; index++) {
+    for (let index = namespaceIndex + 1; index < parts.length; index++) {
       const part = parts[index];
-      if (part === '.' || part === '..') throw new Error('GP-Next 路径超出 Loader 沙箱');
       normalized = `${normalized}/${part}`;
     }
     return normalized;

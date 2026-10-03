@@ -4,22 +4,19 @@ import java.io.File
 
 internal fun resolveGpNextSandboxPath(root: File, rawValue: String): File {
     val normalizedRoot = root.absoluteFile
-    val normalizedRaw = rawValue.replace('\\', '/')
+    val normalizedRaw = rawValue
+        .trim()
+        .removePrefix("file://")
+        .replace('\\', '/')
     val parts = normalizedRaw.split('/').filter { it.isNotEmpty() }
     require(parts.none { it == "." || it == ".." }) {
         "GP-Next 路径超出 Loader 沙箱"
     }
-    val candidate = if (normalizedRaw.startsWith('/')) {
-        File(normalizedRaw).absoluteFile
-    } else {
-        require(parts.firstOrNull() == "gp-next") { "GP-Next 路径超出 Loader 沙箱" }
-        parts.drop(1).fold(normalizedRoot) { path, part -> File(path, part) }.absoluteFile
-    }
-    require(candidate.isInsideGpNextRoot(normalizedRoot)) {
+    val namespaceIndex = parts.indexOf("gp-next")
+    require(namespaceIndex >= 0 && (normalizedRaw.startsWith('/') || namespaceIndex == 0)) {
         "GP-Next 路径超出 Loader 沙箱"
     }
-    return candidate
+    return parts.drop(namespaceIndex + 1)
+        .fold(normalizedRoot) { path, part -> File(path, part) }
+        .absoluteFile
 }
-
-private fun File.isInsideGpNextRoot(root: File): Boolean =
-    path == root.path || path.startsWith(root.path + File.separator)

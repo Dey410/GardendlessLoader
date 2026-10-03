@@ -3,6 +3,25 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('native hosts derive GP-Next AppData from the explicit sandbox root',
+      () {
+    final android = File(
+      'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
+    ).readAsStringSync();
+    final ios = File('ios/Runner/GameHostController.swift').readAsStringSync();
+    final ohos = File(
+      'ohos/entry/src/main/ets/pages/GamePage.ets',
+    ).readAsStringSync();
+
+    expect(android, contains('File(session.gpNextRoot).parentFile'));
+    expect(
+        ios,
+        contains(
+            'session.gpNextRoot\n        .deletingLastPathComponent().path'));
+    expect(ohos, contains('this.gpNextBaseDirectory(session)'));
+    expect(ohos, contains('session.gpNextRoot.lastIndexOf'));
+  });
+
   test('Android game path uses the shared JavaScript touch adapter', () {
     final activity = File(
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
