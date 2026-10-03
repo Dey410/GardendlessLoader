@@ -38,7 +38,22 @@
         args.__gardendlessBytes.length > writeChunkBytes) {
       return writeInChunks(command, args, options, nativeInvoke);
     }
-    return nativeInvoke(command, args, options);
+    return nativeInvoke(
+      command,
+      normalizeLegacyAppDataProbe(command, args),
+      options
+    );
+  }
+
+  function normalizeLegacyAppDataProbe(command, args) {
+    if (command !== "plugin:fs|exists" ||
+        !args ||
+        args.path !== "patches" ||
+        !args.options ||
+        args.options.baseDir !== 14) {
+      return args;
+    }
+    return Object.assign({}, args, { path: "gp-next/patches" });
   }
 
   async function writeInChunks(command, args, options, nativeInvoke) {

@@ -202,12 +202,42 @@ function createTransportHarness({nativeAvailable = true} = {}) {
   );
 
   await window.__TAURI_INTERNALS__.invoke(
+    'plugin:fs|exists',
+    {path: 'patches', options: {baseDir: 14}},
+  );
+  assert.equal(
+    JSON.stringify(nativeCalls[1].payload.args),
+    JSON.stringify({path: 'gp-next/patches', options: {baseDir: 14}}),
+    'PvZ GE 0.15 legacy patches probe must stay inside the GP-Next sandbox',
+  );
+
+  await window.__TAURI_INTERNALS__.invoke(
+    'plugin:fs|read_dir',
+    {path: 'patches', options: {baseDir: 14}},
+  );
+  assert.equal(
+    nativeCalls[2].payload.args.path,
+    'patches',
+    'only the 0.15 exists probe may use the compatibility alias',
+  );
+
+  await window.__TAURI_INTERNALS__.invoke(
+    'plugin:fs|exists',
+    {path: 'patches', options: {baseDir: 13}},
+  );
+  assert.equal(
+    nativeCalls[3].payload.args.path,
+    'patches',
+    'the compatibility alias must not bypass non-AppData base directories',
+  );
+
+  await window.__TAURI_INTERNALS__.invoke(
     'plugin:fs|write_text_file',
     new Uint8Array([1, 2, 255]),
     {},
   );
   assert.equal(
-    JSON.stringify(nativeCalls[1].payload.args.__gardendlessBytes),
+    JSON.stringify(nativeCalls[4].payload.args.__gardendlessBytes),
     JSON.stringify([1, 2, 255]),
   );
 
@@ -217,7 +247,7 @@ function createTransportHarness({nativeAvailable = true} = {}) {
     largeBytes,
     {headers: {path: 'gp-next/installed/pending/mod.bin'}},
   );
-  const chunks = nativeCalls.slice(2);
+  const chunks = nativeCalls.slice(5);
   assert(chunks.length > 1, 'large GP-Next writes must be chunked');
   assert(chunks.every((call) => call.command === 'plugin:fs|write_file'));
   assert(chunks.every(
