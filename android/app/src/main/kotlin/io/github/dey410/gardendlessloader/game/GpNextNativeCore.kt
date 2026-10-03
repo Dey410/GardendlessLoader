@@ -14,8 +14,8 @@ class GpNextNativeCore(
     private val bridge: GameBridge,
 ) {
     private val root = File(session.gpNextRoot).absoluteFile
-    private val appRoot = File(session.appRoot).absoluteFile
     private val pendingExports = mutableSetOf<String>()
+    private val pendingWrites = mutableMapOf<String, PendingWrite>()
 
     init {
         ensureSafeDirectory(root)
@@ -39,16 +39,34 @@ class GpNextNativeCore(
                     "plugin:fs|read_file", "plugin:fs|read_text_file" -> readFile(
                         resolve(args.opt("path"), nestedOptions(args, options)),
                     )
+                    "plugin:fs|lstat" -> fileInfo(resolve(args.opt("path"), nestedOptions(args, options)))
                     "plugin:fs|exists" -> exists(resolve(args.opt("path"), nestedOptions(args, options)))
                     "plugin:fs|remove" -> {
                         remove(resolve(args.opt("path"), nestedOptions(args, options)), recursive(nestedOptions(args, options)))
                         null
                     }
-                    "plugin:fs|write_text_file" -> {
+                    "plugin:fs|write_file", "plugin:fs|write_text_file" -> {
                         if (writeFile(requestId, request, args, options)) {
                             return@thread
                         }
                         null
+                    }
+                    "plugin:fs|rename" -> {
+                        rename(args, nestedOptions(args, options))
+                        null
+                    }
+                    "plugin:dialog|open" -> {
+                        val dialogOptions = args.optJSONObject("options") ?: JSONObject()
+                        require(!dialogOptions.optBoolean("multiple", false)) {
+                            "GP-Next 仅支持选择一个 Mod 包"
+                        }
+                        activity.runOnUiThread {
+                            activity.beginGpNextSelection(
+                                requestId,
+                                dialogOptions.optBoolean("directory", false),
+                            )
+                        }
+                        return@thread
                     }
                     "plugin:dialog|save" -> prepareExport(args)
                     "plugin:opener|open_url" -> {
@@ -102,6 +120,30 @@ class GpNextNativeCore(
         return result
     }
 
+    private fun fileInfo(path: File): JSONObject {
+        requireSafeExisting(path)
+        val isSymlink = path.isSymbolicLink()
+        return JSONObject()
+            .put("isFile", !isSymlink && path.isFile)
+            .put("isDirectory", !isSymlink && path.isDirectory)
+            .put("isSymlink", isSymlink)
+            .put("size", if (path.isFile) path.length() else 0)
+            .put("mtime", JSONObject.NULL)
+            .put("atime", JSONObject.NULL)
+            .put("birthtime", JSONObject.NULL)
+            .put("readonly", !path.canWrite())
+            .put("fileAttributes", JSONObject.NULL)
+            .put("dev", 0)
+            .put("ino", 0)
+            .put("mode", 0)
+            .put("nlink", 0)
+            .put("uid", 0)
+            .put("gid", 0)
+            .put("rdev", 0)
+            .put("blksize", 0)
+            .put("blocks", 0)
+    }
+
     private fun exists(path: File): Boolean {
         ensureNoSymlink(path)
         return path.exists()
@@ -113,6 +155,10 @@ class GpNextNativeCore(
         args: JSONObject,
         options: JSONObject,
     ): Boolean {
+        val transfer = args.optJSONObject("__gardendlessTransfer")
+        if (transfer != null) {
+            return writeFileChunk(requestId, args, options, transfer)
+        }
         val headers = options.optJSONObject("headers") ?: JSONObject()
         val encodedPath = headers.optString("path").takeIf { it.isNotBlank() }
         val headerOptions = headers.optString("options").takeIf { it.isNotBlank() && it != "undefined" }
@@ -140,6 +186,83 @@ class GpNextNativeCore(
         return false
     }
 
+    @Synchronized
+    private fun writeFileChunk(
+        requestId: String,
+        args: JSONObject,
+        options: JSONObject,
+        transfer: JSONObject,
+    ): Boolean {
+        val token = transfer.optString("token")
+        require(token.matches(Regex("[A-Za-z0-9-]{1,96}"))) { "GP-Next 分块写入 token 无效" }
+        if (transfer.optBoolean("abort", false)) {
+            pendingWrites.remove(token)?.temporary?.delete()
+            return false
+        }
+        val headers = options.optJSONObject("headers") ?: JSONObject()
+        val encodedPath = headers.optString("path").takeIf { it.isNotBlank() }
+        val headerOptions = headers.optString("options").takeIf { it.isNotBlank() && it != "undefined" }
+            ?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+        val path = resolve(encodedPath?.let(Uri::decode) ?: args.opt("path"), headerOptions)
+        val values = args.optJSONArray("__gardendlessBytes")
+            ?: throw GpNextFailure("GP-Next 分块写入内容不是字节数组")
+        require(values.length() <= MAX_WRITE_CHUNK_BYTES) { "GP-Next 写入分块过大" }
+        val index = transfer.optInt("index", -1)
+        val total = transfer.optLong("totalBytes", -1)
+        require(total in 0..MAX_WRITE_BYTES) { "GP-Next 写入大小无效" }
+        val state = if (index == 0) {
+            require(!pendingWrites.containsKey(token)) { "GP-Next 分块写入已存在" }
+            ensureSafeDirectory(requireNotNull(path.parentFile) { "GP-Next 文件没有父目录" })
+            ensureNoSymlink(path)
+            val temporary = File(path.parentFile, ".gardendless-write-$token")
+            require(!temporary.exists()) { "GP-Next 分块临时文件已存在" }
+            PendingWrite(path, temporary, total).also { pendingWrites[token] = it }
+        } else {
+            pendingWrites[token] ?: throw GpNextFailure("GP-Next 分块写入不存在")
+        }
+        require(state.path == path && state.nextIndex == index && state.expectedBytes == total) {
+            "GP-Next 分块写入顺序无效"
+        }
+        java.io.FileOutputStream(state.temporary, index > 0).buffered().use { output ->
+            val buffer = ByteArray(values.length())
+            for (position in buffer.indices) buffer[position] = values.getInt(position).toByte()
+            output.write(buffer)
+        }
+        state.written += values.length()
+        state.nextIndex += 1
+        require(state.written <= state.expectedBytes) { "GP-Next 分块写入超出声明大小" }
+        if (!transfer.optBoolean("final", false)) return false
+        require(state.written == state.expectedBytes) { "GP-Next 分块写入不完整" }
+        pendingWrites.remove(token)
+        commitTemporaryWrite(state)
+        if (pendingExports.remove(path.path)) {
+            activity.runOnUiThread { activity.beginExistingFileExport(requestId, path) }
+            return true
+        }
+        return false
+    }
+
+    private fun commitTemporaryWrite(state: PendingWrite) {
+        val backup = File(state.path.parentFile, ".gardendless-backup-${System.nanoTime()}")
+        if (state.path.exists()) {
+            require(state.path.renameTo(backup)) { "无法暂存旧 GP-Next 文件" }
+        }
+        try {
+            require(state.temporary.renameTo(state.path)) { "无法提交 GP-Next 文件" }
+            if (backup.exists()) require(backup.delete()) { "无法清理旧 GP-Next 文件" }
+        } catch (error: Exception) {
+            if (!state.path.exists() && backup.exists()) backup.renameTo(state.path)
+            state.temporary.delete()
+            throw error
+        }
+    }
+
+    @Synchronized
+    fun destroy() {
+        pendingWrites.values.forEach { it.temporary.delete() }
+        pendingWrites.clear()
+    }
+
     private fun prepareExport(args: JSONObject): String {
         val requested = args.optJSONObject("options")?.optString("defaultPath")
             ?.takeIf { it.isNotBlank() } ?: "gardendless-export.json"
@@ -149,6 +272,19 @@ class GpNextNativeCore(
         require(path.parentFile == directory) { "导出文件名无效" }
         pendingExports.add(path.path)
         return path.path
+    }
+
+    private fun rename(args: JSONObject, options: JSONObject) {
+        val oldOptions = JSONObject().put("baseDir", options.opt("oldPathBaseDir"))
+        val newOptions = JSONObject().put("baseDir", options.opt("newPathBaseDir"))
+        val source = resolve(args.opt("oldPath"), oldOptions)
+        val destination = resolve(args.opt("newPath"), newOptions)
+        requireSafeExisting(source)
+        require(source != root) { "不允许移动 GP-Next 根目录" }
+        require(!destination.exists()) { "目标路径已存在：${destination.path}" }
+        ensureSafeDirectory(requireNotNull(destination.parentFile) { "目标路径没有父目录" })
+        ensureNoSymlink(destination)
+        require(source.renameTo(destination)) { "无法移动 GP-Next 路径" }
     }
 
     private fun remove(path: File, recursive: Boolean) {
@@ -171,13 +307,7 @@ class GpNextNativeCore(
             "不允许访问 Tauri baseDir $baseDir"
         }
         val normalizedRaw = decodeFilePath(raw).replace('\\', '/')
-        val candidate = if (normalizedRaw.startsWith('/')) {
-            File(normalizedRaw).absoluteFile
-        } else {
-            File(appRoot, normalizedRaw).absoluteFile
-        }
-        require(!normalizedRaw.split('/').any { it == ".." }) { "GP-Next 路径超出 Loader 沙箱" }
-        require(candidate.isInside(root)) { "GP-Next 路径超出 Loader 沙箱" }
+        val candidate = resolveGpNextSandboxPath(root, normalizedRaw)
         ensureNoSymlink(candidate)
         return candidate
     }
@@ -234,6 +364,19 @@ class GpNextNativeCore(
         val cleaned = base.replace(Regex("[\\x00-\\x1f:*?\"<>|]"), "_")
         return cleaned.takeUnless { it.isBlank() || it == "." || it == ".." }
             ?: "gardendless-export.json"
+    }
+
+    private data class PendingWrite(
+        val path: File,
+        val temporary: File,
+        val expectedBytes: Long,
+        var written: Long = 0,
+        var nextIndex: Int = 0,
+    )
+
+    companion object {
+        private const val MAX_WRITE_CHUNK_BYTES = 96 * 1024
+        private const val MAX_WRITE_BYTES = 512L * 1024 * 1024
     }
 }
 

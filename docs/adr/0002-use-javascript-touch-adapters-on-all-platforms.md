@@ -52,9 +52,9 @@ clears a pending primary event without replay. Android uses a normal `WebView`;
 the custom native mouse state machine is not part of the runtime path and is
 not a fallback.
 
-DOM ownership, the GP-Next and form-control allowlist, failure closure,
-diagnostics, gesture classification, and physical-pixel thresholds remain in
-the shared modules.
+DOM ownership, the GP-Next overlay and startup-recovery allowlist, form-control
+allowlist, failure closure, diagnostics, gesture classification, and
+physical-pixel thresholds remain in the shared modules.
 
 ## Alternatives considered
 

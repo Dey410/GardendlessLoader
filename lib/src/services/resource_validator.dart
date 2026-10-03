@@ -124,9 +124,22 @@ class ResourceValidator {
     }
 
     final entry = await entryFile.readAsString();
-    final hasMarker = entry.contains('GP-Next loading') &&
-        entry.contains('window.gpNext') &&
-        entry.contains('loadAllPatches');
+    final fingerprints = StringBuffer(entry);
+    for (final modulePath in _gpNextModulePaths(entry, normalizedPath)) {
+      final moduleFile = File(
+        p.joinAll([root.path, ...p.posix.split(modulePath)]),
+      );
+      if (await moduleFile.exists()) {
+        fingerprints
+          ..writeln()
+          ..write(await moduleFile.readAsString());
+      }
+    }
+
+    final source = fingerprints.toString();
+    final hasMarker = source.contains('GP-Next loading') &&
+        source.contains('window.gpNext') &&
+        source.contains('loadAllPatches');
     if (!hasMarker) {
       return const _GpNextDetection.notDetected();
     }
@@ -134,10 +147,9 @@ class ResourceValidator {
     final requiredFingerprints = {
       'patcher module': 'patcher-',
       'file loader module': 'file-loader-',
-      'JS mod loader module': 'js-mod-loader-',
     };
     final missing = requiredFingerprints.entries
-        .where((entryFingerprint) => !entry.contains(entryFingerprint.value))
+        .where((entryFingerprint) => !source.contains(entryFingerprint.value))
         .map((entryFingerprint) => entryFingerprint.key)
         .toList(growable: false);
     final compatibilityError =
@@ -146,6 +158,44 @@ class ResourceValidator {
       detected: true,
       compatibilityError: compatibilityError,
     );
+  }
+
+  Iterable<String> _gpNextModulePaths(
+    String entrySource,
+    String entryPath,
+  ) sync* {
+    final matches = RegExp(
+      r'''["'`]([^"'`]*gp-next-[^"'`]*\.js)["'`]''',
+      caseSensitive: false,
+    ).allMatches(entrySource);
+    final yielded = <String>{};
+    for (final match in matches) {
+      final reference = match.group(1)?.replaceAll('\\', '/');
+      final uri = reference == null ? null : Uri.tryParse(reference);
+      if (uri == null || uri.hasScheme || uri.hasAuthority) {
+        continue;
+      }
+      final referencePath = uri.path;
+      final candidate = p.posix.normalize(
+        referencePath.startsWith('/')
+            ? referencePath.substring(1)
+            : p.posix.join(p.posix.dirname(entryPath), referencePath),
+      );
+      final basename = p.posix.basename(candidate);
+      if (candidate == '.' ||
+          candidate == '..' ||
+          candidate.startsWith('../') ||
+          p.posix.isAbsolute(candidate) ||
+          !RegExp(
+            r'^gp-next-[A-Za-z0-9_-]+\.js$',
+            caseSensitive: false,
+          ).hasMatch(basename)) {
+        continue;
+      }
+      if (yielded.add(candidate)) {
+        yield candidate;
+      }
+    }
   }
 
   String? _moduleEntryPath(String indexHtml) {

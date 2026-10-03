@@ -133,7 +133,9 @@
       const className = typeof current.className === "string"
         ? current.className
         : "";
-      if (className.split(/\s+/).includes("gp-f1-hint")) {
+      const classes = className.split(/\s+/);
+      if (classes.includes("gp-f1-hint") ||
+          classes.includes("gp-recovery-screen")) {
         return true;
       }
       const tagName = typeof current.tagName === "string"

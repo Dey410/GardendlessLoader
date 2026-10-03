@@ -151,7 +151,8 @@ jobs:
 
     env:
       OHOS_FLUTTER_SDK_REPOSITORY: https://gitcode.com/openharmony-tpc/flutter_flutter.git
-      OHOS_FLUTTER_SDK_REF: oh-3.35.7-release
+      OHOS_FLUTTER_SDK_BRANCH: oh-3.35.7-release
+      OHOS_FLUTTER_SDK_REVISION: add49ea449c07c6e9a4bcfe7c03f2169fc15cd2b
       OHOS_MIN_DART_VERSION: 3.5.0
       OHOS_COMMANDLINE_TOOLS_URL: ${{ secrets.OHOS_COMMANDLINE_TOOLS_URL }}
 
@@ -182,13 +183,15 @@ jobs:
           FLUTTER_OHOS_DIR="$RUNNER_TEMP/flutter_ohos_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
 
           git clone \
-            --branch "$OHOS_FLUTTER_SDK_REF" \
+            --branch "$OHOS_FLUTTER_SDK_BRANCH" \
             "$OHOS_FLUTTER_SDK_REPOSITORY" \
             "$FLUTTER_OHOS_DIR"
 
           cd "$FLUTTER_OHOS_DIR"
 
           git fetch --tags --force
+          git checkout --detach "$OHOS_FLUTTER_SDK_REVISION"
+          test "$(git rev-parse HEAD)" = "$OHOS_FLUTTER_SDK_REVISION"
           git config --global --add safe.directory "$FLUTTER_OHOS_DIR"
 
           echo "$FLUTTER_OHOS_DIR/bin" >> "$GITHUB_PATH"

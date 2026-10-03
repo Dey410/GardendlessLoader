@@ -15,7 +15,6 @@ void main() {
     gpNextVersion: '1.4.2',
     watermarkEnabled: false,
     autoCollectSunEnabled: true,
-    jsModdingEnabled: true,
     detailedAudioDiagnosticsEnabled: true,
     allowedRemoteHosts: ['api.github.com'],
     gpNextRoot: '/data/gp-next',
@@ -29,7 +28,6 @@ void main() {
 
     expect(decoded, session);
     expect(decoded.autoCollectSunEnabled, isTrue);
-    expect(decoded.jsModdingEnabled, isTrue);
     expect(decoded.detailedAudioDiagnosticsEnabled, isTrue);
     expect(decoded.origin, 'https://appassets.androidplatform.net');
     expect(
@@ -38,11 +36,14 @@ void main() {
     );
   });
 
-  test('old prepared sessions default JS Modding to disabled', () {
-    final legacyJson = Map<String, Object?>.from(session.toJson())
-      ..remove('jsModdingEnabled');
+  test('ignores the retired Loader JS Modding session field', () {
+    final legacyJson = <String, Object?>{
+      ...session.toJson(),
+      'jsModdingEnabled': true,
+    };
 
-    expect(GameSession.fromJson(legacyJson).jsModdingEnabled, isFalse);
+    expect(GameSession.fromJson(legacyJson).toJson(),
+        isNot(contains('jsModdingEnabled')));
   });
 
   test('uses a stable platform origin while generation changes the entry URL',

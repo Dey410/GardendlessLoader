@@ -44,7 +44,9 @@
     return new Promise(function (resolve, reject) {
       const waitsForUser = command === "host:export" ||
         command === "host:exportCommit" ||
+        command === "plugin:dialog|open" ||
         command === "plugin:opener|open_path" ||
+        command === "plugin:fs|write_file" ||
         command === "plugin:fs|write_text_file";
       const timer = setTimeout(function () {
         pending.delete(id);

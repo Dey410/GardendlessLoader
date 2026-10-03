@@ -155,8 +155,9 @@ void main() {
     expect(importer, contains('withDocumentPickerOrientation('));
     expect(
       'await withDocumentPickerOrientation('.allMatches(gameBridge),
-      hasLength(2),
-      reason: 'GP-Next import and save export must both adapt orientation',
+      hasLength(3),
+      reason:
+          'GP-Next legacy import, 0.15 selection, and save export must adapt orientation',
     );
     expect(gamePage, contains('withDocumentPickerOrientation('));
   });
@@ -216,16 +217,17 @@ void main() {
     );
     expect(
       'this.pickerActive = true'.allMatches(gameBridge),
-      hasLength(2),
-      reason: 'Save export and GP-Next import must both reserve the picker',
+      hasLength(3),
+      reason: 'Every save/import/selection flow must reserve the picker',
     );
     expect(
       'this.pickerActive = false'.allMatches(gameBridge),
-      hasLength(2),
-      reason: 'Both finally blocks must release the picker',
+      hasLength(3),
+      reason: 'Every picker finally block must release the picker',
     );
     expect(gameBridge, contains("this.fail(id, 'export_in_progress'"));
     expect(gameBridge, contains("this.fail(id, 'gp_next_import_busy'"));
+    expect(gameBridge, contains("this.fail(id, 'gp_next_selection_busy'"));
   });
 
   test('OpenHarmony GameAbility owns LocalStorage before loading GamePage', () {
@@ -287,6 +289,12 @@ void main() {
     expect(gameHostPlugin, isNot(contains('call.argument as Object')));
     expect(gameHostPlugin, isNot(contains('call.arguments')));
     expect(gpNextCore, contains('class GpNextDirectoryEntry'));
+    expect(gpNextCore, contains('interface GpNextFileInfo'));
+    expect(
+      gpNextCore,
+      contains('private fileInfo(path: string): GpNextFileInfo'),
+      reason: 'ArkTS object literals must target an explicit interface',
+    );
     expect(arkTsSources, isNot(contains('writeTextSync')));
     expect(arkTsSources, isNot(contains('throw error;')));
   });
@@ -330,6 +338,18 @@ void main() {
       isEmpty,
       reason: 'ArkTS rejects this inside static methods as stand-alone this',
     );
+  });
+
+  test('OpenHarmony resolves AppData GP-Next paths from the explicit root', () {
+    final source = File(
+      'ohos/entry/src/main/ets/game/GpNextNativeCore.ets',
+    ).readAsStringSync();
+
+    expect(source,
+        contains('private resolveGpNextNamespacePath(raw: string): string'));
+    expect(source, contains("parts.indexOf('gp-next')"));
+    expect(source, contains('let normalized = this.root;'));
+    expect(source, isNot(contains(r'`${this.session.appRoot}/${raw}`')));
   });
 
   test('GitHub Actions exports a HAP artifact', () {

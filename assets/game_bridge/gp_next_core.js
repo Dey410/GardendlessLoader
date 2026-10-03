@@ -3,6 +3,8 @@
   if (window.__gardendlessGpNextCore) return;
 
   let nextEventId = 1;
+  let nextTransferId = 1;
+  const writeChunkBytes = 96 * 1024;
   const nullCommands = new Set([
     "plugin:drpc|destroy_thread", "plugin:drpc|spawn_thread",
     "plugin:drpc|set_activity", "update_macos_menu",
@@ -30,7 +32,61 @@
     if (command.startsWith("plugin:window|") || command.startsWith("plugin:image|")) {
       throw new Error("移动平台不支持 " + command);
     }
-    return nativeInvoke(command, args, options);
+    if ((command === "plugin:fs|write_file" ||
+         command === "plugin:fs|write_text_file") &&
+        args && Array.isArray(args.__gardendlessBytes) &&
+        args.__gardendlessBytes.length > writeChunkBytes) {
+      return writeInChunks(command, args, options, nativeInvoke);
+    }
+    return nativeInvoke(
+      command,
+      normalizeLegacyAppDataProbe(command, args),
+      options
+    );
+  }
+
+  function normalizeLegacyAppDataProbe(command, args) {
+    if (command !== "plugin:fs|exists" ||
+        !args ||
+        args.path !== "patches" ||
+        !args.options ||
+        args.options.baseDir !== 14) {
+      return args;
+    }
+    return Object.assign({}, args, { path: "gp-next/patches" });
+  }
+
+  async function writeInChunks(command, args, options, nativeInvoke) {
+    const values = args.__gardendlessBytes;
+    const token = "gp-write-" + String(Date.now()) + "-" +
+      String(nextTransferId++);
+    let index = 0;
+    try {
+      for (let offset = 0; offset < values.length; offset += writeChunkBytes) {
+        const end = Math.min(values.length, offset + writeChunkBytes);
+        await nativeInvoke(command, {
+          path: args.path,
+          __gardendlessBytes: values.slice(offset, end),
+          __gardendlessTransfer: {
+            token: token,
+            index: index++,
+            totalBytes: values.length,
+            final: end === values.length
+          }
+        }, options);
+      }
+      return null;
+    } catch (error) {
+      try {
+        await nativeInvoke(command, {
+          path: args.path,
+          __gardendlessTransfer: { token: token, abort: true }
+        }, options);
+      } catch (_) {
+        // The original write failure is more useful than cleanup failure.
+      }
+      throw error;
+    }
   }
 
   window.__gardendlessGpNextCore = Object.freeze({ invoke: invoke });

@@ -57,6 +57,36 @@ void main() {
       path: 'build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap',
     );
   });
+
+  test('HarmonyOS CI pins the previously validated Flutter revision', () {
+    final workflow =
+        File('.github/workflows/build-mobile.yml').readAsStringSync();
+    final setupStep = _workflowStep(
+      workflow,
+      'Set up OpenHarmony Flutter SDK',
+    );
+
+    expect(
+      workflow,
+      contains(
+        'OHOS_FLUTTER_SDK_REVISION: '
+        'add49ea449c07c6e9a4bcfe7c03f2169fc15cd2b',
+      ),
+    );
+    expect(
+      workflow,
+      contains('OHOS_FLUTTER_SDK_BRANCH: oh-3.35.7-release'),
+    );
+    expect(setupStep, contains(r'--branch "$OHOS_FLUTTER_SDK_BRANCH"'));
+    expect(
+      setupStep,
+      contains(r'git checkout --detach "$OHOS_FLUTTER_SDK_REVISION"'),
+    );
+    expect(
+      setupStep,
+      contains(r'test "$(git rev-parse HEAD)" = "$OHOS_FLUTTER_SDK_REVISION"'),
+    );
+  });
 }
 
 void _expectDirectFileUpload(

@@ -359,7 +359,6 @@ class ResourceManifest {
     this.gpNextVersion,
     this.gpNextCompatibilityError,
     this.autoCollectSunEnabled = false,
-    this.jsModdingEnabled = false,
   });
 
   factory ResourceManifest.initial() {
@@ -382,7 +381,6 @@ class ResourceManifest {
       gpNextVersion: null,
       gpNextCompatibilityError: null,
       autoCollectSunEnabled: false,
-      jsModdingEnabled: false,
     );
   }
 
@@ -404,7 +402,6 @@ class ResourceManifest {
   final String? gpNextVersion;
   final String? gpNextCompatibilityError;
   final bool autoCollectSunEnabled;
-  final bool jsModdingEnabled;
 
   bool get hasGpNext => buildProfile == ResourceBuildProfile.gpNext;
   bool get gpNextCompatible => hasGpNext && gpNextCompatibilityError == null;
@@ -427,7 +424,6 @@ class ResourceManifest {
     String? gpNextVersion,
     String? gpNextCompatibilityError,
     bool? autoCollectSunEnabled,
-    bool? jsModdingEnabled,
     bool clearError = false,
     bool clearGameVersion = false,
     bool clearActiveSlot = false,
@@ -460,7 +456,6 @@ class ResourceManifest {
           : gpNextCompatibilityError ?? this.gpNextCompatibilityError,
       autoCollectSunEnabled:
           autoCollectSunEnabled ?? this.autoCollectSunEnabled,
-      jsModdingEnabled: jsModdingEnabled ?? this.jsModdingEnabled,
     );
   }
 
@@ -478,7 +473,6 @@ class ResourceManifest {
       'gpNextVersion': gpNextVersion,
       'gpNextCompatibilityError': gpNextCompatibilityError,
       'autoCollectSunEnabled': autoCollectSunEnabled,
-      'jsModdingEnabled': jsModdingEnabled,
       'resourceStatus': resourceStatus.name,
       'lastSelfCheckAt': lastSelfCheckAt?.toIso8601String(),
       'lastErrorCode': lastErrorCode,

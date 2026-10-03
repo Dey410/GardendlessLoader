@@ -45,11 +45,14 @@ between engines. A fast tap that has already ended completes its down/up pair
 after those boundaries.
 
 The DOM adapter assigns each gesture to one owner at its first touch. Inputs,
-text areas, selects, editable content, and the explicit GP-Next selector list
-remain browser-owned. Other touches are game-owned only when a connected
-`GameCanvas` and the state-machine module are available. Ownership does not
-change while fingers cross elements. Missing dependencies fail closed: the
-touch is consumed, no target is guessed, and no old implementation is used.
+text areas, selects, editable content, the explicit GP-Next selector list, and
+the full-screen GP-Next startup recovery surface remain browser-owned. The
+recovery surface must keep native button, details, toggle, and scrolling
+behavior even though `GameCanvas` still exists behind it. Other touches are
+game-owned only when a connected `GameCanvas` and the state-machine module are
+available. Ownership does not change while fingers cross elements. Missing
+dependencies fail closed: the touch is consumed, no target is guessed, and no
+old implementation is used.
 
 Adding a second finger abandons primary drag without a primary up, emits a
 neutral move at the two-finger center, and locks the gesture until all fingers

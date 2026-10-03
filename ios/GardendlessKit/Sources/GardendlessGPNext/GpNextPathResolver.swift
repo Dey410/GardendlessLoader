@@ -4,10 +4,9 @@ import GardendlessCore
 /// Resolves Tauri-style paths from the GP-Next bridge while confining every
 /// access to the `gp-next` sandbox root.
 public final class GpNextPathResolver {
-  private let appRoot: URL
   private let gpNextRoot: URL
 
-  public init(appRoot: URL, gpNextRoot: URL) throws {
+  public init(gpNextRoot: URL) throws {
     let values = try gpNextRoot.resourceValues(
       forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
     )
@@ -17,13 +16,15 @@ public final class GpNextPathResolver {
         "GP-Next 根目录不能是符号链接"
       )
     }
-    self.appRoot = appRoot.standardizedFileURL
     self.gpNextRoot = gpNextRoot.standardizedFileURL
   }
 
   public func resolve(_ value: Any?, options: [String: Any]) throws -> URL {
-    guard var raw = value as? String,
-          !raw.trimmingCharacters(in: .whitespaces).isEmpty else {
+    guard let value = value as? String else {
+      throw GameError.failed(.gpNextForbidden, "GP-Next 文件路径为空")
+    }
+    var raw = value.trimmingCharacters(in: .whitespaces)
+    guard !raw.isEmpty else {
       throw GameError.failed(.gpNextForbidden, "GP-Next 文件路径为空")
     }
     if let base = options["baseDir"] as? Int,
@@ -34,19 +35,25 @@ public final class GpNextPathResolver {
       raw = URL(string: raw)?.path ?? raw
     }
     raw = raw.replacingOccurrences(of: "\\", with: "/")
-    let candidate = (
-      raw.hasPrefix("/")
-        ? URL(fileURLWithPath: raw)
-        : appRoot.appendingPathComponent(raw)
-    ).standardizedFileURL
-    let rootPath = gpNextRoot.path
-    guard candidate.path == rootPath
-            || candidate.path.hasPrefix(rootPath + "/") else {
+    let components = raw.split(separator: "/").map(String.init)
+    guard !components.contains("."), !components.contains("..") else {
       throw GameError.failed(
         .gpNextForbidden,
         "GP-Next 路径超出 Loader 沙箱"
       )
     }
+    guard let namespaceIndex = components.firstIndex(of: "gp-next"),
+          raw.hasPrefix("/") || namespaceIndex == components.startIndex else {
+      throw GameError.failed(
+        .gpNextForbidden,
+        "GP-Next 路径超出 Loader 沙箱"
+      )
+    }
+    let candidate = components[components.index(after: namespaceIndex)...]
+      .reduce(gpNextRoot) { result, component in
+        result.appendingPathComponent(component)
+      }
+      .standardizedFileURL
     try assertNoSymlink(candidate)
     return candidate
   }

@@ -14,7 +14,6 @@ data class NativeGameSession(
     val gpNextVersion: String?,
     val watermarkEnabled: Boolean,
     val autoCollectSunEnabled: Boolean,
-    val jsModdingEnabled: Boolean,
     val allowedRemoteHosts: Set<String>,
     val gpNextRoot: String,
     val exportTemporaryRoot: String,
@@ -47,7 +46,6 @@ object GameSessionCodec {
             gpNextVersion = json.optString("gpNextVersion").takeIf { it.isNotBlank() },
             watermarkEnabled = json.getBoolean("watermarkEnabled"),
             autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled"),
-            jsModdingEnabled = json.optBoolean("jsModdingEnabled", false),
             allowedRemoteHosts = buildSet {
                 for (index in 0 until remoteHosts.length()) {
                     val host = remoteHosts.getString(index).lowercase()
