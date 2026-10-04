@@ -77,6 +77,14 @@ jobs:
           flutter build apk --release \
             --build-number "${{ steps.android_version.outputs.version_code }}"
 
+      - name: Verify APK version
+        run: |
+          EXPECTED_VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
+          ACTUAL_VERSION="$(apkanalyzer manifest version-name build/app/outputs/flutter-apk/app-release.apk)"
+          echo "Expected APK version: $EXPECTED_VERSION"
+          echo "Actual APK version: $ACTUAL_VERSION"
+          test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
+
       - name: Stage APK
         run: |
           cp \
@@ -130,6 +138,14 @@ jobs:
 
       - name: Build unsigned iOS app
         run: flutter build ios --release --no-codesign
+
+      - name: Verify IPA version
+        run: |
+          EXPECTED_VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
+          ACTUAL_VERSION="$(plutil -extract CFBundleShortVersionString raw build/ios/iphoneos/Runner.app/Info.plist)"
+          echo "Expected IPA version: $EXPECTED_VERSION"
+          echo "Actual IPA version: $ACTUAL_VERSION"
+          test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
 
       - name: Package unsigned IPA
         run: |
@@ -401,6 +417,19 @@ jobs:
             "build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap"
 
           echo "Unsigned HAP (ohos-arm64): $UNSIGNED_HAP"
+
+      - name: Verify HAP version
+        if: steps.ohos-tools.outputs.enabled == 'true'
+        run: |
+          EXPECTED_VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
+          HAP_PATH="build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap"
+          ACTUAL_VERSION="$(
+            unzip -p "$HAP_PATH" pack.info |
+              node -e 'const fs = require("fs"); const info = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(info.summary.app.version.name);'
+          )"
+          echo "Expected HAP version: $EXPECTED_VERSION"
+          echo "Actual HAP version: $ACTUAL_VERSION"
+          test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
 
       - name: Upload unsigned HarmonyOS HAP
         if: steps.ohos-tools.outputs.enabled == 'true'

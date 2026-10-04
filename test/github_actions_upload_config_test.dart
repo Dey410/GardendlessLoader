@@ -58,6 +58,23 @@ void main() {
     );
   });
 
+  test('CI rejects artifacts whose embedded version differs from pubspec', () {
+    final workflow =
+        File('.github/workflows/build-mobile.yml').readAsStringSync();
+
+    final androidStep = _workflowStep(workflow, 'Verify APK version');
+    final iosStep = _workflowStep(workflow, 'Verify IPA version');
+    final harmonyStep = _workflowStep(workflow, 'Verify HAP version');
+
+    for (final step in [androidStep, iosStep, harmonyStep]) {
+      expect(step, contains('EXPECTED_VERSION='));
+      expect(step, contains(r'test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"'));
+    }
+    expect(androidStep, contains('apkanalyzer manifest version-name'));
+    expect(iosStep, contains('CFBundleShortVersionString'));
+    expect(harmonyStep, contains('pack.info'));
+  });
+
   test('HarmonyOS CI pins the previously validated Flutter revision', () {
     final workflow =
         File('.github/workflows/build-mobile.yml').readAsStringSync();
