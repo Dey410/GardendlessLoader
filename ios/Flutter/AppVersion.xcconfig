@@ -1,0 +1,2 @@
+// Tracked source for direct Xcode builds. Keep in sync with pubspec.yaml.
+APP_VERSION=0.8.2
