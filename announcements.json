@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "announcement": {
-    "id": "2026-08-27-v0.8.1",
-    "title": "v0.8.1 重要更新",
-    "message": "GardendlessLoader v0.8.1 已发布：重构 Android、iOS 与 HarmonyOS/OpenHarmony 跨平台触控，改进点按选卡、点击种植及拖拽松手种植；iOS 音频改由 Cocos WebAudio/HTMLMediaElement 播放，并新增详细音频诊断；GP-Next 的 JS Modding 改由游戏内管理，并兼容 0.15 的 ZIP 与文件夹 Mod 导入。重要：JS Mod 会执行游戏代码，请只使用可信来源；升级前建议导出重要存档。",
+    "id": "2026-10-04-v0.8.2",
+    "title": "v0.8.2 重要更新",
+    "message": "GardendlessLoader v0.8.2 已发布：兼容 GP-Next 0.15，Android、iOS 与 HarmonyOS/OpenHarmony 均可在游戏内选择 ZIP 或文件夹安装 Mod；修复 GP-Next 沙箱路径与 patches 探测，并优化拖拽触控及启动恢复界面。JS Modding 现由游戏内设置管理，Loader 不再显示或修改该开关。重要：JS Mod 会执行游戏代码，请只使用可信来源；升级前建议导出重要存档。",
     "links": [
       {
         "label": "GitHub",
