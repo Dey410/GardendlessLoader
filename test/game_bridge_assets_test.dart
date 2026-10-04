@@ -40,7 +40,7 @@ void main() {
   });
 
   test('leaves the game-owned JS Modding preference untouched', () {
-    expect(File('assets/game_bridge/js_modding.js').existsSync(), isFalse);
+    expect(scripts, isNot(contains('js_modding.js')));
     final combined = scripts
         .map((name) => File('assets/game_bridge/$name').readAsStringSync())
         .join('\n');

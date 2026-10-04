@@ -13,7 +13,7 @@ GardendlessLoader 是一款适用于 Android、iOS 和 HarmonyOS/OpenHarmony 的
 
 想了解更多，请查看下方的[简介](#简介)；也可以直接前往[下载](https://github.com/Dey410/GardendlessLoader/releases)或[问题反馈](https://github.com/Dey410/GardendlessLoader/issues)。
 
-[English](README.md)
+[English](README.EN.md) | [中文](README.md)
 
 <br clear="left">
 
