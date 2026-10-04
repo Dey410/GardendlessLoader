@@ -46,6 +46,15 @@ void main() {
     expect(version, '0.11.4');
   });
 
+  test('loads a 0.15 game version from the referenced GP-Next module',
+      () async {
+    final root = Directory('test/fixtures/gp_next_015_version');
+
+    final version = await GameUpdateCheckService().loadCurrentVersion(root);
+
+    expect(version, '0.15.0');
+  });
+
   test(
     'selects the greatest stable game tag and ignores prereleases',
     () async {

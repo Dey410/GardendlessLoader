@@ -109,10 +109,43 @@ class GameUpdateCheckService {
       return null;
     }
     final entry = await module.readAsString();
+    final entryVersion = _readEmbeddedGameVersion(entry);
+    if (entryVersion != null) {
+      return entryVersion;
+    }
+
+    final rootPath = p.normalize(p.absolute(root.path));
+    final moduleDirectory = p.dirname(p.normalize(p.absolute(module.path)));
+    final gpNextReferences = RegExp(
+      r'''["']((?:/?assets/|\./)gp-next-[0-9A-Za-z_-]+\.js)["']''',
+    ).allMatches(entry);
+    for (final reference in gpNextReferences) {
+      final referencedPath = reference.group(1)!;
+      final candidatePath = p.normalize(
+        referencedPath.startsWith('./')
+            ? p.join(moduleDirectory, referencedPath.substring(2))
+            : p.join(rootPath, referencedPath.replaceFirst(RegExp(r'^/+'), '')),
+      );
+      if (!p.isWithin(rootPath, candidatePath)) {
+        continue;
+      }
+      final candidate = File(candidatePath);
+      if (!await candidate.exists()) {
+        continue;
+      }
+      final version = _readEmbeddedGameVersion(await candidate.readAsString());
+      if (version != null) {
+        return version;
+      }
+    }
+    return null;
+  }
+
+  String? _readEmbeddedGameVersion(String source) {
     return RegExp(
       r'(?:Playing version|Game Version:)\s*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)',
       caseSensitive: false,
-    ).firstMatch(entry)?.group(1);
+    ).firstMatch(source)?.group(1);
   }
 
   Future<GameUpdateCheckResult> check({
