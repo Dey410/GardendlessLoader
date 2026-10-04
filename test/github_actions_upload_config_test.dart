@@ -70,7 +70,8 @@ void main() {
       expect(step, contains('EXPECTED_VERSION='));
       expect(step, contains(r'test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"'));
     }
-    expect(androidStep, contains('apkanalyzer manifest version-name'));
+    expect(androidStep, contains(r'find "$ANDROID_HOME/build-tools"'));
+    expect(androidStep, contains('dump badging'));
     expect(iosStep, contains('CFBundleShortVersionString'));
     expect(harmonyStep, contains('pack.info'));
   });

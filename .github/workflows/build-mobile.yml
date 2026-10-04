@@ -80,9 +80,15 @@ jobs:
       - name: Verify APK version
         run: |
           EXPECTED_VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
-          ACTUAL_VERSION="$(apkanalyzer manifest version-name build/app/outputs/flutter-apk/app-release.apk)"
+          AAPT_PATH="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -print | sort -V | tail -n 1)"
+          test -n "$AAPT_PATH"
+          ACTUAL_VERSION="$(
+            "$AAPT_PATH" dump badging build/app/outputs/flutter-apk/app-release.apk |
+              sed -nE "s/^package:.*versionName='([^']+)'.*/\1/p"
+          )"
           echo "Expected APK version: $EXPECTED_VERSION"
           echo "Actual APK version: $ACTUAL_VERSION"
+          test -n "$ACTUAL_VERSION"
           test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
 
       - name: Stage APK
