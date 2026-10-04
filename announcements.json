@@ -3,7 +3,7 @@
   "announcement": {
     "id": "2026-10-04-v0.8.2",
     "title": "v0.8.2 重要更新",
-    "message": "GardendlessLoader v0.8.2 已发布：兼容 GP-Next 0.15，Android、iOS 与 HarmonyOS/OpenHarmony 均可在游戏内选择 ZIP 或文件夹安装 Mod；修复 GP-Next 沙箱路径与 patches 探测，并优化拖拽触控及启动恢复界面。JS Modding 现由游戏内设置管理，Loader 不再显示或修改该开关。重要：JS Mod 会执行游戏代码，请只使用可信来源；升级前建议导出重要存档。",
+    "message": "GardendlessLoader v0.8.2 已发布：兼容 GP-Next 0.15，Android、iOS 与 HarmonyOS/OpenHarmony 均可在游戏内选择 ZIP 或文件夹安装 Mod；修复 GP-Next 沙箱路径、patches 探测及游戏版本显示未知，并优化拖拽触控及启动恢复界面。JS Modding 现由游戏内设置管理，Loader 不再显示或修改该开关。重要：JS Mod 会执行游戏代码，请只使用可信来源；升级前建议导出重要存档。",
     "links": [
       {
         "label": "GitHub",
