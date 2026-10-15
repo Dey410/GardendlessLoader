@@ -182,14 +182,6 @@ class AppController extends ChangeNotifier {
   bool get hasValidImportSource => _importValidation.isValid;
   bool get canStartGame => hasCurrentResource;
 
-  /// Root of the validated active slot, or null when nothing playable is
-  /// installed. The launcher reads presentation art from here.
-  String? get activeResourceRoot {
-    final paths = _paths;
-    if (paths == null || !hasCurrentResource) return null;
-    return _importService.activeDirectory(paths, _manifest)?.path;
-  }
-
   String get detectedTitle =>
       _currentValidation.detectedTitle ?? _manifest.detectedTitle ?? '未检测到标题';
   //返回一个适合在 UI 中显示的资源根目录名称。如果路径信息不可用，则返回一个默认的资源文件夹名称。

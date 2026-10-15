@@ -1,129 +1,65 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../services/key_art_locator.dart';
 import '../theme/garden_theme.dart';
 import 'ambient_backdrop.dart';
 
-/// Home backdrop built from the key art inside the user's own imported
-/// resource. Nothing is bundled: without a resource, or when the art is
-/// missing or cannot be decoded, the quiet [AmbientBackdrop] stays visible.
+/// The extracted poster is bundled once, independent of imported game textures.
 class KeyArtBackdrop extends StatefulWidget {
   const KeyArtBackdrop({
     super.key,
-    required this.resourceRoot,
-    required this.generation,
     this.contentLeft = 0,
-    this.locator = const KeyArtLocator(),
   });
-
-  final String? resourceRoot;
 
   /// Width of the frosted sidebar on the left. The art is framed for the
   /// area to its right and continued underneath it.
   final double contentLeft;
-
-  /// Manifest generation, so a re-import into the same slot reloads the art.
-  final int generation;
-  final KeyArtLocator locator;
 
   @override
   State<KeyArtBackdrop> createState() => _KeyArtBackdropState();
 }
 
 class _KeyArtBackdropState extends State<KeyArtBackdrop> {
-  // Wide enough for a landscape iPad behind a scrim, about 10 MB decoded
-  // instead of 25 MB for the full texture.
-  static const _decodeWidth = 1600;
+  // One cropped 1600 × 1198 poster uses about 7.3 MiB when decoded.
+  static const _provider = ResizeImage(
+    AssetImage('assets/artwork/launcher_poster.png'),
+    width: 1600,
+    allowUpscaling: false,
+  );
 
   ImageInfo? _info;
-  KeyArtCrop? _crop;
   ImageStream? _stream;
   ImageStreamListener? _listener;
-  int _request = 0;
-  bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_started) {
-      _started = true;
-      _load();
-    }
-  }
-
-  @override
-  void didUpdateWidget(KeyArtBackdrop oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.resourceRoot != widget.resourceRoot ||
-        oldWidget.generation != widget.generation) {
-      _load();
-    }
-  }
-
-  @override
-  void dispose() {
-    _request++;
-    _detach();
-    _info?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    final request = ++_request;
-    _detach();
-    if (_info != null) {
+    if (_stream != null) return;
+    final stream = _provider.resolve(createLocalImageConfiguration(context));
+    final listener = ImageStreamListener((info, _) {
       setState(() {
         _info?.dispose();
-        _info = null;
+        _info = info;
       });
-    }
-    final root = widget.resourceRoot;
-    if (root == null) return;
-    final source = await widget.locator.locate(Directory(root));
-    if (!mounted || request != _request || source == null) return;
-
-    final provider = ResizeImage(
-      FileImage(source.file),
-      width: _decodeWidth,
-      allowUpscaling: false,
-    );
-    final stream = provider.resolve(createLocalImageConfiguration(context));
-    final listener = ImageStreamListener(
-      (info, _) {
-        if (!mounted || request != _request) {
-          info.dispose();
-          return;
-        }
-        setState(() {
-          _info?.dispose();
-          _info = info;
-          _crop = source.crop;
-        });
-      },
-      // An undecodable texture (e.g. AVIF on an engine without support)
-      // simply leaves the ambient backdrop in place.
-      onError: (_, __) {},
-    );
+    });
     _stream = stream;
     _listener = listener;
     stream.addListener(listener);
   }
 
-  void _detach() {
+  @override
+  void dispose() {
     final listener = _listener;
     if (listener != null) _stream?.removeListener(listener);
-    _stream = null;
-    _listener = null;
+    _info?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final info = _info;
-    final crop = _crop;
     final reduced = GardenMotionScope.reduced(context);
     return Stack(
       fit: StackFit.expand,
@@ -133,7 +69,7 @@ class _KeyArtBackdropState extends State<KeyArtBackdrop> {
           opacity: info == null ? 0 : 1,
           duration: reduced ? Duration.zero : const Duration(milliseconds: 360),
           curve: GardenMotion.easeOut,
-          child: info == null || crop == null
+          child: info == null
               ? const SizedBox.expand()
               : IgnorePointer(
                   child: RepaintBoundary(
@@ -141,7 +77,6 @@ class _KeyArtBackdropState extends State<KeyArtBackdrop> {
                       key: const ValueKey('key-art'),
                       painter: _KeyArtPainter(
                         image: info.image,
-                        crop: crop,
                         palette: context.garden,
                         contentLeft: widget.contentLeft,
                       ),
@@ -158,13 +93,11 @@ class _KeyArtBackdropState extends State<KeyArtBackdrop> {
 class _KeyArtPainter extends CustomPainter {
   const _KeyArtPainter({
     required this.image,
-    required this.crop,
     required this.palette,
     required this.contentLeft,
   });
 
   final ui.Image image;
-  final KeyArtCrop crop;
   final GardenPalette palette;
   final double contentLeft;
 
@@ -180,12 +113,7 @@ class _KeyArtPainter extends CustomPainter {
     if (size.isEmpty) return;
     final iw = image.width.toDouble();
     final ih = image.height.toDouble();
-    final src = Rect.fromLTRB(
-      crop.left * iw,
-      crop.top * ih,
-      crop.right * iw,
-      crop.bottom * ih,
-    );
+    final src = Rect.fromLTWH(0, 0, iw, ih);
     final artPaint = Paint()
       ..filterQuality = FilterQuality.medium
       ..colorFilter = const ColorFilter.matrix(_saturationMatrix);
@@ -304,7 +232,6 @@ class _KeyArtPainter extends CustomPainter {
   @override
   bool shouldRepaint(_KeyArtPainter oldDelegate) =>
       oldDelegate.image != image ||
-      oldDelegate.crop != crop ||
       oldDelegate.palette != palette ||
       oldDelegate.contentLeft != contentLeft;
 }

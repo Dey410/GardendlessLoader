@@ -139,8 +139,6 @@ class _HomePageState extends State<HomePage> {
                           curve: GardenMotion.easeOut,
                           child: KeyArtBackdrop(
                             key: const ValueKey('play-backdrop'),
-                            resourceRoot: _controller.activeResourceRoot,
-                            generation: _controller.manifest.generation,
                             contentLeft: _Sidebar.widthFor(
                               leftInset: insets.left,
                               compact: compact,

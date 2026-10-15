@@ -81,6 +81,7 @@ jobs:
             test/update_check_service_test.dart \
             test/android_export_config_test.dart \
             test/game_bridge_assets_test.dart \
+            test/key_art_backdrop_test.dart \
             test/github_actions_upload_config_test.dart \
             test/harmony_build_config_test.dart \
             test/ios_export_config_test.dart \

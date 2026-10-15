@@ -131,6 +131,7 @@ void main() {
     for (final filename in [
       'resource_package_test.dart',
       'resource_readiness_test.dart',
+      'key_art_backdrop_test.dart',
       'resource_self_check_test.dart',
       'http_text_test.dart',
       'about_content_cache_test.dart',
