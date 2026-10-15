@@ -95,3 +95,6 @@ Android 测试任务现在明确指定 `:app:testReleaseUnitTest`，避免应用
 
 
 随后构建 [38708146916](https://github.com/Dey410/GardendlessLoader/actions/runs/38708146916) 的 Android APK 与 iOS IPA 均成功生成、校验并上传；鸿蒙通过工具启动和依赖安装后，实际 ArkTS 编译在两个队列拒绝调用处报告 structural typing 错误。`NativeFileTask.reject` 只接收队列驱逐与宿主销毁产生的 `FileFailure`，现在字段与构造参数明确使用该具体类型。运行中 IO 异常仍直达 Promise 原始 reject，不改变错误对象、错误码或取消行为。类型设计依据见 [OpenHarmony ArkTS 迁移约束](https://gitee.com/openharmony/docs/blob/master/zh-cn/application-dev/quick-start/typescript-to-arkts-migration-guide.md)。现有鸿蒙 21 项行为检查和 API12 签名检查通过；这些本地检查不能替代对应提交的真实 ArkTS/HAP 编译结果。
+
+
+构建 [38709672756](https://github.com/Dey410/GardendlessLoader/actions/runs/38709672756) 已通过实际 ArkTS/Hvigor 编译，但 Flutter CLI 默认要求签名，导致未签名产物阶段退出。固定 SDK 的 [build_hap.dart](https://raw.gitcode.com/openharmony-tpc/flutter_flutter/raw/add49ea449c07c6e9a4bcfe7c03f2169fc15cd2b/packages/flutter_tools/lib/src/commands/build_hap.dart) 明确支持 `--no-codesign`；[ohos_builder.dart](https://raw.gitcode.com/openharmony-tpc/flutter_flutter/raw/add49ea449c07c6e9a4bcfe7c03f2169fc15cd2b/packages/flutter_tools/lib/src/ohos/ohos_builder.dart) 先严格检查 Hvigor 退出码，再按该选项关闭签名检查并选择未签名文件。工作流现显式使用该选项，不忽略编译失败，不执行另一套构建或捡取失败任务的残留产物。
