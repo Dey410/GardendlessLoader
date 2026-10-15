@@ -1,0 +1,39 @@
+name: Verdant UI validation
+on:
+  push:
+    branches: ['design/verdant-observatory']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          cache: true
+      - name: Install screenshot fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk fonts-dejavu-core
+      - name: Install dependencies
+        run: |
+          if [ -f pubspec_overrides.yaml ]; then mv pubspec_overrides.yaml "$RUNNER_TEMP/verdant-pubspec-overrides.yaml"; fi
+          flutter pub get
+      - name: Format UI sources
+        run: |
+          dart format lib/src/ui/verdant test/verdant_fixtures.dart test/verdant_home_page_test.dart tool/capture_verdant.dart
+          mkdir -p artifacts
+          git diff > artifacts/dart-format.patch
+      - name: Analyze UI sources
+        run: flutter analyze --no-fatal-infos lib/src/ui/verdant test/verdant_fixtures.dart test/verdant_home_page_test.dart tool/capture_verdant.dart
+      - name: Test interactions and responsive layout
+        run: flutter test test/verdant_home_page_test.dart
+      - name: Capture native Flutter screenshots
+        run: flutter test tool/capture_verdant.dart
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verdant-ui-preview
+          path: artifacts/
+          if-no-files-found: warn

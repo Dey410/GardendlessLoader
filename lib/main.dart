@@ -8,7 +8,8 @@ import 'src/app_controller.dart';
 import 'src/logging/app_logger.dart';
 import 'src/logging/log_event_catalog.dart';
 import 'src/logging/native_app_logger.dart';
-import 'src/ui/home_page.dart';
+import 'src/ui/verdant/garden_theme.dart';
+import 'src/ui/verdant/verdant_home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -107,17 +108,9 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
     return MaterialApp(
       title: 'GardendlessLoader',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff0a84ff)),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xff0a84ff),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: GardenTheme.dark,
+      darkTheme: GardenTheme.dark,
+      themeMode: ThemeMode.dark,
       home: HomePage(controller: _controller),
     );
   }
