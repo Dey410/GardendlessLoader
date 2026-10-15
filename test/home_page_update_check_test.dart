@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/constants.dart';
+import 'package:gardendless_loader/src/game_host/game_host.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/game_update_check_service.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
@@ -145,6 +146,7 @@ void main() {
         version: '0.10.0',
       );
       controller = AppController(
+        gameHostPlatform: GameHostPlatform.android,
         pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
         updateCheckService: _releaseService('0.4.8', '0.4.8'),
         gameUpdateCheckService: _stableGameService(),
@@ -185,6 +187,7 @@ Future<AppController> _initializedController(
   return (await tester.runAsync(() async {
     final root = await Directory.systemTemp.createTemp('gl_update_home_');
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: updateCheckService,
       gameUpdateCheckService: _stableGameService(),
@@ -216,4 +219,6 @@ Future<void> _writeValidGameResource(
   await File(p.join(root.path, 'src', 'settings.json'))
       .writeAsString('{"platform":"web-mobile"}');
   await File(p.join(root.path, 'src', 'import-map.json')).writeAsString('{}');
+  await File(p.join(root.path, 'cocos-js', 'cc.js'))
+      .writeAsString('window.cc = {};');
 }

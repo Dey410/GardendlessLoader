@@ -69,30 +69,47 @@ void main() {
     );
   });
 
-  test('falls back to an in-memory snapshot when native logging is absent',
+  test('returns only the native snapshot and exposes transport failure',
+      () async {
+    const channel = MethodChannel('test/native-snapshot');
+    var snapshotFails = false;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'initialize') return {'appSessionId': 'native'};
+      if (call.method == 'snapshot') {
+        if (snapshotFails) throw PlatformException(code: 'unavailable');
+        return {
+          'appSessionId': 'native',
+          'events': [
+            {'event': 'native_fact'}
+          ]
+        };
+      }
+      return null;
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding
+        .instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null));
+    final logger = await NativeAppLogger.initialize(channel: channel);
+    logger.emit(
+        level: LogLevel.info,
+        category: 'test',
+        event: 'submitted',
+        outcome: LogOutcome.observed);
+
+    final snapshot = await logger.loadSnapshot();
+    expect(snapshot.events.map((event) => event['event']), ['native_fact']);
+    snapshotFails = true;
+    await expectLater(logger.loadSnapshot(), throwsA(isA<PlatformException>()));
+  });
+
+  test('reports unavailable native logging without creating a Dart backend',
       () async {
     const channel = MethodChannel('test/missing-native-app-logger');
-    final logger = await NativeAppLogger.initialize(channel: channel);
 
-    logger.emit(
-      level: LogLevel.warn,
-      category: 'app.lifecycle',
-      event: 'fallback_observed',
-      outcome: LogOutcome.degraded,
-    );
-    final snapshot = await logger.loadSnapshot();
-
-    expect(
-      <String, Object?>{
-        'degraded': snapshot.degraded,
-        'persisting': snapshot.persisting,
-        'event': snapshot.events.single['event'],
-      },
-      <String, Object?>{
-        'degraded': true,
-        'persisting': false,
-        'event': 'fallback_observed',
-      },
+    await expectLater(
+      NativeAppLogger.initialize(channel: channel),
+      throwsA(isA<MissingPluginException>()),
     );
   });
 }

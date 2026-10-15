@@ -38,6 +38,19 @@ export interface AppLogContext {
   errorType?: string;
   crashed?: boolean;
   url?: string;
+  packageId?: string;
+  relativePath?: string;
+  byteLength?: number;
+  detailed?: boolean;
+  decodeStarted?: number;
+  decodeSucceeded?: number;
+  decodeFailed?: number;
+  mediaLoadStarted?: number;
+  mediaReady?: number;
+  mediaPlayRequested?: number;
+  mediaPlaying?: number;
+  mediaEnded?: number;
+  mediaFailed?: number;
 }
 
 export interface AppLogError {
@@ -418,6 +431,19 @@ export class AppLogStore {
     result.errorType = this.sanitizeOptional(value.errorType);
     result.crashed = value.crashed;
     result.url = this.sanitizeOptional(value.url);
+    result.packageId = this.sanitizeOptional(value.packageId);
+    result.relativePath = this.sanitizeOptional(value.relativePath);
+    result.byteLength = value.byteLength;
+    result.detailed = value.detailed;
+    result.decodeStarted = value.decodeStarted;
+    result.decodeSucceeded = value.decodeSucceeded;
+    result.decodeFailed = value.decodeFailed;
+    result.mediaLoadStarted = value.mediaLoadStarted;
+    result.mediaReady = value.mediaReady;
+    result.mediaPlayRequested = value.mediaPlayRequested;
+    result.mediaPlaying = value.mediaPlaying;
+    result.mediaEnded = value.mediaEnded;
+    result.mediaFailed = value.mediaFailed;
     return result;
   }
 

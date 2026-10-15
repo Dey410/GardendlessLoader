@@ -201,6 +201,7 @@ class InMemoryAppLogger implements AppLogger {
     this.onEvent,
     int Function()? monotonicNowMs,
   }) : assert(recentEventCapacity > 0) {
+    _sanitizer = LogSanitizer(appRoot: appRoot, eventSchemas: eventSchemas);
     _stopwatch.start();
     _monotonicNowMs = monotonicNowMs ?? () => _stopwatch.elapsedMilliseconds;
     _monotonicOriginMs = _monotonicNowMs();
@@ -213,6 +214,7 @@ class InMemoryAppLogger implements AppLogger {
   final Map<String, LogEventSchema> eventSchemas;
   final int recentEventCapacity;
   final void Function(LogEvent event)? onEvent;
+  late final LogSanitizer _sanitizer;
   final Stopwatch _stopwatch = Stopwatch();
   late final int Function() _monotonicNowMs;
   late final int _monotonicOriginMs;
@@ -277,17 +279,18 @@ class InMemoryAppLogger implements AppLogger {
       outcome: outcome,
       appSessionId: appSessionId,
       code: code,
-      message: message == null ? null : _sanitizeText(message, 2048),
+      message: message == null ? null : _sanitizer.sanitizeText(message, 2048),
       gameSessionId: gameSessionId,
       operationId: operationId,
       durationMs: durationMs,
-      context: _sanitizeContext(event, context),
+      context: _sanitizer.sanitizeContext(event, context),
       error: error == null
           ? null
           : LogEventError(
               type: error.runtimeType.toString(),
-              message: _sanitizeText(error.toString(), 4096),
-              stackTrace: _sanitizeText(stackTrace?.toString() ?? '', 8192),
+              message: _sanitizer.sanitizeText(error.toString(), 4096),
+              stackTrace:
+                  _sanitizer.sanitizeText(stackTrace?.toString() ?? '', 8192),
             ),
     );
     _events.add(logEvent);
@@ -308,26 +311,29 @@ class InMemoryAppLogger implements AppLogger {
     String? failureCode,
     String? gameSessionId,
   }) {
-    final startedAtMs = _elapsedMs;
-    emit(
-      level: LogLevel.info,
-      category: category,
-      event: startedEvent,
-      outcome: LogOutcome.started,
-      operationId: operationId,
-    );
-    return _InMemoryLogOperation(
+    return startLogOperation(
       logger: this,
       operationId: operationId,
       category: category,
+      startedEvent: startedEvent,
       finishedEvent: finishedEvent,
       failureCode: failureCode,
       gameSessionId: gameSessionId,
-      startedAtMs: startedAtMs,
+      monotonicNowMs: () => _elapsedMs,
     );
   }
+}
 
-  Map<String, Object?>? _sanitizeContext(
+class LogSanitizer {
+  const LogSanitizer({
+    this.appRoot,
+    this.eventSchemas = const <String, LogEventSchema>{},
+  });
+
+  final String? appRoot;
+  final Map<String, LogEventSchema> eventSchemas;
+
+  Map<String, Object?>? sanitizeContext(
     String event,
     Map<String, Object?>? context,
   ) {
@@ -340,7 +346,7 @@ class InMemoryAppLogger implements AppLogger {
       final value = context[field.key];
       final sanitizedValue = switch (field.value) {
         LogContextValueType.text when value is String =>
-          _sanitizeText(value, 2048),
+          sanitizeText(value, 2048),
         LogContextValueType.path when value is String => _sanitizePath(value),
         LogContextValueType.url when value is String => _sanitizeUrl(value),
         LogContextValueType.integer when value is int => value,
@@ -386,7 +392,7 @@ class InMemoryAppLogger implements AppLogger {
     ).toString();
   }
 
-  String _sanitizeText(String value, int maxLength) {
+  String sanitizeText(String value, int maxLength) {
     var sanitized = value
         .replaceAllMapped(
           RegExp(
@@ -404,8 +410,41 @@ class InMemoryAppLogger implements AppLogger {
   }
 }
 
-class _InMemoryLogOperation implements LogOperation {
-  const _InMemoryLogOperation({
+LogOperation startLogOperation({
+  required AppLogger logger,
+  required String operationId,
+  required String category,
+  required String startedEvent,
+  required String finishedEvent,
+  String? failureCode,
+  String? gameSessionId,
+  int Function()? monotonicNowMs,
+}) {
+  final stopwatch = Stopwatch()..start();
+  final now = monotonicNowMs ?? () => stopwatch.elapsedMilliseconds;
+  final startedAtMs = now();
+  logger.emit(
+    level: LogLevel.info,
+    category: category,
+    event: startedEvent,
+    outcome: LogOutcome.started,
+    operationId: operationId,
+    gameSessionId: gameSessionId,
+  );
+  return _LoggedOperation(
+    logger: logger,
+    operationId: operationId,
+    category: category,
+    finishedEvent: finishedEvent,
+    failureCode: failureCode,
+    gameSessionId: gameSessionId,
+    startedAtMs: startedAtMs,
+    monotonicNowMs: now,
+  );
+}
+
+class _LoggedOperation implements LogOperation {
+  const _LoggedOperation({
     required this.logger,
     required this.operationId,
     required this.category,
@@ -413,9 +452,10 @@ class _InMemoryLogOperation implements LogOperation {
     required this.failureCode,
     required this.gameSessionId,
     required this.startedAtMs,
+    required this.monotonicNowMs,
   });
 
-  final InMemoryAppLogger logger;
+  final AppLogger logger;
 
   @override
   final String operationId;
@@ -425,6 +465,7 @@ class _InMemoryLogOperation implements LogOperation {
   final String? failureCode;
   final String? gameSessionId;
   final int startedAtMs;
+  final int Function() monotonicNowMs;
 
   @override
   Future<T> run<T>(FutureOr<T> Function() action) async {
@@ -437,7 +478,7 @@ class _InMemoryLogOperation implements LogOperation {
         outcome: LogOutcome.succeeded,
         gameSessionId: gameSessionId,
         operationId: operationId,
-        durationMs: logger._elapsedMs - startedAtMs,
+        durationMs: monotonicNowMs() - startedAtMs,
       );
       return result;
     } catch (error, stackTrace) {
@@ -449,7 +490,7 @@ class _InMemoryLogOperation implements LogOperation {
         code: failureCode,
         gameSessionId: gameSessionId,
         operationId: operationId,
-        durationMs: logger._elapsedMs - startedAtMs,
+        durationMs: monotonicNowMs() - startedAtMs,
         error: error,
         stackTrace: stackTrace,
       );

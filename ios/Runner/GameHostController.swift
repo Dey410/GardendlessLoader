@@ -67,15 +67,17 @@ final class GameHostController: UIViewController,
   private let onExit: () -> Void
   private let sandbox: PathSandbox
   private let schemeHandler: ResourceSchemeHandler
-  private let exportCoordinator: ExportCoordinator
-  private let gpNextRouter: GpNextCommandRouter?
+  private let fileTasks: FileTaskCoordinator
   private let gpNextSelectionStager: GpNextSelectionStager?
   private let logStore: LogStore
+  private let selectionQueue = DispatchQueue(label: "io.github.dey410.gardendless.selection", qos: .userInitiated)
 
   private var webView: WKWebView!
   private var scriptBridge: ScriptMessageBridge!
   private var navigationPolicy: NavigationPolicy!
-  private var pendingExport: (id: String, file: URL)?
+  private var pendingExport: (id: String, handle: String, file: URL, picker: UIDocumentPickerViewController)?
+  private var activePicker: UIDocumentPickerViewController?
+  private var pendingReplacementDecision: ((Bool) -> Void)?
   private var pendingGpNextImportId: String?
   private var pendingGpNextSelection: (id: String, directory: Bool)?
   private var exiting = false
@@ -111,16 +113,21 @@ final class GameHostController: UIViewController,
         "context": context,
       ])
     }
-    exportCoordinator = try ExportCoordinator(
-      temporaryRoot: session.exportTemporaryRoot
-    )
-    gpNextRouter = session.hasGpNext && session.gpNextCompatible
+    let router = session.hasGpNext && session.gpNextCompatible
       ? try GpNextCommandRouter(session: session)
       : nil
+    fileTasks = try FileTaskCoordinator(session: session, gpNextRouter: router)
     gpNextSelectionStager = session.hasGpNext && session.gpNextCompatible
       ? GpNextSelectionStager(gpNextRoot: session.gpNextRoot)
       : nil
     super.init(nibName: nil, bundle: nil)
+    fileTasks.onExportCancelled = { [weak self] file, code in
+      guard let self, let export = self.pendingExport, export.file == file else { return }
+      self.pendingExport = nil
+      if self.activePicker === export.picker { self.activePicker = nil }
+      export.picker.dismiss(animated: true)
+      self.scriptBridge.fail(id: export.id, code: code, message: "Export was cancelled or expired")
+    }
     modalPresentationStyle = .fullScreen
   }
 
@@ -186,6 +193,7 @@ final class GameHostController: UIViewController,
       "level": "INFO",
       "category": "game.host",
       "event": "game_host_created",
+      "context": ["packageId": session.packageId as Any? ?? NSNull()],
       "outcome": "succeeded",
       "gameSessionId": session.sessionId,
     ])
@@ -215,19 +223,6 @@ final class GameHostController: UIViewController,
 
   func bridgeRequestedReturnHome() {
     exit(reason: "userReturned", message: nil)
-  }
-
-  func bridgeRequestedWatermark(_ enabled: Bool) throws {
-    let output = session.appRoot.appendingPathComponent("app_settings.json")
-    var settings = (try? Data(contentsOf: output))
-      .flatMap { try? JSONSerialization.jsonObject(with: $0) }
-      as? [String: Any] ?? [:]
-    settings["watermarkEnabled"] = enabled
-    let data = try JSONSerialization.data(
-      withJSONObject: settings,
-      options: [.prettyPrinted, .sortedKeys]
-    )
-    try data.write(to: output, options: .atomic)
   }
 
   func bridgeRequestedLog(id: String, arguments: [String: Any]) {
@@ -323,115 +318,49 @@ final class GameHostController: UIViewController,
       }
       return
     }
-    handleChunkedExport(command: command, id: id, arguments: arguments)
   }
 
-  private func handleChunkedExport(
-    command: String,
-    id: String,
-    arguments: [String: Any]
-  ) {
-    do {
-      switch command {
-      case BridgeCommand.exportBegin.rawValue:
-        guard pendingExport == nil,
-              let expected = arguments["totalBytes"] as? Int,
-              expected >= 0 else {
-          throw GameError.failed(
-            .exportFailed,
-            "Export size is invalid or another export is active"
-          )
-        }
-        let token = try exportCoordinator.begin(
-          sessionId: session.sessionId,
-          suggestedFilename: arguments["suggestedFilename"] as? String
-            ?? "gardendless-export.json",
-          mimeType: arguments["mimeType"] as? String
-            ?? "application/octet-stream",
-          totalBytes: expected
-        )
-        scriptBridge.complete(id: id, value: token)
-      case BridgeCommand.exportChunk.rawValue:
-        guard let token = arguments["token"] as? String,
-              let index = arguments["index"] as? Int,
-              let encoded = arguments["data"] as? String,
-              let data = Data(base64Encoded: encoded) else {
-          throw GameError.failed(.exportFailed, "Export chunk sequence is invalid")
-        }
-        try exportCoordinator.append(
-          token: token,
-          index: index,
-          data: data
-        )
-        scriptBridge.complete(id: id, value: NSNull())
-      case BridgeCommand.exportCommit.rawValue:
-        guard let token = arguments["token"] as? String else {
-          throw GameError.failed(.exportFailed, "Export token is missing")
-        }
-        let file = try exportCoordinator.commit(token: token)
-        pendingExport = (id, file)
-        let picker = UIDocumentPickerViewController(
-          forExporting: [file],
-          asCopy: true
-        )
-        picker.delegate = self
-        picker.modalPresentationStyle = .formSheet
-        present(picker, animated: true)
-      case BridgeCommand.exportAbort.rawValue:
-        if let token = arguments["token"] as? String {
-          exportCoordinator.abort(token: token)
-        }
-        scriptBridge.complete(id: id, value: NSNull())
-      default:
-        throw GameError.failed(.exportFailed, "Unknown export command")
-      }
-    } catch {
-      scriptBridge.fail(
-        id: id,
-        code: "export_failed",
-        message: error.localizedDescription
-      )
+  func bridgeRequestedFile(command: String, id: String, arguments: [String: Any]) {
+    fileTasks.submit(command: command, arguments: arguments) { [weak self] result in
+      self?.completeFileAction(result, id: id)
     }
   }
 
   func bridgeRequestedGpNext(id: String, request: [String: Any]) {
-    guard let gpNextRouter else {
-      scriptBridge.fail(
-        id: id,
-        code: "gp_next_unavailable",
-        message: "GP-Next compatibility is unavailable"
-      )
-      return
+    fileTasks.submitGpNext(request) { [weak self] result in
+      self?.completeFileAction(result, id: id)
     }
+  }
+
+  private func completeFileAction(_ result: Result<GpNextAction, Error>, id: String) {
+    guard !cleanedUp else { return }
     do {
-      switch try gpNextRouter.dispatch(request) {
+      switch try result.get() {
       case .value(let value):
         scriptBridge.complete(id: id, value: value)
       case .openURL(let url):
         UIApplication.shared.open(url) { [weak self] opened in
           opened
             ? self?.scriptBridge.complete(id: id, value: NSNull())
-            : self?.scriptBridge.fail(
-              id: id,
-              code: "external_open_failed",
-              message: "Unable to open URL"
-            )
+            : self?.scriptBridge.fail(id: id, code: "external_open_failed", message: "Unable to open URL")
         }
       case .exportFile(let file):
-        guard pendingExport == nil else {
-          scriptBridge.fail(
-            id: id,
-            code: "export_in_progress",
-            message: "Another export is active"
-          )
+        guard let handle = fileTasks.exportHandle(for: file) else {
+          scriptBridge.fail(id: id, code: "cancelled", message: "Export was cancelled or expired")
           return
         }
-        pendingExport = (id, file)
-        let picker = UIDocumentPickerViewController(
-          forExporting: [file],
-          asCopy: true
-        )
+        guard pendingExport == nil, pendingGpNextImportId == nil,
+              pendingGpNextSelection == nil else {
+          fileTasks.finishExport(handle: handle, cancelled: true) { [weak self] _ in
+            self?.scriptBridge.fail(id: id, code: "export_in_progress", message: "Another picker is active")
+          }
+          return
+        }
+        let picker = UIDocumentPickerViewController(forExporting: [file], asCopy: true)
+        pendingExport = (id, handle, file, picker)
+        activePicker = picker
         picker.delegate = self
+        picker.modalPresentationStyle = .formSheet
         present(picker, animated: true)
       case .importPackages:
         beginGpNextImport(id: id)
@@ -439,11 +368,7 @@ final class GameHostController: UIViewController,
         beginGpNextSelection(id: id, directory: directory)
       }
     } catch {
-      scriptBridge.fail(
-        id: id,
-        code: "gp_next_error",
-        message: error.localizedDescription
-      )
+      scriptBridge.fail(id: id, code: "file_error", message: error.localizedDescription)
     }
   }
 
@@ -463,6 +388,7 @@ final class GameHostController: UIViewController,
       forOpeningContentTypes: [.zip, .json, .plainText, .data],
       asCopy: true
     )
+    activePicker = picker
     picker.delegate = self
     picker.allowsMultipleSelection = true
     picker.modalPresentationStyle = .formSheet
@@ -473,21 +399,11 @@ final class GameHostController: UIViewController,
     guard pendingGpNextImportId == nil,
           pendingGpNextSelection == nil,
           pendingExport == nil,
-          let gpNextSelectionStager else {
+          gpNextSelectionStager != nil else {
       scriptBridge.fail(
         id: id,
         code: "gp_next_selection_busy",
         message: "Another picker is active"
-      )
-      return
-    }
-    do {
-      try gpNextSelectionStager.clear()
-    } catch {
-      scriptBridge.fail(
-        id: id,
-        code: "gp_next_selection_cleanup_failed",
-        message: error.localizedDescription
       )
       return
     }
@@ -496,6 +412,7 @@ final class GameHostController: UIViewController,
       forOpeningContentTypes: [directory ? .folder : .zip],
       asCopy: true
     )
+    activePicker = picker
     picker.delegate = self
     picker.allowsMultipleSelection = false
     picker.modalPresentationStyle = .formSheet
@@ -503,20 +420,24 @@ final class GameHostController: UIViewController,
   }
 
   private func importGpNextPackages(_ urls: [URL], id: String) {
-    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+    selectionQueue.async { [weak self] in
       guard let self else { return }
       do {
         let importer = GpNextPackageImporter(gpNextRoot: self.session.gpNextRoot)
         for url in urls {
-          _ = try importer.importPackage(url) { name in
+          _ = try importer.importPackage(url, isCancelled: { !self.fileTasks.isActive }) { name in
             self.confirmReplacement(name)
           }
         }
         DispatchQueue.main.async {
+          guard !self.cleanedUp else { return }
+          self.pendingGpNextImportId = nil
           self.scriptBridge.complete(id: id, value: NSNull())
         }
       } catch {
         DispatchQueue.main.async {
+          guard !self.cleanedUp else { return }
+          self.pendingGpNextImportId = nil
           self.scriptBridge.fail(
             id: id,
             code: "gp_next_import_failed",
@@ -530,22 +451,27 @@ final class GameHostController: UIViewController,
   private func confirmReplacement(_ name: String) -> Bool {
     let semaphore = DispatchSemaphore(value: 0)
     var confirmed = false
-    DispatchQueue.main.async {
+    DispatchQueue.main.async { [self] in
+      guard !self.cleanedUp else { semaphore.signal(); return }
+      var answered = false
+      let answer: (Bool) -> Void = { [weak self] value in
+        guard !answered else { return }
+        answered = true
+        confirmed = value
+        self?.pendingReplacementDecision = nil
+        semaphore.signal()
+      }
+      self.pendingReplacementDecision = answer
       let alert = UIAlertController(
         title: "替换 GP-Next 文件",
         message: "\(name) 已存在，是否使用新文件替换？",
         preferredStyle: .alert
       )
       alert.addAction(
-        UIAlertAction(title: "取消", style: .cancel) { _ in
-          semaphore.signal()
-        }
+        UIAlertAction(title: "取消", style: .cancel) { _ in answer(false) }
       )
       alert.addAction(
-        UIAlertAction(title: "替换", style: .destructive) { _ in
-          confirmed = true
-          semaphore.signal()
-        }
+        UIAlertAction(title: "替换", style: .destructive) { _ in answer(true) }
       )
       self.present(alert, animated: true)
     }
@@ -555,9 +481,11 @@ final class GameHostController: UIViewController,
   // MARK: UIDocumentPickerDelegate
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    guard activePicker === controller else { return }
+    activePicker = nil
     if let selection = pendingGpNextSelection {
       pendingGpNextSelection = nil
-      try? gpNextSelectionStager?.clear()
+      clearSelection()
       scriptBridge.complete(id: selection.id, value: NSNull())
       return
     }
@@ -572,25 +500,24 @@ final class GameHostController: UIViewController,
     }
     guard let export = pendingExport else { return }
     pendingExport = nil
-    try? FileManager.default.removeItem(at: export.file)
-    scriptBridge.fail(
-      id: export.id,
-      code: "export_cancelled",
-      message: "Export was cancelled"
-    )
+    fileTasks.finishExport(handle: export.handle, cancelled: true) { [weak self] _ in
+      self?.scriptBridge.fail(id: export.id, code: "export_cancelled", message: "Export was cancelled")
+    }
   }
 
   func documentPicker(
     _ controller: UIDocumentPickerViewController,
     didPickDocumentsAt urls: [URL]
   ) {
+    guard activePicker === controller else { return }
+    activePicker = nil
     if let selection = pendingGpNextSelection {
-      pendingGpNextSelection = nil
       guard let url = urls.first, let gpNextSelectionStager else {
+        pendingGpNextSelection = nil
         scriptBridge.complete(id: selection.id, value: NSNull())
         return
       }
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      selectionQueue.async { [weak self] in
         guard let self else { return }
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
@@ -599,14 +526,19 @@ final class GameHostController: UIViewController,
         do {
           let staged = try gpNextSelectionStager.stage(
             url,
-            directory: selection.directory
+            directory: selection.directory,
+            isCancelled: { !self.fileTasks.isActive }
           )
           DispatchQueue.main.async {
+            guard !self.cleanedUp else { return }
+            self.pendingGpNextSelection = nil
             self.scriptBridge.complete(id: selection.id, value: staged.path)
           }
         } catch {
           try? gpNextSelectionStager.clear()
           DispatchQueue.main.async {
+            guard !self.cleanedUp else { return }
+            self.pendingGpNextSelection = nil
             self.scriptBridge.fail(
               id: selection.id,
               code: "gp_next_selection_failed",
@@ -618,14 +550,24 @@ final class GameHostController: UIViewController,
       return
     }
     if let id = pendingGpNextImportId {
-      pendingGpNextImportId = nil
       importGpNextPackages(urls, id: id)
       return
     }
     guard let export = pendingExport else { return }
     pendingExport = nil
-    try? FileManager.default.removeItem(at: export.file)
-    scriptBridge.complete(id: export.id, value: NSNull())
+    fileTasks.finishExport(handle: export.handle, cancelled: false) { [weak self] result in
+      switch result {
+      case .success:
+        self?.scriptBridge.complete(id: export.id, value: NSNull())
+      case .failure(let error):
+        self?.scriptBridge.fail(id: export.id, code: "export_failed", message: error.localizedDescription)
+      }
+    }
+  }
+
+  private func clearSelection() {
+    let stager = gpNextSelectionStager
+    selectionQueue.async { try? stager?.clear() }
   }
 
   // MARK: Navigation callbacks
@@ -710,7 +652,7 @@ final class GameHostController: UIViewController,
         ? "failed" : "succeeded",
       "message": message ?? NSNull(),
       "gameSessionId": session.sessionId,
-      "context": ["reason": reason],
+      "context": ["reason": reason, "packageId": session.packageId as Any? ?? NSNull()],
     ])
     _ = logStore.flush(timeout: 0.5)
     writeExitResult(reason: reason, message: message)
@@ -721,13 +663,13 @@ final class GameHostController: UIViewController,
   private func cleanupWebView() {
     guard !cleanedUp else { return }
     cleanedUp = true
-    if let export = pendingExport {
-      try? FileManager.default.removeItem(at: export.file)
-      pendingExport = nil
-    }
+    pendingReplacementDecision?(false)
+    pendingGpNextImportId = nil
+    pendingExport = nil
+    activePicker = nil
     pendingGpNextSelection = nil
-    try? gpNextSelectionStager?.clear()
-    exportCoordinator.cancelActive()
+    clearSelection()
+    fileTasks.destroy()
     webView.configuration.userContentController.removeScriptMessageHandler(
       forName: ScriptMessageBridge.name,
       contentWorld: .page
@@ -746,6 +688,7 @@ final class GameHostController: UIViewController,
       "schemaVersion": 1,
       "sessionId": session.sessionId,
       "reason": reason,
+      "packageId": session.packageId ?? NSNull(),
       "finishedAt": formatter.string(from: Date()),
       "message": message ?? NSNull(),
     ]
@@ -759,6 +702,8 @@ final class GameHostController: UIViewController,
 
   private func buildDocumentStartScript() -> String {
     let config: [String: Any] = [
+      "hostAbi": 1,
+      "packageId": session.packageId ?? NSNull(),
       "platform": "ios",
       "touchAdapter": "javascript",
       "touchWheelCssMultiplier": -4.5,
@@ -781,7 +726,6 @@ final class GameHostController: UIViewController,
       + ";"
     var names = [
       "transport.js",
-      "bootstrap.js",
       "logging.js",
       "audio_diagnostic.js",
       "auto_sun.js",
@@ -789,10 +733,6 @@ final class GameHostController: UIViewController,
       "touch_input_adapter.js",
       "export_download_patch.js",
     ]
-    if session.hasGpNext && session.gpNextCompatible {
-      names.append("gp_next_core.js")
-      names.append("gp_next_compat_bridge.js")
-    }
     names.append("watermark.js")
     for name in names {
       guard let script = Self.loadFlutterAsset("assets/game_bridge/\(name)") else {

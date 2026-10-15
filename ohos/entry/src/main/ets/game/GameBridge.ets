@@ -9,7 +9,7 @@ import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientati
 import { ExportDocumentSpec } from './ExportDocumentSpec';
 import { GpNextPackArchiveNormalizer } from './GpNextPackArchiveNormalizer';
 import { GameSession } from './GameSession';
-import { GpNextNativeCore, GpNextValue } from './GpNextNativeCore';
+import { GpNextNativeCore, GpNextValue, FileFailure } from './GpNextNativeCore';
 
 interface BridgeRequest {
   id: string;
@@ -19,16 +19,11 @@ interface BridgeRequest {
 }
 
 interface BridgeArguments {
-  enabled?: boolean;
-  dataUrl?: string;
   url?: string;
   suggestedFilename?: string;
   mimeType?: string;
   directory?: number;
-  token?: string;
-  index?: number;
-  data?: string;
-  totalBytes?: number;
+  action?: string;
   event?: string;
   level?: string;
   message?: string;
@@ -36,6 +31,8 @@ interface BridgeArguments {
   page?: string;
   line?: number;
   column?: number;
+  outcome?: string;
+  context?: AppLogContext;
 }
 
 interface BridgeError {
@@ -57,10 +54,9 @@ export class GameBridge {
   private readonly context: common.UIAbilityContext;
   private readonly session: GameSession;
   private readonly onReturnHome: () => void;
-  private readonly gpNextCore: GpNextNativeCore | null;
+  private readonly gpNextCore: GpNextNativeCore;
   private readonly activeIds: Set<string> = new Set<string>();
   private destroyed: boolean = false;
-  private chunkedExport: ChunkedExport | null = null;
   private pickerActive: boolean = false;
 
   constructor(
@@ -73,16 +69,15 @@ export class GameBridge {
     this.context = context;
     this.session = session;
     this.onReturnHome = onReturnHome;
-    this.gpNextCore = session.hasGpNext && session.gpNextCompatible
-      ? new GpNextNativeCore(session)
-      : null;
+    this.gpNextCore = new GpNextNativeCore(session);
   }
 
   postMessage(message: string): void {
     if (this.destroyed) {
       return;
     }
-    if (message.length > 1024 * 1024 || !this.isTrustedFrame()) {
+    if (typeof message !== 'string') { this.logInvalid('invalid_message'); return; }
+    if (new util.TextEncoder().encodeInto(message).byteLength > 1024 * 1024 || !this.isTrustedFrame()) {
       this.logInvalid('origin_frame_or_size_rejected');
       return;
     }
@@ -93,20 +88,22 @@ export class GameBridge {
       this.logInvalid('invalid_json');
       return;
     }
-    if (request.id == null || request.id.length === 0 || request.command == null || request.command.length === 0) {
+    if (request == null || typeof request !== 'object') { this.logInvalid('invalid_message'); return; }
+    if (typeof request.id !== 'string' || !/^[A-Za-z0-9:_-]{1,128}$/.test(request.id) ||
+      typeof request.command !== 'string' || request.command.length === 0 || request.command.length > 128) {
       this.logInvalid('missing_id_or_command');
       return;
     }
     if (this.activeIds.has(request.id)) {
       this.logInvalid('duplicate_request_id', request.command);
-      this.respond({
-        id: request.id,
-        ok: false,
-        error: {
-          code: 'duplicate_request_id',
-          message: 'Bridge request id is already active',
-        },
-      }, false);
+      return;
+    }
+    const control = request.command === 'file:finish' &&
+      (request.args?.action === 'close' || request.args?.action === 'cancel');
+    if (this.activeIds.size >= (control ? 72 : 64)) {
+      this.respond({ id: request.id, ok: false, error: {
+        code: 'resource_limit_exceeded', message: 'Too many active bridge requests',
+      } }, false);
       return;
     }
     this.activeIds.add(request.id);
@@ -116,15 +113,6 @@ export class GameBridge {
         this.complete(request.id, null);
         this.onReturnHome();
         break;
-      case 'host:setWatermark':
-      case 'host:set_watermark':
-        try {
-          this.persistWatermark(request.args?.enabled ?? true);
-          this.complete(request.id, null);
-        } catch (error) {
-          this.fail(request.id, 'native_error', (error as Error).message);
-        }
-        break;
       case 'host:log':
         {
           const args = request.args ?? {};
@@ -133,29 +121,34 @@ export class GameBridge {
             'javascript_uncaught_error',
             'javascript_unhandled_rejection',
             'javascript_console',
+            'audio_summary', 'audio_decode_started', 'audio_decode_succeeded', 'audio_decode_failed',
+            'audio_media_load_started', 'audio_media_ready', 'audio_media_play_requested',
+            'audio_media_playing', 'audio_media_ended', 'audio_media_failed',
           ];
           const event = allowed.includes(requested) ? requested : 'javascript_console';
-          const context: AppLogContext = {
+          const audio = event.startsWith('audio_');
+          const outcome = args.outcome ?? (event === 'javascript_console' ? 'observed' : 'failed');
+          const context: AppLogContext = args.context ?? {
             page: args.page ?? '',
             line: args.line ?? 0,
             column: args.column ?? 0,
           };
           const logError: AppLogError = {
-            type: 'JavaScriptError',
+            type: audio ? 'AudioError' : 'JavaScriptError',
             message: args.message ?? '',
             stackTrace: args.stack ?? '',
           };
           const logEvent: AppLogEvent = {
             source: 'javascript',
             level: args.level ?? 'ERROR',
-            category: 'game.javascript',
+            category: audio ? 'game.audio' : 'game.javascript',
             event: event,
-            outcome: 'failed',
-            code: event === 'javascript_console' ? undefined : event,
+            outcome: outcome,
+            code: outcome === 'failed' ? event : undefined,
             message: args.message ?? '',
             gameSessionId: this.session.sessionId,
             context: context,
-            error: logError,
+            error: outcome === 'failed' ? logError : undefined,
           };
           appLogStore.emit(logEvent);
           this.complete(request.id, null);
@@ -164,21 +157,14 @@ export class GameBridge {
       case 'host:export':
         this.exportFile(request.id, request.args ?? {});
         break;
-      case 'host:exportBegin':
-        this.beginChunkedExport(request.id, request.args ?? {});
-        break;
-      case 'host:exportChunk':
-        this.appendChunkedExport(request.id, request.args ?? {});
-        break;
-      case 'host:exportCommit':
-        this.commitChunkedExport(request.id, request.args ?? {});
-        break;
-      case 'host:exportAbort':
-        this.abortChunkedExport(request.id, request.args ?? {});
+      case 'file:begin':
+      case 'file:chunk':
+      case 'file:finish':
+        this.dispatchNative(request);
         break;
       default:
         if (request.namespace === 'gp-next') {
-          this.dispatchGpNext(request);
+          this.dispatchNative(request);
         } else {
           this.logInvalid('unknown_command', request.command);
           this.fail(request.id, 'unknown_command', `Unsupported host command: ${request.command}`);
@@ -187,113 +173,33 @@ export class GameBridge {
   }
 
   destroy(): void {
-    this.clearChunkedExport();
-    if (this.gpNextCore != null) this.gpNextCore.destroy();
-    try { this.clearGpNextSelection(); } catch (_error) {}
     this.destroyed = true;
+    this.gpNextCore.destroy();
     this.activeIds.clear();
     this.controller.runJavaScript(
       "window.__gardendlessTransport && window.__gardendlessTransport.rejectAll('host_destroyed','Game host was destroyed')",
     ).catch((_error: Error): void => {});
   }
 
-  private beginChunkedExport(id: string, args: BridgeArguments): void {
-    if (this.pickerActive || this.chunkedExport != null) {
-      this.fail(id, 'export_in_progress', 'Another import or export picker is active');
-      return;
-    }
-    if (args.totalBytes == null || args.totalBytes < 0 || args.totalBytes > 512 * 1024 * 1024) {
-      this.fail(id, 'invalid_export_size', 'Export size is invalid');
-      return;
-    }
+  private async dispatchNative(request: BridgeRequest): Promise<void> {
     try {
-      this.ensureDirectory(this.session.exportTemporaryRoot);
-      const name = this.safeFileName(args.suggestedFilename ?? 'gardendless-export.json');
-      const path = `${this.session.exportTemporaryRoot}/.chunk-${Date.now()}-${name}`;
-      const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-      const token = `${this.session.sessionId}-${Date.now()}`;
-      this.chunkedExport = new ChunkedExport(
-        token, path, file, args.totalBytes, args.mimeType ?? 'application/octet-stream', name,
-      );
-      this.complete(id, token);
-    } catch (error) {
-      this.fail(id, 'export_failed', (error as Error).message);
-    }
-  }
-
-  private appendChunkedExport(id: string, args: BridgeArguments): void {
-    const target = this.chunkedExport;
-    if (target == null || args.token !== target.token || args.index !== target.nextIndex || args.data == null) {
-      this.fail(id, 'invalid_export_chunk', 'Export chunk sequence is invalid');
-      return;
-    }
-    try {
-      const bytes = new util.Base64Helper().decodeSync(args.data);
-      if (bytes.length > 256 * 1024 || target.written + bytes.length > target.expectedBytes) {
-        throw new Error('Export chunk is too large');
-      }
-      fs.writeSync(target.file.fd, bytes.buffer, { offset: target.written, length: bytes.length });
-      target.written += bytes.length;
-      target.nextIndex += 1;
-      this.complete(id, null);
-    } catch (error) {
-      this.clearChunkedExport();
-      this.fail(id, 'invalid_export_chunk', (error as Error).message);
-    }
-  }
-
-  private commitChunkedExport(id: string, args: BridgeArguments): void {
-    const target = this.chunkedExport;
-    if (target == null || args.token !== target.token || target.written !== target.expectedBytes) {
-      this.fail(id, 'incomplete_export', 'Export did not receive every byte');
-      return;
-    }
-    fs.closeSync(target.file.fd);
-    this.chunkedExport = null;
-    this.exportExistingFile(id, target.path, target.fileName, target.mimeType);
-  }
-
-  private abortChunkedExport(id: string, args: BridgeArguments): void {
-    if (this.chunkedExport != null && args.token === this.chunkedExport.token) {
-      this.clearChunkedExport();
-    }
-    this.complete(id, null);
-  }
-
-  private clearChunkedExport(): void {
-    const target = this.chunkedExport;
-    this.chunkedExport = null;
-    if (target == null) return;
-    try { fs.closeSync(target.file.fd); } catch (_error) {}
-    try { fs.unlinkSync(target.path); } catch (_error) {}
-  }
-
-  private dispatchGpNext(request: BridgeRequest): void {
-    const core = this.gpNextCore;
-    if (core == null) {
-      this.fail(request.id, 'gp_next_unavailable', 'GP-Next compatibility is unavailable');
-      return;
-    }
-    try {
-      const result = core.invoke(request);
+      const result = await this.gpNextCore.invoke(request);
+      if (this.destroyed) return;
       if (result.openUrl != null) {
         this.openGpNextUrl(request.id, result.openUrl);
-      } else if (result.exportPath != null) {
-        this.exportExistingFile(
-          request.id,
-          result.exportPath,
-          this.safeFileName(result.exportPath),
-          'application/json',
-        );
+      } else if (result.exportPath != null && result.exportHandle != null) {
+        await this.exportExistingFile(request.id, result.exportHandle, result.exportPath,
+          result.suggestedFilename ?? 'gardendless-export.json', result.mimeType ?? 'application/octet-stream');
       } else if (result.importRequested === true) {
-        this.importGpNextPackages(request.id);
+        await this.importGpNextPackages(request.id);
       } else if (result.selectionDirectory != null) {
-        this.selectGpNextPackage(request.id, result.selectionDirectory);
+        await this.selectGpNextPackage(request.id, result.selectionDirectory);
       } else {
         this.complete(request.id, result.value);
       }
     } catch (error) {
-      this.fail(request.id, 'gp_next_error', (error as Error).message);
+      const failure = error as FileFailure;
+      this.fail(request.id, failure.code ?? 'io_failed', failure.code == null ? 'Native file operation failed' : failure.message);
     }
   }
 
@@ -316,44 +222,44 @@ export class GameBridge {
 
   private async exportExistingFile(
     id: string,
+    handle: string,
     sourcePath: string,
     suggestedFileName: string,
     mimeType: string,
   ): Promise<void> {
     if (this.pickerActive) {
-      if (sourcePath.startsWith(`${this.session.exportTemporaryRoot}/`)) {
-        try { fs.unlinkSync(sourcePath); } catch (_error) {}
-      }
+      await this.gpNextCore.exportFinished(handle, false);
       this.fail(id, 'export_in_progress', 'Another import or export picker is active');
       return;
     }
+    this.gpNextCore.setExportCancellation(handle, (): void => {
+      this.fail(id, 'cancelled', 'Export was cancelled');
+    });
     this.pickerActive = true;
     try {
       const options = new picker.DocumentSaveOptions();
-      const fileName = this.safeFileName(suggestedFileName);
+      const fileName = ExportDocumentSpec.safeFileName(suggestedFileName);
       options.newFileNames = [fileName];
       const suffixChoices = ExportDocumentSpec.fileSuffixChoices(fileName, mimeType);
-      if (suffixChoices.length > 0) {
-        options.fileSuffixChoices = suffixChoices;
-      }
-      const targets = await withDocumentPickerOrientation(
-        this.context,
-        (): Promise<string[]> => new picker.DocumentViewPicker().save(options),
-      );
+      if (suffixChoices.length > 0) options.fileSuffixChoices = suffixChoices;
+      const targets = await withDocumentPickerOrientation(this.context,
+        (): Promise<string[]> => new picker.DocumentViewPicker().save(options));
+      if (this.destroyed || !this.gpNextCore.isFileActive(handle)) return;
       if (targets == null || targets.length === 0) {
+        await this.gpNextCore.exportFinished(handle, false);
         this.fail(id, 'export_cancelled', 'Export was cancelled');
         return;
       }
-      this.copyFile(sourcePath, targets[0]);
+      await this.gpNextCore.runIO(async (): Promise<void> => {
+        await this.gpNextCore.copyFile(sourcePath, targets[0], handle);
+        if (!this.gpNextCore.isFileActive(handle)) throw new FileFailure('cancelled', 'Export was cancelled');
+        await this.gpNextCore.exportFinished(handle, true);
+      });
       this.complete(id, null);
     } catch (error) {
-      this.fail(id, 'export_failed', (error as Error).message);
-    } finally {
-      this.pickerActive = false;
-      if (sourcePath.startsWith(`${this.session.exportTemporaryRoot}/`)) {
-        try { fs.unlinkSync(sourcePath); } catch (_error) {}
-      }
-    }
+      await this.gpNextCore.exportFinished(handle, false);
+      this.fail(id, (error as FileFailure).code ?? 'export_failed', 'Export failed');
+    } finally { this.pickerActive = false; }
   }
 
   private async importGpNextPackages(id: string): Promise<void> {
@@ -371,49 +277,52 @@ export class GameBridge {
         this.fail(id, 'import_cancelled', 'Import was cancelled');
         return;
       }
-      this.ensureDirectory(`${this.session.gpNextRoot}/packs`);
-      this.ensureDirectory(`${this.session.gpNextRoot}/patches`);
-      for (const uri of selected) {
-        const name = this.safeFileName(uri);
-        const extension = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
-        const directory = extension === 'zip'
-          ? `${this.session.gpNextRoot}/packs`
-          : (extension === 'json' || extension === 'json5')
-            ? `${this.session.gpNextRoot}/patches`
-            : '';
-        if (directory.length === 0) throw new Error(`不支持的 GP-Next 文件：${name}`);
-        const destination = `${directory}/${name}`;
-        const incoming = `${directory}/.${name}.incoming-${Date.now()}`;
-        let prepared = incoming;
-        try {
-          this.copyFile(uri, incoming);
-          if (extension === 'json') {
-            JSON.parse(fs.readTextSync(incoming));
-          } else if (extension === 'zip') {
-            prepared = GpNextPackArchiveNormalizer.prepare(incoming, directory, name);
-          } else if (fs.statSync(incoming).size === 0) {
-            throw new Error(`${name} 是空文件`);
-          }
-          const existed = this.fileExists(destination);
-          if (existed && !await this.confirmReplacement(name)) {
-            continue;
-          }
-          const backup = `${directory}/.${name}.backup-${Date.now()}`;
-          if (existed) fs.renameSync(destination, backup);
+      await this.gpNextCore.runIO(async (): Promise<void> => {
+        await this.ensureDirectory(`${this.session.gpNextRoot}/packs`);
+        await this.ensureDirectory(`${this.session.gpNextRoot}/patches`);
+        for (const uri of selected) {
+          const name = ExportDocumentSpec.safeFileName(uri);
+          const extension = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
+          const directory = extension === 'zip'
+            ? `${this.session.gpNextRoot}/packs`
+            : (extension === 'json' || extension === 'json5')
+              ? `${this.session.gpNextRoot}/patches`
+              : '';
+          if (directory.length === 0) throw new Error(`不支持的 GP-Next 文件：${name}`);
+          const destination = `${directory}/${name}`;
+          const incoming = `${directory}/.${name}.incoming-${Date.now()}`;
+          let prepared = incoming;
           try {
-            fs.renameSync(prepared, destination);
-            if (existed) fs.unlinkSync(backup);
-          } catch (error) {
-            if (existed && !this.fileExists(destination) && this.fileExists(backup)) {
-              fs.renameSync(backup, destination);
+            await this.gpNextCore.copyFile(uri, incoming);
+            if (extension === 'json') {
+              JSON.parse(await fs.readText(incoming));
+            } else if (extension === 'zip') {
+              prepared = await GpNextPackArchiveNormalizer.prepare(incoming, directory, name, this.gpNextCore);
+            } else if ((await fs.stat(incoming)).size === 0) {
+              throw new Error(`${name} 是空文件`);
             }
-            throw new Error((error as Error).message);
+            const existed = await this.fileExists(destination);
+            if (existed && !await this.confirmReplacement(name)) {
+              continue;
+            }
+            const backup = `${directory}/.${name}.backup-${Date.now()}`;
+            this.gpNextCore.checkActive();
+            if (existed) await fs.rename(destination, backup);
+            try {
+              await fs.rename(prepared, destination);
+              if (existed) await fs.unlink(backup);
+            } catch (error) {
+              if (existed && !await this.fileExists(destination) && await this.fileExists(backup)) {
+                await fs.rename(backup, destination);
+              }
+              throw new Error((error as Error).message);
+            }
+          } finally {
+            if (await this.fileExists(incoming)) await fs.unlink(incoming);
+            if (prepared !== incoming && await this.fileExists(prepared)) await fs.unlink(prepared);
           }
-        } finally {
-          if (this.fileExists(incoming)) fs.unlinkSync(incoming);
-          if (prepared !== incoming && this.fileExists(prepared)) fs.unlinkSync(prepared);
         }
-      }
+      });
       this.complete(id, null);
     } catch (error) {
       this.fail(id, 'gp_next_import_failed', (error as Error).message);
@@ -429,7 +338,6 @@ export class GameBridge {
     }
     this.pickerActive = true;
     try {
-      this.clearGpNextSelection();
       const options = new picker.DocumentSelectOptions();
       options.maxSelectNumber = 1;
       options.selectMode = directory
@@ -441,86 +349,90 @@ export class GameBridge {
         (): Promise<string[]> => new picker.DocumentViewPicker().select(options),
       );
       if (selected == null || selected.length === 0) {
-        this.clearGpNextSelection();
         this.complete(id, null);
         return;
       }
-      const source = selected[0];
-      const stagingRoot = `${this.session.gpNextRoot}/.gardendless-selection`;
-      this.ensureDirectory(stagingRoot);
-      const budget = new SelectionCopyBudget();
-      if (directory) {
-        const destination = `${stagingRoot}/selection`;
-        this.ensureDirectory(destination);
-        this.copySelectionDirectory(source, destination, budget);
-        this.complete(id, destination);
-      } else {
-        const name = this.safeFileName(source);
-        if (!name.toLowerCase().endsWith('.zip')) throw new Error('请选择 ZIP 格式的 Mod 包');
-        const destination = `${stagingRoot}/selection.zip`;
-        this.copySelectionFile(source, destination, budget);
-        this.complete(id, destination);
-      }
+      await this.gpNextCore.runIO(async (): Promise<void> => {
+        await this.clearGpNextSelection();
+        const source = selected[0];
+        const stagingRoot = `${this.session.gpNextRoot}/.gardendless-selection`;
+        await this.ensureDirectory(stagingRoot);
+        const budget = new SelectionCopyBudget();
+        if (directory) {
+          const destination = `${stagingRoot}/selection`;
+          await this.ensureDirectory(destination);
+          await this.copySelectionDirectory(source, destination, budget);
+          this.complete(id, destination);
+        } else {
+          const name = ExportDocumentSpec.safeFileName(source);
+          if (!name.toLowerCase().endsWith('.zip')) throw new Error('请选择 ZIP 格式的 Mod 包');
+          const destination = `${stagingRoot}/selection.zip`;
+          await this.copySelectionFile(source, destination, budget);
+          this.complete(id, destination);
+        }
+      });
     } catch (error) {
-      try { this.clearGpNextSelection(); } catch (_cleanupError) {}
+      if (!this.destroyed) try { await this.gpNextCore.runIO(async (): Promise<void> => { await this.clearGpNextSelection(); }, true); } catch (_cleanupError) {}
       this.fail(id, 'gp_next_selection_failed', (error as Error).message);
     } finally {
       this.pickerActive = false;
     }
   }
 
-  private copySelectionDirectory(
+  private async copySelectionDirectory(
     source: string,
     destination: string,
     budget: SelectionCopyBudget,
-  ): void {
-    const stat = fs.lstatSync(source);
+  ): Promise<void> {
+    const stat = await fs.lstat(source);
     if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('请选择一个 Mod 目录');
-    for (const name of fs.listFileSync(source)) {
+    for (const name of await fs.listFile(source)) {
+      this.gpNextCore.checkActive();
       const safeName = this.requireSafeSelectionName(name);
       budget.addEntry();
       const sourceChild = `${source.replace(/\/$/, '')}/${encodeURIComponent(safeName)}`;
       const destinationChild = `${destination}/${safeName}`;
-      const childStat = fs.lstatSync(sourceChild);
+      const childStat = await fs.lstat(sourceChild);
       if (childStat.isSymbolicLink()) throw new Error('选择内容包含符号链接');
       if (childStat.isDirectory()) {
-        this.ensureDirectory(destinationChild);
-        this.copySelectionDirectory(sourceChild, destinationChild, budget);
+        await this.ensureDirectory(destinationChild);
+        await this.copySelectionDirectory(sourceChild, destinationChild, budget);
       } else if (childStat.isFile()) {
-        this.copySelectionFile(sourceChild, destinationChild, budget);
+        await this.copySelectionFile(sourceChild, destinationChild, budget);
       } else {
         throw new Error('选择内容包含不支持的文件类型');
       }
     }
   }
 
-  private copySelectionFile(
+  private async copySelectionFile(
     source: string,
     destination: string,
     budget: SelectionCopyBudget,
-  ): void {
-    const stat = fs.lstatSync(source);
+  ): Promise<void> {
+    const stat = await fs.lstat(source);
     if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('选择内容包含不支持的文件类型');
     budget.addBytes(stat.size);
-    this.copyFile(source, destination);
+    await this.gpNextCore.copyFile(source, destination);
   }
 
-  private clearGpNextSelection(): void {
+  private async clearGpNextSelection(): Promise<void> {
     const root = `${this.session.gpNextRoot}/.gardendless-selection`;
-    if (!this.fileExists(root)) return;
-    this.removeSelectionTree(root);
+    if (!await this.fileExists(root)) return;
+    await this.removeSelectionTree(root);
   }
 
-  private removeSelectionTree(path: string): void {
-    const stat = fs.lstatSync(path);
+  private async removeSelectionTree(path: string): Promise<void> {
+    this.gpNextCore.checkActive();
+    const stat = await fs.lstat(path);
     if (stat.isSymbolicLink()) throw new Error('选择暂存区包含符号链接');
     if (stat.isDirectory()) {
-      for (const name of fs.listFileSync(path)) {
-        this.removeSelectionTree(`${path}/${name}`);
+      for (const name of await fs.listFile(path)) {
+        await this.removeSelectionTree(`${path}/${name}`);
       }
-      fs.rmdirSync(path);
+      await fs.rmdir(path);
     } else {
-      fs.unlinkSync(path);
+      await fs.unlink(path);
     }
   }
 
@@ -543,37 +455,6 @@ export class GameBridge {
     } catch (error) {
       this.fail(id, 'external_open_failed', (error as Error).message);
     }
-  }
-
-  private copyFile(sourcePath: string, targetUri: string): void {
-    let input: fs.File | null = null;
-    let output: fs.File | null = null;
-    try {
-      input = fs.openSync(sourcePath, fs.OpenMode.READ_ONLY);
-      output = fs.openSync(targetUri, fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-      fs.copyFileSync(input.fd, output.fd);
-    } finally {
-      if (output != null) fs.closeSync(output.fd);
-      if (input != null) fs.closeSync(input.fd);
-    }
-  }
-
-  private persistWatermark(enabled: boolean): void {
-    const output = `${this.session.appRoot}/app_settings.json`;
-    const temporary = `${output}.tmp`;
-    let file: fs.File | null = null;
-    try {
-      file = fs.openSync(
-        temporary,
-        fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC,
-      );
-      fs.writeSync(file.fd, `${JSON.stringify({ watermarkEnabled: enabled }, null, 2)}\n`);
-    } finally {
-      if (file != null) {
-        fs.closeSync(file.fd);
-      }
-    }
-    fs.renameSync(temporary, output);
   }
 
   private logInvalid(reason: string, command?: string): void {
@@ -603,13 +484,7 @@ export class GameBridge {
     return false;
   }
 
-  private fileExists(path: string): boolean {
-    try {
-      return fs.accessSync(path);
-    } catch (_error) {
-      return false;
-    }
-  }
+  private async fileExists(path: string): Promise<boolean> { return fs.access(path); }
 
   private async confirmReplacement(name: string): Promise<boolean> {
     const result = await promptAction.showDialog({
@@ -633,6 +508,7 @@ export class GameBridge {
 
   private respond(response: BridgeResponse, removeActive: boolean = true): void {
     if (removeActive) {
+      if (!this.activeIds.has(response.id)) return;
       this.activeIds.delete(response.id);
     }
     if (this.destroyed) {
@@ -646,6 +522,8 @@ export class GameBridge {
 
   private isTrustedFrame(): boolean {
     try {
+      // API 12 exposes the actual calling frame URL, but supplies no proxy
+      // main-frame flag. Origin permission alone cannot distinguish same-origin iframes.
       const url = this.controller.getLastJavascriptProxyCallingFrameUrl();
       return url === GameSession.ORIGIN || url.startsWith(`${GameSession.ORIGIN}/`);
     } catch (_error) {
@@ -653,29 +531,19 @@ export class GameBridge {
     }
   }
 
-  private ensureDirectory(path: string): void {
-    try {
-      if (fs.accessSync(path)) {
-        return;
+  private async ensureDirectory(path: string): Promise<void> {
+    this.gpNextCore.checkActive();
+    if (await fs.access(path)) {
+      if (!(await fs.lstat(path)).isDirectory() || (await fs.lstat(path)).isSymbolicLink()) {
+        throw new FileFailure('invalid_file_transfer', 'Unsafe destination directory');
       }
-    } catch (_error) {
-      // Create the missing directory after its parent has been secured.
+      return;
     }
     const parent = path.substring(0, path.lastIndexOf('/'));
-    if (parent.length > 0) {
-      this.ensureDirectory(parent);
-    }
-    fs.mkdirSync(path);
+    if (parent.length > 0) await this.ensureDirectory(parent);
+    await fs.mkdir(path);
   }
 
-  private safeFileName(value: string): string {
-    const normalized = value.replace(/\\/g, '/');
-    const base = normalized.substring(normalized.lastIndexOf('/') + 1);
-    const cleaned = base.replace(/[\u0000-\u001f:*?"<>|]/g, '_').trim();
-    return cleaned.length === 0 || cleaned === '.' || cleaned === '..'
-      ? 'gardendless-export.json'
-      : cleaned;
-  }
 }
 
 class SelectionCopyBudget {
@@ -690,32 +558,5 @@ class SelectionCopyBudget {
   addBytes(count: number): void {
     this.bytes += count;
     if (this.bytes > 512 * 1024 * 1024) throw new Error('选择的 Mod 包超过 512 MiB');
-  }
-}
-
-class ChunkedExport {
-  readonly token: string;
-  readonly path: string;
-  readonly file: fs.File;
-  readonly expectedBytes: number;
-  readonly mimeType: string;
-  readonly fileName: string;
-  written: number = 0;
-  nextIndex: number = 0;
-
-  constructor(
-    token: string,
-    path: string,
-    file: fs.File,
-    expectedBytes: number,
-    mimeType: string,
-    fileName: string,
-  ) {
-    this.token = token;
-    this.path = path;
-    this.file = file;
-    this.expectedBytes = expectedBytes;
-    this.mimeType = mimeType;
-    this.fileName = fileName;
   }
 }

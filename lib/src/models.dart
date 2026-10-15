@@ -75,23 +75,32 @@ class ResourceValidationResult {
     required this.status,
     required this.errorCode,
     required this.errorMessage,
+    this.stats = const ResourceStats(fileCount: 0, totalBytes: 0),
     this.detectedTitle,
+    this.gameVersion,
+    this.packageId,
     this.buildProfile = ResourceBuildProfile.standardWeb,
     this.gpNextVersion,
     this.gpNextCompatibilityError,
   });
 
   factory ResourceValidationResult.valid({
+    required ResourceStats stats,
     String? detectedTitle,
+    String? gameVersion,
+    String? packageId,
     ResourceBuildProfile buildProfile = ResourceBuildProfile.standardWeb,
     String? gpNextVersion,
     String? gpNextCompatibilityError,
   }) {
     return ResourceValidationResult(
       status: ResourceStatus.valid,
+      stats: stats,
       errorCode: null,
       errorMessage: null,
       detectedTitle: detectedTitle,
+      gameVersion: gameVersion,
+      packageId: packageId,
       buildProfile: buildProfile,
       gpNextVersion: gpNextVersion,
       gpNextCompatibilityError: gpNextCompatibilityError,
@@ -114,10 +123,13 @@ class ResourceValidationResult {
     );
   }
 
+  final ResourceStats stats;
   final ResourceStatus status;
   final String? errorCode;
   final String? errorMessage;
   final String? detectedTitle;
+  final String? gameVersion;
+  final String? packageId;
   final ResourceBuildProfile buildProfile;
   final String? gpNextVersion;
   final String? gpNextCompatibilityError;
@@ -130,9 +142,12 @@ class ResourceValidationResult {
   ResourceValidationResult asReady() {
     return ResourceValidationResult(
       status: ResourceStatus.ready,
+      stats: stats,
       errorCode: errorCode,
       errorMessage: errorMessage,
       detectedTitle: detectedTitle,
+      gameVersion: gameVersion,
+      packageId: packageId,
       buildProfile: buildProfile,
       gpNextVersion: gpNextVersion,
       gpNextCompatibilityError: gpNextCompatibilityError,
@@ -141,21 +156,10 @@ class ResourceValidationResult {
 }
 
 class ResourceStats {
-  const ResourceStats({
-    required this.fileCount,
-    required this.totalBytes,
-    required this.detectedTitle,
-    this.buildProfile = ResourceBuildProfile.standardWeb,
-    this.gpNextVersion,
-    this.gpNextCompatibilityError,
-  });
+  const ResourceStats({required this.fileCount, required this.totalBytes});
 
   final int fileCount;
   final int totalBytes;
-  final String? detectedTitle;
-  final ResourceBuildProfile buildProfile;
-  final String? gpNextVersion;
-  final String? gpNextCompatibilityError;
 }
 
 class AnnouncementLink {
@@ -357,6 +361,7 @@ class ResourceManifest {
     required this.transactionState,
     this.buildProfile = ResourceBuildProfile.standardWeb,
     this.gpNextVersion,
+    this.packageId,
     this.gpNextCompatibilityError,
     this.autoCollectSunEnabled = false,
   });
@@ -400,6 +405,7 @@ class ResourceManifest {
   final TransactionState transactionState;
   final ResourceBuildProfile buildProfile;
   final String? gpNextVersion;
+  final String? packageId;
   final String? gpNextCompatibilityError;
   final bool autoCollectSunEnabled;
 
@@ -422,6 +428,7 @@ class ResourceManifest {
     TransactionState? transactionState,
     ResourceBuildProfile? buildProfile,
     String? gpNextVersion,
+    String? packageId,
     String? gpNextCompatibilityError,
     bool? autoCollectSunEnabled,
     bool clearError = false,
@@ -429,6 +436,7 @@ class ResourceManifest {
     bool clearActiveSlot = false,
     bool clearTransactionSlot = false,
     bool clearGpNextVersion = false,
+    bool clearPackageId = false,
     bool clearGpNextCompatibilityError = false,
   }) {
     return ResourceManifest(
@@ -449,6 +457,7 @@ class ResourceManifest {
           clearError ? null : lastErrorMessage ?? this.lastErrorMessage,
       transactionState: transactionState ?? this.transactionState,
       buildProfile: buildProfile ?? this.buildProfile,
+      packageId: clearPackageId ? null : packageId ?? this.packageId,
       gpNextVersion:
           clearGpNextVersion ? null : gpNextVersion ?? this.gpNextVersion,
       gpNextCompatibilityError: clearGpNextCompatibilityError
@@ -471,6 +480,7 @@ class ResourceManifest {
       'detectedTitle': detectedTitle,
       'buildProfile': buildProfile.name,
       'gpNextVersion': gpNextVersion,
+      'packageId': packageId,
       'gpNextCompatibilityError': gpNextCompatibilityError,
       'autoCollectSunEnabled': autoCollectSunEnabled,
       'resourceStatus': resourceStatus.name,

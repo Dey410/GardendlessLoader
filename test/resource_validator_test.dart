@@ -63,10 +63,7 @@ void main() {
     await _writeValidResource(temp);
 
     final result = await validator.validate(temp);
-    final stats = await validator.scanStats(
-      temp,
-      detectedTitle: result.detectedTitle,
-    );
+    final stats = result.stats;
 
     expect(result.isValid, isTrue);
     expect(result.detectedTitle, 'PvZ2 Gardendless');

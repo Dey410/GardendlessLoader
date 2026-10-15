@@ -13,7 +13,6 @@ import 'package:gardendless_loader/src/services/about_content_service.dart';
 import 'package:gardendless_loader/src/services/announcement_service.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/app_settings_store.dart';
-import 'package:gardendless_loader/src/services/diagnostics_service.dart';
 import 'package:gardendless_loader/src/services/game_update_check_service.dart';
 import 'package:gardendless_loader/src/services/resource_picker_service.dart';
 import 'package:gardendless_loader/src/services/sensor_housing_service.dart';
@@ -261,6 +260,7 @@ void main() {
         final root = await Directory.systemTemp.createTemp('gl_home_progress_');
         await _writeValidResource(Directory(p.join(root.path, 'current')));
         controller = AppController(
+          gameHostPlatform: GameHostPlatform.android,
           pathsService:
               AppPathsService(rootOverride: root, platformName: 'test'),
           announcementService: _announcementService('null'),
@@ -523,7 +523,6 @@ Future<AppController> _readyController(
   Directory? root,
   AnnouncementService? announcementService,
   AboutContentService? aboutContentService,
-  DiagnosticsService? diagnosticsService,
   AppLogger? appLogger,
   bool gpNext = false,
   GameHost? gameHost,
@@ -553,11 +552,11 @@ import('./config-test.js');
     }
 
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService:
           AppPathsService(rootOverride: appRoot, platformName: 'test'),
       announcementService: announcementService,
       aboutContentService: aboutContentService ?? _aboutContentService(),
-      diagnosticsService: diagnosticsService,
       appLogger: appLogger,
       updateCheckService: _noUpdateService(),
       gameUpdateCheckService: _noGameUpdateService(),
@@ -581,6 +580,7 @@ Future<AppController> _emptyController(WidgetTester tester) async {
   return (await tester.runAsync(() async {
     final root = await Directory.systemTemp.createTemp('gl_home_empty_');
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: _noUpdateService(),
       gameUpdateCheckService: _noGameUpdateService(),

@@ -5,13 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const scripts = [
     'transport.js',
-    'bootstrap.js',
     'logging.js',
     'touch_state_machine.js',
     'touch_input_adapter.js',
     'export_download_patch.js',
-    'gp_next_core.js',
-    'gp_next_compat_bridge.js',
+    'audio_diagnostic.js',
     'watermark.js',
     'auto_sun.js',
   ];
@@ -52,10 +50,9 @@ void main() {
     final source =
         File('assets/game_bridge/export_download_patch.js').readAsStringSync();
 
-    expect(source, contains('const chunkSize = 192 * 1024'));
-    expect(source, contains('host:exportBegin'));
-    expect(source, contains('host:exportChunk'));
-    expect(source, contains('host:exportCommit'));
+    expect(source, contains('transport.writeFile(blob'));
+    expect(source, contains('destination: "export"'));
+    expect(source, isNot(contains('host:exportBegin')));
     expect(source, isNot(contains('readAsDataURL')));
   });
 
@@ -70,15 +67,14 @@ void main() {
       0,
       reason: '${result.stdout}\n${result.stderr}',
     );
-    expect(result.stdout, contains('streams revoked Blob downloads'));
+    expect(result.stdout, contains('preserves revoked URL bytes and UTF-8'));
   });
 
   test('native bridge waits are bounded without timing out normal pickers', () {
     final source = File('assets/game_bridge/transport.js').readAsStringSync();
 
-    expect(source, contains('const defaultTimeoutMs = 15000'));
-    expect(source, contains('const userInteractionTimeoutMs = 5 * 60 * 1000'));
-    expect(source, contains('command === "host:exportCommit"'));
+    expect(source, contains('5 * 60 * 1000 : 15000'));
+    expect(source, contains('command === "file:finish"'));
     expect(source, contains('command === "plugin:opener|open_path"'));
     expect(source, contains('command === "plugin:dialog|open"'));
     expect(source, contains('command === "plugin:fs|write_file"'));
@@ -96,15 +92,15 @@ void main() {
       0,
       reason: '${result.stdout}\n${result.stderr}',
     );
-    expect(result.stdout, contains('game bridge concurrency'));
+    expect(result.stdout, contains('unified file bridge:'));
   });
 
   test('large GP-Next writes stay below the native message limit', () {
-    final source =
-        File('assets/game_bridge/gp_next_core.js').readAsStringSync();
+    final source = File('assets/game_bridge/transport.js').readAsStringSync();
 
-    expect(source, contains('const writeChunkBytes = 96 * 1024'));
-    expect(source, contains('__gardendlessTransfer'));
+    expect(source, contains('const chunkBytes = 64 * 1024'));
+    expect(source, contains('await fileCall("file:chunk"'));
+    expect(source, isNot(contains('__gardendlessTransfer')));
   });
 
   test('shared touch adapter passes executable behavior checks', () async {

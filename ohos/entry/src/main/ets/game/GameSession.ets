@@ -11,6 +11,8 @@ export interface GameSessionPayload {
   gpNextVersion?: string;
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
+  detailedAudioDiagnosticsEnabled?: boolean;
+  packageId?: string;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
   exportTemporaryRoot: string;
@@ -27,6 +29,8 @@ export class GameSession {
   readonly gpNextVersion: string | null;
   readonly watermarkEnabled: boolean;
   readonly autoCollectSunEnabled: boolean;
+  readonly detailedAudioDiagnosticsEnabled: boolean;
+  readonly packageId: string;
   readonly allowedRemoteHosts: Set<string>;
   readonly gpNextRoot: string;
   readonly exportTemporaryRoot: string;
@@ -51,6 +55,9 @@ export class GameSession {
     this.gpNextVersion = value.gpNextVersion ?? null;
     this.watermarkEnabled = value.watermarkEnabled;
     this.autoCollectSunEnabled = value.autoCollectSunEnabled;
+    this.detailedAudioDiagnosticsEnabled = value.detailedAudioDiagnosticsEnabled === true;
+    this.packageId = value.packageId ?? 'unknown';
+    if (this.packageId !== 'unknown' && !/^sha256:[a-f0-9]{64}$/.test(this.packageId)) throw new Error('Invalid package identity');
     this.allowedRemoteHosts = new Set<string>();
     for (const host of value.allowedRemoteHosts) {
       const normalized = host.toLowerCase();

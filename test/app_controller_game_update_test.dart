@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gardendless_loader/src/game_host/game_host.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
@@ -27,6 +28,7 @@ void main() {
       ),
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
 
@@ -43,6 +45,7 @@ void main() {
     final current = Directory(p.join(root.path, 'current'));
     await _writeValidResource(current, version: '0.10.0');
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.4.8',
@@ -85,6 +88,7 @@ void main() {
       version: '0.10.0',
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.4.8',
@@ -121,6 +125,7 @@ void main() {
       version: '0.10.0',
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.4.8',
@@ -154,6 +159,7 @@ void main() {
       version: '0.10.0',
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         installedVersionLoader: () async => '0.4.8',
@@ -185,6 +191,7 @@ void main() {
       version: '0.10.0',
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.4.8',
@@ -223,6 +230,7 @@ void main() {
     final root = await Directory.systemTemp.createTemp('gl_game_update_');
     addTearDown(() => root.delete(recursive: true));
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.4.8',
@@ -262,6 +270,7 @@ void main() {
       '<title>PvZ2 Gardendless Online</title>play.pvzge.com',
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.4.8',
@@ -309,6 +318,7 @@ void main() {
       ),
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.4.8',
@@ -351,6 +361,7 @@ void main() {
       version: '0.12.0-next',
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       updateCheckService: UpdateCheckService(
         currentVersion: '0.4.8',

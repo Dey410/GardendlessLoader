@@ -75,7 +75,7 @@ void main() {
     expect(activity, contains('add("auto_sun.js")'));
     expect(activity, isNot(contains('add("js_modding.js")')));
     expect(
-      activity.indexOf('add("bootstrap.js")'),
+      activity.indexOf('add("transport.js")'),
       lessThan(activity.indexOf('add("auto_sun.js")')),
     );
     expect(
@@ -96,12 +96,21 @@ void main() {
     expect(activity, contains('settings.allowFileAccess = false'));
     expect(bridge, contains('sourceOrigin.toString() != session.origin'));
     expect(bridge, contains('removeActive = false'));
+    final duplicate = bridge
+        .split('if (activeRequestIds.contains(id))')
+        .last
+        .split('val terminal =')
+        .first;
+    expect(duplicate, contains('logInvalid("duplicate_request_id"'));
+    expect(duplicate, isNot(contains('respond(')));
     expect(activity, isNot(contains('HttpServer')));
     for (final command in const [
       'plugin:dialog|open',
       'plugin:fs|lstat',
       'plugin:fs|rename',
-      'plugin:fs|write_file',
+      'file:begin',
+      'file:chunk',
+      'file:finish',
     ]) {
       expect(gpNext, contains(command), reason: command);
     }
@@ -189,7 +198,7 @@ void main() {
     expect(controller, contains('"auto_sun.js"'));
     expect(controller, isNot(contains('js_modding.js')));
     expect(
-      controller.indexOf('"bootstrap.js"'),
+      controller.indexOf('"transport.js"'),
       lessThan(controller.indexOf('"auto_sun.js"')),
     );
     expect(
@@ -238,8 +247,8 @@ void main() {
       contains('audioCacheByteLimit: Int = 24 * 1024 * 1024'),
     );
     expect(handler, contains('case cancelled'));
-    expect(handler, contains('guard reserveCallback(identifier) else'));
-    expect(handler, contains('defer { releaseCallback(identifier) }'));
+    expect(handler, contains('callbacks.perform(identifier'));
+    expect(handler, contains('callbacks.cancel(identifier)'));
     expect(handler, isNot(contains('private func withActiveTask(')));
     expect(handler, isNot(contains('attributes: .concurrent')));
     expect(policy, contains('WKContentRuleListStore.default()'));
@@ -252,7 +261,6 @@ void main() {
       'plugin:dialog|open',
       'plugin:fs|lstat',
       'plugin:fs|rename',
-      'plugin:fs|write_file',
     ]) {
       expect('$gpNextRouter\n$gpNextFileSystem', contains(command),
           reason: command);
@@ -298,7 +306,7 @@ void main() {
     expect(page, contains("'auto_sun.js'"));
     expect(page, isNot(contains('js_modding.js')));
     expect(
-      page.indexOf("'bootstrap.js'"),
+      page.indexOf("'transport.js'"),
       lessThan(page.indexOf("'auto_sun.js'")),
     );
     expect(
@@ -328,7 +336,8 @@ void main() {
     expect(handler, contains("setWebSchemeHandler('https'"));
     expect(handler, contains('didReceiveResponseBody'));
     expect(handler, contains('await fs.read'));
-    expect(handler, contains('active.cancelled = true'));
+    expect(handler, contains('active.cancel()'));
+    expect(handler, contains('await fs.close(file.fd)'));
     expect(handler, contains('mimeType(relativePath, filePath)'));
     expect(handler, contains("return 'image/avif'"));
     expect(handler, contains('private isAvif(filePath: string): boolean'));
@@ -340,17 +349,22 @@ void main() {
     expect(handler, contains('bytes[0] === 0xff'));
     expect(handler, contains('(bytes[1] & 0xf6) === 0xf0'));
     expect(plugin, contains('context.terminateSelf()'));
-    expect(
-      File('ohos/entry/src/main/ets/game/GameBridge.ets').readAsStringSync(),
-      contains('}, false);'),
-    );
+    final duplicate = gameBridge
+        .split('if (this.activeIds.has(request.id))')
+        .last
+        .split('const control =')
+        .first;
+    expect(duplicate, contains("logInvalid('duplicate_request_id'"));
+    expect(duplicate, isNot(contains('this.respond(')));
     expect(page, isNot(contains('FlutterPage')));
     expect('$page\n$handler', isNot(contains('[DEBUG-OHOS-')));
     for (final command in const [
       'plugin:dialog|open',
       'plugin:fs|lstat',
       'plugin:fs|rename',
-      'plugin:fs|write_file',
+      'file:begin',
+      'file:chunk',
+      'file:finish',
     ]) {
       expect(gpNext, contains(command), reason: command);
     }

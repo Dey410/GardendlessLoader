@@ -7,12 +7,11 @@ import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.provider.DocumentsContract
-import android.provider.Settings
 import android.provider.OpenableColumns
 import android.system.Os
 import android.system.OsConstants
-import android.util.Base64
 import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
@@ -29,12 +28,12 @@ import io.github.dey410.gardendlessloader.restoreLandscapeOrientation
 import io.github.dey410.gardendlessloader.logging.AppLogStore
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
-import java.io.BufferedOutputStream
-import java.time.Instant
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import kotlin.concurrent.thread
 
 class GameActivity : Activity() {
     private lateinit var session: NativeGameSession
@@ -43,10 +42,10 @@ class GameActivity : Activity() {
     private lateinit var gpNextCore: GpNextNativeCore
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var pendingExport: PendingExport? = null
-    private var chunkedExport: ChunkedExport? = null
     private var pendingGpImportRequestId: String? = null
     private var pendingGpSelection: PendingGpSelection? = null
     private var returning = false
+    @Volatile private var destroyed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,15 +97,15 @@ class GameActivity : Activity() {
             settings.mediaPlaybackRequiresUserGesture = false
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            settings.safeBrowsingEnabled = true
-            setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                settings.safeBrowsingEnabled = true
+                setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+            }
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
         bridge = GameBridge(this, webView, session)
-        if (session.hasGpNext && session.gpNextCompatible) {
-            gpNextCore = GpNextNativeCore(this, session, bridge)
-        }
+        gpNextCore = GpNextNativeCore(this, session, bridge)
         WebViewCompat.addWebMessageListener(
             webView,
             GameBridge.BRIDGE_NAME,
@@ -135,6 +134,7 @@ class GameActivity : Activity() {
 
     private fun buildDocumentStartScript(): String {
         val config = JSONObject()
+            .put("hostAbi", 1)
             .put("platform", "android")
             .put("touchAdapter", "javascript")
             .put("touchWheelCssMultiplier", -4.5)
@@ -146,22 +146,19 @@ class GameActivity : Activity() {
             .put("gpNextVersion", session.gpNextVersion ?: JSONObject.NULL)
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
+            .put("detailedAudioDiagnosticsEnabled", session.detailedAudioDiagnosticsEnabled)
             .put(
                 "gpNextBaseDirectory",
                 File(session.gpNextRoot).parentFile?.absolutePath ?: session.appRoot,
             )
         val names = buildList {
             add("transport.js")
-            add("bootstrap.js")
             add("logging.js")
+            add("audio_diagnostic.js")
             add("auto_sun.js")
             add("touch_state_machine.js")
             add("touch_input_adapter.js")
             add("export_download_patch.js")
-            if (session.hasGpNext && session.gpNextCompatible) {
-                add("gp_next_core.js")
-                add("gp_next_compat_bridge.js")
-            }
             add("watermark.js")
         }
         return buildString {
@@ -204,80 +201,7 @@ class GameActivity : Activity() {
             .onFailure { bridge.fail(requestId, "external_open_failed", it.message ?: it.toString()) }
     }
 
-    fun beginChunkedExport(requestId: String, args: JSONObject) {
-        if (chunkedExport != null || pendingExport != null) {
-            bridge.fail(requestId, "export_in_progress", "Another export is already active")
-            return
-        }
-        val totalBytes = args.optLong("totalBytes", -1)
-        if (totalBytes < 0 || totalBytes > MAX_EXPORT_BYTES) {
-            bridge.fail(requestId, "invalid_export_size", "Export size is invalid")
-            return
-        }
-        val name = safeFileName(args.optString("suggestedFilename").ifBlank { "gardendless-export.json" })
-        val directory = File(session.exportTemporaryRoot).apply { mkdirs() }
-        val file = File(directory, ".chunk-${System.nanoTime()}-$name")
-        val token = "${session.sessionId}-${System.nanoTime()}"
-        chunkedExport = ChunkedExport(
-            token, file, BufferedOutputStream(FileOutputStream(file)), totalBytes,
-            args.optString("mimeType").ifBlank { "application/octet-stream" }, name,
-        )
-        bridge.complete(requestId, token)
-    }
-
-    fun appendChunkedExport(requestId: String, args: JSONObject) {
-        val export = chunkedExport
-        if (export == null || args.optString("token") != export.token || args.optInt("index", -1) != export.nextIndex) {
-            bridge.fail(requestId, "invalid_export_chunk", "Export chunk sequence is invalid")
-            return
-        }
-        runCatching {
-            val bytes = Base64.decode(args.getString("data"), Base64.NO_WRAP)
-            require(bytes.size <= MAX_EXPORT_CHUNK_BYTES) { "Export chunk is too large" }
-            require(export.written + bytes.size <= export.expectedBytes) { "Export exceeds declared size" }
-            export.output.write(bytes)
-            export.written += bytes.size
-            export.nextIndex += 1
-        }.onSuccess { bridge.complete(requestId, null) }
-            .onFailure { abortChunkedExport(requestId, args, it.message ?: it.toString()) }
-    }
-
-    fun commitChunkedExport(requestId: String, args: JSONObject) {
-        val export = chunkedExport
-        if (export == null || args.optString("token") != export.token || export.written != export.expectedBytes) {
-            bridge.fail(requestId, "incomplete_export", "Export did not receive every byte")
-            return
-        }
-        export.output.close()
-        chunkedExport = null
-        pendingExport = PendingExport(requestId, export.file)
-        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = exportMimeType(export.fileName, export.mimeType)
-            putExtra(Intent.EXTRA_TITLE, export.fileName)
-        }
-        launchDocumentPicker(intent, REQUEST_EXPORT) {
-            pendingExport = null
-            export.file.delete()
-            bridge.fail(requestId, "export_picker_failed", it.message ?: it.toString())
-        }
-    }
-
-    fun abortChunkedExport(requestId: String, args: JSONObject) =
-        abortChunkedExport(requestId, args, null)
-
-    private fun abortChunkedExport(requestId: String, args: JSONObject, failure: String?) {
-        val export = chunkedExport
-        if (export != null && args.optString("token") == export.token) {
-            runCatching { export.output.close() }
-            export.file.delete()
-            chunkedExport = null
-        }
-        if (failure == null) bridge.complete(requestId, null)
-        else bridge.fail(requestId, "invalid_export_chunk", failure)
-    }
-
-    fun dispatchGpNext(requestId: String, request: JSONObject) {
+    fun dispatchFileOrGpNext(requestId: String, request: JSONObject) {
         if (!::gpNextCore.isInitialized) {
             bridge.fail(requestId, "gp_next_unavailable", "GP-Next compatibility is unavailable")
             return
@@ -300,7 +224,7 @@ class GameActivity : Activity() {
     }
 
     fun beginGpNextPackageImport(requestId: String) {
-        if (pendingGpImportRequestId != null || pendingGpSelection != null) {
+        if (pendingGpImportRequestId != null || pendingGpSelection != null || pendingExport != null) {
             bridge.fail(requestId, "gp_next_import_busy", "已有 GP-Next 文件选择正在进行")
             return
         }
@@ -322,10 +246,6 @@ class GameActivity : Activity() {
             bridge.fail(requestId, "gp_next_selection_busy", "已有文件选择正在进行")
             return
         }
-        runCatching { clearGpNextSelection() }.onFailure {
-            bridge.fail(requestId, "gp_next_selection_cleanup_failed", it.message ?: it.toString())
-            return
-        }
         pendingGpSelection = PendingGpSelection(requestId, directory)
         val intent = if (directory) {
             Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
@@ -341,33 +261,43 @@ class GameActivity : Activity() {
         }
         launchDocumentPicker(intent, REQUEST_GP_NEXT_SELECTION) {
             pendingGpSelection = null
-            runCatching { clearGpNextSelection() }
             bridge.fail(requestId, "gp_next_picker_failed", it.message ?: it.toString())
         }
     }
 
-    fun beginExistingFileExport(requestId: String, file: File) {
-        if (pendingExport != null) {
-            bridge.fail(requestId, "export_in_progress", "Another export is already active")
+    fun beginExistingFileExport(
+        requestId: String,
+        handle: String,
+        file: File,
+        fileName: String,
+        mimeType: String,
+    ) {
+        if (destroyed || !gpNextCore.isFileActive(handle)) return
+        if (pendingExport != null || pendingGpSelection != null || pendingGpImportRequestId != null) {
+            gpNextCore.execute(requestId, control = true) {
+                gpNextCore.exportFinished(handle, "export_in_progress", "Another document picker is active")
+            }
             return
         }
-        pendingExport = PendingExport(requestId, file)
+        pendingExport = PendingExport(requestId, handle, file)
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = exportMimeType(file.name, "application/json")
-            putExtra(Intent.EXTRA_TITLE, file.name)
+            type = exportMimeType(fileName, mimeType)
+            putExtra(Intent.EXTRA_TITLE, fileName)
         }
         launchDocumentPicker(intent, REQUEST_EXPORT) {
             pendingExport = null
-            bridge.fail(requestId, "export_picker_failed", it.message ?: it.toString())
+            gpNextCore.execute(requestId, control = true) {
+                gpNextCore.exportFinished(handle, "export_picker_failed", it.message ?: "Cannot open export picker")
+            }
         }
     }
 
-    fun persistWatermark(enabled: Boolean) {
-        val file = File(session.appRoot, "app_settings.json")
-        val temporary = File(file.path + ".tmp")
-        temporary.writeText(JSONObject().put("watermarkEnabled", enabled).toString(2) + "\n")
-        if (!temporary.renameTo(file)) throw IllegalStateException("Cannot persist watermark setting")
+    fun cancelFileExport(handle: String) {
+        if (pendingExport?.handle == handle) {
+            // Keep the slot until its result returns; a late result must never select a newer export.
+            finishActivity(REQUEST_EXPORT)
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -378,24 +308,28 @@ class GameActivity : Activity() {
         ) {
             restoreGameOrientation()
         }
+        if (destroyed) return
         when (requestCode) {
             REQUEST_GP_NEXT_SELECTION -> {
                 val selection = pendingGpSelection
-                pendingGpSelection = null
                 if (selection == null) return
                 if (resultCode != RESULT_OK || data?.data == null) {
-                    runCatching { clearGpNextSelection() }
+                    pendingGpSelection = null
                     bridge.complete(selection.requestId, null)
                     return
                 }
-                thread(name = "GardendlessGpNextSelection") {
+                gpNextCore.execute(selection.requestId, onRejected = {
+                    gpNextCore.postIfActive { if (pendingGpSelection === selection) pendingGpSelection = null }
+                }) {
                     runCatching { stageGpNextSelection(data.data!!, selection.directory) }
-                        .onSuccess { path -> runOnUiThread {
+                        .onSuccess { path -> gpNextCore.postIfActive {
+                            pendingGpSelection = null
                             bridge.complete(selection.requestId, path.path)
                         } }
                         .onFailure { error ->
                             runCatching { clearGpNextSelection() }
-                            runOnUiThread {
+                            gpNextCore.postIfActive {
+                                pendingGpSelection = null
                                 bridge.fail(
                                     selection.requestId,
                                     "gp_next_selection_failed",
@@ -407,9 +341,9 @@ class GameActivity : Activity() {
             }
             REQUEST_GP_NEXT_IMPORT -> {
                 val requestId = pendingGpImportRequestId
-                pendingGpImportRequestId = null
                 if (requestId == null) return
                 if (resultCode != RESULT_OK || data == null) {
+                    pendingGpImportRequestId = null
                     bridge.fail(requestId, "import_cancelled", "Import was cancelled")
                     return
                 }
@@ -418,10 +352,16 @@ class GameActivity : Activity() {
                     val clip = data.clipData
                     if (clip != null) for (index in 0 until clip.itemCount) add(clip.getItemAt(index).uri)
                 }.distinct()
-                thread(name = "GardendlessGpNextImport") {
+                gpNextCore.execute(requestId, onRejected = {
+                    gpNextCore.postIfActive { if (pendingGpImportRequestId == requestId) pendingGpImportRequestId = null }
+                }) {
                     runCatching { importGpNextPackages(uris) }
-                        .onSuccess { runOnUiThread { bridge.complete(requestId, null) } }
-                        .onFailure { error -> runOnUiThread {
+                        .onSuccess { gpNextCore.postIfActive {
+                            pendingGpImportRequestId = null
+                            bridge.complete(requestId, null)
+                        } }
+                        .onFailure { error -> gpNextCore.postIfActive {
+                            pendingGpImportRequestId = null
                             bridge.fail(requestId, "gp_next_import_failed", error.message ?: error.toString())
                         } }
                 }
@@ -433,28 +373,43 @@ class GameActivity : Activity() {
             }
             REQUEST_EXPORT -> {
                 val export = pendingExport
-                pendingExport = null
                 if (export == null) return
                 if (resultCode != RESULT_OK || data?.data == null) {
-                    export.file.delete()
-                    bridge.fail(export.requestId, "export_cancelled", "Export was cancelled")
+                    pendingExport = null
+                    gpNextCore.execute(export.requestId, control = true) {
+                        gpNextCore.exportFinished(export.handle, "export_cancelled", "Export was cancelled")
+                    }
                     return
                 }
-                thread(name = "GardendlessExportCopy") {
-                    runCatching {
-                        contentResolver.openOutputStream(data.data!!, "w").use { output ->
-                            requireNotNull(output) { "Cannot open export destination" }
-                            export.file.inputStream().use { input -> input.copyTo(output, 128 * 1024) }
-                        }
-                    }.onSuccess {
-                        runOnUiThread { bridge.complete(export.requestId, null) }
-                    }.onFailure {
-                        runOnUiThread {
-                            bridge.fail(export.requestId, "export_failed", it.message ?: it.toString())
-                        }
-                    }.also {
-                        export.file.delete()
+                gpNextCore.execute(export.requestId, onRejected = {
+                    gpNextCore.postIfActive { if (pendingExport === export) pendingExport = null }
+                    gpNextCore.execute(null, control = true) {
+                        gpNextCore.exportFinished(export.handle, "resource_limit_exceeded", "Export copy was rejected")
                     }
+                }) {
+                    if (!gpNextCore.isFileActive(export.handle)) {
+                        gpNextCore.postIfActive { if (pendingExport === export) pendingExport = null }
+                        return@execute
+                    }
+                    runCatching {
+                        val output = requireNotNull(contentResolver.openOutputStream(data.data!!, "w")) {
+                            "Cannot open export destination"
+                        }
+                        gpNextCore.useResource(output, export.handle) { destination ->
+                            gpNextCore.useResource(export.file.inputStream(), export.handle) { input ->
+                                val buffer = ByteArray(GpNextNativeCore.MAX_CHUNK_BYTES)
+                                while (true) {
+                                    check(gpNextCore.isFileActive(export.handle)) { "Export was cancelled" }
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    destination.write(buffer, 0, count)
+                                }
+                                destination.flush()
+                            }
+                        }
+                    }.onSuccess { gpNextCore.exportFinished(export.handle) }
+                        .onFailure { gpNextCore.exportFinished(export.handle, "export_failed", it.message) }
+                    gpNextCore.postIfActive { if (pendingExport === export) pendingExport = null }
                 }
             }
             else -> super.onActivityResult(requestCode, resultCode, data)
@@ -483,10 +438,10 @@ class GameActivity : Activity() {
             code = if (reason == GameExitReason.RENDERER_GONE) "webview_render_process_gone" else null,
             message = message,
             gameSessionId = session.sessionId,
-            context = mapOf("reason" to reason.wireName),
+            context = mapOf("reason" to reason.wireName, "packageId" to session.packageId),
         )
         AppLogStore.flush(500)
-        writeExitResult(session.sessionId, reason, message, session.resourceRoot)
+        writeExitResult(session.sessionId, reason, message, session.resourceRoot, session.packageId)
         startActivity(Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
         })
@@ -494,12 +449,10 @@ class GameActivity : Activity() {
     }
 
     override fun onDestroy() {
-        chunkedExport?.let { runCatching { it.output.close() }; it.file.delete() }
-        chunkedExport = null
-        pendingExport?.file?.delete()
+        destroyed = true
         pendingExport = null
         pendingGpSelection = null
-        runCatching { clearGpNextSelection() }
+        pendingGpImportRequestId = null
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
         if (::gpNextCore.isInitialized) gpNextCore.destroy()
@@ -547,21 +500,14 @@ class GameActivity : Activity() {
             MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
         }
 
-    private fun safeFileName(value: String): String {
-        val cleaned = File(value.replace('\\', '/')).name
-            .replace(Regex("[\\u0000-\\u001f:*?\"<>|]"), "_")
-            .trim()
-        return cleaned.takeIf { it.isNotEmpty() && it != "." && it != ".." }
-            ?: "gardendless-export.json"
-    }
-
     private fun importGpNextPackages(uris: List<Uri>): List<String> {
         val imported = mutableListOf<String>()
         for (uri in uris) {
+            check(!destroyed && !Thread.currentThread().isInterrupted) { "Game host was destroyed" }
             val displayName = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                 ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
                 ?: uri.lastPathSegment ?: "gp-next-file"
-            val name = safeFileName(displayName)
+            val name = ExportDocumentSpec.safeFileName(displayName)
             val extension = name.substringAfterLast('.', "").lowercase()
             val destinationDirectory = when (extension) {
                 "zip" -> File(session.gpNextRoot, "packs")
@@ -569,9 +515,8 @@ class GameActivity : Activity() {
                 else -> throw IllegalArgumentException("不支持的 GP-Next 文件：$name")
             }.apply { mkdirs() }
             val incoming = File(destinationDirectory, ".$name.incoming-${System.nanoTime()}")
-            contentResolver.openInputStream(uri).use { input ->
-                requireNotNull(input) { "无法读取 $name" }
-                incoming.outputStream().use { output -> input.copyTo(output, 128 * 1024) }
+            gpNextCore.useResource(requireNotNull(contentResolver.openInputStream(uri)) { "无法读取 $name" }) { input ->
+                gpNextCore.useResource(incoming.outputStream()) { output -> input.copyTo(output, 64 * 1024) }
             }
             var prepared = incoming
             try {
@@ -589,6 +534,7 @@ class GameActivity : Activity() {
                 }
                 val destination = File(destinationDirectory, name)
                 if (destination.exists() && !confirmReplacement(name)) continue
+                check(!destroyed && !Thread.currentThread().isInterrupted) { "Game host was destroyed" }
                 val backup = File(destinationDirectory, ".$name.backup-${System.nanoTime()}")
                 if (destination.exists() && !destination.renameTo(backup)) error("无法暂存旧文件")
                 try {
@@ -650,11 +596,12 @@ class GameActivity : Activity() {
         val cursor = requireNotNull(contentResolver.query(childrenUri, columns, null, null, null)) {
             "无法读取选择的目录"
         }
-        cursor.use {
+        gpNextCore.useResource(cursor) {
             val idColumn = it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
             val nameColumn = it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
             val mimeColumn = it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
             while (it.moveToNext()) {
+                check(!destroyed && !Thread.currentThread().isInterrupted) { "Game host was destroyed" }
                 budget.addEntry()
                 val documentId = it.getString(idColumn)
                 val name = requireSafeSelectionName(it.getString(nameColumn))
@@ -673,11 +620,11 @@ class GameActivity : Activity() {
     }
 
     private fun copyDocumentFile(uri: Uri, destination: File, budget: SelectionCopyBudget) {
-        contentResolver.openInputStream(uri).use { input ->
-            requireNotNull(input) { "无法读取选择的文件" }
-            destination.outputStream().buffered().use { output ->
+        gpNextCore.useResource(requireNotNull(contentResolver.openInputStream(uri)) { "无法读取选择的文件" }) { input ->
+            gpNextCore.useResource(destination.outputStream().buffered()) { output ->
                 val buffer = ByteArray(128 * 1024)
                 while (true) {
+                    check(!destroyed && !Thread.currentThread().isInterrupted) { "Game host was destroyed" }
                     val count = input.read(buffer)
                     if (count < 0) break
                     budget.addBytes(count)
@@ -724,7 +671,7 @@ class GameActivity : Activity() {
     private fun confirmReplacement(name: String): Boolean {
         val latch = CountDownLatch(1)
         var confirmed = false
-        runOnUiThread {
+        gpNextCore.postIfActive {
             AlertDialog.Builder(this)
                 .setTitle("替换 GP-Next 文件")
                 .setMessage("$name 已存在，是否使用新文件替换？")
@@ -741,15 +688,19 @@ class GameActivity : Activity() {
         reason: GameExitReason,
         message: String?,
         resourceRoot: String?,
+        packageId: String = "unknown",
     ) {
         val root = resourceRoot?.let { File(it).parentFile } ?: return
         val output = File(root, "game_exit_result.json")
         val temporary = File(output.path + ".tmp")
         val json = JSONObject()
             .put("schemaVersion", 1)
+            .put("packageId", packageId)
             .put("sessionId", sessionId)
             .put("reason", reason.wireName)
-            .put("finishedAt", Instant.now().toString())
+            .put("finishedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }.format(Date()))
             .put("message", message ?: JSONObject.NULL)
         runCatching {
             temporary.writeText(json.toString(2) + "\n")
@@ -757,7 +708,7 @@ class GameActivity : Activity() {
         }
     }
 
-    private data class PendingExport(val requestId: String, val file: File)
+    private data class PendingExport(val requestId: String, val handle: String, val file: File)
 
     private data class PendingGpSelection(val requestId: String, val directory: Boolean)
 
@@ -776,25 +727,12 @@ class GameActivity : Activity() {
         }
     }
 
-    private data class ChunkedExport(
-        val token: String,
-        val file: File,
-        val output: BufferedOutputStream,
-        val expectedBytes: Long,
-        val mimeType: String,
-        val fileName: String,
-        var written: Long = 0,
-        var nextIndex: Int = 0,
-    )
-
     companion object {
         const val EXTRA_SESSION = "gameSession"
         private const val REQUEST_FILE_CHOOSER = 4101
         private const val REQUEST_EXPORT = 4102
         private const val REQUEST_GP_NEXT_IMPORT = 4103
         private const val REQUEST_GP_NEXT_SELECTION = 4104
-        private const val MAX_EXPORT_BYTES = 512L * 1024 * 1024
-        private const val MAX_EXPORT_CHUNK_BYTES = 256 * 1024
         private const val USER_INTERACTION_TIMEOUT_MINUTES = 5L
         private const val MAX_SELECTION_ENTRIES = 10_000
         private const val MAX_SELECTION_BYTES = 512L * 1024 * 1024

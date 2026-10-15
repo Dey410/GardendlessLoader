@@ -30,27 +30,16 @@ public struct BridgeRequest {
 public enum BridgeCommand: String {
   case returnHome = "host:returnHome"
   case returnHomeLegacy = "host:return_home"
-  case setWatermark = "host:setWatermark"
-  case setWatermarkLegacy = "host:set_watermark"
   case log = "host:log"
   case export = "host:export"
-  case exportBegin = "host:exportBegin"
-  case exportChunk = "host:exportChunk"
-  case exportCommit = "host:exportCommit"
-  case exportAbort = "host:exportAbort"
+  case fileBegin = "file:begin"
+  case fileChunk = "file:chunk"
+  case fileFinish = "file:finish"
 
-  public static func isExport(_ value: String) -> Bool {
-    [
-      export.rawValue,
-      exportBegin.rawValue,
-      exportChunk.rawValue,
-      exportCommit.rawValue,
-      exportAbort.rawValue,
-    ].contains(value)
-  }
+  public static func isExport(_ value: String) -> Bool { value == export.rawValue }
 
-  public static func isWatermark(_ value: String) -> Bool {
-    value == setWatermark.rawValue || value == setWatermarkLegacy.rawValue
+  public static func isFile(_ value: String) -> Bool {
+    [fileBegin.rawValue, fileChunk.rawValue, fileFinish.rawValue].contains(value)
   }
 
   public static func isReturnHome(_ value: String) -> Bool {

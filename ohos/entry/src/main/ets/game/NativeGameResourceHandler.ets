@@ -10,12 +10,25 @@ interface ByteRange {
 
 class ActiveRequest {
   cancelled: boolean = false;
+  file: fs.File | null = null;
+
+  cancel(): void {
+    this.cancelled = true;
+    this.close().catch((_error: Error): void => {});
+  }
+
+  async close(): Promise<void> {
+    const file = this.file;
+    this.file = null;
+    if (file != null) await fs.close(file.fd);
+  }
 }
 
 export class NativeGameResourceHandler {
   readonly schemeHandler: webview.WebSchemeHandler = new webview.WebSchemeHandler();
   private readonly root: string;
   private readonly session: GameSession;
+  private destroyed: boolean = false;
   private readonly activeRequests: Map<webview.WebSchemeHandlerRequest, ActiveRequest> =
     new Map<webview.WebSchemeHandlerRequest, ActiveRequest>();
 
@@ -32,7 +45,7 @@ export class NativeGameResourceHandler {
     this.schemeHandler.onRequestStop((request: webview.WebSchemeHandlerRequest): void => {
       const active = this.activeRequests.get(request);
       if (active != null) {
-        active.cancelled = true;
+        active.cancel();
       }
     });
   }
@@ -43,8 +56,9 @@ export class NativeGameResourceHandler {
   }
 
   destroy(): void {
+    this.destroyed = true;
     this.activeRequests.forEach((request: ActiveRequest): void => {
-      request.cancelled = true;
+      request.cancel();
     });
     this.activeRequests.clear();
   }
@@ -53,6 +67,7 @@ export class NativeGameResourceHandler {
     request: webview.WebSchemeHandlerRequest,
     handler: webview.WebResourceHandler,
   ): boolean {
+    if (this.destroyed) return true;
     const url = request.getRequestUrl();
     if (!url.startsWith(`${GameSession.ORIGIN}/`) && url !== GameSession.ORIGIN) {
       const host = this.hostFromHttpsUrl(url);
@@ -159,7 +174,9 @@ export class NativeGameResourceHandler {
   ): Promise<void> {
     let file: fs.File | null = null;
     try {
-      file = await fs.open(filePath, fs.OpenMode.READ_ONLY);
+      file = await fs.open(filePath, fs.OpenMode.READ_ONLY | fs.OpenMode.NOFOLLOW);
+      active.file = file;
+      if (active.cancelled || this.destroyed) return;
       let position = start;
       let remaining = length;
       while (!active.cancelled && remaining > 0) {
@@ -180,7 +197,7 @@ export class NativeGameResourceHandler {
         handler.didFinish();
       }
     } catch (error) {
-      this.logFailure(
+      if (!active.cancelled && !this.destroyed) this.logFailure(
         'resource_read_failed', relativePath, 500,
         undefined, undefined, undefined, (error as Error).name,
       );
@@ -191,12 +208,7 @@ export class NativeGameResourceHandler {
         }
       }
     } finally {
-      if (file != null) {
-        try {
-          fs.closeSync(file.fd);
-        } catch (_closeError) {
-        }
-      }
+      try { await active.close(); } catch (_closeError) {}
       if (this.activeRequests.get(request) === active) {
         this.activeRequests.delete(request);
       }
@@ -221,6 +233,7 @@ export class NativeGameResourceHandler {
     if (/%(?:2e|2f|5c|25)/i.test(decoded) || decoded.includes('\\') || decoded.includes('\0')) {
       return null;
     }
+    if (decoded === '__gardendless/package' || decoded.startsWith('__gardendless/package/')) return null;
     const parts = decoded.split('/');
     if (parts.some((part: string): boolean => part.length === 0 || part === '.' || part === '..')) {
       return null;

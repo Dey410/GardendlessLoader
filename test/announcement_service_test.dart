@@ -54,7 +54,7 @@ void main() {
     expect(announcement, isNull);
   });
 
-  test('uses local fallback when remote request fails', () async {
+  test('has no current announcement when remote request fails', () async {
     final service = AnnouncementService(
       loader: (uri, timeout, maxBytes) async =>
           throw const SocketException('offline'),
@@ -62,14 +62,10 @@ void main() {
 
     final announcement = await service.fetchCurrentAnnouncement();
 
-    expect(announcement?.id, localFallbackAnnouncement.id);
-    expect(announcement?.links.map((link) => link.url), [
-      appGithubUrl,
-      bilibiliHomeUrl,
-    ]);
+    expect(announcement, isNull);
   });
 
-  test('uses local fallback when remote request times out', () async {
+  test('has no current announcement when remote request times out', () async {
     final service = AnnouncementService(
       timeout: const Duration(milliseconds: 1),
       loader: (uri, timeout, maxBytes) async {
@@ -83,7 +79,7 @@ void main() {
 
     final announcement = await service.fetchCurrentAnnouncement();
 
-    expect(announcement?.id, localFallbackAnnouncement.id);
+    expect(announcement, isNull);
   });
 
   test('rejects non-https announcement links', () {

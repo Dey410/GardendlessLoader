@@ -18,7 +18,9 @@ public final class GpNextSelectionStager {
     self.fileManager = fileManager
   }
 
-  public func stage(_ source: URL, directory: Bool) throws -> URL {
+  public func stage(_ source: URL, directory: Bool,
+                    isCancelled: () -> Bool = { false }) throws -> URL {
+    guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
     try clear()
     try fileManager.createDirectory(
       at: stagingRoot.deletingLastPathComponent(),
@@ -30,7 +32,7 @@ public final class GpNextSelectionStager {
     )
     var budget = SelectionBudget(entries: directory ? -1 : 0, bytes: 0)
     do {
-      try validate(source, budget: &budget)
+      try validate(source, budget: &budget, isCancelled: isCancelled)
       if directory {
         let values = try source.resourceValues(forKeys: [.isDirectoryKey])
         guard values.isDirectory == true else {
@@ -48,11 +50,13 @@ public final class GpNextSelectionStager {
           at: source,
           includingPropertiesForKeys: nil
         ) {
+          guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
           try fileManager.copyItem(
             at: child,
             to: destination.appendingPathComponent(child.lastPathComponent)
           )
         }
+        guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
         return destination
       }
       guard source.pathExtension.lowercased() == "zip" else {
@@ -60,6 +64,7 @@ public final class GpNextSelectionStager {
       }
       let destination = stagingRoot.appendingPathComponent("selection.zip")
       try fileManager.copyItem(at: source, to: destination)
+      guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
       return destination
     } catch {
       try? clear()
@@ -78,8 +83,10 @@ public final class GpNextSelectionStager {
 
   private func validate(
     _ url: URL,
-    budget: inout SelectionBudget
+    budget: inout SelectionBudget,
+    isCancelled: () -> Bool
   ) throws {
+    guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
     let values = try url.resourceValues(
       forKeys: [
         .isRegularFileKey,
@@ -100,7 +107,7 @@ public final class GpNextSelectionStager {
         at: url,
         includingPropertiesForKeys: nil
       ) {
-        try validate(child, budget: &budget)
+        try validate(child, budget: &budget, isCancelled: isCancelled)
       }
       return
     }

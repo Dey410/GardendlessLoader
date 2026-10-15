@@ -10,17 +10,8 @@ class NativeAppLogger implements AppLogger {
     required this.appSessionId,
     required String? appRoot,
     required Map<String, LogEventSchema> eventSchemas,
-    required bool degraded,
   })  : _channel = channel,
-        _degraded = degraded {
-    _mirror = InMemoryAppLogger(
-      appSessionId: appSessionId,
-      source: LogSource.dart,
-      appRoot: appRoot,
-      eventSchemas: eventSchemas,
-      onEvent: _forward,
-    );
-  }
+        _sanitizer = LogSanitizer(appRoot: appRoot, eventSchemas: eventSchemas);
 
   static const channelName = 'io.github.dey410.gardendlessloader/app_logger';
 
@@ -29,38 +20,24 @@ class NativeAppLogger implements AppLogger {
     String? appRoot,
     Map<String, LogEventSchema> eventSchemas = const <String, LogEventSchema>{},
   }) async {
-    try {
-      final response = await channel.invokeMapMethod<Object?, Object?>(
-        'initialize',
-      );
-      return NativeAppLogger._(
-        channel: channel,
-        appSessionId:
-            response?['appSessionId'] as String? ?? _degradedSessionId(),
-        appRoot: appRoot,
-        eventSchemas: eventSchemas,
-        degraded: response == null,
-      );
-    } catch (_) {
-      return NativeAppLogger._(
-        channel: channel,
-        appSessionId: _degradedSessionId(),
-        appRoot: appRoot,
-        eventSchemas: eventSchemas,
-        degraded: true,
-      );
+    final response =
+        await channel.invokeMapMethod<Object?, Object?>('initialize');
+    final sessionId = response?['appSessionId'];
+    if (sessionId is! String || sessionId.isEmpty) {
+      throw const FormatException('Native logger returned no app session');
     }
+    return NativeAppLogger._(
+      channel: channel,
+      appSessionId: sessionId,
+      appRoot: appRoot,
+      eventSchemas: eventSchemas,
+    );
   }
 
   final MethodChannel _channel;
+  final LogSanitizer _sanitizer;
   @override
   final String appSessionId;
-  late final InMemoryAppLogger _mirror;
-  bool _degraded;
-  int _transportFailureCount = 0;
-
-  List<LogEvent> get recentEvents => _mirror.events;
-  bool get degraded => _degraded;
 
   @override
   void emit({
@@ -77,20 +54,33 @@ class NativeAppLogger implements AppLogger {
     Object? error,
     StackTrace? stackTrace,
   }) {
-    _mirror.emit(
-      level: level,
-      category: category,
-      event: event,
-      outcome: outcome,
-      code: code,
-      message: message,
-      gameSessionId: gameSessionId,
-      operationId: operationId,
-      durationMs: durationMs,
-      context: context,
-      error: error,
-      stackTrace: stackTrace,
-    );
+    final payload = <String, Object?>{
+      'schemaVersion': 1,
+      'source': LogSource.dart.name,
+      'level': level.name.toUpperCase(),
+      'category': category,
+      'event': event,
+      'outcome': outcome.name,
+      'appSessionId': appSessionId,
+      if (code != null) 'code': code,
+      if (message != null) 'message': _sanitizer.sanitizeText(message, 2048),
+      if (gameSessionId != null) 'gameSessionId': gameSessionId,
+      if (operationId != null) 'operationId': operationId,
+      if (durationMs != null) 'durationMs': durationMs,
+      if (context != null)
+        'context': _sanitizer.sanitizeContext(event, context),
+      if (error != null)
+        'error': LogEventError(
+          type: error.runtimeType.toString(),
+          message: _sanitizer.sanitizeText(error.toString(), 4096),
+          stackTrace:
+              _sanitizer.sanitizeText(stackTrace?.toString() ?? '', 8192),
+        ).toJson(),
+    };
+    // Logging must not replace an application failure. Native owns all retained
+    // events and its snapshot reports persistence health.
+    unawaited(
+        _channel.invokeMethod<void>('emit', payload).catchError((Object _) {}));
   }
 
   @override
@@ -101,81 +91,39 @@ class NativeAppLogger implements AppLogger {
     required String finishedEvent,
     String? failureCode,
     String? gameSessionId,
-  }) {
-    return _mirror.startOperation(
-      operationId: operationId,
-      category: category,
-      startedEvent: startedEvent,
-      finishedEvent: finishedEvent,
-      failureCode: failureCode,
-      gameSessionId: gameSessionId,
-    );
-  }
+  }) =>
+      startLogOperation(
+        logger: this,
+        operationId: operationId,
+        category: category,
+        startedEvent: startedEvent,
+        finishedEvent: finishedEvent,
+        failureCode: failureCode,
+        gameSessionId: gameSessionId,
+      );
 
   @override
   Future<AppLogSnapshot> loadSnapshot({int limit = 500}) async {
-    try {
-      final response = await _channel.invokeMapMethod<Object?, Object?>(
-        'snapshot',
-        <String, Object?>{'limit': limit},
-      );
-      if (response != null) {
-        return AppLogSnapshot.fromMap(response);
-      }
-    } catch (_) {
-      _markTransportFailure();
-    }
-    return AppLogSnapshot(
-      appSessionId: appSessionId,
-      persisting: false,
-      degraded: true,
-      logDirectory: null,
-      totalBytes: 0,
-      writeFailureCount: _transportFailureCount,
-      droppedByLevel: const <String, int>{},
-      events: _mirror.events.map((event) => event.toJson()).toList(),
+    final response = await _channel.invokeMapMethod<Object?, Object?>(
+      'snapshot',
+      <String, Object?>{'limit': limit},
     );
+    if (response == null) {
+      throw const FormatException('Native logger returned no snapshot');
+    }
+    return AppLogSnapshot.fromMap(response);
   }
 
   @override
-  Future<void> flush({Duration timeout = const Duration(milliseconds: 500)}) {
-    return _invokeControl('flush', timeout);
-  }
+  Future<void> flush({Duration timeout = const Duration(milliseconds: 500)}) =>
+      _channel.invokeMethod<void>('flush').timeout(timeout);
 
   @override
-  Future<void> deleteHistory() => _invokeControl(
-        'deleteHistory',
-        const Duration(seconds: 2),
-      );
+  Future<void> deleteHistory() => _channel
+      .invokeMethod<void>('deleteHistory')
+      .timeout(const Duration(seconds: 2));
 
-  Future<void> endSession() => _invokeControl(
-        'endSession',
-        const Duration(milliseconds: 500),
-      );
-
-  void _forward(LogEvent event) {
-    unawaited(
-      _channel
-          .invokeMethod<void>('emit', event.toJson())
-          .catchError((Object _) => _markTransportFailure()),
-    );
-  }
-
-  Future<void> _invokeControl(String method, Duration timeout) async {
-    try {
-      await _channel
-          .invokeMethod<void>(method)
-          .timeout(timeout, onTimeout: () => null);
-    } catch (_) {
-      _markTransportFailure();
-    }
-  }
-
-  void _markTransportFailure() {
-    _degraded = true;
-    _transportFailureCount += 1;
-  }
-
-  static String _degradedSessionId() =>
-      'degraded-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+  Future<void> endSession() => _channel
+      .invokeMethod<void>('endSession')
+      .timeout(const Duration(milliseconds: 500));
 }

@@ -20,8 +20,10 @@ public final class GpNextPackageImporter {
   @discardableResult
   public func importPackage(
     _ source: URL,
+    isCancelled: () -> Bool = { false },
     confirmReplacement: (String) -> Bool
   ) throws -> String {
+    guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
     let accessed = source.startAccessingSecurityScopedResource()
     defer {
       if accessed {
@@ -88,6 +90,7 @@ public final class GpNextPackageImporter {
         && !confirmReplacement(name) {
       return name
     }
+    guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
     let backup = destinationDirectory.appendingPathComponent(
       ".\(name).backup-\(UUID().uuidString)"
     )

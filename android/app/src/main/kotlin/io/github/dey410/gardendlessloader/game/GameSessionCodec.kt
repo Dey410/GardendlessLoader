@@ -14,6 +14,8 @@ data class NativeGameSession(
     val gpNextVersion: String?,
     val watermarkEnabled: Boolean,
     val autoCollectSunEnabled: Boolean,
+    val detailedAudioDiagnosticsEnabled: Boolean = false,
+    val packageId: String = "unknown",
     val allowedRemoteHosts: Set<String>,
     val gpNextRoot: String,
     val exportTemporaryRoot: String,
@@ -35,6 +37,8 @@ object GameSessionCodec {
         val entryUrl = json.getString("entryUrl")
         require(entryUrl.startsWith("$ORIGIN/")) { "Entry URL escaped the game origin" }
         val remoteHosts = json.optJSONArray("allowedRemoteHosts") ?: JSONArray()
+        val packageId = json.optString("packageId", "unknown")
+        require(packageId == "unknown" || packageId.matches(Regex("sha256:[a-f0-9]{64}"))) { "Invalid package identity" }
         return NativeGameSession(
             sessionId = json.requiredString("sessionId"),
             resourceRoot = json.requiredString("resourceRoot"),
@@ -46,6 +50,8 @@ object GameSessionCodec {
             gpNextVersion = json.optString("gpNextVersion").takeIf { it.isNotBlank() },
             watermarkEnabled = json.getBoolean("watermarkEnabled"),
             autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled"),
+            detailedAudioDiagnosticsEnabled = json.optBoolean("detailedAudioDiagnosticsEnabled", false),
+            packageId = packageId,
             allowedRemoteHosts = buildSet {
                 for (index in 0 until remoteHosts.length()) {
                     val host = remoteHosts.getString(index).lowercase()

@@ -5,6 +5,13 @@ import java.util.Locale
 internal object ExportDocumentSpec {
     const val OPAQUE_MIME_TYPE = "application/vnd.gardendless.export"
 
+    fun safeFileName(value: String): String {
+        val cleaned = value.replace('\\', '/').substringAfterLast('/')
+            .replace(Regex("[\\x00-\\x1f:*?\"<>|]"), "_").trim()
+        return cleaned.takeUnless { it.isBlank() || it == "." || it == ".." }
+            ?: "gardendless-export.json"
+    }
+
     fun resolveMimeType(
         fileName: String,
         declaredMimeType: String,

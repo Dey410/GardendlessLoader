@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,17 +6,17 @@ import 'package:gardendless_loader/src/constants.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
 
 void main() {
-  test('release version metadata exposes version 0.8.2 consistently', () {
+  test('release version metadata exposes version 0.9.0 consistently', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final match =
         RegExp(r'^version:\s*([^\s+]+)', multiLine: true).firstMatch(pubspec);
     final harmonyAppConfig = File('ohos/AppScope/app.json5').readAsStringSync();
 
     expect(match, isNotNull);
-    expect(match!.group(1), '0.8.2');
+    expect(match!.group(1), '0.9.0');
     expect(appVersion, match.group(1)!.split('+').first);
-    expect(harmonyAppConfig, contains('"versionName": "0.8.2"'));
-    expect(harmonyAppConfig, contains('"versionCode": 8002000'));
+    expect(harmonyAppConfig, contains('"versionName": "0.9.0"'));
+    expect(harmonyAppConfig, contains('"versionCode": 9000000'));
   });
 
   test('direct Xcode builds use the tracked loader version', () {
@@ -166,6 +167,58 @@ void main() {
 
     expect(update?.currentVersion, '0.2.0');
     expect(update?.latestVersion, '0.2.1');
+  });
+
+  test('shares one installed identity across concurrent checks', () async {
+    var metadataReads = 0;
+    final service = UpdateCheckService(
+      installedVersionLoader: () async {
+        metadataReads++;
+        return 'v0.2.0+5';
+      },
+      loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
+        statusCode: HttpStatus.ok,
+        body: '{"tag_name":"v0.3.0","html_url":"https://github.com/release"}',
+      ),
+    );
+
+    final versions = await Future.wait([
+      service.loadCurrentVersion(),
+      service.loadCurrentVersion(),
+    ]);
+    final update = await service.checkForUpdate();
+
+    expect(versions, ['0.2.0', '0.2.0']);
+    expect(update?.currentVersion, '0.2.0');
+    expect(metadataReads, 1);
+  });
+
+  test('completed identity can be read outside its original async zone',
+      () async {
+    final ownerMicrotasks = <void Function()>[];
+    var metadataReads = 0;
+    final service = UpdateCheckService(installedVersionLoader: () async {
+      metadataReads++;
+      return 'v0.2.0+5';
+    });
+    final owner = Zone.current.fork(specification: ZoneSpecification(
+      scheduleMicrotask: (self, parent, zone, callback) {
+        ownerMicrotasks.add(zone.bindCallback(callback));
+      },
+    ));
+    String? first;
+    owner
+        .run(() => service.loadCurrentVersion().then((value) => first = value));
+    while (ownerMicrotasks.isNotEmpty) {
+      ownerMicrotasks.removeAt(0)();
+    }
+    expect(first, '0.2.0');
+
+    final second = service.loadCurrentVersion().then((value) => value);
+    expect(ownerMicrotasks, isEmpty,
+        reason: 'reading cached identity must not need the old event loop');
+    expect(await second, '0.2.0');
+    expect(metadataReads, 1);
   });
 
   test('throws update check exception when GitHub request fails', () {
