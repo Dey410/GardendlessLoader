@@ -24,12 +24,13 @@ jobs:
         run: |
           dart format lib/src/ui/verdant test/verdant_fixtures.dart test/verdant_home_page_test.dart tool/capture_verdant.dart
           mkdir -p artifacts
-          git diff > artifacts/dart-format.patch
+          git diff -- lib/src/ui/verdant test/verdant_fixtures.dart test/verdant_home_page_test.dart tool/capture_verdant.dart > artifacts/dart-format.patch
       - name: Analyze UI sources
         run: flutter analyze --no-fatal-infos lib/src/ui/verdant test/verdant_fixtures.dart test/verdant_home_page_test.dart tool/capture_verdant.dart
       - name: Test interactions and responsive layout
         run: flutter test test/verdant_home_page_test.dart
       - name: Capture native Flutter screenshots
+        if: ${{ !cancelled() }}
         run: flutter test tool/capture_verdant.dart
       - uses: actions/upload-artifact@v4
         if: always()

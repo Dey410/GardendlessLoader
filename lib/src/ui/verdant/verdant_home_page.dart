@@ -29,6 +29,10 @@ class _HomePageState extends State<HomePage> {
   String _logQuery = '';
   AppController get c => widget.controller;
   bool get _locked => _working || c.busy || !c.initialized;
+  bool get _shortLandscape {
+    final size = MediaQuery.sizeOf(context);
+    return size.height < 520 && size.width > size.height;
+  }
   static const _names = ['花园', '资源', '日志', '设置'];
   static const _icons = [Icons.spa_outlined, Icons.inventory_2_outlined,
     Icons.terminal_rounded, Icons.tune_rounded];
@@ -96,7 +100,9 @@ class _HomePageState extends State<HomePage> {
     try {
       await _guard(action);
     } finally {
-      if (mounted) setState(() { _working = false; _launching = false; });
+      if (mounted) {
+        setState(() { _working = false; _launching = false; });
+      }
     }
   }
 
@@ -127,9 +133,10 @@ class _HomePageState extends State<HomePage> {
       builder: (context, _) => Scaffold(
         body: SafeArea(
           child: LayoutBuilder(builder: (context, constraints) {
-            final rail = constraints.maxWidth >= 760;
+            final rail = constraints.maxWidth >= 760 ||
+              (_shortLandscape && constraints.maxWidth >= 600);
             final content = Expanded(child: Column(children: [
-              _header(constraints.maxWidth < 540),
+              _header(constraints.maxWidth < 540 || _shortLandscape),
               const Divider(),
               Expanded(child: _content()),
             ]));
@@ -162,37 +169,38 @@ class _HomePageState extends State<HomePage> {
     width: 88,
     decoration: const BoxDecoration(border: Border(right: BorderSide(color: GardenTheme.line))),
     child: Column(children: [
-      const SizedBox(height: 20),
-      Container(width: 46, height: 46,
+      SizedBox(height: _shortLandscape ? 10 : 20),
+      Container(width: _shortLandscape ? 36 : 46, height: _shortLandscape ? 36 : 46,
         decoration: BoxDecoration(color: GardenTheme.acid, borderRadius: BorderRadius.circular(16)),
         child: const Icon(Icons.spa_rounded, color: GardenTheme.background, size: 27)),
-      const SizedBox(height: 30),
-      Expanded(child: ListView(children: List.generate(4, (i) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      SizedBox(height: _shortLandscape ? 10 : 30),
+      Expanded(child: ListView(key: const ValueKey('garden-rail-scroll'), children: List.generate(4, (i) => Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: _shortLandscape ? 3 : 5),
         child: Semantics(selected: _page == i, button: true, label: '${_names[i]}页面',
           child: Tooltip(message: _names[i], child: Material(
             color: _page == i ? GardenTheme.elevated : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
             child: InkWell(key: ValueKey('garden-nav-$i'),
               borderRadius: BorderRadius.circular(16), onTap: () => _navigate(i),
-              child: Padding(padding: const EdgeInsets.symmetric(vertical: 13),
-                child: Column(children: [
+              child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 48),
+                child: Padding(padding: EdgeInsets.symmetric(vertical: _shortLandscape ? 8 : 13),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Icon(_icons[i], color: _page == i ? GardenTheme.acid : GardenTheme.muted, size: 23),
-                  const SizedBox(height: 5),
-                  Text(_names[i], maxLines: 1, overflow: TextOverflow.ellipsis,
+                  if (!_shortLandscape) const SizedBox(height: 5),
+                  if (!_shortLandscape) Text(_names[i], maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 10, color: _page == i ? GardenTheme.acid : GardenTheme.muted)),
-                ])),
+                ]))),
             ),
           )),
         ),
       )))),
       IconButton(tooltip: '项目 GitHub', onPressed: () => _open(appGithubUrl), icon: const Icon(Icons.code_rounded)),
-      const SizedBox(height: 14),
+      SizedBox(height: _shortLandscape ? 4 : 14),
     ]),
   );
 
   Widget _header(bool compact) => Padding(
-    padding: EdgeInsets.symmetric(horizontal: compact ? 18 : 28, vertical: 16),
+    padding: EdgeInsets.symmetric(horizontal: compact ? 18 : 28, vertical: _shortLandscape ? 8 : 16),
     child: Row(children: [
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('GARDENDLESS', maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -218,7 +226,7 @@ class _HomePageState extends State<HomePage> {
   );
 
   Widget _content() => LayoutBuilder(builder: (context, constraints) {
-    final padding = constraints.maxWidth < 600 ? 18.0 : 28.0;
+    final padding = constraints.maxWidth < 600 || _shortLandscape ? 18.0 : 28.0;
     return SingleChildScrollView(
       key: PageStorageKey('garden-page-$_page'),
       padding: EdgeInsets.all(padding),
@@ -291,20 +299,24 @@ class _HomePageState extends State<HomePage> {
         colors: [Color(0xff1b2a20), Color(0xff101a14), Color(0xff15291b)]),
     ),
     child: LayoutBuilder(builder: (context, box) {
-      final stacked = box.maxWidth < 640 || MediaQuery.textScalerOf(context).scale(14) > 21;
-      final inset = box.maxWidth < 720 ? 24.0 : 38.0;
+      final short = _shortLandscape;
+      final stacked = box.maxWidth < (short ? 520 : 640) || MediaQuery.textScalerOf(context).scale(14) > 21;
+      final inset = short ? 18.0 : box.maxWidth < 720 ? 24.0 : 38.0;
+      final titleSize = short ? 34.0 : box.maxWidth > 1060 ? 66.0 : 46.0;
       final copy = Padding(padding: EdgeInsets.all(inset),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
           _eyebrow('01 / THE VERDANT OBSERVATORY'),
-          const SizedBox(height: 22),
-          Text('让花园', style: TextStyle(fontSize: box.maxWidth > 1060 ? 66 : 46,
+          SizedBox(height: short ? 10 : 22),
+          Text('让花园', style: TextStyle(fontSize: titleSize,
             fontWeight: FontWeight.w800, height: 1.12, letterSpacing: -2)),
-          Text('永不落幕。', style: TextStyle(fontSize: box.maxWidth > 1060 ? 66 : 46,
+          Text('永不落幕。', style: TextStyle(fontSize: titleSize,
             fontWeight: FontWeight.w800, height: 1.22, letterSpacing: -2, color: GardenTheme.acid)),
-          const SizedBox(height: 18),
-          _text(c.hasCurrentResource ? '你的世界，已经准备好继续生长。' : '带上你的游戏资源，种下无限可能。',
-            color: GardenTheme.muted, size: 14),
-          const SizedBox(height: 25),
+          if (!short) ...[
+            const SizedBox(height: 18),
+            _text(c.hasCurrentResource ? '你的世界，已经准备好继续生长。' : '带上你的游戏资源，种下无限可能。',
+              color: GardenTheme.muted, size: 14),
+          ],
+          SizedBox(height: short ? 16 : 25),
           Wrap(spacing: 12, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
             FilledButton.icon(
               key: const ValueKey('garden-launch'),
@@ -313,26 +325,31 @@ class _HomePageState extends State<HomePage> {
               icon: _launching
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: GardenTheme.background))
                 : Icon(c.canStartGame ? Icons.play_arrow_rounded : Icons.add_rounded),
-              label: Text(_launching ? '正在启动…' : c.canStartGame ? '启动花园' : '导入资源，开始探索'),
+              label: Text(_launching ? '正在启动…' : c.canStartGame ? '启动花园' : short ? '导入资源' : '导入资源，开始探索'),
             ),
-            TextButton(onPressed: () => _navigate(1), child: const Text('管理资源  ↗')),
+            if (short) IconButton(tooltip: '管理资源', onPressed: () => _navigate(1), icon: const Icon(Icons.north_east_rounded))
+            else TextButton(onPressed: () => _navigate(1), child: const Text('管理资源  ↗')),
           ]),
-          const SizedBox(height: 23),
-          _badge(c.hasCurrentResource ? '资源已就绪' : '等待首次导入',
-            color: c.hasCurrentResource ? GardenTheme.acid : GardenTheme.muted),
+          if (!short) ...[
+            const SizedBox(height: 23),
+            _badge(c.hasCurrentResource ? '资源已就绪' : '等待首次导入',
+              color: c.hasCurrentResource ? GardenTheme.acid : GardenTheme.muted),
+          ],
         ]),
       );
       final art = Stack(children: [
         Positioned.fill(child: GardenScene(motion: _motion)),
-        Positioned(right: 24, top: 20, child: _text('BOTANICAL SYSTEM\nNO. ∞ / GROW WITHOUT LIMITS', size: 9, color: GardenTheme.muted)),
-        Positioned(right: 25, bottom: 18, child: _text('生长，不设终点。', size: 11, color: GardenTheme.muted)),
+        if (!short) Positioned(right: 24, top: 20, child: _text('BOTANICAL SYSTEM\nNO. ∞ / GROW WITHOUT LIMITS', size: 9, color: GardenTheme.muted)),
+        if (!short) Positioned(right: 25, bottom: 18, child: _text('生长，不设终点。', size: 11, color: GardenTheme.muted)),
       ]);
-      if (stacked) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        copy, SizedBox(height: 300, child: art),
-      ]);
+      if (stacked) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          copy, SizedBox(height: 300, child: art),
+        ]);
+      }
       return IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(flex: 5, child: copy),
-        Expanded(flex: 5, child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 395), child: art)),
+        Expanded(flex: 5, child: ConstrainedBox(constraints: BoxConstraints(minHeight: short ? 220 : 395), child: art)),
       ]));
     }),
   );
@@ -630,7 +647,9 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     ));
-    if (confirmed == true && mounted) await _guard(c.deleteLogHistory);
+    if (confirmed == true && mounted) {
+      await _guard(c.deleteLogHistory);
+    }
   }
 
   Widget _switch(String title, String subtitle, bool value, ValueChanged<bool>? onChanged, {Key? key}) => Padding(

@@ -37,7 +37,7 @@ void main() {
   testWidgets('first-run primary action imports instead of pretending to launch', (tester) async {
     final c = VerdantFixtureController()..ready = false;
     await mount(tester, c);
-    expect(find.text('等待首次导入'), findsOneWidget);
+    expect(find.textContaining('等待首次导入'), findsOneWidget);
     expect(find.text('2846'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('garden-launch')));
     await tester.pumpAndSettle();
@@ -129,9 +129,10 @@ void main() {
     expect(tester.widget<FilledButton>(find.byKey(const ValueKey('garden-launch'))).onPressed, isNull);
   });
 
-  for (final size in [const Size(844, 390), const Size(390, 844), const Size(1194, 834), const Size(1440, 1000)]) {
+  for (final size in [const Size(667, 375), const Size(844, 390), const Size(390, 844), const Size(1194, 834), const Size(1440, 1000)]) {
     testWidgets('all pages avoid overflow at $size', (tester) async {
       await mount(tester, VerdantFixtureController(), size: size);
+      expect(find.byKey(const ValueKey('garden-launch')).hitTestable(), findsOneWidget);
       for (var page = 0; page < 4; page++) {
         await tester.tap(find.byKey(ValueKey('garden-nav-$page')));
         await tester.pumpAndSettle();
