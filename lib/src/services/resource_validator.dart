@@ -16,18 +16,11 @@ typedef _PackageScan = ({
 });
 
 class ResourceValidator {
-  /// Validates the resource tree at [root].
-  ///
-  /// With [verifyContents] every file is also opened and every indexed file
-  /// hashed, which reads the whole package; imports and recovery need that.
-  /// Startup and launch pass false and still re-check the layout, links,
-  /// metadata and indexed file sizes, so they stay fast on large packages.
-  Future<ResourceValidationResult> validate(
-    Directory root, {
-    bool verifyContents = true,
-  }) async {
+  /// Validates the resource tree at [root], opening every file and hashing
+  /// every indexed file.
+  Future<ResourceValidationResult> validate(Directory root) async {
     try {
-      return await _validate(root, verifyContents: verifyContents);
+      return await _validate(root);
     } on UnsupportedError catch (error) {
       return ResourceValidationResult.invalid(
           'host_abi_unsupported', error.message?.toString() ?? '资源包需要新版宿主');
@@ -40,10 +33,7 @@ class ResourceValidator {
     }
   }
 
-  Future<ResourceValidationResult> _validate(
-    Directory root, {
-    required bool verifyContents,
-  }) async {
+  Future<ResourceValidationResult> _validate(Directory root) async {
     if (!await root.exists()) {
       return ResourceValidationResult.missing('${root.path} 不存在');
     }
@@ -114,10 +104,7 @@ class ResourceValidator {
       return settingsResult;
     }
 
-    final package = await _validatePackageInBackground(
-      root.path,
-      verifyContents: verifyContents,
-    );
+    final package = await _validatePackageInBackground(root.path);
     if (package.hasGpNext != null && package.hasGpNext != gpNext.detected) {
       throw const FormatException('资源包 GP-Next 标记与内容不一致');
     }
@@ -144,22 +131,13 @@ class ResourceValidator {
 
   // Thousands of per-file calls run synchronously on a background isolate:
   // far cheaper than awaiting each one, and the UI stays smooth. Static, so
-  // the closure sends only the path and the flag to the isolate.
-  static Future<_PackageScan> _validatePackageInBackground(
-    String rootPath, {
-    required bool verifyContents,
-  }) =>
+  // the closure sends only the path to the isolate.
+  static Future<_PackageScan> _validatePackageInBackground(String rootPath) =>
       Isolate.run(
-        () => ResourceValidator()._validatePackage(
-          Directory(rootPath),
-          verifyContents: verifyContents,
-        ),
+        () => ResourceValidator()._validatePackage(Directory(rootPath)),
       );
 
-  Future<_PackageScan> _validatePackage(
-    Directory root, {
-    required bool verifyContents,
-  }) async {
+  Future<_PackageScan> _validatePackage(Directory root) async {
     final marker = Directory(p.join(root.path, '__gardendless'));
     final indexed =
         await FileSystemEntity.type(marker.path, followLinks: false) !=
@@ -188,7 +166,7 @@ class ResourceValidator {
       totalBytes += sizeBytes;
       if (indexed) {
         payload[relative] = (file: file, sizeBytes: sizeBytes);
-      } else if (verifyContents) {
+      } else {
         file.openSync(mode: FileMode.read).closeSync();
       }
     }
@@ -303,9 +281,8 @@ class ResourceValidator {
       final file = payload.remove(path);
       if (file == null ||
           file.sizeBytes != entry['sizeBytes'] ||
-          (verifyContents &&
-              (await sha256.bind(file.file.openRead()).first).toString() !=
-                  entry['sha256'])) {
+          (await sha256.bind(file.file.openRead()).first).toString() !=
+              entry['sha256']) {
         throw const FormatException('资源文件大小或摘要不匹配');
       }
     }

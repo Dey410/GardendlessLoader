@@ -241,54 +241,32 @@ class AppController extends ChangeNotifier {
 
   // 统一从 manifest 指向的激活槽刷新资源状态和游戏版本。
   Future<void> refresh() async {
-    final paths = _requirePaths();
-    final manifestStore = _requireManifestStore();
-    _manifest = await manifestStore.read();
-    final activeDirectory = _importService.activeDirectory(paths, _manifest);
-    _currentValidation = activeDirectory == null
-        ? ResourceValidationResult.missing('尚未导入游戏资源')
-        : await _validator.validate(activeDirectory, verifyContents: false);
-    if (_currentValidation.isValid &&
-        _manifest.resourceStatus == ResourceStatus.ready) {
-      _currentValidation = _currentValidation.asReady();
-    }
-
-    _currentGameVersion =
-        _currentValidation.isValid ? _currentValidation.gameVersion : null;
+    _manifest = await _requireManifestStore().read();
+    _currentValidation =
+        _importService.activeDirectory(_requirePaths(), _manifest) == null
+            ? ResourceValidationResult.missing('尚未导入游戏资源')
+            : _manifestValidation();
+    _currentGameVersion = _currentValidation.gameVersion;
     if (_currentGameVersion == null) {
       _availableGameUpdate = null;
       _currentGameVersionIsAhead = false;
       _gameUpdateDetected = false;
     }
-    final compatibilityMetadataChanged = _currentValidation.isValid &&
-        (_manifest.packageId != _currentValidation.packageId ||
-            _manifest.buildProfile != _currentValidation.buildProfile ||
-            _manifest.gpNextVersion != _currentValidation.gpNextVersion ||
-            _manifest.gpNextCompatibilityError !=
-                _currentValidation.gpNextCompatibilityError);
-    if (_manifest.gameVersion != _currentGameVersion ||
-        compatibilityMetadataChanged) {
-      _manifest = _manifest.copyWith(
-        gameVersion: _currentGameVersion,
-        packageId: _currentValidation.packageId,
-        clearPackageId:
-            _currentValidation.isValid && _currentValidation.packageId == null,
-        clearGameVersion: _currentGameVersion == null,
-        buildProfile: _currentValidation.isValid
-            ? _currentValidation.buildProfile
-            : _manifest.buildProfile,
-        gpNextVersion: _currentValidation.gpNextVersion,
-        gpNextCompatibilityError: _currentValidation.gpNextCompatibilityError,
-        clearGpNextVersion: _currentValidation.isValid &&
-            _currentValidation.gpNextVersion == null,
-        clearGpNextCompatibilityError: _currentValidation.isValid &&
-            _currentValidation.gpNextCompatibilityError == null,
-      );
-      await manifestStore.write(_manifest);
-    }
-
     notifyListeners();
   }
+
+  // 导入时已完整校验激活槽并写入 manifest，之后直接沿用该结果。
+  ResourceValidationResult _manifestValidation() =>
+      ResourceValidationResult.valid(
+        stats: ResourceStats(
+            fileCount: _manifest.fileCount, totalBytes: _manifest.totalBytes),
+        detectedTitle: _manifest.detectedTitle,
+        packageId: _manifest.packageId,
+        gameVersion: _manifest.gameVersion,
+        buildProfile: _manifest.buildProfile,
+        gpNextVersion: _manifest.gpNextVersion,
+        gpNextCompatibilityError: _manifest.gpNextCompatibilityError,
+      ).asReady();
 
   Future<void> refreshAnnouncement() async {
     _announcement = await _announcementService.fetchCurrentAnnouncement();
@@ -566,16 +544,7 @@ class AppController extends ChangeNotifier {
         await _setImportAwakeMode(false);
         restoreAwakeModeAfterImport = false;
       }
-      _currentValidation = _importValidation = ResourceValidationResult.valid(
-        stats: ResourceStats(
-            fileCount: _manifest.fileCount, totalBytes: _manifest.totalBytes),
-        detectedTitle: _manifest.detectedTitle,
-        packageId: _manifest.packageId,
-        gameVersion: _manifest.gameVersion,
-        buildProfile: _manifest.buildProfile,
-        gpNextVersion: _manifest.gpNextVersion,
-        gpNextCompatibilityError: _manifest.gpNextCompatibilityError,
-      ).asReady();
+      _currentValidation = _importValidation = _manifestValidation();
       _currentGameVersion = _manifest.gameVersion;
       if (_currentGameVersion == null) {
         _availableGameUpdate = null;
@@ -782,9 +751,6 @@ class AppController extends ChangeNotifier {
     final paths = _requirePaths();
     _message = null;
     final activeDirectory = _importService.activeDirectory(paths, _manifest);
-    _currentValidation = activeDirectory == null
-        ? ResourceValidationResult.missing('尚未导入游戏资源')
-        : await _validator.validate(activeDirectory, verifyContents: false);
     if (!_currentValidation.isValid) {
       _message = _currentValidation.errorMessage ?? '激活槽资源无效';
       notifyListeners();
