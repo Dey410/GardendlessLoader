@@ -11,14 +11,16 @@ abstract final class GardenTheme {
   static const acid = Color(0xffd6f77b);
   static const mint = Color(0xff71b89a);
   static const coral = Color(0xffffab86);
+  static const fontFamily = 'Noto Sans';
+  static const fontFallback = ['Noto Sans CJK SC', 'PingFang SC'];
 
   static ThemeData get dark {
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       scaffoldBackgroundColor: background,
-      fontFamily: 'Noto Sans',
-      fontFamilyFallback: const ['Noto Sans CJK SC', 'PingFang SC'],
+      fontFamily: fontFamily,
+      fontFamilyFallback: fontFallback,
       colorScheme: const ColorScheme.dark(
         primary: acid,
         onPrimary: background,
@@ -34,13 +36,22 @@ abstract final class GardenTheme {
     return base.copyWith(
       textTheme: base.textTheme.apply(bodyColor: ink, displayColor: ink),
       dividerTheme: const DividerThemeData(color: line, space: 1),
-      tooltipTheme: const TooltipThemeData(waitDuration: Duration(milliseconds: 350)),
+      tooltipTheme: const TooltipThemeData(
+        waitDuration: Duration(milliseconds: 350),
+      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size(48, 52),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            fontFamily: fontFamily,
+            fontFamilyFallback: fontFallback,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -49,20 +60,35 @@ abstract final class GardenTheme {
           foregroundColor: ink,
           side: const BorderSide(color: line),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
       ),
       snackBarTheme: const SnackBarThemeData(
         backgroundColor: elevated,
-        contentTextStyle: TextStyle(color: ink),
+        contentTextStyle: TextStyle(
+          color: ink,
+          fontFamily: fontFamily,
+          fontFamilyFallback: fontFallback,
+        ),
         behavior: SnackBarBehavior.floating,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: background,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: line)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: line)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: acid)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: line),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: acid),
+        ),
       ),
     );
   }
