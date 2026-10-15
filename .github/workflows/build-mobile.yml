@@ -136,7 +136,7 @@ jobs:
         working-directory: android
         run: |
           test -x ./gradlew
-          ./gradlew testReleaseUnitTest \
+          ./gradlew :app:testReleaseUnitTest \
             --tests io.github.dey410.gardendlessloader.game.FileTransferCursorTest \
             --tests io.github.dey410.gardendlessloader.game.FileCommitGateTest \
             --tests io.github.dey410.gardendlessloader.game.FileTransferRetainedFixtureTest \
@@ -436,7 +436,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ohos-bin"
 
           if [ "$(basename "$HVIGOR_BIN")" = "hvigorw" ]; then
-            ln -sf "$HVIGOR_BIN" "$RUNNER_TEMP/ohos-bin/hvigor"
+            printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$HVIGOR_BIN" > "$RUNNER_TEMP/ohos-bin/hvigor"
+            chmod +x "$RUNNER_TEMP/ohos-bin/hvigor"
           fi
 
           echo "$RUNNER_TEMP/ohos-bin" >> "$GITHUB_PATH"

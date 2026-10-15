@@ -83,3 +83,12 @@ Loader 一次 quality 门禁后构建三个平台，分别核对嵌入版本、�
 验证：Dart 格式与 flutter analyze 通过；六个现有 Node 检查通过；Android 全部生产 Kotlin 编译及 19 项相关检查通过；六个 Swift 模块与实际宿主类型检查及 36 项选定检查通过；鸿蒙 API12 签名检查通过；提取器原有 37 项检查全部通过、零跳过，包含实际 ASTC 编码与 alpha 解码；Actions YAML、shell 和产物汇总约束检查通过。独立复核没有发现行为或协议阻塞项。
 
 这些结果证明代码和构建链路的相应部分，不代表已完成 BGM、高怪物负载、FPS 或峰值内存的真机验收。Android Release APK 与未签名 iOS Release Runner.app 完整编译/链接成功，实际嵌入版本均为 0.9.0。Android 首次打包使用本机 Java26 在 Gradle 插件阶段失败，改用与 CI 相同的 JDK17 后通过，没有修改构建配置来规避检查。没有本机完整鸿蒙工具链，因此未构建 HAP；未安装或启动真机。
+
+
+## Actions 执行路径修复
+
+首次远程构建 [38704781347](https://github.com/Dey410/GardendlessLoader/actions/runs/38704781347) 的质量检查、Android APK 编译和 iOS IPA 生成成功，后续 Android 测试与鸿蒙工具启动失败。此前本地编译未覆盖这两条实际 CI 命令。
+
+Android 测试任务现在明确指定 `:app:testReleaseUnitTest`，避免应用类名筛选传播到第三方插件测试。相同八个应用测试类的 30 项检查通过；插件的生产编译依赖保留。
+
+鸿蒙的 `hvigor` 别名现在使用 `exec` 包装调用真实 `hvigorw`，避免符号链接让脚本按错误的 `$0` 目录寻找 `hvigorw.js`。临时目录夹具复现原错误并验证修复，含特殊字符的路径和参数原样保留；工作流 YAML、shell、失败传播和三端产物汇总约束检查通过。完整 HAP 结果须以修复提交对应的 Actions 为准。
