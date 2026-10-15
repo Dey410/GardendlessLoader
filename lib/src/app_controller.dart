@@ -237,7 +237,7 @@ class AppController extends ChangeNotifier {
     final activeDirectory = _importService.activeDirectory(paths, _manifest);
     _currentValidation = activeDirectory == null
         ? ResourceValidationResult.missing('尚未导入游戏资源')
-        : await _validator.validate(activeDirectory);
+        : await _validator.validate(activeDirectory, verifyContents: false);
     if (_currentValidation.isValid &&
         _manifest.resourceStatus == ResourceStatus.ready) {
       _currentValidation = _currentValidation.asReady();
@@ -774,7 +774,7 @@ class AppController extends ChangeNotifier {
     final activeDirectory = _importService.activeDirectory(paths, _manifest);
     _currentValidation = activeDirectory == null
         ? ResourceValidationResult.missing('尚未导入游戏资源')
-        : await _validator.validate(activeDirectory);
+        : await _validator.validate(activeDirectory, verifyContents: false);
     if (!_currentValidation.isValid) {
       _message = _currentValidation.errorMessage ?? '激活槽资源无效';
       notifyListeners();

@@ -1,15 +1,33 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models.dart';
 
+typedef _PackageScan = ({
+  String? packageId,
+  String? gameVersion,
+  bool? hasGpNext,
+  String? gpNextVersion,
+  ResourceStats stats,
+});
+
 class ResourceValidator {
-  Future<ResourceValidationResult> validate(Directory root) async {
+  /// Validates the resource tree at [root].
+  ///
+  /// With [verifyContents] every file is also opened and every indexed file
+  /// hashed, which reads the whole package; imports and recovery need that.
+  /// Startup and launch pass false and still re-check the layout, links,
+  /// metadata and indexed file sizes, so they stay fast on large packages.
+  Future<ResourceValidationResult> validate(
+    Directory root, {
+    bool verifyContents = true,
+  }) async {
     try {
-      return await _validate(root);
+      return await _validate(root, verifyContents: verifyContents);
     } on UnsupportedError catch (error) {
       return ResourceValidationResult.invalid(
           'host_abi_unsupported', error.message?.toString() ?? '资源包需要新版宿主');
@@ -22,7 +40,10 @@ class ResourceValidator {
     }
   }
 
-  Future<ResourceValidationResult> _validate(Directory root) async {
+  Future<ResourceValidationResult> _validate(
+    Directory root, {
+    required bool verifyContents,
+  }) async {
     if (!await root.exists()) {
       return ResourceValidationResult.missing('${root.path} 不存在');
     }
@@ -93,7 +114,10 @@ class ResourceValidator {
       return settingsResult;
     }
 
-    final package = await _validatePackage(root);
+    final package = await _validatePackageInBackground(
+      root.path,
+      verifyContents: verifyContents,
+    );
     if (package.hasGpNext != null && package.hasGpNext != gpNext.detected) {
       throw const FormatException('资源包 GP-Next 标记与内容不一致');
     }
@@ -118,14 +142,24 @@ class ResourceValidator {
   static const _maxManifestBytes = 64 * 1024;
   static const _maxIndexBytes = 32 * 1024 * 1024;
 
-  Future<
-      ({
-        String? packageId,
-        String? gameVersion,
-        bool? hasGpNext,
-        String? gpNextVersion,
-        ResourceStats stats,
-      })> _validatePackage(Directory root) async {
+  // Thousands of per-file calls run synchronously on a background isolate:
+  // far cheaper than awaiting each one, and the UI stays smooth. Static, so
+  // the closure sends only the path and the flag to the isolate.
+  static Future<_PackageScan> _validatePackageInBackground(
+    String rootPath, {
+    required bool verifyContents,
+  }) =>
+      Isolate.run(
+        () => ResourceValidator()._validatePackage(
+          Directory(rootPath),
+          verifyContents: verifyContents,
+        ),
+      );
+
+  Future<_PackageScan> _validatePackage(
+    Directory root, {
+    required bool verifyContents,
+  }) async {
     final marker = Directory(p.join(root.path, '__gardendless'));
     final indexed =
         await FileSystemEntity.type(marker.path, followLinks: false) !=
@@ -133,10 +167,10 @@ class ResourceValidator {
     final payload = <String, ({File file, int sizeBytes})>{};
     var fileCount = 0;
     var totalBytes = 0;
-    await for (final entity in root.list(recursive: true, followLinks: false)) {
+    for (final entity in root.listSync(recursive: true, followLinks: false)) {
       final relative =
           p.posix.joinAll(p.split(p.relative(entity.path, from: root.path)));
-      final type = await FileSystemEntity.type(entity.path, followLinks: false);
+      final type = FileSystemEntity.typeSync(entity.path, followLinks: false);
       if (type != FileSystemEntityType.directory &&
           type != FileSystemEntityType.file) {
         if (indexed) throw const FormatException('资源包含链接或非普通文件');
@@ -149,14 +183,13 @@ class ResourceValidator {
         throw const FormatException('资源包保留目录含额外文件');
       }
       final file = File(entity.path);
-      final sizeBytes = await file.length();
+      final sizeBytes = file.lengthSync();
       fileCount++;
       totalBytes += sizeBytes;
       if (indexed) {
         payload[relative] = (file: file, sizeBytes: sizeBytes);
-      } else {
-        final handle = await file.open(mode: FileMode.read);
-        await handle.close();
+      } else if (verifyContents) {
+        file.openSync(mode: FileMode.read).closeSync();
       }
     }
     final stats = ResourceStats(fileCount: fileCount, totalBytes: totalBytes);
@@ -270,8 +303,9 @@ class ResourceValidator {
       final file = payload.remove(path);
       if (file == null ||
           file.sizeBytes != entry['sizeBytes'] ||
-          (await sha256.bind(file.file.openRead()).first).toString() !=
-              entry['sha256']) {
+          (verifyContents &&
+              (await sha256.bind(file.file.openRead()).first).toString() !=
+                  entry['sha256'])) {
         throw const FormatException('资源文件大小或摘要不匹配');
       }
     }
