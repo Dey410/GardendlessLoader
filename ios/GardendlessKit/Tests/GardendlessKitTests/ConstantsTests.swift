@@ -5,14 +5,12 @@ import XCTest
 @testable import GardendlessResource
 
 final class ConstantsTests: XCTestCase {
-  func testResourceOriginAndMethods() {
-    XCTAssertEqual(ResourceConstants.origin, "gardendless-game://localhost")
+  func testResourceMethods() {
     XCTAssertEqual(ResourceConstants.allowedMethods, ["GET", "HEAD"])
   }
 
   func testBridgeLimits() {
     XCTAssertEqual(BridgeConstants.maxMessageBytes, 1024 * 1024)
-    XCTAssertEqual(BridgeConstants.userInteractionTimeout, 5 * 60)
   }
 
   func testZipLimits() {
@@ -22,10 +20,6 @@ final class ConstantsTests: XCTestCase {
 
   func testGpNextConstants() {
     XCTAssertEqual(GpNextConstants.appDataBaseDirectoryID, 14)
-    XCTAssertEqual(
-      GpNextConstants.allowedImportExtensions,
-      ["zip", "json", "json5"]
-    )
   }
 
 }

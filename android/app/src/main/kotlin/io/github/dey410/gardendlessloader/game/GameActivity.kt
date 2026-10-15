@@ -136,7 +136,6 @@ class GameActivity : Activity() {
         val config = JSONObject()
             .put("hostAbi", 1)
             .put("platform", "android")
-            .put("touchAdapter", "javascript")
             .put("touchWheelCssMultiplier", -4.5)
             .put("touchDiagnosticsEnabled", false)
             .put("origin", session.origin)

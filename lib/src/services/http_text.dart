@@ -4,12 +4,6 @@ import 'dart:io';
 
 import '../constants.dart';
 
-typedef HttpTextLoader = Future<HttpTextResponse> Function(
-  Uri uri,
-  Duration timeout,
-  int maxBytes,
-);
-
 class HttpTextResponse {
   const HttpTextResponse({required this.statusCode, required this.body});
 

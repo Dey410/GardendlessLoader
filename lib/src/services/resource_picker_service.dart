@@ -4,20 +4,8 @@ import 'package:flutter/services.dart';
 
 import '../models.dart';
 
-typedef MobileZipImporter = Future<String?> Function({
-  required String targetDirectory,
-  ImportProgressCallback? onProgress,
-});
-
 class ResourcePickerService {
-  ResourcePickerService({
-    String? platformName,
-    MobileZipImporter? mobileZipImporter,
-  })  : _platformName = platformName ?? Platform.operatingSystem,
-        _mobileZipImporter = mobileZipImporter ?? _pickAndExtractMobileDocsZip;
-
-  final String _platformName;
-  final MobileZipImporter _mobileZipImporter;
+  final String _platformName = Platform.operatingSystem;
 
   static const MethodChannel _mobileZipImporterChannel = MethodChannel(
     'io.github.dey410.gardendlessloader/resource_zip_importer',
@@ -42,7 +30,7 @@ class ResourcePickerService {
     }
 
     try {
-      final extractedPath = await _mobileZipImporter(
+      final extractedPath = await _pickAndExtractMobileDocsZip(
         targetDirectory: targetDirectory.path,
         onProgress: onProgress,
       );

@@ -1,13 +1,6 @@
 import '../models.dart';
 
-typedef ImportProgressClock = DateTime Function();
-
 class ImportProgressMeter {
-  ImportProgressMeter({ImportProgressClock? clock})
-      : _clock = clock ?? DateTime.now;
-
-  final ImportProgressClock _clock;
-
   DateTime? _startedAt;
   DateTime? _lastSampleAt;
   ImportPhase? _lastPhase;
@@ -15,7 +8,7 @@ class ImportProgressMeter {
   double _smoothedBytesPerSecond = 0;
 
   ImportProgress measure(ImportProgress progress) {
-    final now = _clock();
+    final now = DateTime.now();
     final startedAt = _startedAt ??= now;
     final phaseChanged = progress.phase != _lastPhase;
     final lastSampleAt = _lastSampleAt;

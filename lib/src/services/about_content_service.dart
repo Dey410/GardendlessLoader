@@ -8,31 +8,8 @@ import '../constants.dart';
 import 'http_text.dart';
 import '../models.dart';
 
-typedef AboutContentHttpLoader = HttpTextLoader;
-
-typedef AboutContentJsonLoader = Future<String> Function();
-
-typedef AboutContentHttpResponse = HttpTextResponse;
-
 class AboutContentService {
-  AboutContentService({
-    String remoteUrl = remoteAboutContentUrl,
-    Duration timeout = aboutContentTimeout,
-    int maxBytes = aboutContentMaxBytes,
-    AboutContentHttpLoader? loader,
-    AboutContentJsonLoader? bundledJsonLoader,
-  })  : _remoteUri = Uri.parse(remoteUrl),
-        _timeout = timeout,
-        _maxBytes = maxBytes,
-        _loader = loader ?? loadHttpText,
-        _bundledJsonLoader = bundledJsonLoader ??
-            (() => rootBundle.loadString('about_content.json'));
-
-  final Uri _remoteUri;
-  final Duration _timeout;
-  final int _maxBytes;
-  final AboutContentHttpLoader _loader;
-  final AboutContentJsonLoader _bundledJsonLoader;
+  static final Uri _remoteUri = Uri.parse(remoteAboutContentUrl);
 
   Future<AboutContent> refreshContent({required File cacheFile}) async {
     final currentContent = await _loadLocalContent(cacheFile);
@@ -53,8 +30,8 @@ class AboutContentService {
       return cachedContent;
     }
 
-    final content =
-        AboutContent.fromJson(jsonDecode(await _bundledJsonLoader()));
+    final content = AboutContent.fromJson(
+        jsonDecode(await rootBundle.loadString('about_content.json')));
     await cacheFile.parent.create(recursive: true);
     await cacheFile.writeAsString(jsonEncode(content.toJson()));
     return content;
@@ -73,8 +50,11 @@ class AboutContentService {
 
   Future<AboutContent?> _loadRemoteContent() async {
     try {
-      final response =
-          await _loader(_remoteUri, _timeout, _maxBytes).timeout(_timeout);
+      final response = await loadHttpText(
+        _remoteUri,
+        aboutContentTimeout,
+        aboutContentMaxBytes,
+      ).timeout(aboutContentTimeout);
       if (response.statusCode != HttpStatus.ok) {
         return null;
       }

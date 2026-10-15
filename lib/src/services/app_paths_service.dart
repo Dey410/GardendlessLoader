@@ -8,29 +8,11 @@ import '../models.dart';
 
 const _androidMediaIgnoreFileName = '.nomedia';
 
-typedef DirectoryProvider = Future<Directory> Function();
-typedef NullableDirectoryProvider = Future<Directory?> Function();
-
 class AppPathsService {
-  AppPathsService({
-    Directory? rootOverride,
-    String? platformName,
-    DirectoryProvider? documentsDirectoryProvider,
-    NullableDirectoryProvider? externalStorageDirectoryProvider,
-  })  : _rootOverride = rootOverride,
-        _platformName = platformName ?? Platform.operatingSystem,
-        _documentsDirectoryProvider =
-            documentsDirectoryProvider ?? getApplicationDocumentsDirectory,
-        _externalStorageDirectoryProvider =
-            externalStorageDirectoryProvider ?? getExternalStorageDirectory;
-
-  final Directory? _rootOverride;
-  final String _platformName;
-  final DirectoryProvider _documentsDirectoryProvider;
-  final NullableDirectoryProvider _externalStorageDirectoryProvider;
+  final String _platformName = Platform.operatingSystem;
 
   Future<AppPaths> ensureInitialized() async {
-    final root = _rootOverride ?? await _defaultRoot();
+    final root = await _defaultRoot();
     final paths = _buildPaths(root);
     await _createPaths(paths);
     return paths;
@@ -56,19 +38,19 @@ class AppPathsService {
 
   Future<Directory> _defaultRoot() async {
     if (_platformName == 'ios' || _platformName == 'ohos') {
-      final documents = await _documentsDirectoryProvider();
+      final documents = await getApplicationDocumentsDirectory();
       return Directory(p.join(documents.path, resourceFolderName));
     }
 
     if (_platformName == 'android') {
-      final external = await _externalStorageDirectoryProvider();
+      final external = await getExternalStorageDirectory();
       if (external != null) {
         return Directory(p.join(external.path, resourceFolderName));
       }
     }
 
     if (_platformName == 'android') {
-      final documents = await _documentsDirectoryProvider();
+      final documents = await getApplicationDocumentsDirectory();
       return Directory(p.join(documents.path, resourceFolderName));
     }
 

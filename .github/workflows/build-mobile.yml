@@ -144,7 +144,6 @@ jobs:
             --tests io.github.dey410.gardendlessloader.game.ExportDocumentSpecTest \
             --tests io.github.dey410.gardendlessloader.game.GpNextPathContractTest \
             --tests io.github.dey410.gardendlessloader.game.GameViewportSizeTest \
-            --tests io.github.dey410.gardendlessloader.game.ReferenceNativeTouchStateMachineTest \
             --tests io.github.dey410.gardendlessloader.DocumentPickerOrientationPolicyTest
 
       - name: Verify APK version

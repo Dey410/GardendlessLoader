@@ -209,7 +209,6 @@ struct GamePage {
     const config = JSON.stringify({
       hostAbi: 1,
       platform: 'ohos',
-      touchAdapter: 'javascript',
       touchWheelCssMultiplier: -4.5,
       touchDiagnosticsEnabled: false,
       origin: GameSession.ORIGIN,

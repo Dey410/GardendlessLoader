@@ -6,30 +6,16 @@ import '../constants.dart';
 import 'http_text.dart';
 import '../models.dart';
 
-typedef AnnouncementHttpLoader = HttpTextLoader;
-
-typedef AnnouncementHttpResponse = HttpTextResponse;
-
 class AnnouncementService {
-  AnnouncementService({
-    String remoteUrl = remoteAnnouncementUrl,
-    Duration timeout = announcementTimeout,
-    int maxBytes = announcementMaxBytes,
-    AnnouncementHttpLoader? loader,
-  })  : _remoteUri = Uri.parse(remoteUrl),
-        _timeout = timeout,
-        _maxBytes = maxBytes,
-        _loader = loader ?? loadHttpText;
-
-  final Uri _remoteUri;
-  final Duration _timeout;
-  final int _maxBytes;
-  final AnnouncementHttpLoader _loader;
+  static final Uri _remoteUri = Uri.parse(remoteAnnouncementUrl);
 
   Future<Announcement?> fetchCurrentAnnouncement() async {
     try {
-      final response =
-          await _loader(_remoteUri, _timeout, _maxBytes).timeout(_timeout);
+      final response = await loadHttpText(
+        _remoteUri,
+        announcementTimeout,
+        announcementMaxBytes,
+      ).timeout(announcementTimeout);
       if (response.statusCode != HttpStatus.ok) {
         return null;
       }

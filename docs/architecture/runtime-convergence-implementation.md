@@ -6,7 +6,7 @@
 
 | 功能入口 | 唯一实现/数据归属 | 本次收敛 |
 | --- | --- | --- |
-| Dart `GameHost.launch(session)` | `MethodChannelGameHost` → 当前平台宿主 | 去除没有选择作用的 Router；只传小型会话参数，不传游戏字节 |
+| Dart `MethodChannelGameHost.launch(session)` | `MethodChannelGameHost` → 当前平台宿主 | 去除没有选择作用的 Router；只传小型会话参数，不传游戏字节 |
 | 资源检查 `ResourceValidator.validate(root)` | Validator 返回版本、包身份、兼容事实及 stats | 入口、自检及统计合并；新包摘要检查复用同一次目录遍历取得的大小 |
 | 导入激活 | `ImportService` + 原子 manifest | 成功结果直接更新 controller；统计来自 validation；恢复记录移到槽外，不污染包索引 |
 | 四类远程正文读取 | `loadHttpText` | 一次有界 UTF-8 正文读取与关闭；服务各自保留业务解释规则 |
@@ -69,3 +69,17 @@ Loader 一次 quality 门禁后构建三个平台，分别核对嵌入版本、�
 用户替换旧删除规则并明确授权后，已删除四个停用占位文件：`assets/game_bridge/bootstrap.js`、`assets/game_bridge/gp_next_core.js`、`assets/game_bridge/gp_next_compat_bridge.js`、`lib/src/services/resource_self_check.dart`。桥接测试只加载实际的`transport.js`，自检测试继续覆盖`ResourceValidator`；历史审计链接固定到改造前的Git基线。工作区清理仅删除这四个文件；测试自行清理其生成的临时夹具。
 
 完整测试中发现版本缓存的已完成Future跨异步zone复用问题：现只保留在途Future，完成后缓存字符串，保持安装版本只读取一次。新增跨zone回归及必需入口夹具后，所有246项Flutter测试通过，UI源码未改。
+
+## 2026-10-15 无用代码清理
+
+用户确认两个项目一起清理，保留现有行为、UI、Android/iOS/纯血鸿蒙、资源包协议及一键发包；明确删除已退出构建的历史转码工具。
+
+- Dart 删除没有生产消费者的内存日志实现、Session 复制/值比较、小型 getter 和旧测试注入参数；启动直接使用唯一的 MethodChannelGameHost。入口传入的原生日志、同一个资源 validator、导入事务、Wakelock 恢复及默认请求/计时参数保留。
+- Android 删除未实例化的原生鼠标 WebView/状态机；iOS 删除仅测试调用的 HealthProbe、无调用批量包装和常量；鸿蒙删除未注册空选择器插件及未使用 Ability 别名。对应专用检查与 CI 引用一起删除。
+- 共享触摸只保留三平台原本固定使用的帧同步路径，删除即时派发分支和无选择作用的配置字段；保留种植、拖放、多指、取消和 DOM 归属检查。
+- 提取项目删除 transcode-assets.sh、未使用常量和 step output。ASTC 只读取 16 字节头并用同一文件描述符的 fstat 核对长度；编码成功后的重复检查循环删除，编码器、包组装、ZIP 封存边界的有效校验保留。音频候选读取和包预算扫描减少重复 I/O。
+- UI/入口、Session JSON、manifest 存储、资源 validator、原有未跟踪设计文档和 .DS_Store 不变；没有新增依赖、抽象层或 Flutter 测试。
+
+验证：Dart 格式与 flutter analyze 通过；六个现有 Node 检查通过；Android 全部生产 Kotlin 编译及 19 项相关检查通过；六个 Swift 模块与实际宿主类型检查及 36 项选定检查通过；鸿蒙 API12 签名检查通过；提取器原有 37 项检查全部通过、零跳过，包含实际 ASTC 编码与 alpha 解码；Actions YAML、shell 和产物汇总约束检查通过。独立复核没有发现行为或协议阻塞项。
+
+这些结果证明代码和构建链路的相应部分，不代表已完成 BGM、高怪物负载、FPS 或峰值内存的真机验收。Android Release APK 与未签名 iOS Release Runner.app 完整编译/链接成功，实际嵌入版本均为 0.9.0。Android 首次打包使用本机 Java26 在 Gradle 插件阶段失败，改用与 CI 相同的 JDK17 后通过，没有修改构建配置来规避检查。没有本机完整鸿蒙工具链，因此未构建 HAP；未安装或启动真机。

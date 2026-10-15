@@ -24,77 +24,22 @@ import 'services/resource_validator.dart';
 import 'services/resource_picker_service.dart';
 import 'services/update_check_service.dart';
 
-typedef ImportAwakeModeSetter = Future<void> Function(bool enabled);
-typedef ImportAwakeModeGetter = Future<bool> Function();
-typedef ImportCompletionTimerFactory = Timer Function(
-  Duration duration,
-  void Function() callback,
-);
-
 //AppController 是整个应用的核心控制器，负责管理应用的状态、处理业务逻辑，并与 UI 进行交互。它使用 ChangeNotifier 来通知 UI 更新。
 class AppController extends ChangeNotifier {
-  AppController({
-    AppPathsService? pathsService,
-    ResourceValidator? validator,
-    ImportService? importService,
-    GameHost? gameHost,
-    GameHostPlatform? gameHostPlatform,
-    String Function()? gameSessionIdFactory,
-    AppLogger? appLogger,
-    AnnouncementService? announcementService,
-    AboutContentService? aboutContentService,
-    UpdateCheckService? updateCheckService,
-    GameUpdateCheckService? gameUpdateCheckService,
-    ResourcePickerService? resourcePickerService,
-    ImportAwakeModeGetter? importAwakeModeGetter,
-    ImportAwakeModeSetter? importAwakeModeSetter,
-    ImportCompletionTimerFactory? importCompletionTimerFactory,
-    Duration importCompletionVisibilityDuration = const Duration(seconds: 2),
-    Duration importProgressTickInterval = const Duration(seconds: 1),
-  })  : _pathsService = pathsService ?? AppPathsService(),
-        _validator = validator ?? ResourceValidator(),
-        _gameHost = gameHost ?? const MethodChannelGameHost(),
-        _gameHostPlatform = gameHostPlatform,
-        _gameSessionIdFactory = gameSessionIdFactory ?? _newGameSessionId,
-        _appLogger = appLogger,
-        _announcementService = announcementService ?? AnnouncementService(),
-        _aboutContentService = aboutContentService ?? AboutContentService(),
-        _updateCheckService = updateCheckService ?? UpdateCheckService(),
-        _gameUpdateCheckService =
-            gameUpdateCheckService ?? GameUpdateCheckService(),
-        _resourcePickerService =
-            resourcePickerService ?? ResourcePickerService(),
-        _importAwakeModeGetter =
-            importAwakeModeGetter ?? _defaultImportAwakeModeGetter,
-        _importAwakeModeSetter =
-            importAwakeModeSetter ?? _defaultImportAwakeModeSetter,
-        _importCompletionTimerFactory =
-            importCompletionTimerFactory ?? Timer.new,
-        _importCompletionVisibilityDuration =
-            importCompletionVisibilityDuration,
-        _importProgressTickInterval = importProgressTickInterval {
-    _importService = importService ??
-        ImportService(
-          validator: _validator,
-        );
+  AppController({required AppLogger appLogger}) : _appLogger = appLogger {
+    _importService = ImportService(validator: _validator);
   }
 
-  final AppPathsService _pathsService;
-  final ResourceValidator _validator;
-  final GameHost _gameHost;
-  final GameHostPlatform? _gameHostPlatform;
-  final String Function() _gameSessionIdFactory;
-  final AppLogger? _appLogger;
-  final AnnouncementService _announcementService;
-  final AboutContentService _aboutContentService;
-  final UpdateCheckService _updateCheckService;
-  final GameUpdateCheckService _gameUpdateCheckService;
-  final ResourcePickerService _resourcePickerService;
-  final ImportAwakeModeGetter _importAwakeModeGetter;
-  final ImportAwakeModeSetter _importAwakeModeSetter;
-  final ImportCompletionTimerFactory _importCompletionTimerFactory;
-  final Duration _importCompletionVisibilityDuration;
-  final Duration _importProgressTickInterval;
+  final AppPathsService _pathsService = AppPathsService();
+  final ResourceValidator _validator = ResourceValidator();
+  final MethodChannelGameHost _gameHost = const MethodChannelGameHost();
+  final AppLogger _appLogger;
+  final AnnouncementService _announcementService = AnnouncementService();
+  final AboutContentService _aboutContentService = AboutContentService();
+  final UpdateCheckService _updateCheckService = UpdateCheckService();
+  final GameUpdateCheckService _gameUpdateCheckService =
+      GameUpdateCheckService();
+  final ResourcePickerService _resourcePickerService = ResourcePickerService();
   late final ImportService _importService;
   ImportProgressMeter? _importProgressMeter;
   Timer? _importCompletionTimer;
@@ -140,10 +85,7 @@ class AppController extends ChangeNotifier {
   String? get message => _message;
   AppLogSnapshot? get logSnapshot => _logSnapshot;
   bool get logSnapshotLoading => _logSnapshotLoading;
-  AppPaths? get paths => _paths;
   ResourceManifest get manifest => _manifest;
-  ResourceValidationResult get currentValidation => _currentValidation;
-  ResourceValidationResult get importValidation => _importValidation;
   ImportProgress get importProgress => _importProgress;
   Announcement? get announcement => _announcement;
   AboutContent get aboutContent => _aboutContent;
@@ -159,13 +101,7 @@ class AppController extends ChangeNotifier {
   ThemePreference get themePreference => _appSettings.themePreference;
   bool get reduceMotion => _appSettings.reduceMotion;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
-  GameHostPlatform get gameHostPlatform {
-    final configured = _gameHostPlatform;
-    if (configured != null) {
-      return configured;
-    }
-    return GameHostPlatform.current();
-  }
+  GameHostPlatform get gameHostPlatform => GameHostPlatform.current();
 
   bool get isImporting =>
       _importProgress.phase != ImportPhase.idle &&
@@ -179,7 +115,6 @@ class AppController extends ChangeNotifier {
   String? get gpNextCompatibilityError =>
       _currentValidation.gpNextCompatibilityError ??
       _manifest.gpNextCompatibilityError;
-  bool get hasValidImportSource => _importValidation.isValid;
   bool get canStartGame => hasCurrentResource;
 
   String get detectedTitle =>
@@ -215,7 +150,7 @@ class AppController extends ChangeNotifier {
         final recoveryOperationId =
             interruptedTransaction ? _newOperationId('import-recovery') : null;
         if (interruptedTransaction) {
-          _appLogger?.emit(
+          _appLogger.emit(
             level: LogLevel.warn,
             category: 'resource.import',
             event: 'import_transaction_recovery_started',
@@ -233,7 +168,7 @@ class AppController extends ChangeNotifier {
             manifestStore: _manifestStore!,
           );
           if (interruptedTransaction) {
-            _appLogger?.emit(
+            _appLogger.emit(
               level: LogLevel.info,
               category: 'resource.import',
               event: 'import_transaction_recovery_finished',
@@ -250,7 +185,7 @@ class AppController extends ChangeNotifier {
             );
           }
         } catch (error, stackTrace) {
-          _appLogger?.emit(
+          _appLogger.emit(
             level: LogLevel.error,
             category: 'resource.import',
             event: 'import_transaction_recovery_finished',
@@ -278,18 +213,14 @@ class AppController extends ChangeNotifier {
         _initialized = true;
       }
 
-      final operation = _appLogger?.startOperation(
+      final operation = _appLogger.startOperation(
         operationId: 'app-initialize',
         category: 'app.lifecycle',
         startedEvent: 'app_initialization_started',
         finishedEvent: 'app_initialization_finished',
         failureCode: 'app_initialization_failed',
       );
-      if (operation == null) {
-        await initializeCore();
-      } else {
-        await operation.run(initializeCore);
-      }
+      await operation.run(initializeCore);
     } catch (error) {
       _message = '启动失败：$error';
     } finally {
@@ -500,7 +431,7 @@ class AppController extends ChangeNotifier {
     _activeImportOperationId = operationId;
     _lastImportProgressLogAt = null;
     final importStopwatch = Stopwatch()..start();
-    _appLogger?.emit(
+    _appLogger.emit(
       level: LogLevel.info,
       category: 'resource.import',
       event: 'resource_import_started',
@@ -516,7 +447,7 @@ class AppController extends ChangeNotifier {
         paths: paths,
         manifestStore: manifestStore,
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_import_target_prepared',
@@ -526,7 +457,7 @@ class AppController extends ChangeNotifier {
       );
       _message = '正在打开系统文件选择器';
       notifyListeners();
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_import_picker_started',
@@ -538,7 +469,7 @@ class AppController extends ChangeNotifier {
         onProgress: _updateImportProgress,
       );
       if (selectedSource == null) {
-        _appLogger?.emit(
+        _appLogger.emit(
           level: LogLevel.info,
           category: 'resource.import',
           event: 'resource_import_picker_finished',
@@ -552,7 +483,7 @@ class AppController extends ChangeNotifier {
         );
         importTarget = null;
         _message = '已取消选择 ZIP';
-        _appLogger?.emit(
+        _appLogger.emit(
           level: LogLevel.info,
           category: 'resource.import',
           event: 'resource_import_finished',
@@ -564,7 +495,7 @@ class AppController extends ChangeNotifier {
         return;
       }
 
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_import_picker_finished',
@@ -577,7 +508,7 @@ class AppController extends ChangeNotifier {
       _updateImportProgress(
         const ImportProgress(phase: ImportPhase.validating, message: '正在校验资源'),
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.validation',
         event: 'resource_validation_started',
@@ -592,7 +523,7 @@ class AppController extends ChangeNotifier {
         onProgress: _updateImportProgress,
       );
       importTarget = null;
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.validation',
         event: 'resource_validation_finished',
@@ -605,7 +536,7 @@ class AppController extends ChangeNotifier {
           'gpNextVersion': _manifest.gpNextVersion ?? 'none',
         },
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_slot_activated',
@@ -643,7 +574,7 @@ class AppController extends ChangeNotifier {
       }
       await _checkGameForUpdate(reuseLatestVersion: true);
       _scheduleCompletedProgressReset();
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_import_finished',
@@ -658,7 +589,7 @@ class AppController extends ChangeNotifier {
         },
       );
     } on ResourcePickerFailure catch (failure) {
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.import',
         event: 'resource_import_picker_finished',
@@ -679,7 +610,7 @@ class AppController extends ChangeNotifier {
       _updateImportProgress(
         ImportProgress(phase: ImportPhase.failed, message: failure.message),
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.import',
         event: 'resource_import_finished',
@@ -693,7 +624,7 @@ class AppController extends ChangeNotifier {
     } on ImportFailure catch (failure) {
       _message = failure.message;
       await refresh();
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.validation',
         event: 'resource_validation_finished',
@@ -704,7 +635,7 @@ class AppController extends ChangeNotifier {
         error: failure,
         stackTrace: StackTrace.current,
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.import',
         event: 'resource_import_finished',
@@ -728,7 +659,7 @@ class AppController extends ChangeNotifier {
         ImportProgress(phase: ImportPhase.failed, message: _message),
       );
       await refresh();
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.import',
         event: 'resource_import_finished',
@@ -758,7 +689,7 @@ class AppController extends ChangeNotifier {
     if (lastLogAt == null ||
         now.difference(lastLogAt) >= const Duration(seconds: 1)) {
       _lastImportProgressLogAt = now;
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.debug,
         category: 'resource.import',
         event: 'resource_import_progress',
@@ -778,7 +709,7 @@ class AppController extends ChangeNotifier {
 
   void _startImportProgressTicker() {
     _importProgressTickTimer?.cancel();
-    _importProgressTickTimer = Timer.periodic(_importProgressTickInterval, (_) {
+    _importProgressTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (isImporting) {
         _updateImportProgress(_importProgress);
       }
@@ -796,7 +727,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> _setImportAwakeMode(bool enabled) async {
     try {
-      await _importAwakeModeSetter(enabled);
+      await (enabled ? WakelockPlus.enable() : WakelockPlus.disable());
     } catch (_) {
       // Import progress remains functional when a platform cannot toggle wakelock.
     }
@@ -805,7 +736,7 @@ class AppController extends ChangeNotifier {
   Future<bool> _keepScreenAwakeForImport() async {
     var alreadyEnabled = false;
     try {
-      alreadyEnabled = await _importAwakeModeGetter();
+      alreadyEnabled = await WakelockPlus.enabled;
     } catch (_) {
       // Query failures fall back to the normal enable/disable import lifecycle.
     }
@@ -816,18 +747,10 @@ class AppController extends ChangeNotifier {
     return true;
   }
 
-  static Future<bool> _defaultImportAwakeModeGetter() {
-    return WakelockPlus.enabled;
-  }
-
-  static Future<void> _defaultImportAwakeModeSetter(bool enabled) {
-    return enabled ? WakelockPlus.enable() : WakelockPlus.disable();
-  }
-
   void _scheduleCompletedProgressReset() {
     _importCompletionTimer?.cancel();
-    _importCompletionTimer = _importCompletionTimerFactory(
-      _importCompletionVisibilityDuration,
+    _importCompletionTimer = Timer(
+      const Duration(seconds: 2),
       () {
         if (_importProgress.phase != ImportPhase.completed) {
           return;
@@ -855,7 +778,7 @@ class AppController extends ChangeNotifier {
     if (!_currentValidation.isValid) {
       _message = _currentValidation.errorMessage ?? '激活槽资源无效';
       notifyListeners();
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'game.host',
         event: 'game_host_launch_finished',
@@ -868,7 +791,7 @@ class AppController extends ChangeNotifier {
     final exportRoot = Directory(p.join(paths.gpNextDir.path, '.exports'));
     await exportRoot.create(recursive: true);
     final session = GameSession(
-      sessionId: _gameSessionIdFactory(),
+      sessionId: _newGameSessionId(),
       packageId: _currentValidation.packageId,
       resourceRoot: activeDirectory!.path,
       platform: gameHostPlatform,
@@ -894,7 +817,7 @@ class AppController extends ChangeNotifier {
       await _gameHost.launch(session);
     }
 
-    final operation = _appLogger?.startOperation(
+    final operation = _appLogger.startOperation(
       operationId: _newOperationId('game-launch'),
       category: 'game.host',
       startedEvent: 'game_host_launch_started',
@@ -902,18 +825,14 @@ class AppController extends ChangeNotifier {
       failureCode: 'game_host_launch_failed',
       gameSessionId: session.sessionId,
     );
-    if (operation == null) {
-      await launch();
-    } else {
-      await operation.run(launch);
-    }
+    await operation.run(launch);
   }
 
   static String _newOperationId(String prefix) =>
       '$prefix-${DateTime.now().toUtc().microsecondsSinceEpoch}';
 
   void _emitInitializationStage(String stage) {
-    _appLogger?.emit(
+    _appLogger.emit(
       level: LogLevel.debug,
       category: 'app.lifecycle',
       event: 'app_initialization_stage_changed',
@@ -936,14 +855,13 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refreshLogs() async {
-    final logger = _appLogger;
-    if (logger == null || _logSnapshotLoading) {
+    if (_logSnapshotLoading) {
       return;
     }
     _logSnapshotLoading = true;
     notifyListeners();
     try {
-      _logSnapshot = await logger.loadSnapshot();
+      _logSnapshot = await _appLogger.loadSnapshot();
     } finally {
       _logSnapshotLoading = false;
       notifyListeners();
@@ -951,11 +869,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> deleteLogHistory() async {
-    final logger = _appLogger;
-    if (logger == null) {
-      return;
-    }
-    await logger.deleteHistory();
+    await _appLogger.deleteHistory();
     await refreshLogs();
   }
 
@@ -1013,11 +927,6 @@ class AppController extends ChangeNotifier {
       buffer.writeln(jsonEncode(event));
     }
     return buffer.toString();
-  }
-
-  void clearMessage() {
-    _message = null;
-    notifyListeners();
   }
 
   Future<void> setWatermarkEnabled(bool enabled) {

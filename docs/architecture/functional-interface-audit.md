@@ -1,5 +1,7 @@
 # 实际功能、唯一实现与数据流审计
 
+本文件是下述 Git 基线的历史审计，不代表当前待办。2026-10-15 的运行时收敛和无用代码清理已经实施；当前归属与验证结果见[实施记录](runtime-convergence-implementation.md)。
+
 日期：2026-10-14。权威基线：当前工作树`b6152704b22e2137efa4da1a542f76c6eb896ca8`；关联提取项目`codex/dom-metadata-preload@1ffb59b061761ccee1592097abc78c63fc9a6bda`。当前UI保持，Android、iOS、纯血鸿蒙完整保留；两仓各自的一键Actions保留。
 
 本文件区分**当前真实实现**、**冗余证据**与**收敛决定**。本轮只审计源码和修订文档，没有重构生产代码或执行文件删除。行号对应上述基线；来源代号在第11节给出可点击文件链接。
@@ -431,8 +433,8 @@ BGM持续播放与短音效低延迟是两种不同资源使用要求，不把�
 | A5 | [GameResourceResolver.kt](../../android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameResourceResolver.kt:30) |
 | A6 | [GameChromeClient.kt](../../android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameChromeClient.kt:12) |
 | A7 | [AppLogStore.kt](../../android/app/src/main/kotlin/io/github/dey410/gardendlessloader/logging/AppLogStore.kt:57) |
-| A8 | [MouseGameWebView.kt](../../android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/MouseGameWebView.kt:1) |
-| A9 | [ReferenceNativeTouchStateMachine.kt](../../android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/ReferenceNativeTouchStateMachine.kt:1) |
+| A8 | [MouseGameWebView.kt](https://github.com/Dey410/GardendlessLoader/blob/b6152704b22e2137efa4da1a542f76c6eb896ca8/android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/MouseGameWebView.kt#L1) |
+| A9 | [ReferenceNativeTouchStateMachine.kt](https://github.com/Dey410/GardendlessLoader/blob/b6152704b22e2137efa4da1a542f76c6eb896ca8/android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/ReferenceNativeTouchStateMachine.kt#L1) |
 
 ### iOS
 
@@ -450,7 +452,7 @@ BGM持续播放与短音效低延迟是两种不同资源使用要求，不把�
 | I9 | [GpNextPackageImporter.swift](../../ios/GardendlessKit/Sources/GardendlessGPNext/GpNextPackageImporter.swift:11) |
 | I10 | [AudioResourceCache.swift](../../ios/GardendlessKit/Sources/GardendlessResource/AudioResourceCache.swift:3) |
 | I11 | [ResourceSchemeHandler.swift](../../ios/GardendlessKit/Sources/GardendlessResource/ResourceSchemeHandler.swift:26) |
-| I12 | [HealthProbe.swift](../../ios/GardendlessKit/Sources/GardendlessCore/HealthProbe.swift:13) |
+| I12 | [HealthProbe.swift](https://github.com/Dey410/GardendlessLoader/blob/b6152704b22e2137efa4da1a542f76c6eb896ca8/ios/GardendlessKit/Sources/GardendlessCore/HealthProbe.swift#L13) |
 | I13 | [GameConfiguration.swift](../../ios/GardendlessKit/Sources/GardendlessCore/GameConfiguration.swift:12) |
 | I14 | [BridgeConstants.swift](../../ios/GardendlessKit/Sources/GardendlessBridge/BridgeConstants.swift:3) |
 
@@ -466,7 +468,7 @@ BGM持续播放与短音效低延迟是两种不同资源使用要求，不把�
 | O5 | [GamePage.ets](../../ohos/entry/src/main/ets/pages/GamePage.ets:30) |
 | O6 | [AppLogStore.ets](../../ohos/entry/src/main/ets/logging/AppLogStore.ets:186) |
 | O7 | [GpNextNativeCore.ets](../../ohos/entry/src/main/ets/game/GpNextNativeCore.ets:104) |
-| O8 | [DocumentPickerPlugin.ets](../../ohos/entry/src/main/ets/plugins/DocumentPickerPlugin.ets:12) |
+| O8 | [DocumentPickerPlugin.ets](https://github.com/Dey410/GardendlessLoader/blob/b6152704b22e2137efa4da1a542f76c6eb896ca8/ohos/entry/src/main/ets/plugins/DocumentPickerPlugin.ets#L12) |
 | O9 | [NativeGameResourceHandler.ets](../../ohos/entry/src/main/ets/game/NativeGameResourceHandler.ets:52) |
 
 ### 共享JS与构建
@@ -487,7 +489,7 @@ BGM持续播放与短音效低延迟是两种不同资源使用要求，不把�
 | E0 | [提取workflow](/Users/xiaozhu_410/Documents/Code/extract-pvzge-gpnext/.github/workflows/extract-pvzge-tauri.yml:4) |
 | E1 | [patch_audio_runtime.py](/Users/xiaozhu_410/Documents/Code/extract-pvzge-gpnext/scripts/patch_audio_runtime.py:233) |
 | E2 | [transcode_textures_astc.py](/Users/xiaozhu_410/Documents/Code/extract-pvzge-gpnext/scripts/transcode_textures_astc.py:177) |
-| E3 | [transcode-assets.sh](/Users/xiaozhu_410/Documents/Code/extract-pvzge-gpnext/scripts/transcode-assets.sh:106) |
+| E3 | [transcode-assets.sh](https://github.com/Dey410/extract-pvzge-gpnext/blob/1ffb59b061761ccee1592097abc78c63fc9a6bda/scripts/transcode-assets.sh#L106) |
 | C0 | [build-mobile.yml](../../.github/workflows/build-mobile.yml:1) |
 
 ## 12. 完成审计的证据和执行边界

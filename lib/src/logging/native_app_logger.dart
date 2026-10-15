@@ -6,35 +6,31 @@ import 'app_logger.dart';
 
 class NativeAppLogger implements AppLogger {
   NativeAppLogger._({
-    required MethodChannel channel,
     required this.appSessionId,
     required String? appRoot,
     required Map<String, LogEventSchema> eventSchemas,
-  })  : _channel = channel,
-        _sanitizer = LogSanitizer(appRoot: appRoot, eventSchemas: eventSchemas);
+  }) : _sanitizer = LogSanitizer(appRoot: appRoot, eventSchemas: eventSchemas);
 
   static const channelName = 'io.github.dey410.gardendlessloader/app_logger';
+  static const MethodChannel _channel = MethodChannel(channelName);
 
   static Future<NativeAppLogger> initialize({
-    MethodChannel channel = const MethodChannel(channelName),
     String? appRoot,
     Map<String, LogEventSchema> eventSchemas = const <String, LogEventSchema>{},
   }) async {
     final response =
-        await channel.invokeMapMethod<Object?, Object?>('initialize');
+        await _channel.invokeMapMethod<Object?, Object?>('initialize');
     final sessionId = response?['appSessionId'];
     if (sessionId is! String || sessionId.isEmpty) {
       throw const FormatException('Native logger returned no app session');
     }
     return NativeAppLogger._(
-      channel: channel,
       appSessionId: sessionId,
       appRoot: appRoot,
       eventSchemas: eventSchemas,
     );
   }
 
-  final MethodChannel _channel;
   final LogSanitizer _sanitizer;
   @override
   final String appSessionId;
@@ -122,8 +118,4 @@ class NativeAppLogger implements AppLogger {
   Future<void> deleteHistory() => _channel
       .invokeMethod<void>('deleteHistory')
       .timeout(const Duration(seconds: 2));
-
-  Future<void> endSession() => _channel
-      .invokeMethod<void>('endSession')
-      .timeout(const Duration(milliseconds: 500));
 }

@@ -5,7 +5,6 @@
   window.__gardendlessTouchInputInstalled = true;
 
   const config = window.__gardendlessHostConfig || {};
-  const frameSynchronizedJavascript = config.touchAdapter === "javascript";
   const diagnosticsEnabled = config.touchDiagnosticsEnabled === true;
   const touchActionStyleId = "gardendless-touch-action";
   const backdropMoveThreshold = 20;
@@ -391,23 +390,11 @@
         y: command.point && command.point.clientY
       });
       if (command.type === "primaryDown") {
-        if (frameSynchronizedJavascript) {
-          beginJavascriptPrimary(canvas, command.point);
-        } else {
-          dispatchMouse(canvas, "mousedown", command.point, 0, 1);
-        }
+        beginJavascriptPrimary(canvas, command.point);
       } else if (command.type === "primaryMove") {
-        if (frameSynchronizedJavascript) {
-          moveJavascriptPrimary(command.point);
-        } else {
-          dispatchMouse(canvas, "mousemove", command.point, 0, 1);
-        }
+        moveJavascriptPrimary(command.point);
       } else if (command.type === "primaryUp") {
-        if (frameSynchronizedJavascript) {
-          releaseJavascriptPrimary(command.point);
-        } else {
-          dispatchMouse(canvas, "mouseup", command.point, 0, 1);
-        }
+        releaseJavascriptPrimary(command.point);
       } else if (command.type === "neutralMove") {
         cancelJavascriptPrimary();
         dispatchMouse(canvas, "mousemove", command.point, 0, 0);

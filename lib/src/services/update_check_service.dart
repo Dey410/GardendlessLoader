@@ -12,12 +12,6 @@ const defaultLatestReleaseApiUrl =
 const defaultUpdateCheckTimeout = Duration(seconds: 5);
 const defaultUpdateCheckMaxBytes = 64 * 1024;
 
-typedef UpdateCheckHttpLoader = HttpTextLoader;
-
-typedef InstalledVersionLoader = Future<String?> Function();
-
-typedef UpdateCheckHttpResponse = HttpTextResponse;
-
 class UpdateInfo {
   const UpdateInfo({
     required this.currentVersion,
@@ -39,27 +33,7 @@ class UpdateInfo {
 }
 
 class UpdateCheckService {
-  UpdateCheckService({
-    String latestReleaseApiUrl = defaultLatestReleaseApiUrl,
-    String currentVersion = appVersion,
-    Duration timeout = defaultUpdateCheckTimeout,
-    int maxBytes = defaultUpdateCheckMaxBytes,
-    UpdateCheckHttpLoader? loader,
-    InstalledVersionLoader? installedVersionLoader,
-  })  : _latestReleaseUri = Uri.parse(latestReleaseApiUrl),
-        _currentVersion = currentVersion,
-        _timeout = timeout,
-        _maxBytes = maxBytes,
-        _loader = loader ?? loadHttpText,
-        _installedVersionLoader =
-            installedVersionLoader ?? _loadInstalledVersion;
-
-  final Uri _latestReleaseUri;
-  final String _currentVersion;
-  final Duration _timeout;
-  final int _maxBytes;
-  final UpdateCheckHttpLoader _loader;
-  final InstalledVersionLoader _installedVersionLoader;
+  static final Uri _latestReleaseUri = Uri.parse(defaultLatestReleaseApiUrl);
 
   String? _installedVersion;
   Future<String>? _installedVersionLoading;
@@ -76,8 +50,11 @@ class UpdateCheckService {
   }
 
   Future<UpdateInfo?> checkForUpdate() async {
-    final response =
-        await _loader(_latestReleaseUri, _timeout, _maxBytes).timeout(_timeout);
+    final response = await loadHttpText(
+      _latestReleaseUri,
+      defaultUpdateCheckTimeout,
+      defaultUpdateCheckMaxBytes,
+    ).timeout(defaultUpdateCheckTimeout);
     if (response.statusCode != HttpStatus.ok) {
       throw const UpdateCheckException('GitHub release request failed');
     }
@@ -114,20 +91,15 @@ class UpdateCheckService {
 
   Future<String> _loadCurrentVersion() async {
     try {
-      final installedVersion = await _installedVersionLoader();
-      if (installedVersion != null && installedVersion.trim().isNotEmpty) {
+      final installedVersion = (await PackageInfo.fromPlatform()).version;
+      if (installedVersion.trim().isNotEmpty) {
         return _normalizeVersion(installedVersion);
       }
     } catch (_) {
       // Fall back to the compile-time version when a platform cannot provide
       // package metadata.
     }
-    return _normalizeVersion(_currentVersion);
-  }
-
-  static Future<String?> _loadInstalledVersion() async {
-    final packageInfo = await PackageInfo.fromPlatform();
-    return packageInfo.version;
+    return _normalizeVersion(appVersion);
   }
 
   static String _requiredString(Object? value) {

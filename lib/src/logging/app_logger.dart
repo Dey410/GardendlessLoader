@@ -40,64 +40,6 @@ class LogEventError {
       };
 }
 
-class LogEvent {
-  const LogEvent({
-    required this.timestampUtc,
-    required this.monotonicMs,
-    required this.sequence,
-    required this.level,
-    required this.source,
-    required this.category,
-    required this.event,
-    required this.outcome,
-    required this.appSessionId,
-    this.code,
-    this.message,
-    this.gameSessionId,
-    this.operationId,
-    this.durationMs,
-    this.context,
-    this.error,
-  });
-
-  final DateTime timestampUtc;
-  final int monotonicMs;
-  final int sequence;
-  final LogLevel level;
-  final LogSource source;
-  final String category;
-  final String event;
-  final LogOutcome outcome;
-  final String appSessionId;
-  final String? code;
-  final String? message;
-  final String? gameSessionId;
-  final String? operationId;
-  final int? durationMs;
-  final Map<String, Object?>? context;
-  final LogEventError? error;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-        'schemaVersion': 1,
-        'timestampUtc': timestampUtc.toIso8601String(),
-        'monotonicMs': monotonicMs,
-        'sequence': sequence,
-        'level': level.name.toUpperCase(),
-        'source': source.name,
-        'category': category,
-        'event': event,
-        'outcome': outcome.name,
-        'appSessionId': appSessionId,
-        if (code != null) 'code': code,
-        if (message != null) 'message': message,
-        if (gameSessionId != null) 'gameSessionId': gameSessionId,
-        if (operationId != null) 'operationId': operationId,
-        if (durationMs != null) 'durationMs': durationMs,
-        if (context != null) 'context': context,
-        if (error != null) 'error': error!.toJson(),
-      };
-}
-
 class AppLogSnapshot {
   const AppLogSnapshot({
     required this.appSessionId,
@@ -189,139 +131,6 @@ abstract interface class AppLogger {
   Future<void> flush({Duration timeout = const Duration(milliseconds: 500)});
 
   Future<void> deleteHistory();
-}
-
-class InMemoryAppLogger implements AppLogger {
-  InMemoryAppLogger({
-    required this.appSessionId,
-    required this.source,
-    this.appRoot,
-    this.eventSchemas = const <String, LogEventSchema>{},
-    this.recentEventCapacity = 500,
-    this.onEvent,
-    int Function()? monotonicNowMs,
-  }) : assert(recentEventCapacity > 0) {
-    _sanitizer = LogSanitizer(appRoot: appRoot, eventSchemas: eventSchemas);
-    _stopwatch.start();
-    _monotonicNowMs = monotonicNowMs ?? () => _stopwatch.elapsedMilliseconds;
-    _monotonicOriginMs = _monotonicNowMs();
-  }
-
-  @override
-  final String appSessionId;
-  final LogSource source;
-  final String? appRoot;
-  final Map<String, LogEventSchema> eventSchemas;
-  final int recentEventCapacity;
-  final void Function(LogEvent event)? onEvent;
-  late final LogSanitizer _sanitizer;
-  final Stopwatch _stopwatch = Stopwatch();
-  late final int Function() _monotonicNowMs;
-  late final int _monotonicOriginMs;
-  final List<LogEvent> _events = <LogEvent>[];
-  int _nextSequence = 1;
-
-  List<LogEvent> get events => List<LogEvent>.unmodifiable(_events);
-  int evictedRecentEventCount = 0;
-  int get _elapsedMs => _monotonicNowMs() - _monotonicOriginMs;
-
-  @override
-  Future<AppLogSnapshot> loadSnapshot({int limit = 500}) async {
-    final safeLimit = limit.clamp(1, recentEventCapacity);
-    final first = (_events.length - safeLimit).clamp(0, _events.length);
-    return AppLogSnapshot(
-      appSessionId: appSessionId,
-      persisting: false,
-      degraded: false,
-      logDirectory: null,
-      totalBytes: 0,
-      writeFailureCount: 0,
-      droppedByLevel: const <String, int>{},
-      events: _events
-          .skip(first)
-          .map((event) => event.toJson())
-          .toList(growable: false),
-    );
-  }
-
-  @override
-  Future<void> flush(
-      {Duration timeout = const Duration(milliseconds: 500)}) async {}
-
-  @override
-  Future<void> deleteHistory() async {
-    _events.clear();
-  }
-
-  @override
-  void emit({
-    required LogLevel level,
-    required String category,
-    required String event,
-    required LogOutcome outcome,
-    String? code,
-    String? message,
-    String? gameSessionId,
-    String? operationId,
-    int? durationMs,
-    Map<String, Object?>? context,
-    Object? error,
-    StackTrace? stackTrace,
-  }) {
-    final logEvent = LogEvent(
-      timestampUtc: DateTime.now().toUtc(),
-      monotonicMs: _elapsedMs,
-      sequence: _nextSequence,
-      level: level,
-      source: source,
-      category: category,
-      event: event,
-      outcome: outcome,
-      appSessionId: appSessionId,
-      code: code,
-      message: message == null ? null : _sanitizer.sanitizeText(message, 2048),
-      gameSessionId: gameSessionId,
-      operationId: operationId,
-      durationMs: durationMs,
-      context: _sanitizer.sanitizeContext(event, context),
-      error: error == null
-          ? null
-          : LogEventError(
-              type: error.runtimeType.toString(),
-              message: _sanitizer.sanitizeText(error.toString(), 4096),
-              stackTrace:
-                  _sanitizer.sanitizeText(stackTrace?.toString() ?? '', 8192),
-            ),
-    );
-    _events.add(logEvent);
-    _nextSequence += 1;
-    if (_events.length > recentEventCapacity) {
-      _events.removeAt(0);
-      evictedRecentEventCount += 1;
-    }
-    onEvent?.call(logEvent);
-  }
-
-  @override
-  LogOperation startOperation({
-    required String operationId,
-    required String category,
-    required String startedEvent,
-    required String finishedEvent,
-    String? failureCode,
-    String? gameSessionId,
-  }) {
-    return startLogOperation(
-      logger: this,
-      operationId: operationId,
-      category: category,
-      startedEvent: startedEvent,
-      finishedEvent: finishedEvent,
-      failureCode: failureCode,
-      gameSessionId: gameSessionId,
-      monotonicNowMs: () => _elapsedMs,
-    );
-  }
 }
 
 class LogSanitizer {
@@ -418,10 +227,9 @@ LogOperation startLogOperation({
   required String finishedEvent,
   String? failureCode,
   String? gameSessionId,
-  int Function()? monotonicNowMs,
 }) {
   final stopwatch = Stopwatch()..start();
-  final now = monotonicNowMs ?? () => stopwatch.elapsedMilliseconds;
+  int now() => stopwatch.elapsedMilliseconds;
   final startedAtMs = now();
   logger.emit(
     level: LogLevel.info,

@@ -14,8 +14,8 @@ enum GameHostPlatform {
 
   String get nativeHostName => '$wireName-native';
 
-  static GameHostPlatform current({String? operatingSystem}) {
-    final value = operatingSystem ?? Platform.operatingSystem;
+  static GameHostPlatform current() {
+    final value = Platform.operatingSystem;
     return GameHostPlatform.values.firstWhere(
       (platform) => platform.wireName == value,
       orElse: () => throw UnsupportedError(
@@ -141,82 +141,15 @@ class GameSession {
       'exportTemporaryRoot': exportTemporaryRoot,
     };
   }
-
-  GameSession copyWith({int? activationGeneration}) {
-    return GameSession(
-      sessionId: sessionId,
-      packageId: packageId,
-      resourceRoot: resourceRoot,
-      platform: platform,
-      entryPath: entryPath,
-      activationGeneration: activationGeneration ?? this.activationGeneration,
-      hasGpNext: hasGpNext,
-      gpNextCompatible: gpNextCompatible,
-      gpNextVersion: gpNextVersion,
-      watermarkEnabled: watermarkEnabled,
-      autoCollectSunEnabled: autoCollectSunEnabled,
-      detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
-      allowedRemoteHosts: allowedRemoteHosts,
-      gpNextRoot: gpNextRoot,
-      exportTemporaryRoot: exportTemporaryRoot,
-    );
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is GameSession &&
-        other.sessionId == sessionId &&
-        other.packageId == packageId &&
-        other.resourceRoot == resourceRoot &&
-        other.platform == platform &&
-        other.entryPath == entryPath &&
-        other.activationGeneration == activationGeneration &&
-        other.hasGpNext == hasGpNext &&
-        other.gpNextCompatible == gpNextCompatible &&
-        other.gpNextVersion == gpNextVersion &&
-        other.watermarkEnabled == watermarkEnabled &&
-        other.autoCollectSunEnabled == autoCollectSunEnabled &&
-        other.detailedAudioDiagnosticsEnabled ==
-            detailedAudioDiagnosticsEnabled &&
-        _listEquals(other.allowedRemoteHosts, allowedRemoteHosts) &&
-        other.gpNextRoot == gpNextRoot &&
-        other.exportTemporaryRoot == exportTemporaryRoot;
-  }
-
-  @override
-  int get hashCode => Object.hash(
-        sessionId,
-        packageId,
-        resourceRoot,
-        platform,
-        entryPath,
-        activationGeneration,
-        hasGpNext,
-        gpNextCompatible,
-        gpNextVersion,
-        watermarkEnabled,
-        autoCollectSunEnabled,
-        detailedAudioDiagnosticsEnabled,
-        Object.hashAll(allowedRemoteHosts),
-        gpNextRoot,
-        exportTemporaryRoot,
-      );
 }
 
-abstract interface class GameHost {
-  Future<void> launch(GameSession session);
-}
+class MethodChannelGameHost {
+  const MethodChannelGameHost();
 
-class MethodChannelGameHost implements GameHost {
-  const MethodChannelGameHost({
-    MethodChannel channel = const MethodChannel(
-      'io.github.dey410.gardendlessloader/game_host',
-    ),
-  }) : _channel = channel;
+  static const MethodChannel _channel = MethodChannel(
+    'io.github.dey410.gardendlessloader/game_host',
+  );
 
-  final MethodChannel _channel;
-
-  @override
   Future<void> launch(GameSession session) async {
     await _channel.invokeMethod<void>('launch', session.toJson());
   }
@@ -264,16 +197,4 @@ void _validateEntryPath(String value) {
       uri.pathSegments.any((segment) => segment == '.' || segment == '..')) {
     throw const FormatException('entryPath must stay inside the resource root');
   }
-}
-
-bool _listEquals(List<String> left, List<String> right) {
-  if (left.length != right.length) {
-    return false;
-  }
-  for (var index = 0; index < left.length; index += 1) {
-    if (left[index] != right[index]) {
-      return false;
-    }
-  }
-  return true;
 }

@@ -24,9 +24,10 @@ diverge after the shared state machine had already classified the same gesture.
 
 ## Decision
 
-Android, iOS, and OpenHarmony all select `touchAdapter: javascript`. The shared
-adapter executes every game command with JavaScript mouse or wheel events on
-`GameCanvas`.
+Android, iOS, and OpenHarmony all use the shared JavaScript adapter. It
+executes every game command with JavaScript mouse or wheel events on `GameCanvas`.
+The retired native implementation and the immediate-dispatch branch were
+removed on 2026-10-15; there is no adapter-selection configuration.
 
 Primary input uses the same frame-synchronized sequence on all three platforms:
 

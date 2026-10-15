@@ -15,17 +15,11 @@ class ImportTarget {
   final Directory directory;
 }
 
-typedef OldSlotCleaner = Future<void> Function(Directory directory);
-
 class ImportService {
-  ImportService({
-    required ResourceValidator validator,
-    OldSlotCleaner? oldSlotCleaner,
-  })  : _validator = validator,
-        _oldSlotCleaner = oldSlotCleaner;
+  ImportService({required ResourceValidator validator})
+      : _validator = validator;
 
   final ResourceValidator _validator;
-  final OldSlotCleaner? _oldSlotCleaner;
 
   Directory? activeDirectory(AppPaths paths, ResourceManifest manifest) {
     final activeSlot = manifest.activeSlot;
@@ -170,7 +164,7 @@ class ImportService {
       activated = true;
 
       if (oldSlot != null) {
-        await _cleanOldSlot(paths.directoryFor(oldSlot));
+        await _resetDirectory(paths.directoryFor(oldSlot));
       }
       manifest = manifest.copyWith(
         generation: manifest.generation + 1,
@@ -470,7 +464,7 @@ class ImportService {
     try {
       final oldSlot = manifest.transactionSlot;
       if (oldSlot != null && oldSlot != manifest.activeSlot) {
-        await _cleanOldSlot(paths.directoryFor(oldSlot));
+        await _resetDirectory(paths.directoryFor(oldSlot));
       }
       final completed = manifest.copyWith(
         generation: manifest.generation + 1,
@@ -616,11 +610,6 @@ class ImportService {
     if (await directory.exists()) {
       await directory.delete(recursive: true);
     }
-  }
-
-  Future<void> _cleanOldSlot(Directory directory) {
-    final cleaner = _oldSlotCleaner;
-    return cleaner == null ? _resetDirectory(directory) : cleaner(directory);
   }
 
   File _slotMetadataFile(Directory directory) {

@@ -57,8 +57,6 @@ class AppPaths {
 
   Directory get legacyImportDir =>
       Directory('${root.path}${Platform.pathSeparator}import');
-  Directory get legacyImportDocsDir =>
-      Directory('${legacyImportDir.path}${Platform.pathSeparator}docs');
   Directory get legacyCurrentDir =>
       Directory('${root.path}${Platform.pathSeparator}current');
   Directory get legacyPreviousDir =>

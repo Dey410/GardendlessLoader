@@ -9,10 +9,6 @@ const defaultGameTagsApiUrl =
 const defaultGameUpdateCheckTimeout = Duration(seconds: 5);
 const defaultGameUpdateCheckMaxBytes = 64 * 1024;
 
-typedef GameUpdateCheckHttpLoader = HttpTextLoader;
-
-typedef GameUpdateCheckHttpResponse = HttpTextResponse;
-
 class GameUpdateInfo {
   const GameUpdateInfo({
     required this.currentVersion,
@@ -40,20 +36,7 @@ class GameUpdateCheckResult {
 }
 
 class GameUpdateCheckService {
-  GameUpdateCheckService({
-    String tagsApiUrl = defaultGameTagsApiUrl,
-    Duration timeout = defaultGameUpdateCheckTimeout,
-    int maxBytes = defaultGameUpdateCheckMaxBytes,
-    GameUpdateCheckHttpLoader? loader,
-  })  : _tagsUri = Uri.parse(tagsApiUrl),
-        _timeout = timeout,
-        _maxBytes = maxBytes,
-        _loader = loader ?? loadHttpText;
-
-  final Uri _tagsUri;
-  final Duration _timeout;
-  final int _maxBytes;
-  final GameUpdateCheckHttpLoader _loader;
+  static final Uri _tagsUri = Uri.parse(defaultGameTagsApiUrl);
 
   Future<GameUpdateCheckResult> check({
     required String currentVersion,
@@ -84,11 +67,11 @@ class GameUpdateCheckService {
   }
 
   Future<String> loadLatestVersion() async {
-    final response = await _loader(
+    final response = await loadHttpText(
       _tagsUri,
-      _timeout,
-      _maxBytes,
-    ).timeout(_timeout);
+      defaultGameUpdateCheckTimeout,
+      defaultGameUpdateCheckMaxBytes,
+    ).timeout(defaultGameUpdateCheckTimeout);
     if (response.statusCode != HttpStatus.ok) {
       throw const GameUpdateCheckException('GitHub tags request failed');
     }

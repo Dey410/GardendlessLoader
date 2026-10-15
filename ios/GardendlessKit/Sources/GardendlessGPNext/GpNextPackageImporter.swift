@@ -8,15 +8,6 @@ public final class GpNextPackageImporter {
     self.gpNextRoot = gpNextRoot
   }
 
-  public func importPackages(
-    from urls: [URL],
-    confirmReplacement: (String) -> Bool
-  ) throws {
-    for url in urls {
-      _ = try importPackage(url, confirmReplacement: confirmReplacement)
-    }
-  }
-
   @discardableResult
   public func importPackage(
     _ source: URL,

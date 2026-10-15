@@ -8,15 +8,14 @@ enum SensorHousingEdge { left, right }
 ///
 /// iOS reports the same safe-area inset on both long edges in landscape, so
 /// the launcher asks the native host for the real side. Platforms without
-/// the channel (Android, HarmonyOS, tests) leave the value null, and the
+/// the channel (Android, HarmonyOS) leave the value null, and the
 /// system insets are used unchanged.
 class SensorHousingService extends ValueNotifier<SensorHousingEdge?> {
-  SensorHousingService({MethodChannel? channel})
-      : _channel = channel ??
-            const MethodChannel('io.github.dey410.gardendlessloader/display'),
-        super(null);
+  SensorHousingService() : super(null);
 
-  final MethodChannel _channel;
+  static const MethodChannel _channel = MethodChannel(
+    'io.github.dey410.gardendlessloader/display',
+  );
 
   Future<void> start() async {
     _channel.setMethodCallHandler((call) async {
