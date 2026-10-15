@@ -42,7 +42,6 @@ import UIKit
       didFinishLaunchingWithOptions: launchOptions
     )
     logStore.initialize()
-    showLauncher()
     return launched
   }
 
@@ -51,10 +50,7 @@ import UIKit
     super.applicationWillTerminate(application)
   }
 
-  private func showLauncher() {
-    if window == nil {
-      window = UIWindow(frame: UIScreen.main.bounds)
-    }
+  func showLauncher() {
     let engine = FlutterEngine(name: "gardendless-launcher-\(UUID().uuidString)")
     guard engine.run() else { return }
     GeneratedPluginRegistrant.register(with: engine)
@@ -463,6 +459,20 @@ import UIKit
       controller = presented
     }
     return controller
+  }
+}
+
+// iOS 27 terminates apps built with its SDK unless they adopt the UIScene lifecycle.
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard let scene = scene as? UIWindowScene,
+          let app = UIApplication.shared.delegate as? AppDelegate else { return }
+    app.window = UIWindow(windowScene: scene)
+    app.showLauncher()
   }
 }
 
