@@ -185,9 +185,9 @@
   let callbackId = 1;
   let eventId = 1;
   const disabled = new Set(["plugin:drpc|destroy_thread", "plugin:drpc|spawn_thread", "plugin:drpc|set_activity",
-    "update_macos_menu", "plugin:event|unlisten", "plugin:event|emit", "plugin:event|emit_to",
+    "set_discord_activity", "update_macos_menu", "plugin:event|unlisten", "plugin:event|emit", "plugin:event|emit_to",
     "plugin:resources|close", "plugin:deep-link|register", "plugin:deep-link|unregister",
-    "plugin:window|set_size", "plugin:window|set_fullscreen", "plugin:window|center", "plugin:window|close", "open_devtools"]);
+    "plugin:window|set_size", "plugin:window|set_fullscreen", "plugin:window|center", "open_devtools"]);
 
   function fileSpec(args, options) {
     const nested = args && args.options || options || {};
@@ -212,6 +212,8 @@
     if (command === "plugin:deep-link|get_current") return [];
     // The loader has no GP-Next cloud save service, so no restore journal exists.
     if (command === "cloud_journal_read") return null;
+    // The game's quit button closes the Tauri window; on mobile that means returning to the launcher.
+    if (command === "plugin:window|close") return invoke("host:returnHome");
     if (disabled.has(command)) return null;
     if (command.startsWith("plugin:window|") || command.startsWith("plugin:image|")) throw new Error("Unsupported mobile command: " + command);
     if (command === "plugin:fs|read_file" || command === "plugin:fs|read_text_file") {
@@ -228,6 +230,8 @@
     return invoke(command, {namespace: "gp-next", args: args, options: options});
   }
 
+  // Tauri v2 marks its runtime with isTauri; GP-Next installs window.electron, the game's quit path, only when it is set.
+  window.isTauri = true;
   window.__TAURI_INTERNALS__ = {invoke: tauriInvoke, callbacks: callbacks,
     transformCallback: function (callback, once) {
       const id = callbackId++;
