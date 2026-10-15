@@ -210,6 +210,8 @@
     if (command === "plugin:event|listen") return eventId++;
     if (command === "plugin:drpc|is_running" || command === "plugin:deep-link|is_registered" || command === "plugin:window|is_maximized") return false;
     if (command === "plugin:deep-link|get_current") return [];
+    // The loader has no GP-Next cloud save service, so no restore journal exists.
+    if (command === "cloud_journal_read") return null;
     if (disabled.has(command)) return null;
     if (command.startsWith("plugin:window|") || command.startsWith("plugin:image|")) throw new Error("Unsupported mobile command: " + command);
     if (command === "plugin:fs|read_file" || command === "plugin:fs|read_text_file") {

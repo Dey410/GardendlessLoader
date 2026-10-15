@@ -147,6 +147,8 @@ function harness({available = true, failChunk = false, shortRead = false, autoRe
   const h = harness();
   assert.equal(await h.window.__TAURI_INTERNALS__.invoke('plugin:drpc|is_running', {}), false);
   assert.equal(await h.window.__TAURI_INTERNALS__.invoke('plugin:window|set_size', {}), null);
+  assert.equal(await h.window.__TAURI_INTERNALS__.invoke('cloud_journal_read'), null,
+    'GP-Next startup must see no cloud restore journal');
   assert.equal(h.requests.length, 0);
   const pending = h.transport.invoke('host:wait');
   const id = h.requests.at(-1).id;
