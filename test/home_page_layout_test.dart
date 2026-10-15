@@ -4,9 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
-import 'package:gardendless_loader/src/constants.dart';
 import 'package:gardendless_loader/src/game_host/game_host.dart';
 import 'package:gardendless_loader/src/logging/app_logger.dart';
 import 'package:gardendless_loader/src/logging/log_event_catalog.dart';
@@ -14,22 +12,245 @@ import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/about_content_service.dart';
 import 'package:gardendless_loader/src/services/announcement_service.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
+import 'package:gardendless_loader/src/services/app_settings_store.dart';
 import 'package:gardendless_loader/src/services/diagnostics_service.dart';
 import 'package:gardendless_loader/src/services/game_update_check_service.dart';
 import 'package:gardendless_loader/src/services/resource_picker_service.dart';
+import 'package:gardendless_loader/src/services/sensor_housing_service.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
 import 'package:gardendless_loader/src/ui/home_page.dart';
+import 'package:gardendless_loader/src/ui/theme/garden_theme.dart';
 import 'package:path/path.dart' as p;
 
+const _phone = Size(874, 402);
+const _tablet = Size(1194, 834);
+// The first frame on iPhone is laid out in portrait before rotation.
+const _portrait = Size(402, 874);
+
+void _useSize(WidgetTester tester, Size size) {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  if (size == _phone) {
+    // Landscape iPhone with a Dynamic Island: insets on both long edges.
+    tester.view.padding = const FakeViewPadding(
+      left: 62,
+      right: 62,
+      bottom: 21,
+    );
+    addTearDown(tester.view.resetPadding);
+  }
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Widget _app(AppController controller,
+    {Brightness brightness = Brightness.dark}) {
+  return MaterialApp(
+    theme: buildGardenTheme(brightness),
+    home: HomePage(controller: controller),
+  );
+}
+
+Future<void> _openTab(WidgetTester tester, String name) async {
+  await tester.tap(find.byKey(ValueKey('nav-$name')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  for (final (label, size) in const [
+    ('phone', _phone),
+    ('tablet', _tablet),
+    ('portrait', _portrait),
+  ]) {
+    for (final brightness in Brightness.values) {
+      testWidgets(
+          'every page lays out without overflow on $label '
+          '(${brightness.name})', (tester) async {
+        _useSize(tester, size);
+        final controller = await _readyController(tester);
+        await tester.pumpWidget(_app(controller, brightness: brightness));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('page-title')), findsOneWidget);
+        for (final tab in const ['resources', 'logs', 'settings', 'game']) {
+          await _openTab(tester, tab);
+          expect(tester.takeException(), isNull);
+        }
+      });
+    }
+  }
+
+  for (final edge in SensorHousingEdge.values) {
+    testWidgets('phone keeps the notch inset only on the ${edge.name} edge',
+        (tester) async {
+      _useSize(tester, _phone);
+      final housing = SensorHousingService()..value = edge;
+      addTearDown(housing.dispose);
+      final controller = await _readyController(tester);
+      await tester.pumpWidget(MaterialApp(
+        theme: buildGardenTheme(Brightness.dark),
+        home: HomePage(controller: controller, sensorHousing: housing),
+      ));
+      await tester.pumpAndSettle();
+
+      final rail = tester.getRect(
+        find.byKey(const ValueKey('launcher-navigation-rail')),
+      );
+      final rightmost = tester.getRect(
+        find.byKey(const ValueKey('announcement-button')),
+      );
+      final housingLeft = edge == SensorHousingEdge.left;
+      // Compact rail is 76pt wide plus the left inset (62 or 20).
+      expect(rail.width, housingLeft ? 62 + 76 : 20 + 76);
+      // Right edge: inset (20 or 62) plus the 20pt compact gutter.
+      expect(_phone.width - rightmost.right, housingLeft ? 40 : 82);
+    });
+  }
+
+  testWidgets('ready resource offers one primary start action', (tester) async {
+    _useSize(tester, _phone);
+    final host = _RecordingGameHost();
+    final controller = await _readyController(tester, gameHost: host);
+    await tester.pumpWidget(_app(controller));
+    await tester.pumpAndSettle();
+
+    expect(find.text('资源已就绪'), findsOneWidget);
+    expect(find.text('PvZ2 Gardendless'), findsOneWidget);
+    expect(find.text('加载器 v0.1.0'), findsOneWidget);
+    expect(find.textContaining('版本 未知'), findsOneWidget);
+    expect(find.textContaining('游戏 未知'), findsNothing);
+    expect(find.byKey(const ValueKey('go-import-button')), findsNothing);
+
+    await tester.runAsync(() async {
+      await tester.tap(find.text('开始游戏'));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    });
+    await tester.pump();
+    expect(host.launchCount, 1);
+  });
+
+  testWidgets('empty state routes the user to the resource import',
+      (tester) async {
+    _useSize(tester, _phone);
+    final controller = await _emptyController(tester);
+    await tester.pumpWidget(_app(controller));
+    await tester.pumpAndSettle();
+
+    expect(find.text('需要导入资源'), findsOneWidget);
+    expect(find.text('开始游戏'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('go-import-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('import-zip-button')), findsOneWidget);
+    expect(find.text('选择 ZIP 导入'), findsOneWidget);
+    expect(find.text('无激活槽'), findsOneWidget);
+  });
+
+  testWidgets('launch preferences live in settings and persist',
+      (tester) async {
+    _useSize(tester, _tablet);
+    final controller = await _readyController(tester);
+    await tester.pumpWidget(_app(controller));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('launch-preferences')), findsNothing);
+    await _openTab(tester, 'settings');
+    expect(find.byKey(const ValueKey('launch-preferences')), findsOneWidget);
+
+    final autoCollect =
+        find.byKey(const ValueKey('home-auto-collect-sun-switch'));
+    await tester.ensureVisible(autoCollect);
+    await tester.pumpAndSettle();
+    expect(controller.autoCollectSunEnabled, isFalse);
+    await tester.tap(autoCollect);
+    await tester.pumpAndSettle();
+    expect(controller.autoCollectSunEnabled, isTrue);
+
+    final watermark = find.byKey(const ValueKey('home-watermark'));
+    await tester.ensureVisible(watermark);
+    await tester.pumpAndSettle();
+    expect(controller.watermarkEnabled, isTrue);
+    await tester.tap(watermark);
+    await tester.pumpAndSettle();
+    expect(controller.watermarkEnabled, isFalse);
+  });
+
+  testWidgets('appearance preferences are saved to app settings',
+      (tester) async {
+    _useSize(tester, _tablet);
+    final controller = await _readyController(tester);
+    await tester.pumpWidget(_app(controller));
+    await tester.pumpAndSettle();
+    await _openTab(tester, 'settings');
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('theme-preference-light')),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const ValueKey('theme-preference-light')));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('reduce-motion-switch')),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const ValueKey('reduce-motion-switch')));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pumpAndSettle();
+
+    expect(controller.themePreference, ThemePreference.light);
+    expect(controller.reduceMotion, isTrue);
+    final saved = await tester.runAsync(
+      () => AppSettingsStore(controller.paths!.appSettingsFile).read(),
+    );
+    expect(saved!.themePreference, ThemePreference.light);
+    expect(saved.reduceMotion, isTrue);
+    expect(saved.watermarkEnabled, isTrue);
+  });
+
+  testWidgets('resource page copies the root and shows health details',
+      (tester) async {
+    _useSize(tester, _tablet);
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    final controller = await _readyController(tester);
+    await tester.pumpWidget(_app(controller));
+    await tester.pumpAndSettle();
+    await _openTab(tester, 'resources');
+
+    expect(find.text('选择 ZIP 更新'), findsOneWidget);
+    expect(find.text('校验通过'), findsOneWidget);
+    expect(find.textContaining('无 HTTP Server'), findsOneWidget);
+    expect(find.text('最近错误'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('copy-resource-root-button')));
+    await tester.pump();
+    expect(copied.single, controller.userVisibleRoot);
+    expect(find.text('资源根目录已复制'), findsOneWidget);
+
+    await tester.tap(find.text('技术详情'));
+    await tester.pumpAndSettle();
+    expect(find.text('generation'), findsOneWidget);
+  });
+
   testWidgets(
-    'active import expands in the hero and remains visible across navigation',
+    'active import shows progress and keeps a badge across navigation',
     (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      late Directory root;
+      _useSize(tester, _tablet);
       late AppController controller;
       late Completer<void> importerStarted;
       late Completer<void> releaseImporter;
@@ -37,7 +258,7 @@ void main() {
       await tester.runAsync(() async {
         importerStarted = Completer<void>();
         releaseImporter = Completer<void>();
-        root = await Directory.systemTemp.createTemp('gl_home_progress_');
+        final root = await Directory.systemTemp.createTemp('gl_home_progress_');
         await _writeValidResource(Directory(p.join(root.path, 'current')));
         controller = AppController(
           pathsService:
@@ -49,10 +270,7 @@ void main() {
           importAwakeModeSetter: (_) async {},
           resourcePickerService: ResourcePickerService(
             platformName: 'android',
-            mobileZipImporter: ({
-              required targetDirectory,
-              onProgress,
-            }) async {
+            mobileZipImporter: ({required targetDirectory, onProgress}) async {
               onProgress?.call(const ImportProgress(
                 phase: ImportPhase.extracting,
                 copiedBytes: 256,
@@ -61,9 +279,7 @@ void main() {
                 totalFiles: 8,
                 message: '正在解压资源',
               ));
-              if (!importerStarted.isCompleted) {
-                importerStarted.complete();
-              }
+              if (!importerStarted.isCompleted) importerStarted.complete();
               await releaseImporter.future;
               await _writeValidResource(Directory(targetDirectory));
               return targetDirectory;
@@ -73,22 +289,15 @@ void main() {
         await controller.initialize();
       });
       addTearDown(() {
-        if (!releaseImporter.isCompleted) {
-          releaseImporter.complete();
-        }
+        if (!releaseImporter.isCompleted) releaseImporter.complete();
       });
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
+      await tester.pumpWidget(_app(controller));
+      await tester.pumpAndSettle();
+      await _openTab(tester, 'resources');
       expect(
           find.byKey(const ValueKey('resource-progress-region')), findsNothing);
-      await tester.tap(
-        find.byKey(const ValueKey('home-game-controls-expander')),
-      );
-      await tester.pumpAndSettle();
 
+      await tester.tap(find.byKey(const ValueKey('import-zip-button')));
       await tester.runAsync(() async {
         importFuture = controller.importResources();
         await importerStarted.future;
@@ -96,725 +305,222 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      try {
-        expect(find.byKey(const ValueKey('resource-progress-region')),
-            findsOneWidget);
-        expect(find.text('步骤 2/4 · 正在解压资源'), findsOneWidget);
-        expect(find.byKey(const ValueKey('resource-progress-details')),
-            findsOneWidget);
-        final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
-        expect(autoCollect, findsOneWidget);
-        expect(
-          tester
-              .widget<Switch>(
-                find.byKey(
-                  const ValueKey('home-auto-collect-sun-switch'),
-                ),
-              )
-              .onChanged,
-          isNull,
-        );
-        await tester.tap(autoCollect);
-        await tester.pump();
-        expect(controller.autoCollectSunEnabled, isFalse);
+      expect(find.byKey(const ValueKey('resource-progress-region')),
+          findsOneWidget);
+      expect(find.text('步骤 2/4 · 正在解压资源'), findsOneWidget);
+      expect(find.text('25%'), findsOneWidget);
+      expect(find.byKey(const ValueKey('resource-progress-details')),
+          findsOneWidget);
+      expect(find.text('2/8'), findsOneWidget);
 
-        await tester
-            .tap(find.byKey(const ValueKey('resource-progress-toggle')));
-        await tester.pump(const Duration(milliseconds: 250));
-        expect(find.byKey(const ValueKey('resource-progress-region')),
-            findsOneWidget);
-        expect(find.byKey(const ValueKey('resource-progress-details')),
-            findsNothing);
+      await tester.tap(find.byKey(const ValueKey('resource-progress-toggle')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('resource-progress-details')),
+          findsNothing);
 
-        await tester.tap(find.text('日志'));
-        await tester.pump();
-        expect(find.byKey(const ValueKey('resource-nav-progress')),
-            findsOneWidget);
-        expect(find.text('25%'), findsOneWidget);
-      } finally {
-        await tester.runAsync(() async {
-          if (!releaseImporter.isCompleted) {
-            releaseImporter.complete();
-          }
-          await importFuture!;
-        });
-        controller.dispose();
-        await tester.runAsync(() async {
-          if (await root.exists()) {
-            await root.delete(recursive: true);
-          }
-        });
-      }
+      await tester.tap(find.byKey(const ValueKey('nav-logs')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+          find.byKey(const ValueKey('resource-nav-progress')), findsOneWidget);
+
+      releaseImporter.complete();
+      await tester.runAsync(() async => importFuture);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('resource-nav-progress')), findsNothing);
     },
-    timeout: const Timeout(Duration(seconds: 15)),
+    timeout: const Timeout(Duration(seconds: 10)),
   );
 
-  testWidgets(
-    'home page enters immersive system UI',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final platformCalls = <MethodCall>[];
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-        platformCalls.add(call);
+  testWidgets('logs page filters events and copies a single event',
+      (tester) async {
+    _useSize(tester, _tablet);
+    final copied = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
         return null;
-      });
-      addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(SystemChannels.platform, null);
-      });
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    final logger = InMemoryAppLogger(
+      appSessionId: 'app-session-test',
+      source: LogSource.dart,
+      eventSchemas: defaultLogEventSchemas,
+    );
+    final controller = await _readyController(tester, appLogger: logger);
+    logger.emit(
+      level: LogLevel.error,
+      category: 'game.webview',
+      event: 'webview_page_load_failed',
+      outcome: LogOutcome.failed,
+      code: 'webview_page_load_failed',
+      gameSessionId: 'game-session-test',
+      operationId: 'launch-operation-test',
+      error: StateError('page failed'),
+      stackTrace: StackTrace.current,
+    );
 
-      final controller = await _emptyController(tester);
+    await tester.pumpWidget(_app(controller));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('nav-logs')));
+    await tester.runAsync(() => Future<void>.delayed(
+          const Duration(milliseconds: 100),
+        ));
+    await tester.pumpAndSettle();
 
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
+    expect(find.byKey(const ValueKey('log-overview')), findsOneWidget);
+    expect(find.byKey(const ValueKey('log-operation-filter')), findsOneWidget);
+    expect(find.text('webview_page_load_failed'), findsOneWidget);
+    expect(find.text('游戏页面加载失败'), findsOneWidget);
+    expect(find.text('game-session-test'), findsOneWidget);
 
-      final systemUiModeCalls = platformCalls
-          .where((call) => call.method == 'SystemChrome.setEnabledSystemUIMode')
-          .toList();
+    await tester.tap(find.byKey(const ValueKey('log-errors-only-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('webview_page_load_failed'), findsOneWidget);
+    expect(find.textContaining('resource_'), findsNothing);
 
-      expect(systemUiModeCalls, isNotEmpty);
-      expect(systemUiModeCalls.last.arguments, 'SystemUiMode.immersiveSticky');
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
+    await tester.tap(find.byTooltip('复制单条事件 JSON'));
+    await tester.pump();
+    expect(copied.single, contains('webview_page_load_failed'));
+    expect(find.text('单条事件 JSON 已复制'), findsOneWidget);
 
-  testWidgets(
-    'home page presents a landscape launcher for current resources',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.tap(find.byKey(const ValueKey('log-level-FATAL')));
+    await tester.pumpAndSettle();
+    expect(find.text('当前筛选条件下没有事件'), findsOneWidget);
 
-      final controller = await _readyController(tester);
+    await tester.tap(find.byKey(const ValueKey('clear-log-view-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('webview_page_load_failed'), findsOneWidget);
+  });
 
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+  testWidgets('deleting log history asks for confirmation first',
+      (tester) async {
+    _useSize(tester, _tablet);
+    final controller = await _readyController(tester);
+    await tester.pumpWidget(_app(controller));
+    await tester.pumpAndSettle();
+    await _openTab(tester, 'logs');
 
-      expect(find.text('资源'), findsOneWidget);
-      expect(find.text('更新app'), findsNothing);
-      expect(find.text('日志'), findsOneWidget);
-      expect(find.text('关于'), findsOneWidget);
-      expect(find.text('PvZ2 Gardendless'), findsOneWidget);
-      expect(find.text('加载器 v0.1.0'), findsOneWidget);
-      expect(find.text('游戏 未知'), findsOneWidget);
-      expect(find.byKey(const ValueKey('app-version-pill')), findsOneWidget);
-      expect(find.byKey(const ValueKey('game-version-pill')), findsOneWidget);
-      expect(find.text('资源根目录'), findsOneWidget);
-      expect(find.text('复制'), findsOneWidget);
-      expect(find.text('资源校验'), findsOneWidget);
-      expect(find.text('游戏宿主'), findsOneWidget);
-      expect(find.text('无 HTTP Server'), findsOneWidget);
-      expect(find.text('诊断摘要'), findsOneWidget);
-      expect(find.text('上次自检'), findsOneWidget);
-      expect(find.text('最近错误'), findsOneWidget);
-      expect(find.text('公告'), findsOneWidget);
-      expect(find.text('开始游戏'), findsOneWidget);
-      expect(
-        tester
-            .getSize(find.byKey(const ValueKey('launcher-navigation-rail')))
-            .width,
-        greaterThanOrEqualTo(150),
-      );
+    await tester.tap(find.byKey(const ValueKey('delete-log-history-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('删除历史日志？'), findsOneWidget);
 
-      expect(find.text('导入来源'), findsNothing);
-      expect(find.text('检查更新'), findsNothing);
-      expect(find.text('本地服务器'), findsNothing);
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除历史日志？'), findsNothing);
+  });
 
-  testWidgets(
-    'home page does not reserve horizontal camera safe area padding',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      tester.view.viewPadding = const FakeViewPadding(left: 80);
-      tester.view.padding = const FakeViewPadding(left: 80);
-      addTearDown(tester.view.reset);
+  group('announcement', () {
+    const body = '{"schemaVersion":1,"announcement":{"id":"t1",'
+        '"title":"测试公告","message":"完整的公告内容","links":['
+        '{"label":"GitHub","url":"https://github.com/Dey410/GardendlessLoader"}'
+        ']}}';
 
-      final controller = await _emptyController(tester);
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      expect(
-        tester
-            .getTopLeft(find.byKey(const ValueKey('launcher-navigation-rail')))
-            .dx,
-        closeTo(12, 0.1),
-      );
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'home page opens the about dialog from the lower-left navigation',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final controller = await _readyController(tester);
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      await tester.runAsync(controller.refreshAboutContent);
-      await tester.pump();
-
-      await tester.tap(find.text('关于'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.text('关于 GardendlessLoader'), findsOneWidget);
-      expect(find.text('远端 JSON 关于内容'), findsOneWidget);
-      expect(find.text('免责声明'), findsNothing);
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'home page fits an Android landscape viewport without scrolling',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(915, 412);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final controller = await _readyController(tester);
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      final viewport = tester.view.physicalSize / tester.view.devicePixelRatio;
-      final visibleControls = <String, Finder>{
-        'navigation rail':
-            find.byKey(const ValueKey('launcher-navigation-rail')),
-        'title': find.text('PvZ2 Gardendless'),
-        'resource information': find.text('资源信息'),
-        'quick actions': find.text('快捷操作'),
-        'diagnostics summary': find.text('诊断摘要'),
-        'announcement': find.text('公告'),
-        'start game button': find.byKey(
-          const ValueKey('home-start-game-button'),
-        ),
-      };
-      for (final entry in visibleControls.entries) {
-        final rect = tester.getRect(entry.value);
-        expect(rect.left, greaterThanOrEqualTo(0), reason: entry.key);
-        expect(rect.top, greaterThanOrEqualTo(0), reason: entry.key);
-        expect(rect.right, lessThanOrEqualTo(viewport.width),
-            reason: entry.key);
-        expect(rect.bottom, lessThanOrEqualTo(viewport.height),
-            reason: entry.key);
-      }
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'standard resources expand automatic collection without launching',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(915, 412);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final host = _RecordingGameHost();
-      final controller = await _readyController(tester, gameHost: host);
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
-      final jsModding = find.byKey(const ValueKey('home-js-modding'));
-      final startGame = find.byKey(const ValueKey('home-start-game-button'));
-      final expander =
-          find.byKey(const ValueKey('home-game-controls-expander'));
-
-      expect(autoCollect, findsNothing);
-      expect(jsModding, findsNothing);
-      expect(find.text('自动收集'), findsNothing);
-
-      await tester.tap(expander);
-      await tester.pumpAndSettle();
-
-      expect(host.launchCount, 0);
-      expect(autoCollect, findsOneWidget);
-      expect(jsModding, findsNothing);
-      expect(tester.getRect(autoCollect).bottom, tester.getRect(startGame).top);
-
-      await tester.tap(autoCollect);
-      await tester.pump();
-
-      expect(controller.autoCollectSunEnabled, isTrue);
-      expect(
-        tester
-            .widget<Switch>(
-              find.byKey(const ValueKey('home-auto-collect-sun-switch')),
-            )
-            .value,
-        isTrue,
-      );
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'compatible GP-Next resources leave JS Modding to the game',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(915, 412);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final controller = await _readyController(tester, gpNext: true);
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      final autoCollect = find.byKey(const ValueKey('home-auto-collect-sun'));
-      final startGame = find.byKey(const ValueKey('home-start-game-button'));
-
-      expect(controller.hasGpNext, isTrue);
-      expect(controller.gpNextCompatible, isTrue);
-      expect(autoCollect, findsNothing);
-      expect(find.text('JS Modding'), findsNothing);
-
-      await tester.tap(
-        find.byKey(const ValueKey('home-game-controls-expander')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(autoCollect, findsOneWidget);
-      expect(find.text('自动收集'), findsOneWidget);
-      expect(find.text('JS Modding'), findsNothing);
-      expect(tester.getRect(autoCollect).bottom, tester.getRect(startGame).top);
-
-      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-      await tester.pump();
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pumpAndSettle();
-
-      expect(autoCollect, findsNothing);
-      expect(find.text('JS Modding'), findsNothing);
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'home page renders announcements inline without disclaimer controls',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const trackedBilibiliUrl =
-          'https://space.bilibili.com/523667580?spm_id_from=333.1007.0.0';
+    Future<AppController> withAnnouncement(
+      WidgetTester tester, {
+      Directory? root,
+    }) async {
       final controller = await _readyController(
         tester,
-        announcementService: _announcementService('''
-{
-  "schemaVersion": 1,
-  "announcement": {
-    "id": "notice-1",
-    "title": "公告",
-    "message": "只显示正文内容",
-    "links": [
-      {
-        "label": "GitHub",
-        "url": "$appGithubUrl"
-      },
-      {
-        "label": "B站主页",
-        "url": "$trackedBilibiliUrl"
-      }
-    ]
-  }
-}
-'''),
+        root: root,
+        announcementService: _announcementService(body),
       );
       await tester.runAsync(controller.refreshAnnouncement);
+      return controller;
+    }
 
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
+    testWidgets('a new announcement pops up once and is remembered',
+        (tester) async {
+      _useSize(tester, _phone);
+      final root = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('gl_announcement_'),
+      ))!;
+      final controller = await withAnnouncement(tester, root: root);
+      expect(controller.hasUnseenAnnouncement, isTrue);
 
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(find.text('公告'), findsOneWidget);
-      expect(find.text('只显示正文内容'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('announcement-content-box')),
-        findsOneWidget,
-      );
-      final contentBox = tester.widget<DecoratedBox>(
-        find.byKey(const ValueKey('announcement-content-box')),
-      );
-      final contentDecoration = contentBox.decoration as BoxDecoration;
-      final contentBorder = contentDecoration.border! as Border;
-      expect(
-        contentBorder.top.color,
-        isNot(const Color(0xff0a84ff).withValues(alpha: 0.24)),
-      );
-      expect(find.text('免责声明'), findsNothing);
-      expect(
-        find.byKey(ValueKey('announcement-link-$bilibiliHomeUrl')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('announcement-link-$trackedBilibiliUrl')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(ValueKey('announcement-link-$appGithubUrl')),
-        findsOneWidget,
-      );
-      expect(find.byIcon(FontAwesomeIcons.bilibili.data), findsOneWidget);
-      expect(find.byIcon(FontAwesomeIcons.github.data), findsOneWidget);
-      expect(
-        tester.getCenter(find.byIcon(FontAwesomeIcons.bilibili.data)).dx,
-        lessThan(
-            tester.getCenter(find.byIcon(FontAwesomeIcons.github.data)).dx),
-      );
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'home page separates resource information from quick actions',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final controller = await _readyController(tester);
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      expect(find.text('资源信息'), findsOneWidget);
-      expect(find.text('资源根目录'), findsOneWidget);
-      expect(find.text('资源校验'), findsOneWidget);
-      expect(find.text('游戏宿主'), findsOneWidget);
-      expect(find.text('快捷操作'), findsOneWidget);
-
-      final resourceInfoTop = tester.getTopLeft(find.text('资源信息')).dy;
-      final quickActionsTop = tester.getTopLeft(find.text('快捷操作')).dy;
-
-      expect(resourceInfoTop, lessThan(quickActionsTop));
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'home page switches diagnostics into a launcher log view',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final controller = await _readyController(tester);
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      await tester.tap(find.text('日志'));
-      await tester.pump();
-
-      expect(find.text('日志信息'), findsOneWidget);
-      expect(find.text('详细音频诊断'), findsOneWidget);
-      expect(
-        find.text('记录每个音频的加载、解码和播放事件；仅在排查问题时开启'),
-        findsOneWidget,
-      );
-      final diagnosticsSwitch = find.byKey(
-        const ValueKey('detailed-audio-diagnostics-switch'),
-      );
-      expect(diagnosticsSwitch, findsOneWidget);
-      expect(tester.widget<Switch>(diagnosticsSwitch).value, isFalse);
-
-      await tester.tap(diagnosticsSwitch);
+      await tester.runAsync(() async {
+        await tester.pumpWidget(_app(controller));
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      });
       await tester.pumpAndSettle();
 
-      expect(controller.detailedAudioDiagnosticsEnabled, isTrue);
-      expect(tester.widget<Switch>(diagnosticsSwitch).value, isTrue);
-      expect(find.text('复制日志信息'), findsOneWidget);
+      final dialog = find.byKey(const ValueKey('announcement-dialog'));
+      expect(dialog, findsOneWidget);
+      expect(find.text('完整的公告内容'), findsOneWidget);
       expect(
-        find.textContaining('[INFO] app', findRichText: true),
+        find.descendant(of: dialog, matching: find.text('B站主页')),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('active.slot.validation', findRichText: true),
-        findsOneWidget,
-      );
-      expect(find.text('资源信息'), findsNothing);
-      expect(find.text('诊断摘要'), findsNothing);
-      expect(find.text('开始游戏'), findsNothing);
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(dialog, findsNothing);
+      expect(controller.hasUnseenAnnouncement, isFalse);
+      expect(find.byKey(const ValueKey('announcement-dot')), findsNothing);
 
-  testWidgets(
-    'diagnostics log uses the installed package version',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      // A later launch with the same announcement stays quiet.
+      final relaunched = await withAnnouncement(tester, root: root);
+      expect(relaunched.hasUnseenAnnouncement, isFalse);
+      await tester.pumpWidget(_app(relaunched));
+      await tester.pumpAndSettle();
+      expect(dialog, findsNothing);
+    });
 
-      final version = _pubspecVersion();
-      final controller = await _readyController(
-        tester,
-        diagnosticsService: DiagnosticsService(
-          appVersionLoader: () async => version,
-        ),
-      );
+    testWidgets('the top bar icon reopens the announcement', (tester) async {
+      _useSize(tester, _tablet);
+      final controller = await withAnnouncement(tester);
+      await tester.runAsync(controller.markAnnouncementSeen);
+      await tester.pumpWidget(_app(controller));
+      await tester.pumpAndSettle();
+      final dialog = find.byKey(const ValueKey('announcement-dialog'));
+      expect(dialog, findsNothing);
 
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      await tester.tap(find.text('日志'));
-      await tester.pump();
-
-      expect(
-        find.textContaining('version="$version"', findRichText: true),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('version="0.1.0"', findRichText: true),
-        findsNothing,
-      );
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'diagnostics log view copies the full diagnostic snapshot',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      String? copiedText;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-        if (call.method == 'Clipboard.setData') {
-          final data = call.arguments as Map<Object?, Object?>;
-          copiedText = data['text'] as String?;
-        }
-        return null;
-      });
-      addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(SystemChannels.platform, null);
-      });
-
-      final controller = await _readyController(tester);
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      await tester.tap(find.text('日志'));
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('copy-diagnostics-button')));
-      await tester.pump();
-
-      expect(copiedText, contains('App version:'));
-      expect(copiedText, contains('active slot validation:'));
-      expect(copiedText, contains('resourceServer: none'));
-      expect(find.text('日志信息已复制'), findsOneWidget);
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'home page copies the visible resource root',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      String? copiedText;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-        if (call.method == 'Clipboard.setData') {
-          final data = call.arguments as Map<Object?, Object?>;
-          copiedText = data['text'] as String?;
-        }
-        return null;
-      });
-      addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(SystemChannels.platform, null);
-      });
-
-      final controller = await _readyController(tester);
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      await tester.tap(find.byKey(const ValueKey('copy-resource-root-button')));
-      await tester.pump();
-
-      expect(copiedText, controller.userVisibleRoot);
-      expect(find.text('资源根目录已复制'), findsOneWidget);
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'home page disables launching until resources are imported',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final controller = await _emptyController(tester);
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-
-      final startButton = tester.widget<FilledButton>(
-        find.byKey(const ValueKey('home-start-game-button')),
-      );
-
-      expect(find.text('需导入'), findsOneWidget);
-      expect(find.text('需要导入资源'), findsOneWidget);
-      expect(find.text('请先导入资源'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('home-auto-collect-sun')),
-        findsNothing,
-      );
-      expect(
-        tester
-            .widget<IconButton>(
-              find.byKey(const ValueKey('home-game-controls-expander')),
-            )
-            .onPressed,
-        isNull,
-      );
-      expect(
-        tester.getRect(find.byKey(const ValueKey('app-version-pill'))).right,
-        lessThan(tester.getRect(find.text('需导入')).left),
-      );
-      expect(startButton.onPressed, isNull);
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
-
-  testWidgets(
-    'structured log view exposes overview operation filtering and event copy',
-    (tester) async {
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1180, 720);
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      String? copiedText;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copiedText =
-              (call.arguments as Map<Object?, Object?>)['text'] as String?;
-        }
-        return null;
-      });
-      addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(SystemChannels.platform, null);
-      });
-
-      final logger = InMemoryAppLogger(
-        appSessionId: 'app-session-test',
-        source: LogSource.dart,
-        eventSchemas: defaultLogEventSchemas,
-      );
-      final controller = await _readyController(tester, appLogger: logger);
-      logger.emit(
-        level: LogLevel.error,
-        category: 'game.webview',
-        event: 'webview_page_load_failed',
-        outcome: LogOutcome.failed,
-        code: 'webview_page_load_failed',
-        gameSessionId: 'game-session-test',
-        operationId: 'launch-operation-test',
-        error: StateError('page failed'),
-        stackTrace: StackTrace.current,
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(controller: controller)),
-      );
-      await tester.pump();
-      await tester.tap(find.text('日志'));
+      await tester.tap(find.byKey(const ValueKey('announcement-button')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('log-overview')), findsOneWidget);
+      expect(dialog, findsOneWidget);
+      expect(find.text('测试公告'), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('log-operation-filter')),
+        find.descendant(of: dialog, matching: find.text('GitHub')),
         findsOneWidget,
       );
-      expect(find.text('webview_page_load_failed'), findsOneWidget);
-      expect(find.text('游戏页面加载失败'), findsOneWidget);
+    });
 
-      final errorTile = find.ancestor(
-        of: find.text('webview_page_load_failed'),
-        matching: find.byType(ExpansionTile),
-      );
-      await tester.tap(
-        find.descendant(
-          of: errorTile,
-          matching: find.byTooltip('复制单条事件 JSON'),
-        ),
-      );
-      await tester.pump();
-      expect(copiedText, contains('webview_page_load_failed'));
-      expect(find.text('单条事件 JSON 已复制'), findsOneWidget);
-    },
-    timeout: const Timeout(Duration(seconds: 5)),
-  );
+    testWidgets('the home page no longer carries an announcement card',
+        (tester) async {
+      _useSize(tester, _tablet);
+      final controller = await withAnnouncement(tester);
+      await tester.runAsync(controller.markAnnouncementSeen);
+      await tester.pumpWidget(_app(controller));
+      await tester.pumpAndSettle();
+
+      expect(find.text('完整的公告内容'), findsNothing);
+      expect(find.byKey(const ValueKey('announcement-button')), findsOneWidget);
+    });
+  });
+
+  testWidgets('settings shows about content and the usage guide',
+      (tester) async {
+    _useSize(tester, _tablet);
+    final controller = await _readyController(tester);
+    await tester.runAsync(controller.refreshAboutContent);
+    await tester.pumpWidget(_app(controller));
+    await tester.pumpAndSettle();
+    await _openTab(tester, 'settings');
+
+    expect(find.text('远端 JSON 关于内容'), findsOneWidget);
+    expect(find.text('双指轻点'), findsOneWidget);
+    expect(find.text('加载器 GitHub'), findsOneWidget);
+    expect(find.text('上游游戏 GitHub'), findsOneWidget);
+  });
 }
 
 Future<AppController> _readyController(
   WidgetTester tester, {
+  Directory? root,
   AnnouncementService? announcementService,
   AboutContentService? aboutContentService,
   DiagnosticsService? diagnosticsService,
@@ -823,9 +529,10 @@ Future<AppController> _readyController(
   GameHost? gameHost,
 }) async {
   return (await tester.runAsync(() async {
-    final root = await Directory.systemTemp.createTemp('gl_home_layout_');
-    final resource = Directory(p.join(root.path, 'current'));
-    await _writeValidResource(resource);
+    final appRoot =
+        root ?? await Directory.systemTemp.createTemp('gl_home_layout_');
+    final resource = Directory(p.join(appRoot.path, 'current'));
+    if (!await resource.exists()) await _writeValidResource(resource);
     if (gpNext) {
       await File(p.join(resource.path, 'index.html')).writeAsString('''
 <html>
@@ -846,7 +553,8 @@ import('./config-test.js');
     }
 
     final controller = AppController(
-      pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
+      pathsService:
+          AppPathsService(rootOverride: appRoot, platformName: 'test'),
       announcementService: announcementService,
       aboutContentService: aboutContentService ?? _aboutContentService(),
       diagnosticsService: diagnosticsService,
@@ -936,16 +644,6 @@ AboutContentService _aboutContentService() {
 ''',
     ),
   );
-}
-
-String _pubspecVersion() {
-  final pubspec = File('pubspec.yaml').readAsStringSync();
-  final match =
-      RegExp(r'^version:\s*([^\s+]+)', multiLine: true).firstMatch(pubspec);
-  if (match == null) {
-    throw StateError('pubspec.yaml version is missing');
-  }
-  return match.group(1)!;
 }
 
 Future<void> _writeValidResource(Directory root) async {

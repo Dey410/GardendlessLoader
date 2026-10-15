@@ -8,7 +8,9 @@ import 'src/app_controller.dart';
 import 'src/logging/app_logger.dart';
 import 'src/logging/log_event_catalog.dart';
 import 'src/logging/native_app_logger.dart';
+import 'src/services/app_settings_store.dart';
 import 'src/ui/home_page.dart';
+import 'src/ui/theme/garden_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -104,21 +106,21 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'GardendlessLoader',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff0a84ff)),
-        useMaterial3: true,
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, home) => MaterialApp(
+        title: 'GardendlessLoader',
+        debugShowCheckedModeBanner: false,
+        theme: buildGardenTheme(Brightness.light),
+        darkTheme: buildGardenTheme(Brightness.dark),
+        themeMode: switch (_controller.themePreference) {
+          ThemePreference.system => ThemeMode.system,
+          ThemePreference.light => ThemeMode.light,
+          ThemePreference.dark => ThemeMode.dark,
+        },
+        home: home,
       ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xff0a84ff),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      home: HomePage(controller: _controller),
+      child: HomePage(controller: _controller),
     );
   }
 }

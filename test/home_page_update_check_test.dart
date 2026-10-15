@@ -9,52 +9,61 @@ import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/game_update_check_service.dart';
 import 'package:gardendless_loader/src/services/update_check_service.dart';
 import 'package:gardendless_loader/src/ui/home_page.dart';
+import 'package:gardendless_loader/src/ui/theme/garden_theme.dart';
 import 'package:path/path.dart' as p;
 
-void main() {
-  testWidgets('home page automatically shows and defers release update',
-      (tester) async {
-    final controller = AppController(
-      updateCheckService: UpdateCheckService(
-        currentVersion: '0.1.0',
-        installedVersionLoader: () async => '0.1.0',
-        loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
-          statusCode: HttpStatus.ok,
-          body: '''
-{
-  "tag_name": "v0.2.0",
-  "html_url": "https://github.com/Dey410/GardendlessLoader/releases/tag/v0.2.0"
-}
-''',
-        ),
-      ),
-      gameUpdateCheckService: _stableGameService(),
+Widget _app(AppController controller) => MaterialApp(
+      theme: buildGardenTheme(Brightness.dark),
+      home: HomePage(controller: controller),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(controller: controller)),
-    );
+void _useTablet(WidgetTester tester) {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = const Size(1194, 834);
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+UpdateCheckService _releaseService(String current, String latest) {
+  return UpdateCheckService(
+    currentVersion: current,
+    installedVersionLoader: () async => current,
+    loader: (uri, timeout, maxBytes) async => UpdateCheckHttpResponse(
+      statusCode: HttpStatus.ok,
+      body: '{"tag_name":"v$latest","html_url":'
+          '"https://github.com/Dey410/GardendlessLoader/releases/tag/v$latest"}',
+    ),
+  );
+}
+
+void main() {
+  testWidgets('app update marks settings and can be deferred', (tester) async {
+    _useTablet(tester);
+    final controller =
+        await _initializedController(tester, _releaseService('0.1.0', '0.2.0'));
+
+    await tester.pumpWidget(_app(controller));
+    await tester.runAsync(() => Future<void>.delayed(
+          const Duration(milliseconds: 100),
+        ));
     await tester.pumpAndSettle();
 
-    expect(find.text('更新中心'), findsOneWidget);
+    expect(find.byKey(const ValueKey('app-update-dot')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('nav-settings')));
+    await tester.pumpAndSettle();
+
     expect(find.byKey(const ValueKey('app-update-entry')), findsOneWidget);
     expect(find.text('0.1.0 → 0.2.0'), findsOneWidget);
-    expect(find.text('网盘更新'), findsOneWidget);
-    expect(find.text('查看 GitHub Release'), findsOneWidget);
-    final cloudDrivePosition = tester.getTopLeft(find.text('网盘更新'));
-    final githubPosition = tester.getTopLeft(find.text('查看 GitHub Release'));
+    final cloud = tester.getTopLeft(find.text('网盘更新'));
+    final release = tester.getTopLeft(find.text('查看 GitHub Release'));
     expect(
-      cloudDrivePosition.dy < githubPosition.dy ||
-          cloudDrivePosition.dy == githubPosition.dy &&
-              cloudDrivePosition.dx < githubPosition.dx,
-      isTrue,
-    );
-    expect(find.byKey(const ValueKey('app-update-dot')), findsOneWidget);
+        cloud.dy < release.dy ||
+            cloud.dy == release.dy && cloud.dx < release.dx,
+        isTrue);
 
     await tester.tap(find.text('稍后提醒'));
-    await tester.pump();
-
-    expect(find.text('更新中心'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('app-update-entry')), findsNothing);
     expect(find.byKey(const ValueKey('app-update-dot')), findsNothing);
   });
 
@@ -65,33 +74,21 @@ void main() {
     );
   });
 
-  testWidgets(
-      'version pill manually checks updates and reports current version',
-      (tester) async {
-    final controller = await _initializedController(
-      tester,
-      UpdateCheckService(
-        currentVersion: '0.1.0',
-        installedVersionLoader: () async => '0.1.0',
-        loader: (uri, timeout, maxBytes) async => const UpdateCheckHttpResponse(
-          statusCode: HttpStatus.ok,
-          body: '''
-{
-  "tag_name": "v0.1.0",
-  "html_url": "https://github.com/Dey410/GardendlessLoader/releases/tag/v0.1.0"
-}
-''',
-        ),
-      ),
-    );
+  testWidgets('global check reports the result once', (tester) async {
+    _useTablet(tester);
+    final controller =
+        await _initializedController(tester, _releaseService('0.1.0', '0.1.0'));
+    await tester.pumpWidget(_app(controller));
+    await tester.runAsync(() => Future<void>.delayed(
+          const Duration(milliseconds: 100),
+        ));
+    await tester.pumpAndSettle();
 
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(controller: controller)),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    await tester.tap(find.byKey(const ValueKey('app-version-pill')));
+    expect(find.byKey(const ValueKey('check-updates-button')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('check-updates-button')));
+    await tester.runAsync(() => Future<void>.delayed(
+          const Duration(milliseconds: 100),
+        ));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -106,8 +103,8 @@ void main() {
     );
   });
 
-  testWidgets('version pill shows a spinner while checking updates',
-      (tester) async {
+  testWidgets('check button shows progress while checking', (tester) async {
+    _useTablet(tester);
     final response = Completer<UpdateCheckHttpResponse>();
     final controller = await _initializedController(
       tester,
@@ -118,32 +115,27 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(controller: controller)),
-    );
+    await tester.pumpWidget(_app(controller));
     await tester.pump();
-
-    expect(find.byKey(const ValueKey('app-update-spinner')), findsOneWidget);
+    expect(find.text('检查中'), findsOneWidget);
 
     response.complete(
       const UpdateCheckHttpResponse(
         statusCode: HttpStatus.ok,
-        body: '''
-{
-  "tag_name": "v0.1.0",
-  "html_url": "https://github.com/Dey410/GardendlessLoader/releases/tag/v0.1.0"
-}
-''',
+        body: '{"tag_name":"v0.1.0","html_url":'
+            '"https://github.com/Dey410/GardendlessLoader/releases/tag/v0.1.0"}',
       ),
     );
+    await tester.runAsync(() => Future<void>.delayed(
+          const Duration(milliseconds: 100),
+        ));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    expect(find.byKey(const ValueKey('app-update-spinner')), findsNothing);
+    expect(find.text('检查更新'), findsOneWidget);
   });
 
-  testWidgets('game update has its own version dot and update center entry',
+  testWidgets('game update marks resources and can be deferred',
       (tester) async {
+    _useTablet(tester);
     late Directory root;
     late AppController controller;
     await tester.runAsync(() async {
@@ -154,49 +146,35 @@ void main() {
       );
       controller = AppController(
         pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
-        updateCheckService: UpdateCheckService(
-          currentVersion: '0.4.8',
-          installedVersionLoader: () async => '0.4.8',
-          loader: (uri, timeout, maxBytes) async =>
-              const UpdateCheckHttpResponse(
-            statusCode: HttpStatus.ok,
-            body: '''
-{"tag_name":"v0.4.8","html_url":"https://github.com/Dey410/GardendlessLoader/releases/tag/v0.4.8"}
-''',
-          ),
-        ),
-        gameUpdateCheckService: GameUpdateCheckService(
-          loader: (uri, timeout, maxBytes) async =>
-              const GameUpdateCheckHttpResponse(
-            statusCode: HttpStatus.ok,
-            body: '[{"name":"0.11.0"}]',
-          ),
-        ),
+        updateCheckService: _releaseService('0.4.8', '0.4.8'),
+        gameUpdateCheckService: _stableGameService(),
       );
       await controller.initialize();
     });
     addTearDown(() => root.delete(recursive: true));
 
-    await tester
-        .pumpWidget(MaterialApp(home: HomePage(controller: controller)));
+    await tester.pumpWidget(_app(controller));
+    await tester.runAsync(() => Future<void>.delayed(
+          const Duration(milliseconds: 100),
+        ));
     await tester.pumpAndSettle();
 
     expect(find.text('加载器 v0.4.8'), findsOneWidget);
-    expect(find.text('游戏 v0.10.0'), findsOneWidget);
+    expect(find.textContaining('版本 0.10.0'), findsOneWidget);
     expect(find.byKey(const ValueKey('app-update-dot')), findsNothing);
     expect(find.byKey(const ValueKey('game-update-dot')), findsOneWidget);
-    expect(find.text('更新中心'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('nav-resources')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('game-update-entry')), findsOneWidget);
-    expect(find.byKey(const ValueKey('app-update-entry')), findsNothing);
     expect(find.text('0.10.0 → 0.11.0'), findsOneWidget);
     expect(find.text('获取游戏资源'), findsOneWidget);
     expect(find.text('查看游戏 GitHub'), findsOneWidget);
 
     await tester.tap(find.text('稍后提醒'));
-    await tester.pump();
-
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('game-update-dot')), findsNothing);
-    expect(find.text('更新中心'), findsNothing);
+    expect(find.byKey(const ValueKey('game-update-entry')), findsNothing);
   });
 }
 

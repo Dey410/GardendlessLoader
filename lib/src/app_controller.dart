@@ -133,8 +133,7 @@ class AppController extends ChangeNotifier {
   bool _appUpdateDetected = false;
   bool _gameUpdateDetected = false;
   bool _updateCheckInProgress = false;
-  bool _watermarkEnabled = true;
-  bool _detailedAudioDiagnosticsEnabled = false;
+  AppSettings _appSettings = const AppSettings();
   bool _initialized = false;
   bool _busy = false;
   String? _message;
@@ -160,8 +159,11 @@ class AppController extends ChangeNotifier {
   String? get currentGameVersion => _currentGameVersion;
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
-  bool get watermarkEnabled => _watermarkEnabled;
-  bool get detailedAudioDiagnosticsEnabled => _detailedAudioDiagnosticsEnabled;
+  bool get watermarkEnabled => _appSettings.watermarkEnabled;
+  bool get detailedAudioDiagnosticsEnabled =>
+      _appSettings.detailedAudioDiagnosticsEnabled;
+  ThemePreference get themePreference => _appSettings.themePreference;
+  bool get reduceMotion => _appSettings.reduceMotion;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
   GameHostPlatform get gameHostPlatform {
     final configured = _gameHostPlatform;
@@ -205,6 +207,15 @@ class AppController extends ChangeNotifier {
       _manifest.gpNextCompatibilityError;
   bool get hasValidImportSource => _importValidation.isValid;
   bool get canStartGame => hasCurrentResource;
+
+  /// Root of the validated active slot, or null when nothing playable is
+  /// installed. The launcher reads presentation art from here.
+  String? get activeResourceRoot {
+    final paths = _paths;
+    if (paths == null || !hasCurrentResource) return null;
+    return _importService.activeDirectory(paths, _manifest)?.path;
+  }
+
   String get detectedTitle =>
       _currentValidation.detectedTitle ?? _manifest.detectedTitle ?? '未检测到标题';
   //返回一个适合在 UI 中显示的资源根目录名称。如果路径信息不可用，则返回一个默认的资源文件夹名称。
@@ -237,10 +248,7 @@ class AppController extends ChangeNotifier {
         final exitResult = await _gameSessionStore!.consumeExitResult();
         _emitInitializationStage('settings');
         _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
-        final appSettings = await _appSettingsStore!.read();
-        _watermarkEnabled = appSettings.watermarkEnabled;
-        _detailedAudioDiagnosticsEnabled =
-            appSettings.detailedAudioDiagnosticsEnabled;
+        _appSettings = await _appSettingsStore!.read();
         _emitInitializationStage('manifest');
         _manifestStore = ManifestStore(_paths!.manifestFile);
         _manifest = await _manifestStore!.read();
@@ -404,6 +412,21 @@ class AppController extends ChangeNotifier {
   Future<void> refreshAnnouncement() async {
     _announcement = await _announcementService.fetchCurrentAnnouncement();
     notifyListeners();
+  }
+
+  /// True while the current announcement has not been shown to the user.
+  bool get hasUnseenAnnouncement {
+    final announcement = _announcement;
+    return announcement != null &&
+        announcement.id != _appSettings.seenAnnouncementId;
+  }
+
+  Future<void> markAnnouncementSeen() async {
+    final announcement = _announcement;
+    if (announcement == null || _appSettingsStore == null) return;
+    await _updateAppSettings(
+      _appSettings.copyWith(seenAnnouncementId: announcement.id),
+    );
   }
 
   Future<void> refreshAboutContent() async {
@@ -899,9 +922,9 @@ class AppController extends ChangeNotifier {
       hasGpNext: hasGpNext,
       gpNextCompatible: gpNextCompatible,
       gpNextVersion: gpNextVersion,
-      watermarkEnabled: _watermarkEnabled,
+      watermarkEnabled: watermarkEnabled,
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
-      detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
+      detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -1041,37 +1064,30 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setWatermarkEnabled(bool enabled) async {
-    if (_watermarkEnabled == enabled) {
-      return;
-    }
-    final appSettingsStore = _appSettingsStore;
-    if (appSettingsStore == null) {
-      throw StateError('AppSettingsStore 尚未初始化');
-    }
-
-    _watermarkEnabled = enabled;
-    notifyListeners();
-    final previousWrite = _appSettingsWrite;
-    final currentWrite = () async {
-      try {
-        await previousWrite;
-      } catch (_) {
-        // A later choice must still be persisted after an earlier write fails.
-      }
-      await appSettingsStore.write(
-        AppSettings(
-          watermarkEnabled: enabled,
-          detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
-        ),
-      );
-    }();
-    _appSettingsWrite = currentWrite;
-    await currentWrite;
+  Future<void> setWatermarkEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(watermarkEnabled: enabled),
+    );
   }
 
-  Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) async {
-    if (_detailedAudioDiagnosticsEnabled == enabled) {
+  Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(detailedAudioDiagnosticsEnabled: enabled),
+    );
+  }
+
+  Future<void> setThemePreference(ThemePreference preference) {
+    return _updateAppSettings(
+      _appSettings.copyWith(themePreference: preference),
+    );
+  }
+
+  Future<void> setReduceMotion(bool enabled) {
+    return _updateAppSettings(_appSettings.copyWith(reduceMotion: enabled));
+  }
+
+  Future<void> _updateAppSettings(AppSettings settings) async {
+    if (settings.toJson().toString() == _appSettings.toJson().toString()) {
       return;
     }
     final appSettingsStore = _appSettingsStore;
@@ -1079,7 +1095,7 @@ class AppController extends ChangeNotifier {
       throw StateError('AppSettingsStore 尚未初始化');
     }
 
-    _detailedAudioDiagnosticsEnabled = enabled;
+    _appSettings = settings;
     notifyListeners();
     final previousWrite = _appSettingsWrite;
     final currentWrite = () async {
@@ -1088,12 +1104,7 @@ class AppController extends ChangeNotifier {
       } catch (_) {
         // A later choice must still be persisted after an earlier write fails.
       }
-      await appSettingsStore.write(
-        AppSettings(
-          watermarkEnabled: _watermarkEnabled,
-          detailedAudioDiagnosticsEnabled: enabled,
-        ),
-      );
+      await appSettingsStore.write(settings);
     }();
     _appSettingsWrite = currentWrite;
     await currentWrite;

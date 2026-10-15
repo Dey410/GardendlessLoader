@@ -1,10 +1,26 @@
 import 'dart:convert';
 import 'dart:io';
 
+enum ThemePreference {
+  system,
+  light,
+  dark;
+
+  static ThemePreference fromName(Object? value) {
+    return ThemePreference.values.firstWhere(
+      (preference) => preference.name == value,
+      orElse: () => ThemePreference.system,
+    );
+  }
+}
+
 class AppSettings {
   const AppSettings({
     this.watermarkEnabled = true,
     this.detailedAudioDiagnosticsEnabled = false,
+    this.themePreference = ThemePreference.system,
+    this.reduceMotion = false,
+    this.seenAnnouncementId,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -12,15 +28,44 @@ class AppSettings {
       watermarkEnabled: json['watermarkEnabled'] as bool? ?? true,
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
+      themePreference: ThemePreference.fromName(json['themePreference']),
+      reduceMotion: json['reduceMotion'] as bool? ?? false,
+      seenAnnouncementId: json['seenAnnouncementId'] as String?,
     );
   }
 
   final bool watermarkEnabled;
   final bool detailedAudioDiagnosticsEnabled;
+  final ThemePreference themePreference;
+  final bool reduceMotion;
+
+  /// Id of the last announcement shown to the user, so a new one pops up
+  /// once and an old one never again.
+  final String? seenAnnouncementId;
+
+  AppSettings copyWith({
+    bool? watermarkEnabled,
+    bool? detailedAudioDiagnosticsEnabled,
+    ThemePreference? themePreference,
+    bool? reduceMotion,
+    String? seenAnnouncementId,
+  }) {
+    return AppSettings(
+      watermarkEnabled: watermarkEnabled ?? this.watermarkEnabled,
+      detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled ??
+          this.detailedAudioDiagnosticsEnabled,
+      themePreference: themePreference ?? this.themePreference,
+      reduceMotion: reduceMotion ?? this.reduceMotion,
+      seenAnnouncementId: seenAnnouncementId ?? this.seenAnnouncementId,
+    );
+  }
 
   Map<String, Object?> toJson() => <String, Object?>{
         'watermarkEnabled': watermarkEnabled,
         'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
+        'themePreference': themePreference.name,
+        'reduceMotion': reduceMotion,
+        'seenAnnouncementId': seenAnnouncementId,
       };
 }
 

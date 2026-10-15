@@ -30,3 +30,7 @@ flutter:
     - about_content.json
     - tool/generated_icons/app_icon_master.png
     - assets/game_bridge/
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono.ttf
