@@ -89,9 +89,9 @@ class GpNextDirectoryEntry {
 
 class NativeFileTask {
   readonly operation: () => Promise<void>;
-  readonly reject: (error: Error) => void;
+  readonly reject: (error: FileFailure) => void;
   readonly control: boolean;
-  constructor(operation: () => Promise<void>, reject: (error: Error) => void, control: boolean) {
+  constructor(operation: () => Promise<void>, reject: (error: FileFailure) => void, control: boolean) {
     this.operation = operation;
     this.reject = reject;
     this.control = control;

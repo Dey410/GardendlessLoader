@@ -92,3 +92,6 @@ Loader 一次 quality 门禁后构建三个平台，分别核对嵌入版本、�
 Android 测试任务现在明确指定 `:app:testReleaseUnitTest`，避免应用类名筛选传播到第三方插件测试。相同八个应用测试类的 30 项检查通过；插件的生产编译依赖保留。
 
 鸿蒙的 `hvigor` 别名现在使用 `exec` 包装调用真实 `hvigorw`，避免符号链接让脚本按错误的 `$0` 目录寻找 `hvigorw.js`。临时目录夹具复现原错误并验证修复，含特殊字符的路径和参数原样保留；工作流 YAML、shell、失败传播和三端产物汇总约束检查通过。完整 HAP 结果须以修复提交对应的 Actions 为准。
+
+
+随后构建 [38708146916](https://github.com/Dey410/GardendlessLoader/actions/runs/38708146916) 的 Android APK 与 iOS IPA 均成功生成、校验并上传；鸿蒙通过工具启动和依赖安装后，实际 ArkTS 编译在两个队列拒绝调用处报告 structural typing 错误。`NativeFileTask.reject` 只接收队列驱逐与宿主销毁产生的 `FileFailure`，现在字段与构造参数明确使用该具体类型。运行中 IO 异常仍直达 Promise 原始 reject，不改变错误对象、错误码或取消行为。类型设计依据见 [OpenHarmony ArkTS 迁移约束](https://gitee.com/openharmony/docs/blob/master/zh-cn/application-dev/quick-start/typescript-to-arkts-migration-guide.md)。现有鸿蒙 21 项行为检查和 API12 签名检查通过；这些本地检查不能替代对应提交的真实 ArkTS/HAP 编译结果。
