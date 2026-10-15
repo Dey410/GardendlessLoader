@@ -54,150 +54,53 @@ void main() {
     expect(received.single.totalFiles, 8);
   });
 
-  test('forwards streaming progress from the platform importer', () async {
-    final temp = await Directory.systemTemp.createTemp('gl_picker_progress_');
-    addTearDown(() async {
-      if (await temp.exists()) {
-        await temp.delete(recursive: true);
-      }
-    });
-    final received = <ImportProgress>[];
-    final picker = ResourcePickerService(
-      platformName: 'android',
-      mobileZipImporter: ({
-        required String targetDirectory,
-        ImportProgressCallback? onProgress,
-      }) async {
-        onProgress?.call(const ImportProgress(
-          phase: ImportPhase.extracting,
-          copiedBytes: 512,
-          totalBytes: 1024,
-          message: '正在解压资源',
-        ));
-        return targetDirectory;
-      },
-    );
-
-    await picker.pickAndExtractDocsZip(
-      targetDirectory: Directory(p.join(temp.path, 'slot-a')),
-      onProgress: received.add,
-    );
-
-    expect(received, hasLength(1));
-    expect(received.single.phase, ImportPhase.extracting);
-    expect(received.single.copiedBytes, 512);
-    expect(received.single.totalBytes, 1024);
-  });
-
-  test('uses mobile streaming importer instead of reading the zip in Dart',
+  test('uses the streaming import contract on every maintained platform',
       () async {
-    final temp = await Directory.systemTemp.createTemp('gl_picker_');
-    addTearDown(() async {
-      if (await temp.exists()) {
-        await temp.delete(recursive: true);
-      }
-    });
+    for (final platform in ['android', 'ios', 'ohos']) {
+      final temp = await Directory.systemTemp.createTemp('gl_picker_$platform');
+      addTearDown(() async {
+        if (await temp.exists()) {
+          await temp.delete(recursive: true);
+        }
+      });
+      final localImportDocs = Directory(p.join(temp.path, 'slot-a'));
+      final received = <ImportProgress>[];
+      var importerCalled = false;
+      final picker = ResourcePickerService(
+        platformName: platform,
+        mobileZipImporter: ({
+          required String targetDirectory,
+          ImportProgressCallback? onProgress,
+        }) async {
+          importerCalled = true;
+          expect(targetDirectory, localImportDocs.path);
+          onProgress?.call(const ImportProgress(
+            phase: ImportPhase.extracting,
+            copiedBytes: 512,
+            totalBytes: 1024,
+            message: '正在解压资源',
+          ));
+          await localImportDocs.create(recursive: true);
+          await File(p.join(localImportDocs.path, 'index.html'))
+              .writeAsString('ok');
+          return targetDirectory;
+        },
+      );
 
-    final localImportDocs = Directory(p.join(temp.path, 'slot-a'));
-    var importerCalled = false;
+      final picked = await picker.pickAndExtractDocsZip(
+        targetDirectory: localImportDocs,
+        onProgress: received.add,
+      );
 
-    final picker = ResourcePickerService(
-      platformName: 'android',
-      mobileZipImporter: ({
-        required String targetDirectory,
-        ImportProgressCallback? onProgress,
-      }) async {
-        importerCalled = true;
-        expect(targetDirectory, localImportDocs.path);
-        await localImportDocs.create(recursive: true);
-        await File(p.join(localImportDocs.path, 'index.html'))
-            .writeAsString('ok');
-        return targetDirectory;
-      },
-    );
-
-    final picked = await picker.pickAndExtractDocsZip(
-      targetDirectory: localImportDocs,
-    );
-
-    expect(importerCalled, isTrue);
-    expect(picked?.path, localImportDocs.path);
-    expect(await File(p.join(localImportDocs.path, 'index.html')).exists(),
-        isTrue);
-  });
-
-  test('uses iOS streaming importer instead of reading the zip in Dart',
-      () async {
-    final temp = await Directory.systemTemp.createTemp('gl_picker_');
-    addTearDown(() async {
-      if (await temp.exists()) {
-        await temp.delete(recursive: true);
-      }
-    });
-
-    final localImportDocs = Directory(p.join(temp.path, 'slot-a'));
-    var importerCalled = false;
-
-    final picker = ResourcePickerService(
-      platformName: 'ios',
-      mobileZipImporter: ({
-        required String targetDirectory,
-        ImportProgressCallback? onProgress,
-      }) async {
-        importerCalled = true;
-        expect(targetDirectory, localImportDocs.path);
-        await localImportDocs.create(recursive: true);
-        await File(p.join(localImportDocs.path, 'index.html'))
-            .writeAsString('ok');
-        return targetDirectory;
-      },
-    );
-
-    final picked = await picker.pickAndExtractDocsZip(
-      targetDirectory: localImportDocs,
-    );
-
-    expect(importerCalled, isTrue);
-    expect(picked?.path, localImportDocs.path);
-    expect(await File(p.join(localImportDocs.path, 'index.html')).exists(),
-        isTrue);
-  });
-
-  test('uses OHOS streaming importer instead of reading the zip in Dart',
-      () async {
-    final temp = await Directory.systemTemp.createTemp('gl_picker_');
-    addTearDown(() async {
-      if (await temp.exists()) {
-        await temp.delete(recursive: true);
-      }
-    });
-
-    final localImportDocs = Directory(p.join(temp.path, 'slot-a'));
-    var importerCalled = false;
-
-    final picker = ResourcePickerService(
-      platformName: 'ohos',
-      mobileZipImporter: ({
-        required String targetDirectory,
-        ImportProgressCallback? onProgress,
-      }) async {
-        importerCalled = true;
-        expect(targetDirectory, localImportDocs.path);
-        await localImportDocs.create(recursive: true);
-        await File(p.join(localImportDocs.path, 'index.html'))
-            .writeAsString('ok');
-        return targetDirectory;
-      },
-    );
-
-    final picked = await picker.pickAndExtractDocsZip(
-      targetDirectory: localImportDocs,
-    );
-
-    expect(importerCalled, isTrue);
-    expect(picked?.path, localImportDocs.path);
-    expect(await File(p.join(localImportDocs.path, 'index.html')).exists(),
-        isTrue);
+      expect(importerCalled, isTrue, reason: platform);
+      expect(picked?.path, localImportDocs.path);
+      expect(await File(p.join(localImportDocs.path, 'index.html')).exists(),
+          isTrue);
+      expect(received, hasLength(1));
+      expect(received.single.phase, ImportPhase.extracting);
+      expect(received.single.copiedBytes, 512);
+      expect(received.single.totalBytes, 1024);
+    }
   });
 
   test('returns null when Android streaming importer is cancelled', () async {

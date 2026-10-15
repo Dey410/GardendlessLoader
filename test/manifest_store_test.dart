@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 void main() {
   test('does not persist legacy announcement dismissal fields', () async {
     final temp = await Directory.systemTemp.createTemp('gl_manifest_');
+    addTearDown(() => temp.delete(recursive: true));
     final manifestFile = File(p.join(temp.path, 'manifest.json'));
     final store = ManifestStore(manifestFile);
 
@@ -29,30 +30,35 @@ void main() {
     expect(await manifestFile.readAsString(), isNot(contains('dismissedId')));
   });
 
-  test('persists the imported game version', () async {
+  test('persists resource identity, settings, and resumable import state',
+      () async {
     final temp = await Directory.systemTemp.createTemp('gl_manifest_');
     addTearDown(() => temp.delete(recursive: true));
     final store = ManifestStore(File(p.join(temp.path, 'manifest.json')));
 
     await store.write(
-      ResourceManifest.initial().copyWith(gameVersion: '0.12.0-next'),
+      ResourceManifest.initial().copyWith(
+        gameVersion: '0.12.0-next',
+        autoCollectSunEnabled: true,
+        buildProfile: ResourceBuildProfile.gpNext,
+        gpNextVersion: '1.4.2',
+        generation: 7,
+        activeSlot: ResourceSlot.slotA,
+        transactionSlot: ResourceSlot.slotB,
+        transactionState: TransactionState.readyToActivate,
+      ),
     );
 
     final restored = await store.read();
     expect(restored.gameVersion, '0.12.0-next');
-  });
-
-  test('persists automatic sun collection for the active resource', () async {
-    final temp = await Directory.systemTemp.createTemp('gl_manifest_');
-    addTearDown(() => temp.delete(recursive: true));
-    final store = ManifestStore(File(p.join(temp.path, 'manifest.json')));
-
-    await store.write(
-      ResourceManifest.initial().copyWith(autoCollectSunEnabled: true),
-    );
-
-    final restored = await store.read();
     expect(restored.autoCollectSunEnabled, isTrue);
+    expect(restored.buildProfile, ResourceBuildProfile.gpNext);
+    expect(restored.gpNextVersion, '1.4.2');
+    expect(restored.gpNextCompatible, isTrue);
+    expect(restored.generation, 7);
+    expect(restored.activeSlot, ResourceSlot.slotA);
+    expect(restored.transactionSlot, ResourceSlot.slotB);
+    expect(restored.transactionState, TransactionState.readyToActivate);
   });
 
   test('ignores and drops the retired Loader JS Modding choice', () async {
@@ -70,24 +76,6 @@ void main() {
 
     expect(
         await manifestFile.readAsString(), isNot(contains('jsModdingEnabled')));
-  });
-
-  test('persists GP-Next compatibility metadata', () async {
-    final temp = await Directory.systemTemp.createTemp('gl_manifest_');
-    addTearDown(() => temp.delete(recursive: true));
-    final store = ManifestStore(File(p.join(temp.path, 'manifest.json')));
-
-    await store.write(
-      ResourceManifest.initial().copyWith(
-        buildProfile: ResourceBuildProfile.gpNext,
-        gpNextVersion: '1.4.2',
-      ),
-    );
-
-    final restored = await store.read();
-    expect(restored.buildProfile, ResourceBuildProfile.gpNext);
-    expect(restored.gpNextVersion, '1.4.2');
-    expect(restored.gpNextCompatible, isTrue);
   });
 
   test('old manifests default to a standard Web build', () async {
@@ -118,27 +106,6 @@ void main() {
     expect(standard.buildProfile, ResourceBuildProfile.standardWeb);
     expect(standard.gpNextVersion, isNull);
     expect(standard.gpNextCompatibilityError, isNull);
-  });
-
-  test('persists active slot and resumable import transaction', () async {
-    final temp = await Directory.systemTemp.createTemp('gl_manifest_');
-    addTearDown(() => temp.delete(recursive: true));
-    final store = ManifestStore(File(p.join(temp.path, 'manifest.json')));
-
-    await store.write(
-      ResourceManifest.initial().copyWith(
-        generation: 7,
-        activeSlot: ResourceSlot.slotA,
-        transactionSlot: ResourceSlot.slotB,
-        transactionState: TransactionState.readyToActivate,
-      ),
-    );
-
-    final restored = await store.read();
-    expect(restored.generation, 7);
-    expect(restored.activeSlot, ResourceSlot.slotA);
-    expect(restored.transactionSlot, ResourceSlot.slotB);
-    expect(restored.transactionState, TransactionState.readyToActivate);
   });
 
   test(

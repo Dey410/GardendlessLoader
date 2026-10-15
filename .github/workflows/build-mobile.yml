@@ -60,35 +60,8 @@ jobs:
       - name: Test OHOS file protocol in memory
         run: npm test --prefix ohos/test
 
-      - name: Test retained and pure Flutter behavior
-        # Explicitly reviewed: these tests never execute file/directory cleanup.
-        run: |
-          flutter test \
-            test/resource_package_test.dart \
-            test/resource_readiness_test.dart \
-            test/resource_self_check_test.dart \
-            test/http_text_test.dart \
-            test/about_content_cache_test.dart \
-            test/app_paths_retained_test.dart \
-            test/game_update_check_service_test.dart \
-            test/game_session_test.dart \
-            test/game_host_router_test.dart \
-            test/app_logger_test.dart \
-            test/native_app_logger_test.dart \
-            test/announcement_service_test.dart \
-            test/import_progress_test.dart \
-            test/log_event_catalog_test.dart \
-            test/update_check_service_test.dart \
-            test/android_export_config_test.dart \
-            test/game_bridge_assets_test.dart \
-            test/key_art_backdrop_test.dart \
-            test/github_actions_upload_config_test.dart \
-            test/harmony_build_config_test.dart \
-            test/ios_export_config_test.dart \
-            test/ios_import_config_test.dart \
-            test/native_game_host_config_test.dart \
-            test/native_logging_config_test.dart \
-            test/repository_layout_test.dart
+      - name: Test Flutter behavior
+        run: flutter test
 
       - name: Record runtime version
         id: runtime_version

@@ -135,6 +135,17 @@ void main() {
     await tester.pumpWidget(_app(controller));
     await tester.pumpAndSettle();
 
+    await tester.runAsync(() => precacheImage(
+          const ResizeImage(
+            AssetImage('assets/artwork/launcher_poster.png'),
+            width: 1600,
+            allowUpscaling: false,
+          ),
+          tester.element(find.byType(HomePage)),
+        ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('key-art')), findsOneWidget);
+
     expect(find.text('需要导入资源'), findsOneWidget);
     expect(find.text('开始游戏'), findsNothing);
 

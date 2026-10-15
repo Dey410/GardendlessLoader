@@ -28,12 +28,16 @@ void main() {
     );
     final paths = await service.ensureInitialized();
 
+    expect(paths.root.path, existingRoot.path);
+    expect(await paths.slotADir.exists(), isTrue);
+    expect(await paths.slotBDir.exists(), isTrue);
     final mediaExclusionMarker = File(p.join(paths.root.path, '.nomedia'));
     expect(await mediaExclusionMarker.exists(), isTrue);
     expect(await mediaExclusionMarker.length(), 0);
     expect(await existingResource.readAsBytes(), const [1, 2, 3]);
 
-    await service.ensureInitialized();
+    final repeated = await service.ensureInitialized();
+    expect(repeated.root.path, paths.root.path);
     expect(await mediaExclusionMarker.exists(), isTrue);
     expect(await existingResource.readAsBytes(), const [1, 2, 3]);
   });
@@ -48,14 +52,24 @@ void main() {
 
     final documents = Directory(p.join(temp.path, 'documents'));
     final external = Directory(p.join(temp.path, 'external'));
-    final paths = await AppPathsService(
+    final service = AppPathsService(
       platformName: 'ios',
       documentsDirectoryProvider: () async => documents,
       externalStorageDirectoryProvider: () async => external,
-    ).ensureInitialized();
+    );
+    final paths = await service.ensureInitialized();
+    final existingResource = File(p.join(paths.root.path, 'existing.png'));
+    await existingResource.writeAsBytes(const [1, 2, 3]);
+
+    final repeated = await service.ensureInitialized();
 
     expect(paths.root.path, p.join(documents.path, resourceFolderName));
     expect(paths.root.path, isNot(startsWith(external.path)));
+    expect(repeated.root.path, paths.root.path);
+    expect(await existingResource.readAsBytes(), const [1, 2, 3]);
+    expect(await paths.slotADir.exists(), isTrue);
+    expect(await paths.slotBDir.exists(), isTrue);
+    expect(await File(p.join(paths.root.path, '.nomedia')).exists(), isFalse);
   });
 
   test(
@@ -69,15 +83,22 @@ void main() {
       });
 
       final documents = Directory(p.join(temp.path, 'documents'));
-      final external = Directory(p.join(temp.path, 'external'));
-
-      final paths = await AppPathsService(
+      final service = AppPathsService(
         platformName: 'ohos',
         documentsDirectoryProvider: () async => documents,
-        externalStorageDirectoryProvider: () async => external,
-      ).ensureInitialized();
+        externalStorageDirectoryProvider: () async =>
+            throw StateError('OHOS must not access external storage'),
+      );
+      final paths = await service.ensureInitialized();
+      final existingResource = File(p.join(paths.root.path, 'existing.png'));
+      await existingResource.writeAsBytes(const [1, 2, 3]);
+
+      final repeated = await service.ensureInitialized();
 
       expect(paths.root.path, p.join(documents.path, resourceFolderName));
+      expect(repeated.root.path, paths.root.path);
+      expect(await existingResource.readAsBytes(), const [1, 2, 3]);
+      expect(await File(p.join(paths.root.path, '.nomedia')).exists(), isFalse);
       expect(await paths.slotADir.exists(), isTrue);
       expect(await paths.slotBDir.exists(), isTrue);
       expect(
@@ -100,50 +121,6 @@ void main() {
       expect(paths.gpNextDir.path, p.join(paths.root.path, 'gp-next'));
       expect(await paths.gpNextPacksDir.exists(), isTrue);
       expect(await paths.gpNextPatchesDir.exists(), isTrue);
-    },
-  );
-
-  test('ohos ignores external storage for resource roots', () async {
-    final temp = await Directory.systemTemp.createTemp('gardendless_paths_');
-    addTearDown(() async {
-      if (await temp.exists()) {
-        await temp.delete(recursive: true);
-      }
-    });
-
-    final documents = Directory(p.join(temp.path, 'documents'));
-    final external = Directory(p.join(temp.path, 'external'));
-    final paths = await AppPathsService(
-      platformName: 'ohos',
-      documentsDirectoryProvider: () async => documents,
-      externalStorageDirectoryProvider: () async => external,
-    ).ensureInitialized();
-
-    expect(paths.root.path, p.join(documents.path, resourceFolderName));
-    expect(await paths.slotADir.exists(), isTrue);
-    expect(await paths.slotBDir.exists(), isTrue);
-  });
-
-  test(
-    'ohos stores resources under documents when external is unavailable',
-    () async {
-      final temp = await Directory.systemTemp.createTemp('gardendless_paths_');
-      addTearDown(() async {
-        if (await temp.exists()) {
-          await temp.delete(recursive: true);
-        }
-      });
-
-      final documents = Directory(p.join(temp.path, 'documents'));
-      final paths = await AppPathsService(
-        platformName: 'ohos',
-        documentsDirectoryProvider: () async => documents,
-        externalStorageDirectoryProvider: () async => null,
-      ).ensureInitialized();
-
-      expect(paths.root.path, p.join(documents.path, resourceFolderName));
-      expect(await paths.slotADir.exists(), isTrue);
-      expect(await paths.slotBDir.exists(), isTrue);
     },
   );
 }

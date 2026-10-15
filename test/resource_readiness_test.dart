@@ -63,6 +63,7 @@ void main() {
   test('readiness refuses a linked root before reading its contents', () async {
     final root = await _resource();
     final parent = await Directory.systemTemp.createTemp('gl_readiness_link_');
+    addTearDown(() => parent.delete(recursive: true));
     final link = Link(p.join(parent.path, 'linked'));
     await link.create(root.path);
 
@@ -102,17 +103,47 @@ console.info('Game Version: v0.15.0');
     expect(result.hasGpNext, isTrue);
     expect(result.gameVersion, '0.15.0');
   });
+
+  test('readiness rejects a linked Cocos file outside the resource root',
+      () async {
+    final root = await _resource(includeCocos: false);
+    final outside = await Directory.systemTemp.createTemp('gl_outside_');
+    addTearDown(() => outside.delete(recursive: true));
+    final outsideFile = File(p.join(outside.path, 'cc.js'));
+    await outsideFile.writeAsString('outside');
+    await Link(p.join(root.path, 'cocos-js', 'cc.js')).create(outsideFile.path);
+
+    final result = await ResourceValidator().validate(root);
+
+    expect(result.isValid, isFalse);
+    expect(result.errorCode, 'resource_path_unsafe');
+  });
+
+  test('readiness rejects a linked Cocos file inside the resource root',
+      () async {
+    final root = await _resource(includeCocos: false);
+    await Link(p.join(root.path, 'cocos-js', 'cc.js')).create(
+      p.join(root.path, 'src', 'settings.json'),
+    );
+
+    final result = await ResourceValidator().validate(root);
+
+    expect(result.isValid, isFalse);
+    expect(result.errorCode, 'resource_path_unsafe');
+  });
 }
 
-// Fixtures are deliberately retained: this task does not authorize deletion.
 Future<Directory> _resource(
     {bool includeCocos = true, bool linkedSource = false}) async {
   final root = await Directory.systemTemp.createTemp('gl_readiness_');
+  addTearDown(() => root.delete(recursive: true));
   await Directory(p.join(root.path, 'assets')).create();
   await Directory(p.join(root.path, 'cocos-js')).create();
   var source = Directory(p.join(root.path, 'src'));
   if (linkedSource) {
     source = await Directory.systemTemp.createTemp('gl_readiness_source_');
+    final linkedDirectory = source;
+    addTearDown(() => linkedDirectory.delete(recursive: true));
     await Link(p.join(root.path, 'src')).create(source.path);
   } else {
     await source.create();

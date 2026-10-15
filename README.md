@@ -143,6 +143,8 @@ flutter analyze
 flutter test
 ```
 
+During development, run the behavioral checks for the changed boundary, for example `flutter test test/import_service_test.dart` or `node tool/check_game_bridge.mjs`. Run the full suite once before integration or release; Actions uses the same entry points, with each shared JavaScript check executed once. Keep tests for failures that affect saved data, resource integrity, protocol limits, and user workflows. Avoid tests that copy source text, configuration strings, or individual implementation steps. New presentation assets can be verified within the existing UI workflow instead of adding a separate test file.
+
 ### Android
 
 ```powershell
