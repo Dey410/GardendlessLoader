@@ -133,17 +133,16 @@ Before reporting a new problem, search the [Issue Tracker](https://github.com/De
 - macOS, Xcode, and CocoaPods for iOS builds
 - A compatible Flutter SDK, DevEco command-line tools, and JDK 17 for HarmonyOS builds
 
-Clone the repository and run the tests:
+Clone the repository and analyze the code:
 
 ```powershell
 git clone https://github.com/Dey410/GardendlessLoader.git
 Set-Location GardendlessLoader
 flutter pub get
 flutter analyze
-flutter test
 ```
 
-During development, run the behavioral checks for the changed boundary, for example `flutter test test/import_service_test.dart` or `node tool/check_game_bridge.mjs`. Run the full suite once before integration or release; Actions uses the same entry points, with each shared JavaScript check executed once. Keep tests for failures that affect saved data, resource integrity, protocol limits, and user workflows. Avoid tests that copy source text, configuration strings, or individual implementation steps. New presentation assets can be verified within the existing UI workflow instead of adding a separate test file.
+Validate Dart changes with `dart format lib` and `flutter analyze`, then build the affected platform and perform the relevant device checks. The Flutter unit and widget suite has been removed; do not recreate per-feature test files automatically.
 
 ### Android
 
@@ -181,7 +180,6 @@ Enable the OpenHarmony dependency overrides before building locally:
 Copy-Item pubspec_overrides.ohos.yaml pubspec_overrides.yaml
 flutter doctor -v
 flutter pub get
-flutter test
 flutter build hap --release --target-platform ohos-arm64
 ```
 
@@ -202,7 +200,7 @@ Code, documentation, tests, bug reports, and feature suggestions are welcome.
 
 1. Fork the repository and create a feature branch from the latest main branch.
 2. Keep Dart code at two-space indentation and use single quotes.
-3. After making changes, run `dart format lib test`, `flutter analyze`, and `flutter test`.
+3. After making changes, run `dart format lib` and `flutter analyze`, then build and verify the affected platform.
 4. Open a pull request describing the changes and validation performed. Include screenshots or recordings for UI changes.
 
 When contributing code, preserve the resource path restrictions, atomic A/B slot switching, and default blocking of non-allowlisted WebView requests.

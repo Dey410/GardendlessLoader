@@ -60,9 +60,6 @@ jobs:
       - name: Test OHOS file protocol in memory
         run: npm test --prefix ohos/test
 
-      - name: Test Flutter behavior
-        run: flutter test
-
       - name: Record runtime version
         id: runtime_version
         run: |

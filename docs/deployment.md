@@ -27,8 +27,7 @@ zip -r GardendlessLoader-unsigned.ipa Payload
 1. `flutter pub get`
 2. `swift test`（GardendlessKit）
 3. `pod install`（保留 CocoaPods 集成；见下文已知事项）
-4. `flutter test`
-5. `flutter build ios --release --no-codesign` + 打包 IPA + 上传 artifact
+4. `flutter build ios --release --no-codesign` + 打包 IPA + 上传 artifact
 
 ## 3. 分发
 

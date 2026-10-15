@@ -134,15 +134,16 @@ GP-Next ZIP 补丁包既可以把 `pack.json` 直接放在压缩包根目录，�
 - iOS 构建需要 macOS、Xcode 和 CocoaPods
 - HarmonyOS 构建需要兼容版 Flutter SDK、DevEco 命令行工具和 JDK 17
 
-克隆并运行测试：
+克隆并运行静态分析：
 
 ```powershell
 git clone https://github.com/Dey410/GardendlessLoader.git
 Set-Location GardendlessLoader
 flutter pub get
 flutter analyze
-flutter test
 ```
+
+Flutter 单元和组件测试套件已按用户要求移除，不再按每个功能自动增加测试文件。Dart 修改通过格式检查和静态分析后，构建受影响的平台并进行对应设备验证。
 
 ### Android
 
@@ -180,7 +181,6 @@ ref: oh-3.35.7-release
 Copy-Item pubspec_overrides.ohos.yaml pubspec_overrides.yaml
 flutter doctor -v
 flutter pub get
-flutter test
 flutter build hap --release --target-platform ohos-arm64
 ```
 
@@ -201,7 +201,7 @@ flutter build hap --release --target-platform ohos-arm64
 
 1. Fork 本仓库并从最新主分支创建功能分支。
 2. 保持 Dart 两空格缩进和单引号风格。
-3. 修改后运行 `dart format lib test`、`flutter analyze` 和 `flutter test`。
+3. 修改后运行 `dart format lib` 和 `flutter analyze`，再构建并验证受影响的平台。
 4. 提交 Pull Request，说明改动内容、验证方式，并为 UI 变化附上截图或录屏。
 
 提交代码时，请继续遵守资源路径限制、A/B 槽原子切换以及 WebView 非白名单请求默认阻止等安全边界。
