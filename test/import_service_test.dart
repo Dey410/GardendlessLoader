@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/models.dart';
 import 'package:gardendless_loader/src/services/import_service.dart';
 import 'package:gardendless_loader/src/services/manifest_store.dart';
-import 'package:gardendless_loader/src/services/resource_self_check.dart';
 import 'package:gardendless_loader/src/services/resource_validator.dart';
 import 'package:path/path.dart' as p;
 
@@ -333,8 +332,7 @@ void main() {
       ),
     );
     importService = ImportService(
-      validator: ResourceValidator(),
-      selfCheck: _FailingSelfCheck(),
+      validator: _FailingReadinessCheck(),
     );
     final target = await importService.beginImport(
       paths: paths,
@@ -571,10 +569,11 @@ Future<void> _writeValidResource(
   }
 }
 
-class _FailingSelfCheck implements ResourceSelfCheck {
+class _FailingReadinessCheck extends ResourceValidator {
   @override
-  Future<void> validate(Directory root) async {
-    throw StateError('self check failed');
+  Future<ResourceValidationResult> validate(Directory root) async {
+    return ResourceValidationResult.invalid(
+        'resource_path_unsafe', 'self check failed');
   }
 }
 

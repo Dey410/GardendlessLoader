@@ -170,12 +170,13 @@ void main() {
     expect(
       gameBridge,
       contains(
-        'this.exportExistingFile(id, target.path, target.fileName, target.mimeType)',
+        'await this.exportExistingFile(request.id, result.exportHandle, result.exportPath,',
       ),
     );
     expect(
       gameBridge,
-      contains('const fileName = this.safeFileName(suggestedFileName)'),
+      contains(
+          'const fileName = ExportDocumentSpec.safeFileName(suggestedFileName)'),
     );
     expect(gameBridge, contains('options.newFileNames = [fileName]'));
     expect(
@@ -213,7 +214,7 @@ void main() {
     expect(gameBridge, contains('private pickerActive: boolean = false'));
     expect(
       gameBridge,
-      contains('if (this.pickerActive || this.chunkedExport != null)'),
+      contains('if (this.pickerActive)'),
     );
     expect(
       'this.pickerActive = true'.allMatches(gameBridge),
@@ -292,7 +293,7 @@ void main() {
     expect(gpNextCore, contains('interface GpNextFileInfo'));
     expect(
       gpNextCore,
-      contains('private fileInfo(path: string): GpNextFileInfo'),
+      contains('private async fileInfo(path: string): Promise<GpNextFileInfo>'),
       reason: 'ArkTS object literals must target an explicit interface',
     );
     expect(arkTsSources, isNot(contains('writeTextSync')));
@@ -320,7 +321,7 @@ void main() {
     expect(
       gameBridge,
       contains(
-          'GpNextPackArchiveNormalizer.prepare(incoming, directory, name)'),
+          'GpNextPackArchiveNormalizer.prepare(incoming, directory, name, this.gpNextCore)'),
     );
     expect(gameBridge, isNot(contains('zipContainsRootPackJson')));
   });
@@ -345,8 +346,10 @@ void main() {
       'ohos/entry/src/main/ets/game/GpNextNativeCore.ets',
     ).readAsStringSync();
 
-    expect(source,
-        contains('private resolveGpNextNamespacePath(raw: string): string'));
+    expect(
+        source,
+        contains(
+            'private async resolve(value: string | undefined, options: GpNextOptions): Promise<string>'));
     expect(source, contains("parts.indexOf('gp-next')"));
     expect(source, contains('let normalized = this.root;'));
     expect(source, isNot(contains(r'`${this.session.appRoot}/${raw}`')));
@@ -362,12 +365,10 @@ void main() {
     expect(workflow, contains('oh-3.35.7-release'));
     expect(workflow, contains('OHOS_MIN_DART_VERSION: 3.5.0'));
     expect(workflow, contains('Verify OpenHarmony Dart SDK compatibility'));
-    expect(workflow, contains('HarmonyOS HAP skipped'));
-    expect(workflow, contains('enabled=false'));
-    expect(
-      workflow,
-      isNot(contains('OHOS_COMMANDLINE_TOOLS_URL secret is required')),
-    );
+    expect(workflow, isNot(contains('HarmonyOS HAP skipped')));
+    expect(workflow, isNot(contains('enabled=false')));
+    expect(workflow, contains('OHOS_COMMANDLINE_TOOLS_URL secret is required'));
+    expect(workflow, isNot(contains('steps.ohos-tools.outputs.enabled')));
     expect(
       workflow,
       contains('cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml'),
@@ -382,14 +383,16 @@ void main() {
       workflow,
       contains('GardendlessLoader-unsigned-ohos-arm64.hap'),
     );
-    expect(workflow, contains('set +e'));
-    expect(workflow, contains(r'FLUTTER_BUILD_STATUS="$?"'));
-    expect(workflow, contains(r'exit "$FLUTTER_BUILD_STATUS"'));
-    expect(workflow, contains('Unsigned HAP recovered'));
-    expect(
-      workflow.replaceAll(RegExp(r'\\\r?\n\s*'), ''),
-      contains("find ohos/entry/build -type f -name '*unsigned*.hap'"),
+    final buildStep = workflow.substring(
+      workflow.indexOf('      - name: Build unsigned HAP'),
+      workflow.indexOf('      - name: Verify HAP version'),
     );
+    expect(buildStep, isNot(contains('set +e')));
+    expect(buildStep, isNot(contains('FLUTTER_BUILD_STATUS')));
+    expect(workflow, isNot(contains('Unsigned HAP recovered')));
+    expect(
+        buildStep, contains('Expected exactly one fresh unsigned arm64 HAP'));
+    expect(buildStep, contains("rglob('*unsigned*.hap')"));
     expect(workflow, contains('Upload unsigned HarmonyOS HAP'));
     expect(
       workflow,

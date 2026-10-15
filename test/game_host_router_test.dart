@@ -1,29 +1,33 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gardendless_loader/src/game_host/game_host.dart';
 
 void main() {
-  test('routes a session only to its maintained native platform host',
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('launches every maintained platform through one native contract',
       () async {
-    final launched = <GameHostPlatform>[];
-    final hosts = {
-      for (final platform in GameHostPlatform.values)
-        platform: _RecordingHost(platform, launched),
-    };
-    final router = GameHostRouter(hosts: hosts);
-    final session = _session(GameHostPlatform.ios);
+    const channel = MethodChannel('test/game-host');
+    final launches = <Map<Object?, Object?>>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'launch');
+      launches.add(call.arguments as Map<Object?, Object?>);
+      return null;
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding
+        .instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null));
+    const host = MethodChannelGameHost(channel: channel);
 
-    await router.launch(session);
+    for (final platform in GameHostPlatform.values) {
+      await host.launch(_session(platform));
+    }
 
-    expect(launched, [GameHostPlatform.ios]);
-  });
-
-  test('rejects a session when no native host is registered', () async {
-    final router = GameHostRouter(hosts: const {});
-
-    await expectLater(
-      router.launch(_session(GameHostPlatform.ohos)),
-      throwsA(isA<UnsupportedError>()),
-    );
+    expect(launches.map((session) => session['platform']),
+        ['android', 'ios', 'ohos']);
+    expect(launches.map((session) => session['activationGeneration']),
+        everyElement(7));
   });
 }
 
@@ -41,15 +45,3 @@ GameSession _session(GameHostPlatform platform) => GameSession(
       gpNextRoot: '/data/gp-next',
       exportTemporaryRoot: '/data/gp-next/.exports',
     );
-
-class _RecordingHost implements GameHost {
-  const _RecordingHost(this.platform, this.launched);
-
-  final GameHostPlatform platform;
-  final List<GameHostPlatform> launched;
-
-  @override
-  Future<void> launch(GameSession session) async {
-    launched.add(platform);
-  }
-}

@@ -6,6 +6,8 @@ import 'package:gardendless_loader/src/game_host/game_host.dart';
 void main() {
   const session = GameSession(
     sessionId: 'session-42',
+    packageId:
+        'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     resourceRoot: '/data/slot-b',
     platform: GameHostPlatform.android,
     entryPath: 'index.html',
@@ -27,6 +29,7 @@ void main() {
     );
 
     expect(decoded, session);
+    expect(decoded.packageId, session.packageId);
     expect(decoded.autoCollectSunEnabled, isTrue);
     expect(decoded.detailedAudioDiagnosticsEnabled, isTrue);
     expect(decoded.origin, 'https://appassets.androidplatform.net');

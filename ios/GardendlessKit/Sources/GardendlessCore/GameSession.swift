@@ -5,6 +5,7 @@ import Foundation
 public struct GameSession: Codable, Equatable {
   public static let schemaVersion = 1
 
+  public let packageId: String?
   public let sessionId: String
   public let resourceRoot: URL
   public let entryURL: URL
@@ -25,6 +26,7 @@ public struct GameSession: Codable, Equatable {
 
   public init(
     sessionId: String,
+    packageId: String? = nil,
     resourceRoot: URL,
     entryURL: URL,
     activationGeneration: Int,
@@ -38,6 +40,7 @@ public struct GameSession: Codable, Equatable {
     gpNextRoot: URL,
     exportTemporaryRoot: URL
   ) {
+    self.packageId = packageId
     self.sessionId = sessionId
     self.resourceRoot = resourceRoot
     self.entryURL = entryURL
@@ -80,6 +83,7 @@ public enum GameSessionDecoder {
     }
     return GameSession(
       sessionId: sessionId,
+      packageId: json["packageId"] as? String,
       resourceRoot: resourceRoot,
       entryURL: entry,
       activationGeneration: generation,

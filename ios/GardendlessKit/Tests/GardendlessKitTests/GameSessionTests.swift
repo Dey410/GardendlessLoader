@@ -33,6 +33,14 @@ final class GameSessionTests: XCTestCase {
     ]
   }
 
+  func testPackageIdentityIsOptionalAndFrozenFromLaunch() throws {
+    var json = makeJSON()
+    XCTAssertNil(try GameSessionDecoder.decode(json).packageId)
+    let identity = "sha256:" + String(repeating: "a", count: 64)
+    json["packageId"] = identity
+    XCTAssertEqual(try GameSessionDecoder.decode(json).packageId, identity)
+  }
+
   func testDecodesValidSession() throws {
     let session = try GameSessionDecoder.decode(makeJSON())
     XCTAssertEqual(session.sessionId, "session-1")

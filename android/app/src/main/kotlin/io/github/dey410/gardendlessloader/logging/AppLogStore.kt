@@ -10,9 +10,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CountDownLatch
@@ -263,7 +264,7 @@ object AppLogStore {
         sequence += 1
         val normalized = linkedMapOf<String, Any?>(
             "schemaVersion" to 1,
-            "timestampUtc" to Instant.now().toString(),
+            "timestampUtc" to utcDate("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
             "monotonicMs" to (SystemClock.elapsedRealtime() - monotonicOriginMs),
             "sequence" to sequence,
             "level" to normalizedLevel(value["level"]?.toString()),
@@ -417,11 +418,13 @@ object AppLogStore {
     }
 
     private fun newSessionId(): String {
-        val timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
-            .withZone(ZoneOffset.UTC)
-            .format(Instant.now())
+        val timestamp = utcDate("yyyyMMdd-HHmmss")
         return "$timestamp-${UUID.randomUUID().toString().take(6)}"
     }
+
+    private fun utcDate(pattern: String): String = SimpleDateFormat(pattern, Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.format(Date())
 
     @Suppress("DEPRECATION")
     private fun appVersion(context: Context): String = runCatching {

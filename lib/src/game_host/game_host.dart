@@ -37,6 +37,7 @@ enum GameHostPlatform {
 class GameSession {
   const GameSession({
     required this.sessionId,
+    this.packageId,
     required this.resourceRoot,
     required this.platform,
     required this.entryPath,
@@ -70,6 +71,7 @@ class GameSession {
     }
     return GameSession(
       sessionId: _requiredString(json, 'sessionId'),
+      packageId: json['packageId'] as String?,
       resourceRoot: _requiredString(json, 'resourceRoot'),
       platform: GameHostPlatform.fromWireName(json['platform']),
       entryPath: entryPath,
@@ -90,6 +92,7 @@ class GameSession {
   static const schemaVersion = 1;
 
   final String sessionId;
+  final String? packageId;
   final String resourceRoot;
   final GameHostPlatform platform;
   final String entryPath;
@@ -119,6 +122,7 @@ class GameSession {
     return {
       'schemaVersion': schemaVersion,
       'sessionId': sessionId,
+      'packageId': packageId,
       'state': 'prepared',
       'resourceRoot': resourceRoot,
       'platform': platform.wireName,
@@ -141,6 +145,7 @@ class GameSession {
   GameSession copyWith({int? activationGeneration}) {
     return GameSession(
       sessionId: sessionId,
+      packageId: packageId,
       resourceRoot: resourceRoot,
       platform: platform,
       entryPath: entryPath,
@@ -161,6 +166,7 @@ class GameSession {
   bool operator ==(Object other) {
     return other is GameSession &&
         other.sessionId == sessionId &&
+        other.packageId == packageId &&
         other.resourceRoot == resourceRoot &&
         other.platform == platform &&
         other.entryPath == entryPath &&
@@ -180,6 +186,7 @@ class GameSession {
   @override
   int get hashCode => Object.hash(
         sessionId,
+        packageId,
         resourceRoot,
         platform,
         entryPath,
@@ -200,40 +207,12 @@ abstract interface class GameHost {
   Future<void> launch(GameSession session);
 }
 
-class GameHostRouter implements GameHost {
-  const GameHostRouter({required Map<GameHostPlatform, GameHost> hosts})
-      : _hosts = hosts;
-
-  factory GameHostRouter.platformChannel({
+class MethodChannelGameHost implements GameHost {
+  const MethodChannelGameHost({
     MethodChannel channel = const MethodChannel(
       'io.github.dey410.gardendlessloader/game_host',
     ),
-  }) {
-    final host = MethodChannelGameHost(channel: channel);
-    return GameHostRouter(
-      hosts: {
-        for (final platform in GameHostPlatform.values) platform: host,
-      },
-    );
-  }
-
-  final Map<GameHostPlatform, GameHost> _hosts;
-
-  @override
-  Future<void> launch(GameSession session) async {
-    final host = _hosts[session.platform];
-    if (host == null) {
-      throw UnsupportedError(
-        'No native GameHost is registered for ${session.platform.wireName}',
-      );
-    }
-    await host.launch(session);
-  }
-}
-
-class MethodChannelGameHost implements GameHost {
-  const MethodChannelGameHost({required MethodChannel channel})
-      : _channel = channel;
+  }) : _channel = channel;
 
   final MethodChannel _channel;
 

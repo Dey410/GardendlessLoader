@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gardendless_loader/src/game_host/game_host.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/services/announcement_service.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
@@ -19,6 +20,7 @@ void main() {
 }
 ''';
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       announcementService: AnnouncementService(
         loader: (uri, timeout, maxBytes) async =>
@@ -51,6 +53,7 @@ void main() {
 }
 ''';
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       announcementService: AnnouncementService(
         loader: (uri, timeout, maxBytes) async => AnnouncementHttpResponse(

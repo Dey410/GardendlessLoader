@@ -1,0 +1,11 @@
+{
+  "name": "gardendless-ohos-runtime-tests",
+  "version": "0.9.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test file_protocol_test.cjs"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
+}

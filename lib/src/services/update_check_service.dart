@@ -5,29 +5,18 @@ import 'dart:io';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../constants.dart';
+import 'http_text.dart';
 
 const defaultLatestReleaseApiUrl =
     'https://api.github.com/repos/Dey410/GardendlessLoader/releases/latest';
 const defaultUpdateCheckTimeout = Duration(seconds: 5);
 const defaultUpdateCheckMaxBytes = 64 * 1024;
 
-typedef UpdateCheckHttpLoader = Future<UpdateCheckHttpResponse> Function(
-  Uri uri,
-  Duration timeout,
-  int maxBytes,
-);
+typedef UpdateCheckHttpLoader = HttpTextLoader;
 
 typedef InstalledVersionLoader = Future<String?> Function();
 
-class UpdateCheckHttpResponse {
-  const UpdateCheckHttpResponse({
-    required this.statusCode,
-    required this.body,
-  });
-
-  final int statusCode;
-  final String body;
-}
+typedef UpdateCheckHttpResponse = HttpTextResponse;
 
 class UpdateInfo {
   const UpdateInfo({
@@ -61,7 +50,7 @@ class UpdateCheckService {
         _currentVersion = currentVersion,
         _timeout = timeout,
         _maxBytes = maxBytes,
-        _loader = loader ?? _loadWithHttpClient,
+        _loader = loader ?? loadHttpText,
         _installedVersionLoader =
             installedVersionLoader ?? _loadInstalledVersion;
 
@@ -72,7 +61,19 @@ class UpdateCheckService {
   final UpdateCheckHttpLoader _loader;
   final InstalledVersionLoader _installedVersionLoader;
 
-  Future<String> loadCurrentVersion() => _loadCurrentVersion();
+  String? _installedVersion;
+  Future<String>? _installedVersionLoading;
+
+  Future<String> loadCurrentVersion() {
+    final version = _installedVersion;
+    // A completed Future retains its creation Zone; cache the completed value.
+    if (version != null) return Future.value(version);
+    return _installedVersionLoading ??= _loadCurrentVersion().then((value) {
+      _installedVersion = value;
+      _installedVersionLoading = null;
+      return value;
+    });
+  }
 
   Future<UpdateInfo?> checkForUpdate() async {
     final response =
@@ -94,7 +95,7 @@ class UpdateCheckService {
     final publishedAt = DateTime.tryParse(
       _optionalString(decoded['published_at']) ?? '',
     );
-    final currentVersion = await _loadCurrentVersion();
+    final currentVersion = await loadCurrentVersion();
 
     if (_compareVersions(latestVersion, currentVersion) <= 0) {
       return null;
@@ -109,46 +110,6 @@ class UpdateCheckService {
       releaseNotes: releaseNotes,
       publishedAt: publishedAt,
     );
-  }
-
-  static Future<UpdateCheckHttpResponse> _loadWithHttpClient(
-    Uri uri,
-    Duration timeout,
-    int maxBytes,
-  ) async {
-    final client = HttpClient()..connectionTimeout = timeout;
-    try {
-      final request = await client.getUrl(uri).timeout(timeout);
-      request.headers.set(
-        HttpHeaders.acceptHeader,
-        'application/vnd.github+json',
-      );
-      request.headers.set(HttpHeaders.userAgentHeader, appDisplayName);
-      final response = await request.close().timeout(timeout);
-      final contentLength = response.contentLength;
-      if (contentLength > maxBytes) {
-        throw const FormatException('update check response is too large');
-      }
-
-      final bytes = await response.fold<List<int>>(
-        <int>[],
-        (buffer, chunk) {
-          final nextLength = buffer.length + chunk.length;
-          if (nextLength > maxBytes) {
-            throw const FormatException('update check response is too large');
-          }
-          buffer.addAll(chunk);
-          return buffer;
-        },
-      ).timeout(timeout);
-
-      return UpdateCheckHttpResponse(
-        statusCode: response.statusCode,
-        body: utf8.decode(bytes),
-      );
-    } finally {
-      client.close(force: true);
-    }
   }
 
   Future<String> _loadCurrentVersion() async {

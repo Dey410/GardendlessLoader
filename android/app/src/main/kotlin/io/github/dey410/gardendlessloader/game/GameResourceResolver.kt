@@ -51,16 +51,8 @@ class GameResourceResolver(root: File) {
             "Cache-Control" to cacheControl(relativePath),
             "X-Content-Type-Options" to "nosniff",
         )
-        if (requestHeaders.value("If-None-Match") == etag) {
-            return GameResourceResponse(
-                statusCode = 304,
-                reason = "Not Modified",
-                mimeType = mimeFor(relativePath),
-                encoding = encodingFor(relativePath),
-                headers = commonHeaders,
-                body = ByteArrayInputStream(ByteArray(0)),
-            )
-        }
+        // Android WebResourceResponse rejects every 3xx status, including 304.
+        // Serve the current representation as 200/206 even when the ETag matches.
         val rangeHeader = requestHeaders.value("Range")
         val range = rangeHeader?.let { parseRange(it, length) }
         if (rangeHeader != null && range == null) {
@@ -88,7 +80,7 @@ class GameResourceResolver(root: File) {
         return GameResourceResponse(
             statusCode = if (range == null) 200 else 206,
             reason = if (range == null) "OK" else "Partial Content",
-            mimeType = mimeFor(relativePath),
+            mimeType = resourceMime(relativePath, file),
             encoding = encodingFor(relativePath),
             headers = headers,
             body = body,
@@ -115,6 +107,7 @@ class GameResourceResolver(root: File) {
         if (path.contains('\\') || path.indexOf('\u0000') >= 0) return null
         val segments = path.split('/')
         if (segments.any { it.isEmpty() || it == "." || it == ".." }) return null
+        if (segments.first().lowercase(Locale.US) == "__gardendless") return null
         return segments.joinToString(File.separator)
     }
 
@@ -179,7 +172,7 @@ class GameResourceResolver(root: File) {
         }
         return when (normalized.substringAfterLast('.', "").lowercase(Locale.US)) {
             "png", "jpg", "jpeg", "gif", "webp", "svg", "mp3", "ogg", "wav",
-            "mp4", "webm", "wasm", "bin" -> "public, max-age=86400"
+            "m4a", "aac", "mp4", "webm", "wasm", "bin" -> "public, max-age=86400"
             else -> "no-cache"
         }
     }
@@ -196,6 +189,8 @@ class GameResourceResolver(root: File) {
         "gif" -> "image/gif"
         "webp" -> "image/webp"
         "mp3" -> "audio/mpeg"
+        "m4a" -> "audio/mp4"
+        "aac" -> "audio/aac"
         "ogg" -> "audio/ogg"
         "wav" -> "audio/wav"
         "mp4" -> "video/mp4"
@@ -204,6 +199,15 @@ class GameResourceResolver(root: File) {
         "woff2" -> "font/woff2"
         "ttf" -> "font/ttf"
         else -> "application/octet-stream"
+    }
+
+    private fun resourceMime(path: String, file: File): String {
+        if (!path.endsWith(".mp3", ignoreCase = true)) return mimeFor(path)
+        val header = ByteArray(64)
+        val count = file.inputStream().use { it.read(header) }
+        if (count >= 2 && (header[0].toInt() and 0xff) == 0xff && (header[1].toInt() and 0xf6) == 0xf0) return "audio/aac"
+        if (count >= 12 && String(header, 4, 4, StandardCharsets.US_ASCII) == "ftyp") return "audio/mp4"
+        return "audio/mpeg"
     }
 
     private fun encodingFor(path: String): String? = when (mimeFor(path)) {

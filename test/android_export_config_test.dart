@@ -43,9 +43,10 @@ void main() {
     expect(build, contains('namespace = "io.github.dey410.gardendlessloader"'));
     expect(manifest, contains('android:name=".game.GameActivity"'));
     expect(manifest, contains('android:exported="false"'));
-    expect(activity, contains('beginChunkedExport'));
+    expect(activity, contains('beginExistingFileExport'));
     expect(activity, contains('Intent.ACTION_CREATE_DOCUMENT'));
-    expect(activity, contains('input.copyTo(output, 128 * 1024)'));
+    expect(activity, contains('gpNextCore.useResource(output, export.handle)'));
+    expect(activity, contains('ByteArray(GpNextNativeCore.MAX_CHUNK_BYTES)'));
     expect(activity, contains('export_in_progress'));
     expect(activity, contains('export_picker_failed'));
     expect(activity, contains('export_cancelled'));
@@ -84,7 +85,8 @@ void main() {
         policy, contains('ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE'));
     expect(
       gameActivity,
-      matches(RegExp(r'restoreGameOrientation\(\)\s+}\s+when \(requestCode\)')),
+      matches(RegExp(
+          r'restoreGameOrientation\(\)\s+}\s+if \(destroyed\) return\s+when \(requestCode\)')),
     );
     expect(
       mainActivity,
@@ -105,8 +107,7 @@ void main() {
       'android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/ExportDocumentSpec.kt',
     ).readAsStringSync();
 
-    expect(activity,
-        contains('type = exportMimeType(export.fileName, export.mimeType)'));
+    expect(activity, contains('type = exportMimeType(fileName, mimeType)'));
     expect(activity, isNot(contains('type = export.mimeType')));
     expect(activity,
         contains('MimeTypeMap.getSingleton().getMimeTypeFromExtension'));

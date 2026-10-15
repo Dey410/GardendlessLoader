@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gardendless_loader/src/game_host/game_host.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/services/app_paths_service.dart';
 import 'package:gardendless_loader/src/services/game_update_check_service.dart';
@@ -10,6 +11,7 @@ void main() {
   test('manual update check exposes newer GitHub release', () async {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
@@ -39,6 +41,7 @@ void main() {
       () async {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
@@ -68,6 +71,7 @@ void main() {
   test('silent update check failure does not set user message', () async {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
@@ -86,6 +90,7 @@ void main() {
   test('manual update check failure sets retry message', () async {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(
@@ -104,6 +109,7 @@ void main() {
   test('defer update hides current release for this run', () async {
     final root = await Directory.systemTemp.createTemp('gl_update_');
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       gameUpdateCheckService: _stableGameService(),
       updateCheckService: UpdateCheckService(

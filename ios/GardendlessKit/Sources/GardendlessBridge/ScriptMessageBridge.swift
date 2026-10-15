@@ -4,9 +4,9 @@ import WebKit
 
 public protocol ScriptBridgeDelegate: AnyObject {
   func bridgeRequestedReturnHome()
-  func bridgeRequestedWatermark(_ enabled: Bool) throws
   func bridgeRequestedLog(id: String, arguments: [String: Any])
   func bridgeRequestedExport(command: String, id: String, arguments: [String: Any])
+  func bridgeRequestedFile(command: String, id: String, arguments: [String: Any])
   func bridgeRequestedGpNext(id: String, request: [String: Any])
   func bridgeRejectedMessage(reason: String, command: String?)
 }
@@ -47,37 +47,36 @@ public final class ScriptMessageBridge: NSObject, WKScriptMessageHandlerWithRepl
       return
     }
     stateLock.lock()
-    let inserted = activeRequestIds.insert(request.id).inserted
+    let duplicate = activeRequestIds.contains(request.id)
+    let full = activeRequestIds.count >= BridgeConstants.pendingRequestLimit(
+      command: request.command, args: request.args
+    )
+    let inserted = !destroyed && !duplicate && !full
+    if inserted { activeRequestIds.insert(request.id) }
     stateLock.unlock()
     guard inserted else {
-      delegate?.bridgeRejectedMessage(
-        reason: "duplicate_request_id",
-        command: request.command
-      )
-      replyHandler(nil, "Duplicate bridge request id")
-      respond(
-        id: request.id,
-        ok: false,
-        payload: [
-          "code": "duplicate_request_id",
-          "message": "Bridge request id is already active",
-        ],
-        removeActive: false
-      )
+      let code = duplicate ? "duplicate_request_id" : "bridge_busy"
+      delegate?.bridgeRejectedMessage(reason: code, command: request.command)
+      replyHandler(nil, code)
+      // A duplicate must not settle the original request's pending promise.
+      if !duplicate {
+        respond(id: request.id, ok: false,
+                payload: ["code": code, "message": "Bridge request limit reached"],
+                removeActive: false)
+      }
       return
     }
     replyHandler(["accepted": true], nil)
-    do {
-      switch request.command {
+    switch request.command {
       case _ where BridgeCommand.isReturnHome(request.command):
         complete(id: request.id, value: NSNull())
         delegate?.bridgeRequestedReturnHome()
-      case _ where BridgeCommand.isWatermark(request.command):
-        let enabled = request.args["enabled"] as? Bool ?? true
-        try delegate?.bridgeRequestedWatermark(enabled)
-        complete(id: request.id, value: NSNull())
       case BridgeCommand.log.rawValue:
         delegate?.bridgeRequestedLog(id: request.id, arguments: request.args)
+      case _ where BridgeCommand.isFile(request.command):
+        delegate?.bridgeRequestedFile(
+          command: request.command, id: request.id, arguments: request.args
+        )
       case _ where BridgeCommand.isExport(request.command):
         delegate?.bridgeRequestedExport(
           command: request.command,
@@ -103,9 +102,6 @@ public final class ScriptMessageBridge: NSObject, WKScriptMessageHandlerWithRepl
             message: "Unsupported host command: \(request.command)"
           )
         }
-      }
-    } catch {
-      fail(id: request.id, code: "native_error", message: error.localizedDescription)
     }
   }
 

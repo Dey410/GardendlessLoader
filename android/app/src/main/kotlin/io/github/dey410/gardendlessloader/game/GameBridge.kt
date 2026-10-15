@@ -7,7 +7,6 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import io.github.dey410.gardendlessloader.logging.AppLogStore
 import org.json.JSONObject
-import java.io.File
 
 class GameBridge(
     private val activity: GameActivity,
@@ -15,7 +14,7 @@ class GameBridge(
     private val session: NativeGameSession,
 ) : WebViewCompat.WebMessageListener {
     private val activeRequestIds = mutableSetOf<String>()
-    private var destroyed = false
+    @Volatile private var destroyed = false
 
     override fun onPostMessage(
         view: WebView,
@@ -33,7 +32,7 @@ class GameBridge(
             logInvalid("missing_message")
             return
         }
-        if (raw.length > MAX_MESSAGE_SIZE) {
+        if (raw.toByteArray(Charsets.UTF_8).size > MAX_MESSAGE_SIZE) {
             logInvalid("message_too_large")
             respond(null, false, error("message_too_large", "Bridge request is too large"))
             return
@@ -45,22 +44,24 @@ class GameBridge(
         }
         val id = request.optString("id")
         val command = request.optString("command")
-        if (id.isBlank() || command.isBlank()) {
+        if (!id.matches(Regex("[A-Za-z0-9:_-]{1,128}")) || command.isBlank() || command.length > 128) {
             logInvalid("missing_id_or_command")
             respond(id.takeIf { it.isNotBlank() }, false, error("invalid_message", "Bridge id or command is empty"))
             return
         }
         synchronized(activeRequestIds) {
-            if (!activeRequestIds.add(id)) {
+            if (activeRequestIds.contains(id)) {
                 logInvalid("duplicate_request_id", command)
-                respond(
-                    id,
-                    false,
-                    error("duplicate_request_id", "Bridge request id is already active"),
-                    removeActive = false,
-                )
+                // The original request owns this id and must receive its actual result.
                 return
             }
+            val terminal = command == "file:finish" &&
+                request.optJSONObject("args")?.optString("action") in setOf("close", "cancel")
+            if (activeRequestIds.size >= if (terminal) 72 else 64) {
+                respond(id, false, error("resource_limit_exceeded", "Too many pending bridge requests"), removeActive = false)
+                return
+            }
+            activeRequestIds.add(id)
         }
         try {
             when (command) {
@@ -68,37 +69,39 @@ class GameBridge(
                     respond(id, true, JSONObject.NULL)
                     activity.returnToLauncher(GameExitReason.USER_RETURNED, null)
                 }
-                "host:setWatermark", "host:set_watermark" -> {
-                    val enabled = request.optJSONObject("args")?.optBoolean("enabled", true) ?: true
-                    activity.persistWatermark(enabled)
-                    respond(id, true, JSONObject.NULL)
-                }
                 "host:log" -> {
                     val args = request.optJSONObject("args") ?: JSONObject()
-                    val event = args.optString("event").takeIf {
-                        it in setOf(
-                            "javascript_uncaught_error",
-                            "javascript_unhandled_rejection",
-                            "javascript_console",
-                        )
-                    } ?: "javascript_console"
+                    val event = args.optString("event").takeIf { it in LOG_EVENTS } ?: "javascript_console"
+                    val audio = event.startsWith("audio_")
+                    val outcome = args.optString("outcome").takeIf { it in setOf("started", "succeeded", "failed", "observed") }
+                        ?: if (event == "javascript_console") "observed" else "failed"
+                    val details = args.optJSONObject("context")
+                    val context = mutableMapOf<String, Any?>(
+                        "page" to args.optString("page"),
+                        "line" to args.optInt("line"),
+                        "column" to args.optInt("column"),
+                    )
+                    details?.keys()?.asSequence()?.take(32)?.forEach { key ->
+                        val value = details.opt(key)
+                        context[key.take(64)] = when (value) {
+                            is String -> value.take(1024)
+                            is Number, is Boolean -> value
+                            else -> null
+                        }
+                    }
                     AppLogStore.emit(
                         mapOf(
                             "source" to "javascript",
                             "level" to args.optString("level", "ERROR"),
-                            "category" to "game.javascript",
+                            "category" to if (audio) "game.audio" else "game.javascript",
                             "event" to event,
-                            "outcome" to "failed",
-                            "code" to if (event == "javascript_console") null else event,
+                            "outcome" to outcome,
+                            "code" to if (outcome == "failed") event else null,
                             "message" to args.optString("message"),
                             "gameSessionId" to session.sessionId,
-                            "context" to mapOf(
-                                "page" to args.optString("page"),
-                                "line" to args.optInt("line"),
-                                "column" to args.optInt("column"),
-                            ),
-                            "error" to mapOf(
-                                "type" to "JavaScriptError",
+                            "context" to context,
+                            "error" to if (outcome != "failed") null else mapOf(
+                                "type" to if (audio) "AudioError" else "JavaScriptError",
                                 "message" to args.optString("message"),
                                 "stackTrace" to args.optString("stack"),
                             ),
@@ -107,13 +110,10 @@ class GameBridge(
                     respond(id, true, JSONObject.NULL)
                 }
                 "host:export" -> activity.beginExport(id, request.optJSONObject("args") ?: JSONObject())
-                "host:exportBegin" -> activity.beginChunkedExport(id, request.optJSONObject("args") ?: JSONObject())
-                "host:exportChunk" -> activity.appendChunkedExport(id, request.optJSONObject("args") ?: JSONObject())
-                "host:exportCommit" -> activity.commitChunkedExport(id, request.optJSONObject("args") ?: JSONObject())
-                "host:exportAbort" -> activity.abortChunkedExport(id, request.optJSONObject("args") ?: JSONObject())
+                "file:begin", "file:chunk", "file:finish" -> activity.dispatchFileOrGpNext(id, request)
                 else -> {
                     if (request.optString("namespace") == "gp-next") {
-                        activity.dispatchGpNext(id, request)
+                        activity.dispatchFileOrGpNext(id, request)
                     } else {
                         logInvalid("unknown_command", command)
                         respond(id, false, error("unknown_command", "Unsupported host command: $command"))
@@ -192,6 +192,12 @@ class GameBridge(
     companion object {
         const val BRIDGE_NAME = "gardendlessNative"
         const val MAX_MESSAGE_SIZE = 1024 * 1024
+        private val LOG_EVENTS = setOf(
+            "javascript_uncaught_error", "javascript_unhandled_rejection", "javascript_console",
+            "audio_summary", "audio_decode_started", "audio_decode_succeeded", "audio_decode_failed",
+            "audio_media_load_started", "audio_media_ready", "audio_media_play_requested",
+            "audio_media_playing", "audio_media_ended", "audio_media_failed",
+        )
     }
 }
 

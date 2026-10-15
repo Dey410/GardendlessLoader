@@ -68,10 +68,14 @@ public final class GpNextFileSystem {
     }
   }
 
-  public func readFile(path: String, options: [String: Any]) throws -> [UInt8] {
+  public func resolveReadPath(path: String, options: [String: Any]) throws -> URL {
     let url = try resolver.resolve(path, options: options)
     try resolver.assertNoSymlink(url)
-    return Array(try Data(contentsOf: url))
+    let values = try url.resourceValues(forKeys: [.isRegularFileKey])
+    guard values.isRegularFile == true else {
+      throw GameError.failed(.gpNextForbidden, "GP-Next path is not a regular file")
+    }
+    return url
   }
 
   public func lstat(
@@ -176,37 +180,6 @@ public final class GpNextFileSystem {
     try FileManager.default.moveItem(at: source, to: destination)
   }
 
-  public func writeFile(
-    path: String,
-    bytes: [UInt8],
-    options: [String: Any]
-  ) throws {
-    let url = try resolver.resolve(path, options: options)
-    try FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
-    try resolver.assertNoSymlink(url)
-    try Data(bytes).write(to: url, options: .atomic)
-  }
-
-  /// Mirrors the GP-Next bridge write shape: the effective path can arrive in
-  /// `headers.path` (percent-encoded) with Tauri options carried in
-  /// `headers.options` as an encoded JSON string.
-  @discardableResult
-  public func writeFileAndReturnPath(
-    rawPath: String?,
-    bytes: [NSNumber],
-    options: [String: Any]
-  ) throws -> URL {
-    let url = try resolveWritePath(rawPath: rawPath, options: options)
-    try Data(bytes.map { UInt8(truncating: $0) }).write(
-      to: url,
-      options: .atomic
-    )
-    return url
-  }
-
   public func resolveWritePath(
     rawPath: String?,
     options: [String: Any]
@@ -220,7 +193,7 @@ public final class GpNextFileSystem {
          as? [String: Any] {
       headerOptions = decoded
     } else {
-      headerOptions = [:]
+      headerOptions = options
     }
     let resolvedPath = (headers["path"] as? String)?.removingPercentEncoding
       ?? rawPath
@@ -228,6 +201,15 @@ public final class GpNextFileSystem {
       throw GameError.failed(.gpNextForbidden, "GP-Next 写入路径为空")
     }
     let url = try resolver.resolve(resolvedPath, options: headerOptions)
+    guard url != gpNextRoot else {
+      throw GameError.failed(.gpNextForbidden, "Cannot write the GP-Next root")
+    }
+    try resolver.assertNoSymlink(url)
+    if FileManager.default.fileExists(atPath: url.path) {
+      guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+        throw GameError.failed(.gpNextForbidden, "Write destination is not a regular file")
+      }
+    }
     try FileManager.default.createDirectory(
       at: url.deletingLastPathComponent(),
       withIntermediateDirectories: true

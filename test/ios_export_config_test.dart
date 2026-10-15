@@ -11,9 +11,10 @@ void main() {
     ).readAsStringSync();
     final combined = '$controller\n$coordinator';
 
-    expect(combined, contains('BridgeCommand.exportBegin.rawValue'));
-    expect(combined, contains('BridgeCommand.exportChunk.rawValue'));
-    expect(combined, contains('BridgeCommand.exportCommit.rawValue'));
+    expect(combined, contains('"file:begin"'));
+    expect(combined, contains('"file:chunk"'));
+    expect(combined, contains('"file:finish"'));
+    expect(combined, isNot(contains('BridgeCommand.exportBegin.rawValue')));
     expect(combined, contains('UIDocumentPickerViewController'));
     expect(combined, contains('forExporting: [file]'));
     expect(combined, contains('asCopy: true'));

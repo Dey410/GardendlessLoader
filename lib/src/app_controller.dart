@@ -41,7 +41,6 @@ class AppController extends ChangeNotifier {
     GameHostPlatform? gameHostPlatform,
     String Function()? gameSessionIdFactory,
     AppLogger? appLogger,
-    DiagnosticsService? diagnosticsService,
     AnnouncementService? announcementService,
     AboutContentService? aboutContentService,
     UpdateCheckService? updateCheckService,
@@ -54,11 +53,10 @@ class AppController extends ChangeNotifier {
     Duration importProgressTickInterval = const Duration(seconds: 1),
   })  : _pathsService = pathsService ?? AppPathsService(),
         _validator = validator ?? ResourceValidator(),
-        _gameHost = gameHost ?? GameHostRouter.platformChannel(),
+        _gameHost = gameHost ?? const MethodChannelGameHost(),
         _gameHostPlatform = gameHostPlatform,
         _gameSessionIdFactory = gameSessionIdFactory ?? _newGameSessionId,
         _appLogger = appLogger,
-        _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
         _announcementService = announcementService ?? AnnouncementService(),
         _aboutContentService = aboutContentService ?? AboutContentService(),
         _updateCheckService = updateCheckService ?? UpdateCheckService(),
@@ -78,7 +76,6 @@ class AppController extends ChangeNotifier {
     _importService = importService ??
         ImportService(
           validator: _validator,
-          gameUpdateCheckService: _gameUpdateCheckService,
         );
   }
 
@@ -88,7 +85,6 @@ class AppController extends ChangeNotifier {
   final GameHostPlatform? _gameHostPlatform;
   final String Function() _gameSessionIdFactory;
   final AppLogger? _appLogger;
-  final DiagnosticsService _diagnosticsService;
   final AnnouncementService _announcementService;
   final AboutContentService _aboutContentService;
   final UpdateCheckService _updateCheckService;
@@ -119,7 +115,6 @@ class AppController extends ChangeNotifier {
     '尚未选择 ZIP',
   );
   ImportProgress _importProgress = ImportProgress.idle;
-  Directory? _selectedImportSource;
   Announcement? _announcement;
   AboutContent _aboutContent = localFallbackAboutContent;
   UpdateInfo? _availableUpdate;
@@ -151,7 +146,6 @@ class AppController extends ChangeNotifier {
   ResourceValidationResult get currentValidation => _currentValidation;
   ResourceValidationResult get importValidation => _importValidation;
   ImportProgress get importProgress => _importProgress;
-  Directory? get selectedImportSource => _selectedImportSource;
   Announcement? get announcement => _announcement;
   AboutContent get aboutContent => _aboutContent;
   UpdateInfo? get availableUpdate => _availableUpdate;
@@ -168,19 +162,7 @@ class AppController extends ChangeNotifier {
     if (configured != null) {
       return configured;
     }
-    try {
-      return GameHostPlatform.current();
-    } on UnsupportedError {
-      GameHostPlatform? testFallback;
-      assert(() {
-        testFallback = GameHostPlatform.android;
-        return true;
-      }());
-      if (testFallback != null) {
-        return testFallback!;
-      }
-      rethrow;
-    }
+    return GameHostPlatform.current();
   }
 
   bool get isImporting =>
@@ -188,16 +170,8 @@ class AppController extends ChangeNotifier {
       _importProgress.phase != ImportPhase.completed &&
       _importProgress.phase != ImportPhase.failed;
   bool get hasCurrentResource => _currentValidation.isValid;
-  bool get hasGpNext =>
-      hasCurrentResource &&
-      (_currentValidation.isValid
-          ? _currentValidation.hasGpNext
-          : _manifest.hasGpNext);
-  bool get gpNextCompatible =>
-      hasGpNext &&
-      (_currentValidation.isValid
-          ? _currentValidation.gpNextCompatible
-          : _manifest.gpNextCompatible);
+  bool get hasGpNext => hasCurrentResource && _currentValidation.hasGpNext;
+  bool get gpNextCompatible => hasGpNext && _currentValidation.gpNextCompatible;
   String? get gpNextVersion =>
       _currentValidation.gpNextVersion ?? _manifest.gpNextVersion;
   String? get gpNextCompatibilityError =>
@@ -214,14 +188,6 @@ class AppController extends ChangeNotifier {
       return resourceFolderName;
     }
     return '${root.parent.path}${Platform.pathSeparator}${p.basename(root.path)}';
-  }
-
-  String get userVisibleImportDocs {
-    final selected = _selectedImportSource;
-    if (selected != null) {
-      return selected.path;
-    }
-    return '尚未选择 ZIP';
   }
 
   //initialize 方法负责初始化应用的核心状态，包括加载路径信息、读取资源清单、恢复未完成的导入事务，并刷新公告信息。它会在整个过程中更新 busy 状态和 message，以便 UI 可以显示加载状态和错误信息。
@@ -297,7 +263,6 @@ class AppController extends ChangeNotifier {
           rethrow;
         }
         _emitInitializationStage('diagnostics');
-        await _diagnosticsService.initialize();
         await _loadCurrentAppVersion();
         _emitInitializationStage('resource_validation');
         await refresh();
@@ -342,26 +307,21 @@ class AppController extends ChangeNotifier {
     _currentValidation = activeDirectory == null
         ? ResourceValidationResult.missing('尚未导入游戏资源')
         : await _validator.validate(activeDirectory);
-    final selectedImportSource = _selectedImportSource;
-    _importValidation = selectedImportSource == null
-        ? ResourceValidationResult.missing('尚未选择 ZIP')
-        : await _validator.validate(selectedImportSource);
-
     if (_currentValidation.isValid &&
         _manifest.resourceStatus == ResourceStatus.ready) {
       _currentValidation = _currentValidation.asReady();
     }
 
-    _currentGameVersion = _currentValidation.isValid
-        ? await _gameUpdateCheckService.loadCurrentVersion(activeDirectory!)
-        : null;
+    _currentGameVersion =
+        _currentValidation.isValid ? _currentValidation.gameVersion : null;
     if (_currentGameVersion == null) {
       _availableGameUpdate = null;
       _currentGameVersionIsAhead = false;
       _gameUpdateDetected = false;
     }
     final compatibilityMetadataChanged = _currentValidation.isValid &&
-        (_manifest.buildProfile != _currentValidation.buildProfile ||
+        (_manifest.packageId != _currentValidation.packageId ||
+            _manifest.buildProfile != _currentValidation.buildProfile ||
             _manifest.gpNextVersion != _currentValidation.gpNextVersion ||
             _manifest.gpNextCompatibilityError !=
                 _currentValidation.gpNextCompatibilityError);
@@ -369,6 +329,9 @@ class AppController extends ChangeNotifier {
         compatibilityMetadataChanged) {
       _manifest = _manifest.copyWith(
         gameVersion: _currentGameVersion,
+        packageId: _currentValidation.packageId,
+        clearPackageId:
+            _currentValidation.isValid && _currentValidation.packageId == null,
         clearGameVersion: _currentGameVersion == null,
         buildProfile: _currentValidation.isValid
             ? _currentValidation.buildProfile
@@ -384,21 +347,6 @@ class AppController extends ChangeNotifier {
     }
 
     notifyListeners();
-  }
-
-  Future<void> checkImportDirectory() async {
-    _busy = true;
-    _message = null;
-    notifyListeners();
-    try {
-      await refresh();
-      _message = _importValidation.isValid
-          ? '发现可导入资源：${_importValidation.detectedTitle}'
-          : _importValidation.errorMessage ?? 'docs 无效';
-    } finally {
-      _busy = false;
-      notifyListeners();
-    }
   }
 
   Future<void> refreshAnnouncement() async {
@@ -610,7 +558,6 @@ class AppController extends ChangeNotifier {
         context: const <String, Object?>{'stage': 'extracted'},
       );
 
-      _selectedImportSource = selectedSource;
       _importValidation = ResourceValidationResult.missing('正在校验 docs');
       _updateImportProgress(
         const ImportProgress(phase: ImportPhase.validating, message: '正在校验资源'),
@@ -663,7 +610,22 @@ class AppController extends ChangeNotifier {
         await _setImportAwakeMode(false);
         restoreAwakeModeAfterImport = false;
       }
-      await refresh();
+      _currentValidation = _importValidation = ResourceValidationResult.valid(
+        stats: ResourceStats(
+            fileCount: _manifest.fileCount, totalBytes: _manifest.totalBytes),
+        detectedTitle: _manifest.detectedTitle,
+        packageId: _manifest.packageId,
+        gameVersion: _manifest.gameVersion,
+        buildProfile: _manifest.buildProfile,
+        gpNextVersion: _manifest.gpNextVersion,
+        gpNextCompatibilityError: _manifest.gpNextCompatibilityError,
+      ).asReady();
+      _currentGameVersion = _manifest.gameVersion;
+      if (_currentGameVersion == null) {
+        _availableGameUpdate = null;
+        _currentGameVersionIsAhead = false;
+        _gameUpdateDetected = false;
+      }
       await _checkGameForUpdate(reuseLatestVersion: true);
       _scheduleCompletedProgressReset();
       _appLogger?.emit(
@@ -892,6 +854,7 @@ class AppController extends ChangeNotifier {
     await exportRoot.create(recursive: true);
     final session = GameSession(
       sessionId: _gameSessionIdFactory(),
+      packageId: _currentValidation.packageId,
       resourceRoot: activeDirectory!.path,
       platform: gameHostPlatform,
       entryPath: 'index.html',
@@ -946,7 +909,8 @@ class AppController extends ChangeNotifier {
   }
 
   DiagnosticSnapshot diagnostics({String? webViewEngineVersion}) {
-    return _diagnosticsService.build(
+    return buildDiagnosticSnapshot(
+      appVersion: _currentAppVersion,
       paths: _requirePaths(),
       currentValidation: _currentValidation,
       importValidation: _importValidation,

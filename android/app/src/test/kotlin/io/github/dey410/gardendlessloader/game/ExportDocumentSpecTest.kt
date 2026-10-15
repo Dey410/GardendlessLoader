@@ -5,6 +5,13 @@ import org.junit.Test
 
 class ExportDocumentSpecTest {
     @Test
+    fun `export filenames use the basename and normalize reserved characters`() {
+        assertEquals("save_.json", ExportDocumentSpec.safeFileName("file:///private/gp-next/save?.json"))
+        assertEquals("save.json", ExportDocumentSpec.safeFileName("C:\\packs\\save.json"))
+        assertEquals("gardendless-export.json", ExportDocumentSpec.safeFileName(".."))
+    }
+
+    @Test
     fun `filename MIME replaces a conflicting plain text MIME`() {
         val result = ExportDocumentSpec.resolveMimeType(
             fileName = "save.json",

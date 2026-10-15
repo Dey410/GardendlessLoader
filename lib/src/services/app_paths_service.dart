@@ -30,24 +30,10 @@ class AppPathsService {
   final NullableDirectoryProvider _externalStorageDirectoryProvider;
 
   Future<AppPaths> ensureInitialized() async {
-    if (_rootOverride != null) {
-      final paths = _buildPaths(_rootOverride);
-      await _createPaths(paths);
-      return paths;
-    }
-
-    Object? lastError;
-    for (final root in await _defaultRoots()) {
-      final paths = _buildPaths(root);
-      try {
-        await _createPaths(paths);
-        return paths;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw StateError('Unable to initialize app directories: $lastError');
+    final root = _rootOverride ?? await _defaultRoot();
+    final paths = _buildPaths(root);
+    await _createPaths(paths);
+    return paths;
   }
 
   AppPaths _buildPaths(Directory root) {
@@ -68,27 +54,22 @@ class AppPathsService {
     await paths.gpNextPatchesDir.create(recursive: true);
   }
 
-  Future<List<Directory>> _defaultRoots() async {
-    if (_platformName == 'ios') {
+  Future<Directory> _defaultRoot() async {
+    if (_platformName == 'ios' || _platformName == 'ohos') {
       final documents = await _documentsDirectoryProvider();
-      return [Directory(p.join(documents.path, resourceFolderName))];
-    }
-
-    if (_platformName == 'ohos') {
-      final documents = await _documentsDirectoryProvider();
-      return [Directory(p.join(documents.path, resourceFolderName))];
+      return Directory(p.join(documents.path, resourceFolderName));
     }
 
     if (_platformName == 'android') {
       final external = await _externalStorageDirectoryProvider();
       if (external != null) {
-        return [Directory(p.join(external.path, resourceFolderName))];
+        return Directory(p.join(external.path, resourceFolderName));
       }
     }
 
     if (_platformName == 'android') {
       final documents = await _documentsDirectoryProvider();
-      return [Directory(p.join(documents.path, resourceFolderName))];
+      return Directory(p.join(documents.path, resourceFolderName));
     }
 
     throw UnsupportedError('当前平台不受支持：$_platformName');

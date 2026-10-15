@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gardendless_loader/src/game_host/game_host.dart';
 import 'package:gardendless_loader/src/app_controller.dart';
 import 'package:gardendless_loader/src/logging/app_logger.dart';
 import 'package:gardendless_loader/src/logging/log_event_catalog.dart';
@@ -23,6 +24,7 @@ void main() {
       source: LogSource.dart,
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(platformName: 'unsupported'),
       appLogger: logger,
     );
@@ -78,6 +80,7 @@ void main() {
     });
 
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await controller.initialize();
@@ -96,6 +99,7 @@ void main() {
     });
 
     final firstController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await firstController.initialize();
@@ -103,6 +107,7 @@ void main() {
     await firstController.setDetailedAudioDiagnosticsEnabled(true);
 
     final restartedController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await restartedController.initialize();
@@ -120,12 +125,14 @@ void main() {
     });
 
     final firstController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await firstController.initialize();
     await firstController.setWatermarkEnabled(false);
 
     final restartedController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await restartedController.initialize();
@@ -142,6 +149,7 @@ void main() {
     });
 
     final firstController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await firstController.initialize();
@@ -149,6 +157,7 @@ void main() {
     await firstController.setWatermarkEnabled(true);
 
     final restartedController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await restartedController.initialize();
@@ -165,6 +174,7 @@ void main() {
     });
 
     final firstController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await firstController.initialize();
@@ -173,6 +183,7 @@ void main() {
     await Future.wait([disable, enable]);
 
     final restartedController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await restartedController.initialize();
@@ -200,12 +211,14 @@ void main() {
     );
 
     final firstController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await firstController.initialize();
     await firstController.setAutoCollectSunEnabled(true);
 
     final restartedController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await restartedController.initialize();
@@ -234,6 +247,7 @@ void main() {
     );
 
     final firstController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await firstController.initialize();
@@ -242,6 +256,7 @@ void main() {
     await Future.wait([enable, disable]);
 
     final restartedController = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await restartedController.initialize();
@@ -275,6 +290,7 @@ void main() {
     );
 
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
     await controller.initialize();
@@ -312,6 +328,7 @@ void main() {
       ),
     );
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       importService: ImportService(
         validator: ResourceValidator(),
@@ -342,6 +359,7 @@ void main() {
     });
 
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       importProgressTickInterval: const Duration(milliseconds: 10),
       resourcePickerService: ResourcePickerService(
@@ -414,6 +432,7 @@ void main() {
 
     late final AppController controller;
     controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       importAwakeModeGetter: () async => true,
       importAwakeModeSetter: (_) async {},
@@ -444,6 +463,7 @@ void main() {
       }
     });
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       importAwakeModeGetter: () async => false,
       importAwakeModeSetter: (enabled) async => awakeStates.add(enabled),
@@ -474,6 +494,7 @@ void main() {
       }
     });
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       importAwakeModeGetter: () async => true,
       importAwakeModeSetter: (enabled) async => awakeStates.add(enabled),
@@ -507,6 +528,7 @@ void main() {
     final releaseAwakeDisable = Completer<void>();
     void Function()? resetCompletedProgress;
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       gameUpdateCheckService: GameUpdateCheckService(
         loader: (_, __, ___) async => const GameUpdateCheckHttpResponse(
@@ -564,6 +586,7 @@ void main() {
       }
     });
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       importAwakeModeSetter: (_) async {},
       resourcePickerService: ResourcePickerService(
@@ -601,12 +624,13 @@ void main() {
     });
 
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
     );
 
     await controller.initialize();
 
-    expect(controller.userVisibleImportDocs, '尚未选择 ZIP');
+    expect(controller.importValidation.errorMessage, '尚未选择 ZIP');
   });
 
   test('imports the docs directory extracted from the selected zip', () async {
@@ -624,6 +648,7 @@ void main() {
     });
 
     final controller = AppController(
+      gameHostPlatform: GameHostPlatform.android,
       pathsService: AppPathsService(rootOverride: root, platformName: 'test'),
       appLogger: logger,
       resourcePickerService: ResourcePickerService(
@@ -643,7 +668,7 @@ void main() {
     await controller.importResources();
 
     expect(extractionTarget, p.join(root.path, 'slot-a'));
-    expect(controller.userVisibleImportDocs, p.join(root.path, 'slot-a'));
+    expect(controller.importValidation.isValid, isTrue);
     expect(controller.hasCurrentResource, isTrue);
     expect(controller.manifest.activeSlot, ResourceSlot.slotA);
     expect(

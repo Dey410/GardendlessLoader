@@ -57,7 +57,8 @@ class GameResourceResolverTest {
             "GET",
             mapOf("If-None-Match" to partial.headers.getValue("ETag")),
         )
-        assertEquals(304, cached.statusCode)
+        assertEquals(200, cached.statusCode)
+        cached.body.use { assertEquals("0123456789", it.readBytes().decodeToString()) }
     }
 
     @Test
