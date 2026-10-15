@@ -96,6 +96,7 @@ class AppController extends ChangeNotifier {
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
   bool get watermarkEnabled => _appSettings.watermarkEnabled;
+  bool get quickLaunchEnabled => _appSettings.quickLaunchEnabled;
   bool get detailedAudioDiagnosticsEnabled =>
       _appSettings.detailedAudioDiagnosticsEnabled;
   ThemePreference get themePreference => _appSettings.themePreference;
@@ -132,6 +133,7 @@ class AppController extends ChangeNotifier {
   Future<void> initialize() async {
     _busy = true;
     notifyListeners();
+    var quickLaunch = false;
     try {
       Future<void> initializeCore() async {
         _emitInitializationStage('paths');
@@ -211,6 +213,11 @@ class AppController extends ChangeNotifier {
           _message = exitResult?.message ?? '原生游戏宿主启动失败';
         }
         _initialized = true;
+        // Every game exit leaves an exit result, so only a cold start skips
+        // the launcher; returning from the game always shows it.
+        quickLaunch = exitResult == null &&
+            _appSettings.quickLaunchEnabled &&
+            canStartGame;
       }
 
       final operation = _appLogger.startOperation(
@@ -221,6 +228,9 @@ class AppController extends ChangeNotifier {
         failureCode: 'app_initialization_failed',
       );
       await operation.run(initializeCore);
+      if (quickLaunch) {
+        await startGame();
+      }
     } catch (error) {
       _message = '启动失败：$error';
     } finally {
@@ -932,6 +942,12 @@ class AppController extends ChangeNotifier {
   Future<void> setWatermarkEnabled(bool enabled) {
     return _updateAppSettings(
       _appSettings.copyWith(watermarkEnabled: enabled),
+    );
+  }
+
+  Future<void> setQuickLaunchEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(quickLaunchEnabled: enabled),
     );
   }
 

@@ -17,6 +17,7 @@ enum ThemePreference {
 class AppSettings {
   const AppSettings({
     this.watermarkEnabled = true,
+    this.quickLaunchEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
     this.themePreference = ThemePreference.system,
     this.reduceMotion = false,
@@ -26,6 +27,7 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     return AppSettings(
       watermarkEnabled: json['watermarkEnabled'] as bool? ?? true,
+      quickLaunchEnabled: json['quickLaunchEnabled'] as bool? ?? false,
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       themePreference: ThemePreference.fromName(json['themePreference']),
@@ -35,6 +37,9 @@ class AppSettings {
   }
 
   final bool watermarkEnabled;
+
+  /// Opens the game directly on a cold start instead of the launcher.
+  final bool quickLaunchEnabled;
   final bool detailedAudioDiagnosticsEnabled;
   final ThemePreference themePreference;
   final bool reduceMotion;
@@ -45,6 +50,7 @@ class AppSettings {
 
   AppSettings copyWith({
     bool? watermarkEnabled,
+    bool? quickLaunchEnabled,
     bool? detailedAudioDiagnosticsEnabled,
     ThemePreference? themePreference,
     bool? reduceMotion,
@@ -52,6 +58,7 @@ class AppSettings {
   }) {
     return AppSettings(
       watermarkEnabled: watermarkEnabled ?? this.watermarkEnabled,
+      quickLaunchEnabled: quickLaunchEnabled ?? this.quickLaunchEnabled,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled ??
           this.detailedAudioDiagnosticsEnabled,
       themePreference: themePreference ?? this.themePreference,
@@ -62,6 +69,7 @@ class AppSettings {
 
   Map<String, Object?> toJson() => <String, Object?>{
         'watermarkEnabled': watermarkEnabled,
+        'quickLaunchEnabled': quickLaunchEnabled,
         'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
         'themePreference': themePreference.name,
         'reduceMotion': reduceMotion,

@@ -168,6 +168,17 @@ class _LaunchPreferences extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           SwitchRow(
+            key: const ValueKey('home-quick-launch'),
+            switchKey: const ValueKey('home-quick-launch-switch'),
+            title: '快速启动',
+            subtitle: '打开应用时直接进入游戏，点击游戏左下角 X 返回加载器',
+            value: controller.quickLaunchEnabled,
+            onChanged: controller.initialized
+                ? controller.setQuickLaunchEnabled
+                : null,
+          ),
+          Divider(color: palette.border),
+          SwitchRow(
             key: const ValueKey('home-auto-collect-sun'),
             switchKey: const ValueKey('home-auto-collect-sun-switch'),
             title: '自动收集',
