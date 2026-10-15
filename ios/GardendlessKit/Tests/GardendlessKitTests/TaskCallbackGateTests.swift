@@ -13,30 +13,42 @@ final class TaskCallbackGateTests: XCTestCase {
     XCTAssertFalse(gate.perform(id, finishing: true) { XCTFail("finished after stop") })
   }
 
-  func testStopWaitsForReservedActionAndForbidsLateDelivery() {
+  func testOffMainCallbackIsDeliveredOnMainThread() {
     let gate = TaskCallbackGate()
     let owner = NSObject()
     let id = ObjectIdentifier(owner)
     gate.start(id)
-    let actionEntered = DispatchSemaphore(value: 0)
-    let actionMayReturn = DispatchSemaphore(value: 0)
-    let cancelReturned = DispatchSemaphore(value: 0)
-    let done = expectation(description: "callback and stop complete")
+    let delivered = expectation(description: "callback delivered")
     DispatchQueue.global().async {
-      _ = gate.perform(id) {
-        actionEntered.signal()
-        _ = actionMayReturn.wait(timeout: .now() + 2)
-      }
+      XCTAssertTrue(gate.perform(id) {
+        XCTAssertTrue(Thread.isMainThread)
+      })
+      delivered.fulfill()
     }
-    XCTAssertEqual(actionEntered.wait(timeout: .now() + 2), .success)
+    wait(for: [delivered], timeout: 2)
+  }
+
+  /// WebKit calls start/stop on the main thread and blocks off-main
+  /// WKURLSchemeTask callers on the main run loop. A main-thread stop must
+  /// not wait for an off-main delivery, and the delivery must not run after it.
+  func testMainThreadStopIsNotBlockedAndForbidsLateDelivery() {
+    let gate = TaskCallbackGate()
+    let owner = NSObject()
+    let other = NSObject()
+    let id = ObjectIdentifier(owner)
+    gate.start(id)
+    let deliveryRequested = DispatchSemaphore(value: 0)
+    let finished = expectation(description: "off-main delivery returned")
     DispatchQueue.global().async {
-      gate.cancel(id)
-      cancelReturned.signal()
-      done.fulfill()
+      deliveryRequested.signal()
+      XCTAssertFalse(gate.perform(id) { XCTFail("callback ran after stop") })
+      finished.fulfill()
     }
-    XCTAssertEqual(cancelReturned.wait(timeout: .now() + 0.05), .timedOut)
-    actionMayReturn.signal()
-    wait(for: [done], timeout: 2)
-    XCTAssertFalse(gate.perform(id) { XCTFail("late callback") })
+    XCTAssertEqual(deliveryRequested.wait(timeout: .now() + 2), .success)
+    gate.start(ObjectIdentifier(other))
+    gate.cancel(id)
+    wait(for: [finished], timeout: 2)
+    XCTAssertFalse(gate.isActive(id))
+    XCTAssertTrue(gate.isActive(ObjectIdentifier(other)))
   }
 }
