@@ -15,6 +15,7 @@ data class NativeGameSession(
     val watermarkEnabled: Boolean,
     val autoCollectSunEnabled: Boolean,
     val detailedAudioDiagnosticsEnabled: Boolean = false,
+    val renderPixelRatioCap: Double? = null,
     val packageId: String = "unknown",
     val allowedRemoteHosts: Set<String>,
     val gpNextRoot: String,
@@ -51,6 +52,11 @@ object GameSessionCodec {
             watermarkEnabled = json.getBoolean("watermarkEnabled"),
             autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled"),
             detailedAudioDiagnosticsEnabled = json.optBoolean("detailedAudioDiagnosticsEnabled", false),
+            renderPixelRatioCap = if (json.isNull("renderPixelRatioCap")) null else {
+                json.getDouble("renderPixelRatioCap").also {
+                    require(it > 0) { "Invalid render pixel ratio cap" }
+                }
+            },
             packageId = packageId,
             allowedRemoteHosts = buildSet {
                 for (index in 0 until remoteHosts.length()) {

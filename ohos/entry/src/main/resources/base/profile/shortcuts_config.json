@@ -1,0 +1,34 @@
+{
+  "shortcuts": [
+    {
+      "shortcutId": "startGame",
+      "label": "$string:shortcut_start_game",
+      "icon": "$media:icon",
+      "wants": [
+        {
+          "bundleName": "io.github.dey410.gardendlessloader",
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "shortcut": "startGame"
+          }
+        }
+      ]
+    },
+    {
+      "shortcutId": "importResources",
+      "label": "$string:shortcut_import_resources",
+      "icon": "$media:icon",
+      "wants": [
+        {
+          "bundleName": "io.github.dey410.gardendlessloader",
+          "moduleName": "entry",
+          "abilityName": "EntryAbility",
+          "parameters": {
+            "shortcut": "importResources"
+          }
+        }
+      ]
+    }
+  ]
+}

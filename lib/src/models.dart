@@ -233,7 +233,11 @@ class Announcement {
 }
 
 class AboutContent {
-  const AboutContent({required this.contentVersion, required this.content});
+  const AboutContent({
+    required this.contentVersion,
+    required this.content,
+    this.contentEn,
+  });
 
   factory AboutContent.fromJson(Object? value) {
     if (value is! Map<String, dynamic>) {
@@ -243,6 +247,7 @@ class AboutContent {
     final schemaVersion = value['schemaVersion'];
     final contentVersion = value['contentVersion'];
     final content = value['content'];
+    final contentEn = value['contentEn'];
     if (schemaVersion != 1) {
       throw const FormatException('about content schema is unsupported');
     }
@@ -252,18 +257,30 @@ class AboutContent {
     if (content is! String || content.trim().isEmpty) {
       throw const FormatException('about content is missing');
     }
+    if (contentEn != null &&
+        (contentEn is! String || contentEn.trim().isEmpty)) {
+      throw const FormatException('about content English text is invalid');
+    }
 
-    return AboutContent(contentVersion: contentVersion, content: content);
+    return AboutContent(
+      contentVersion: contentVersion,
+      content: content,
+      contentEn: contentEn as String?,
+    );
   }
 
   final int contentVersion;
   final String content;
+
+  /// English text for the English launcher; absent in older payloads.
+  final String? contentEn;
 
   Map<String, Object> toJson() {
     return {
       'schemaVersion': 1,
       'contentVersion': contentVersion,
       'content': content,
+      if (contentEn != null) 'contentEn': contentEn!,
     };
   }
 }

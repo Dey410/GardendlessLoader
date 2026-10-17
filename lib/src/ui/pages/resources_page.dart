@@ -3,6 +3,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../app_controller.dart';
 import '../../constants.dart';
+import '../../l10n/app_strings.dart';
 import '../../logging/log_event_catalog.dart';
 import '../../models.dart';
 import '../launcher_actions.dart';
@@ -55,17 +56,20 @@ class _ImportCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     final progress = controller.importProgress;
     final hasResource = controller.hasCurrentResource;
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelHeader(title: hasResource ? '更新资源' : '导入资源'),
+          PanelHeader(
+            title:
+                hasResource ? strings.updateResources : strings.importResources,
+          ),
           const SizedBox(height: 8),
           Text(
-            '选择 Gardendless Web 资源 ZIP，支持标准 Cocos 构建、GP-Next 构建与移动端优化包。'
-            '新资源写入空闲槽，校验和自检通过后才会切换；失败或取消不影响当前资源。',
+            strings.importDescription,
             style: TextStyle(
               color: palette.inkMuted,
               fontSize: 13,
@@ -97,10 +101,10 @@ class _ImportCard extends StatelessWidget {
             child: GardenButton(
               key: const ValueKey('import-zip-button'),
               label: controller.isImporting
-                  ? '导入中…'
+                  ? strings.importing
                   : hasResource
-                      ? '选择 ZIP 更新'
-                      : '选择 ZIP 导入',
+                      ? strings.chooseZipToUpdate
+                      : strings.chooseZipToImport,
               icon: Icons.folder_open_rounded,
               tone: GardenButtonTone.primary,
               onPressed: controller.busy || controller.isImporting
@@ -128,20 +132,27 @@ class _ImportProgressView extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback onDismiss;
 
-  static const _steps = ['读取', '解压', '校验', '自检'];
-
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
+    final steps = strings.importSteps;
     final failed = progress.phase == ImportPhase.failed;
     final completed = progress.phase == ImportPhase.completed;
-    final message = progress.message ?? importPhaseMessage(progress.phase);
-    final hint = failed ? userErrorCatalog[progress.errorCode]?.action : null;
+    final hint = failed
+        ? userErrorCatalog[progress.errorCode]?.action.of(strings)
+        : null;
     final title = failed
-        ? '导入失败 · $message'
+        ? strings.importFailedTitle(
+            progress.message ?? strings.importPhase(progress.phase),
+          )
         : completed
-            ? '导入完成 100%'
-            : '步骤 ${progress.stepIndex}/${progress.stepCount} · $message';
+            ? strings.importCompletedTitle
+            : strings.importStepTitle(
+                progress.stepIndex,
+                progress.stepCount,
+                strings.importPhase(progress.phase),
+              );
     final color = failed ? palette.danger : palette.accent;
     final value = failed || completed ? 1.0 : progress.value;
     final step = completed ? 5 : progress.stepIndex;
@@ -201,9 +212,9 @@ class _ImportProgressView extends StatelessWidget {
                       spacing: 6,
                       runSpacing: 2,
                       children: [
-                        for (var i = 0; i < _steps.length; i++)
+                        for (var i = 0; i < steps.length; i++)
                           Text(
-                            i == 0 ? _steps[i] : '›  ${_steps[i]}',
+                            i == 0 ? steps[i] : '›  ${steps[i]}',
                             style: TextStyle(
                               fontSize: 12,
                               color: i + 1 <= step && !failed
@@ -232,14 +243,18 @@ class _ImportProgressView extends StatelessWidget {
                 icon: expanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                tooltip: expanded ? '收起进度详情' : '展开进度详情',
+                tooltip: expanded
+                    ? strings.collapseProgressDetails
+                    : strings.expandProgressDetails,
                 onPressed: onToggle,
               ),
               if (failed || completed)
                 GardenIconButton(
                   key: const ValueKey('dismiss-import-progress'),
                   icon: Icons.close_rounded,
-                  tooltip: failed ? '关闭失败提示' : '关闭完成提示',
+                  tooltip: failed
+                      ? strings.dismissFailure
+                      : strings.dismissCompletion,
                   onPressed: onDismiss,
                 ),
             ],
@@ -251,26 +266,26 @@ class _ImportProgressView extends StatelessWidget {
               child: MetricRow(
                 metrics: [
                   Metric(
-                    label: '文件',
+                    label: strings.files,
                     value: progress.totalFiles > 0
                         ? '${progress.copiedFiles}/${progress.totalFiles}'
                         : '${progress.copiedFiles}',
                   ),
                   Metric(
-                    label: '数据量',
+                    label: strings.dataSize,
                     value: progress.totalBytes > 0
                         ? '${formatBytes(progress.copiedBytes)} / '
                             '${formatBytes(progress.totalBytes)}'
                         : formatBytes(progress.copiedBytes),
                   ),
                   Metric(
-                    label: '速度',
+                    label: strings.speed,
                     value: progress.bytesPerSecond > 0
                         ? '${formatBytes(progress.bytesPerSecond.round())}/s'
                         : '--',
                   ),
                   Metric(
-                    label: '已用时间',
+                    label: strings.elapsed,
                     value: formatDuration(progress.elapsed),
                   ),
                 ],
@@ -291,37 +306,38 @@ class _GameVersionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     final update = controller.availableGameUpdate;
     final noteStyle =
         TextStyle(color: palette.inkMuted, fontSize: 12, height: 1.5);
     final current = controller.hasCurrentResource
-        ? (controller.currentGameVersion ?? '未知')
+        ? (controller.currentGameVersion ?? strings.unknown)
         : '--';
     final latest =
         update?.latestVersion ?? controller.latestGameVersion ?? '--';
     final (String status, Color? statusColor) = update != null
-        ? ('有新版本', palette.accent)
+        ? (strings.updateAvailable, palette.accent)
         : controller.updateCheckInProgress
-            ? ('检查中', null)
+            ? (strings.checking, null)
             : controller.latestGameVersion == null
-                ? ('尚未获取最新版本', null)
+                ? (strings.latestNotFetched, null)
                 : !controller.hasCurrentResource
-                    ? ('可获取稳定版', null)
-                    : ('已是最新', palette.accent);
+                    ? (strings.stableAvailable, null)
+                    : (strings.upToDate, palette.accent);
     return SurfaceCard(
       key: update == null ? null : const ValueKey('game-update-entry'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PanelHeader(
-            title: '游戏版本',
+            title: strings.gameVersion,
             trailing: StatusLabel(label: status, color: statusColor),
           ),
           const SizedBox(height: 16),
           MetricRow(
             metrics: [
-              Metric(label: '当前', value: current),
-              Metric(label: '最新稳定版', value: latest),
+              Metric(label: strings.currentLabel, value: current),
+              Metric(label: strings.latestStable, value: latest),
             ],
           ),
           if (update != null) ...[
@@ -337,13 +353,13 @@ class _GameVersionCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               GardenButton(
-                label: 'GitHub 下载',
+                label: strings.githubDownload,
                 leading: const FaIcon(FontAwesomeIcons.github, size: 16),
                 compact: true,
                 onPressed: () => actions.openUrl(githubUrl),
               ),
               GardenButton(
-                label: '网盘下载',
+                label: strings.cloudDriveDownload,
                 icon: Icons.download_rounded,
                 tone: update != null
                     ? GardenButtonTone.primary
@@ -353,7 +369,7 @@ class _GameVersionCard extends StatelessWidget {
               ),
               if (update != null)
                 GardenButton(
-                  label: '稍后提醒',
+                  label: strings.remindLater,
                   tone: GardenButtonTone.ghost,
                   compact: true,
                   onPressed: () => actions.deferGameUpdate(update),
@@ -361,11 +377,7 @@ class _GameVersionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          for (final note in const [
-            'GitHub 下载是官方渠道，但部分地区可能无法访问。',
-            '网盘中的游戏资源由加载器作者自行上传，与 PvZ2 Gardendless 官方无关，仅为方便大家下载。',
-            '网盘更新可能晚于官方，如果迟迟没有更新，欢迎到 B 站提醒作者。',
-          ])
+          for (final note in strings.downloadNotes)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Row(
@@ -391,28 +403,32 @@ class _CurrentResourceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     final manifest = controller.manifest;
     final hasResource = controller.hasCurrentResource;
     final slot = switch (manifest.activeSlot) {
-      ResourceSlot.slotA => '槽 A',
-      ResourceSlot.slotB => '槽 B',
-      null => '无激活槽',
+      ResourceSlot.slotA => strings.slotA,
+      ResourceSlot.slotB => strings.slotB,
+      null => strings.noActiveSlot,
     };
     final selfCheck = manifest.lastSelfCheckAt == null
-        ? (hasResource ? '未执行' : '等待导入')
-        : '已通过 · ${formatDateTime(manifest.lastSelfCheckAt)}';
-    final lastError = manifest.lastErrorMessage;
+        ? (hasResource ? strings.notRun : strings.waitingForImport)
+        : strings.passedAt(formatDateTime(manifest.lastSelfCheckAt));
+    final lastError = manifest.lastErrorMessage == null
+        ? null
+        : userErrorTitle(manifest.lastErrorCode, manifest.lastErrorMessage!);
+    // The missing-module detail stays in the technical details below.
     final gpNext = !controller.hasGpNext
-        ? '未检测到（标准 Web 构建）'
+        ? strings.gpNextNotDetected
         : controller.gpNextCompatible
-            ? '兼容 ${controller.gpNextVersion ?? ''}'.trim()
-            : '不兼容：${controller.gpNextCompatibilityError ?? '未知原因'}';
+            ? strings.gpNextCompatible(controller.gpNextVersion ?? '')
+            : strings.gpNextIncompatible;
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PanelHeader(
-            title: '当前资源',
+            title: strings.currentResource,
             trailing: StatusLabel(
               label: slot,
               color: hasResource ? palette.accent : null,
@@ -422,15 +438,15 @@ class _CurrentResourceCard extends StatelessWidget {
           MetricRow(
             metrics: [
               Metric(
-                label: '文件数',
+                label: strings.fileCount,
                 value: hasResource ? '${manifest.fileCount}' : '--',
               ),
               Metric(
-                label: '体积',
+                label: strings.size,
                 value: hasResource ? formatBytes(manifest.totalBytes) : '--',
               ),
               Metric(
-                label: '导入时间',
+                label: strings.importedAt,
                 value: formatDateTime(manifest.lastImportAt),
               ),
             ],
@@ -438,28 +454,31 @@ class _CurrentResourceCard extends StatelessWidget {
           const SizedBox(height: 12),
           Divider(color: palette.border),
           InfoRow(
-            label: '标题',
-            value: hasResource ? controller.detectedTitle : '尚未导入',
+            label: strings.title,
+            value: hasResource ? controller.detectedTitle : strings.notImported,
           ),
           InfoRow(
-            label: '资源校验',
-            value: hasResource ? '校验通过' : '等待导入',
+            label: strings.validation,
+            value: hasResource
+                ? strings.validationPassed
+                : strings.waitingForImport,
             color: hasResource ? null : palette.warning,
           ),
           InfoRow(
-            label: '游戏宿主',
-            value:
-                '${controller.gameHostPlatform.nativeHostName} · 无 HTTP Server',
+            label: strings.gameHost,
+            value: strings.noHttpServer(
+              controller.gameHostPlatform.nativeHostName,
+            ),
           ),
-          InfoRow(label: '上次自检', value: selfCheck),
+          InfoRow(label: strings.lastSelfCheck, value: selfCheck),
           InfoRow(
-            label: '最近错误',
-            value: lastError ?? '无',
+            label: strings.recentError,
+            value: lastError ?? strings.none,
             color: lastError == null ? null : palette.danger,
             maxLines: 3,
             hint: lastError == null
                 ? null
-                : userErrorCatalog[manifest.lastErrorCode]?.action,
+                : userErrorCatalog[manifest.lastErrorCode]?.action.of(strings),
           ),
           InfoRow(
             label: 'GP-Next',
@@ -468,16 +487,16 @@ class _CurrentResourceCard extends StatelessWidget {
                 ? palette.danger
                 : null,
             hint: controller.hasGpNext && !controller.gpNextCompatible
-                ? userErrorCatalog['gp_next_incompatible']?.action
+                ? userErrorCatalog['gp_next_incompatible']?.action.of(strings)
                 : null,
           ),
           InfoRow(
-            label: '资源根目录',
+            label: strings.resourceRoot,
             value: controller.userVisibleRoot,
             mono: true,
             trailing: GardenButton(
               key: const ValueKey('copy-resource-root-button'),
-              label: '复制',
+              label: strings.copy,
               compact: true,
               onPressed: actions.copyResourceRoot,
             ),
@@ -485,7 +504,7 @@ class _CurrentResourceCard extends StatelessWidget {
           Divider(color: palette.border),
           Disclosure(
             key: const ValueKey('resource-technical-details'),
-            title: '技术详情',
+            title: strings.technicalDetails,
             child: _TechnicalDetails(controller: controller),
           ),
         ],

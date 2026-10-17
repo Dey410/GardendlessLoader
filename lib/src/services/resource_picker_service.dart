@@ -5,13 +5,45 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 
 class ResourcePickerService {
+  ResourcePickerService() {
+    _mobileZipImporterChannel.setMethodCallHandler(_handleNativeCall);
+  }
+
   final String _platformName = Platform.operatingSystem;
 
   static const MethodChannel _mobileZipImporterChannel = MethodChannel(
     'io.github.dey410.gardendlessloader/resource_zip_importer',
   );
 
-  Future<Directory?> pickAndExtractDocsZip({
+  ImportProgressCallback? _onProgress;
+
+  /// Called with the file name when another app opens or shares a ZIP with
+  /// the loader while the launcher is running.
+  void Function(String name)? onIncomingZip;
+
+  Future<void> _handleNativeCall(MethodCall call) async {
+    switch (call.method) {
+      case 'progress':
+        final progress = _decodeProgress(call.arguments);
+        if (progress != null) _onProgress?.call(progress);
+      case 'incomingZipReceived':
+        final name = call.arguments;
+        if (name is String) onIncomingZip?.call(name);
+    }
+  }
+
+  /// File name of a ZIP another app handed to the loader and that is still
+  /// waiting for the user's decision.
+  Future<String?> incomingZipName() =>
+      _mobileZipImporterChannel.invokeMethod<String>('incomingZip');
+
+  Future<void> discardIncomingZip() =>
+      _mobileZipImporterChannel.invokeMethod<void>('discardIncomingZip');
+
+  /// Extracts from the system picker when [incoming] is false, otherwise
+  /// from the ZIP another app handed to the loader.
+  Future<Directory?> extractDocsZip({
+    required bool incoming,
     Directory? targetDirectory,
     ImportProgressCallback? onProgress,
   }) async {
@@ -29,10 +61,12 @@ class ResourcePickerService {
       );
     }
 
+    _onProgress = onProgress;
     try {
-      final extractedPath = await _pickAndExtractMobileDocsZip(
-        targetDirectory: targetDirectory.path,
-        onProgress: onProgress,
+      final extractedPath =
+          await _mobileZipImporterChannel.invokeMethod<String>(
+        incoming ? 'extractIncomingDocsZip' : 'pickAndExtractDocsZip',
+        <String, Object?>{'targetDirectory': targetDirectory.path},
       );
       return extractedPath == null ? null : Directory(extractedPath);
     } on PlatformException catch (error) {
@@ -40,6 +74,8 @@ class ResourcePickerService {
         error.message ?? '无法导入选择的 ZIP',
         code: error.code,
       );
+    } finally {
+      _onProgress = null;
     }
   }
 
@@ -47,31 +83,6 @@ class ResourcePickerService {
       _platformName == 'android' ||
       _platformName == 'ios' ||
       _platformName == 'ohos';
-
-  static Future<String?> _pickAndExtractMobileDocsZip({
-    required String targetDirectory,
-    ImportProgressCallback? onProgress,
-  }) async {
-    _mobileZipImporterChannel.setMethodCallHandler((call) async {
-      if (call.method != 'progress' || onProgress == null) {
-        return;
-      }
-      final progress = _decodeProgress(call.arguments);
-      if (progress != null) {
-        onProgress(progress);
-      }
-    });
-    try {
-      return await _mobileZipImporterChannel.invokeMethod<String>(
-        'pickAndExtractDocsZip',
-        <String, Object?>{
-          'targetDirectory': targetDirectory,
-        },
-      );
-    } finally {
-      _mobileZipImporterChannel.setMethodCallHandler(null);
-    }
-  }
 
   static ImportProgress? _decodeProgress(Object? arguments) {
     if (arguments is! Map) {

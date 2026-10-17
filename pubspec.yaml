@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   crypto: ^3.0.7
   font_awesome_flutter: ^11.0.0
   package_info_plus: ^10.1.0

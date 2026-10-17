@@ -16,6 +16,9 @@ public struct GameSession: Codable, Equatable {
   public let watermarkEnabled: Bool
   public let autoCollectSunEnabled: Bool
   public let detailedAudioDiagnosticsEnabled: Bool
+  /// Highest device pixel ratio the game canvas renders at; nil keeps the
+  /// device's own ratio.
+  public let renderPixelRatioCap: Double?
   public let allowedRemoteHosts: Set<String>
   public let gpNextRoot: URL
   public let exportTemporaryRoot: URL
@@ -36,6 +39,7 @@ public struct GameSession: Codable, Equatable {
     watermarkEnabled: Bool,
     autoCollectSunEnabled: Bool,
     detailedAudioDiagnosticsEnabled: Bool = false,
+    renderPixelRatioCap: Double? = nil,
     allowedRemoteHosts: Set<String>,
     gpNextRoot: URL,
     exportTemporaryRoot: URL
@@ -51,6 +55,7 @@ public struct GameSession: Codable, Equatable {
     self.watermarkEnabled = watermarkEnabled
     self.autoCollectSunEnabled = autoCollectSunEnabled
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
+    self.renderPixelRatioCap = renderPixelRatioCap
     self.allowedRemoteHosts = allowedRemoteHosts
     self.gpNextRoot = gpNextRoot
     self.exportTemporaryRoot = exportTemporaryRoot
@@ -77,6 +82,10 @@ public enum GameSessionDecoder {
           generation >= 0 else {
       throw GameError.failed(.invalidSession, "Invalid activation generation")
     }
+    let renderPixelRatioCap = json["renderPixelRatioCap"] as? Double
+    if let renderPixelRatioCap, renderPixelRatioCap <= 0 {
+      throw GameError.failed(.invalidSession, "Invalid render pixel ratio cap")
+    }
     let hosts = json["allowedRemoteHosts"] as? [String] ?? []
     guard hosts.allSatisfy(isValidRemoteHost) else {
       throw GameError.failed(.invalidSession, "Invalid remote host")
@@ -94,6 +103,7 @@ public enum GameSessionDecoder {
       autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled"),
       detailedAudioDiagnosticsEnabled:
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
+      renderPixelRatioCap: renderPixelRatioCap,
       allowedRemoteHosts: Set(hosts.map { $0.lowercased() }),
       gpNextRoot: try requiredDirectoryURL(json, "gpNextRoot"),
       exportTemporaryRoot: try requiredDirectoryURL(json, "exportTemporaryRoot")

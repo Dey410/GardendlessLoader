@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
+import '../../l10n/app_strings.dart';
 import '../../logging/app_logger.dart';
 import '../../logging/log_event_catalog.dart';
 import '../launcher_actions.dart';
@@ -164,6 +165,7 @@ class _Toolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     return Wrap(
       spacing: 10,
       runSpacing: 10,
@@ -182,18 +184,18 @@ class _Toolbar extends StatelessWidget {
         ),
         _ToggleChip(
           key: const ValueKey('log-errors-only-filter'),
-          label: '只看错误',
+          label: strings.errorsOnly,
           selected: errorsOnly,
           onChanged: onErrorsOnly,
         ),
         if (operations.isNotEmpty)
           PopupMenuButton<String>(
             key: const ValueKey('log-operation-filter'),
-            tooltip: '按 Operation 筛选',
+            tooltip: strings.filterByOperation,
             initialValue: operationFilter,
             onSelected: onOperation,
             itemBuilder: (context) => [
-              const PopupMenuItem(value: 'all', child: Text('全部 Operation')),
+              PopupMenuItem(value: 'all', child: Text(strings.allOperations)),
               for (final operation in operations)
                 PopupMenuItem(
                   value: operation,
@@ -218,7 +220,7 @@ class _Toolbar extends StatelessWidget {
                   Flexible(
                     child: Text(
                       operationFilter == 'all'
-                          ? '全部 Operation'
+                          ? strings.allOperations
                           : operationFilter,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: palette.ink, fontSize: 12.5),
@@ -231,7 +233,7 @@ class _Toolbar extends StatelessWidget {
           ),
         GardenButton(
           key: const ValueKey('clear-log-view-filter'),
-          label: '清空筛选',
+          label: strings.clearFilters,
           tone: GardenButtonTone.ghost,
           compact: true,
           onPressed: onReset,
@@ -239,20 +241,20 @@ class _Toolbar extends StatelessWidget {
         GardenIconButton(
           key: const ValueKey('refresh-logs-button'),
           icon: Icons.refresh_rounded,
-          tooltip: '刷新日志',
+          tooltip: strings.refreshLogs,
           onPressed:
               controller.logSnapshotLoading ? null : controller.refreshLogs,
         ),
         GardenButton(
           key: const ValueKey('copy-diagnostics-button'),
-          label: '复制诊断',
+          label: strings.copyDiagnostics,
           tone: GardenButtonTone.primary,
           compact: true,
           onPressed: actions.copyDiagnostics,
         ),
         GardenButton(
           key: const ValueKey('delete-log-history-button'),
-          label: '删除历史',
+          label: strings.deleteHistory,
           tone: GardenButtonTone.danger,
           compact: true,
           onPressed: actions.deleteLogHistory,
@@ -323,6 +325,7 @@ class _Overview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     final counts = <String, int>{for (final level in _levels) level: 0};
     String? gameSessionId;
     Map<String, Object?>? recentError;
@@ -336,10 +339,10 @@ class _Overview extends StatelessWidget {
         ? null
         : userErrorCatalog[recentError['code']?.toString()];
     final (String status, Color? statusColor) = snapshot == null
-        ? ('日志状态未知', null)
+        ? (strings.logStatusUnknown, null)
         : snapshot!.persisting
-            ? ('持久化正常', palette.accent)
-            : ('内存降级', palette.warning);
+            ? (strings.logPersisting, palette.accent)
+            : (strings.logDegraded, palette.warning);
     final label = TextStyle(color: palette.inkMuted, fontSize: 12);
     return SurfaceCard(
       padding: EdgeInsets.zero,
@@ -348,32 +351,32 @@ class _Overview extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         children: [
           PanelHeader(
-            title: '概览',
+            title: strings.overview,
             trailing: StatusLabel(label: status, color: statusColor),
           ),
           const SizedBox(height: 14),
-          Text('当前会话', style: label),
+          Text(strings.appSession, style: label),
           const SizedBox(height: 2),
           SelectableText(
             snapshot?.appSessionId ?? '--',
             style: GardenType.mono(11.5, color: palette.ink),
           ),
           const SizedBox(height: 10),
-          Text('游戏会话', style: label),
+          Text(strings.gameSession, style: label),
           const SizedBox(height: 2),
           SelectableText(
-            gameSessionId ?? '无',
+            gameSessionId ?? strings.none,
             style: GardenType.mono(11.5, color: palette.ink),
           ),
           const SizedBox(height: 14),
           MetricRow(
             metrics: [
               Metric(
-                label: '日志占用',
+                label: strings.logSize,
                 value: formatBytes(snapshot?.totalBytes ?? 0),
               ),
               Metric(
-                label: '写入失败',
+                label: strings.writeFailures,
                 value: '${snapshot?.writeFailureCount ?? 0}',
               ),
             ],
@@ -392,16 +395,16 @@ class _Overview extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '丢弃 ${jsonEncode(snapshot?.droppedByLevel ?? const {})}',
+            strings.dropped(jsonEncode(snapshot?.droppedByLevel ?? const {})),
             style: GardenType.mono(11, color: palette.inkMuted),
           ),
           const SizedBox(height: 16),
-          Text('最近错误', style: label),
+          Text(strings.recentError, style: label),
           const SizedBox(height: 4),
           Text(
             recentError == null
-                ? '无'
-                : errorInfo?.title ??
+                ? strings.none
+                : errorInfo?.title.of(strings) ??
                     '${recentError['code'] ?? recentError['event']}: '
                         '${recentError['message'] ?? ''}',
             maxLines: 4,
@@ -414,7 +417,7 @@ class _Overview extends StatelessWidget {
           if (errorInfo != null) ...[
             const SizedBox(height: 4),
             Text(
-              errorInfo.action,
+              errorInfo.action.of(strings),
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: palette.inkMuted, fontSize: 12.5),
@@ -425,8 +428,8 @@ class _Overview extends StatelessWidget {
           SwitchRow(
             key: const ValueKey('detailed-audio-diagnostics'),
             switchKey: const ValueKey('detailed-audio-diagnostics-switch'),
-            title: '详细音频诊断',
-            subtitle: '下一次启动游戏时采集音频加载与播放事件',
+            title: strings.detailedAudioDiagnostics,
+            subtitle: strings.detailedAudioDiagnosticsSubtitle,
             value: controller.detailedAudioDiagnosticsEnabled,
             onChanged: controller.initialized
                 ? controller.setDetailedAudioDiagnosticsEnabled
@@ -435,7 +438,7 @@ class _Overview extends StatelessWidget {
           Divider(color: palette.border),
           Disclosure(
             key: const ValueKey('log-technical-details'),
-            title: '技术详情',
+            title: strings.technicalDetails,
             child: CodeBlock(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 220),
@@ -473,10 +476,11 @@ class _EventList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     final String? placeholder = snapshot == null
-        ? (loading ? '正在读取日志…' : '日志尚未加载')
+        ? (loading ? strings.readingLogs : strings.logsNotLoaded)
         : events.isEmpty
-            ? '当前筛选条件下没有事件'
+            ? strings.noMatchingEvents
             : null;
     return SurfaceCard(
       padding: EdgeInsets.zero,
@@ -583,7 +587,7 @@ class _EventRowState extends State<_EventRow> {
                 ),
                 GardenIconButton(
                   icon: Icons.copy_rounded,
-                  tooltip: '复制单条事件 JSON',
+                  tooltip: context.strings.copyEventJson,
                   onPressed: widget.onCopy,
                 ),
               ],

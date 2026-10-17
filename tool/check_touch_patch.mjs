@@ -134,7 +134,12 @@ function createTouchHarness({
     hidden: false,
   });
   const window = new EventTarget();
-  window.devicePixelRatio = devicePixelRatio;
+  // Browsers expose the ratio as an accessor on window.
+  Object.defineProperty(window, 'devicePixelRatio', {
+    configurable: true,
+    enumerable: true,
+    get: () => devicePixelRatio,
+  });
   window.__gardendlessHostConfig = hostConfig;
   const context = {
     Event,

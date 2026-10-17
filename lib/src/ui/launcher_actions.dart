@@ -2,21 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../constants.dart';
+import '../l10n/app_strings.dart';
 import '../models.dart';
 import '../services/game_update_check_service.dart';
 import '../services/update_check_service.dart';
 
 enum LauncherDestination {
-  game('游戏', Icons.sports_esports_outlined, Icons.sports_esports),
-  resources('资源', Icons.inventory_2_outlined, Icons.inventory_2),
-  logs('日志', Icons.receipt_long_outlined, Icons.receipt_long),
-  settings('设置', Icons.settings_outlined, Icons.settings);
+  game(Icons.sports_esports_outlined, Icons.sports_esports),
+  resources(Icons.inventory_2_outlined, Icons.inventory_2),
+  logs(Icons.receipt_long_outlined, Icons.receipt_long),
+  settings(Icons.settings_outlined, Icons.settings);
 
-  const LauncherDestination(this.label, this.icon, this.selectedIcon);
+  const LauncherDestination(this.icon, this.selectedIcon);
 
-  final String label;
   final IconData icon;
   final IconData selectedIcon;
+
+  String label(AppStrings strings) => switch (this) {
+        game => strings.navGame,
+        resources => strings.navResources,
+        logs => strings.navLogs,
+        settings => strings.navSettings,
+      };
 }
 
 /// Side effects the pages can trigger. HomePage owns the implementations
@@ -51,10 +58,10 @@ class LauncherActions {
   final VoidCallback toggleImportDetails;
 }
 
-const socialLinks = <AnnouncementLink>[
-  AnnouncementLink(label: 'B站主页', url: bilibiliHomeUrl),
-  AnnouncementLink(label: 'GitHub', url: appGithubUrl),
-];
+List<AnnouncementLink> socialLinks(AppStrings strings) => [
+      AnnouncementLink(label: strings.bilibiliHome, url: bilibiliHomeUrl),
+      const AnnouncementLink(label: 'GitHub', url: appGithubUrl),
+    ];
 
 Widget linkIcon(AnnouncementLink link, {double size = 16, Color? color}) {
   final host = Uri.tryParse(link.url)?.host.toLowerCase() ?? '';
@@ -81,17 +88,6 @@ String displayGameTitle(String raw) {
     orElse: () => segments.last,
   );
 }
-
-String importPhaseMessage(ImportPhase phase) => switch (phase) {
-      ImportPhase.receiving => '正在读取 ZIP',
-      ImportPhase.extracting => '正在解压资源',
-      ImportPhase.validating => '正在校验资源',
-      ImportPhase.scanning => '正在统计资源',
-      ImportPhase.selfChecking => '正在本地自检',
-      ImportPhase.completed => '导入完成',
-      ImportPhase.failed => '导入失败',
-      ImportPhase.idle => '等待导入',
-    };
 
 String formatBytes(int bytes) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

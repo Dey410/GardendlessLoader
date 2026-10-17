@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
+import '../../l10n/app_strings.dart';
 import '../launcher_actions.dart';
 import '../theme/garden_theme.dart';
 import '../widgets/garden_widgets.dart';
@@ -83,15 +84,16 @@ class _Hero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     final ready = controller.canStartGame;
     final details = <String>[
-      if (ready) '版本 ${controller.currentGameVersion ?? '未知'}',
+      if (ready) strings.gameVersionLabel(controller.currentGameVersion),
       if (ready)
         !controller.hasGpNext
-            ? '标准 Web'
+            ? strings.standardWeb
             : controller.gpNextCompatible
                 ? 'GP-Next ${controller.gpNextVersion ?? ''}'.trim()
-                : 'GP-Next 不兼容',
+                : strings.gpNextIncompatibleShort,
       controller.gameHostPlatform.nativeHostName,
     ];
     return Column(
@@ -100,7 +102,7 @@ class _Hero extends StatelessWidget {
       children: [
         StatusLabel(
           key: const ValueKey('game-readiness-chip'),
-          label: ready ? '资源已就绪' : '需要导入资源',
+          label: ready ? strings.resourcesReady : strings.resourcesNeeded,
           color: ready ? palette.accent : palette.warning,
         ),
         SizedBox(height: compact ? 12 : 16),
@@ -114,9 +116,7 @@ class _Hero extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          ready
-              ? details.join('  ·  ')
-              : '导入一份 Gardendless Web 资源 ZIP 后即可开始游戏。',
+          ready ? details.join('  ·  ') : strings.importToPlayHint,
           style: TextStyle(color: palette.inkMuted, fontSize: 14, height: 1.5),
         ),
       ],
@@ -141,6 +141,7 @@ class _ActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = context.strings;
     return Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.end,
@@ -148,7 +149,7 @@ class _ActionBar extends StatelessWidget {
         if (ready)
           GardenButton(
             key: const ValueKey('start-game-button'),
-            label: launching ? '正在启动…' : '开始游戏',
+            label: launching ? strings.starting : strings.startGame,
             icon: Icons.play_arrow_rounded,
             tone: GardenButtonTone.primary,
             busy: launching,
@@ -157,7 +158,7 @@ class _ActionBar extends StatelessWidget {
         else
           GardenButton(
             key: const ValueKey('go-import-button'),
-            label: '前往导入资源',
+            label: strings.goToImport,
             icon: Icons.arrow_forward_rounded,
             tone: GardenButtonTone.primary,
             onPressed: onImport,

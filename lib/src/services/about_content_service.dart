@@ -68,4 +68,5 @@ class AboutContentService {
 const localFallbackAboutContent = AboutContent(
   contentVersion: 1,
   content: 'GardendlessLoader 本地资源加载器',
+  contentEn: 'GardendlessLoader local resource loader',
 );

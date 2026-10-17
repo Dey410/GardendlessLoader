@@ -12,6 +12,7 @@ export interface GameSessionPayload {
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
   detailedAudioDiagnosticsEnabled?: boolean;
+  renderPixelRatioCap?: number | null;
   packageId?: string;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
@@ -30,6 +31,7 @@ export class GameSession {
   readonly watermarkEnabled: boolean;
   readonly autoCollectSunEnabled: boolean;
   readonly detailedAudioDiagnosticsEnabled: boolean;
+  readonly renderPixelRatioCap: number | null;
   readonly packageId: string;
   readonly allowedRemoteHosts: Set<string>;
   readonly gpNextRoot: string;
@@ -56,6 +58,10 @@ export class GameSession {
     this.watermarkEnabled = value.watermarkEnabled;
     this.autoCollectSunEnabled = value.autoCollectSunEnabled;
     this.detailedAudioDiagnosticsEnabled = value.detailedAudioDiagnosticsEnabled === true;
+    this.renderPixelRatioCap = value.renderPixelRatioCap ?? null;
+    if (this.renderPixelRatioCap !== null && !(this.renderPixelRatioCap > 0)) {
+      throw new Error('Invalid render pixel ratio cap');
+    }
     this.packageId = value.packageId ?? 'unknown';
     if (this.packageId !== 'unknown' && !/^sha256:[a-f0-9]{64}$/.test(this.packageId)) throw new Error('Invalid package identity');
     this.allowedRemoteHosts = new Set<string>();

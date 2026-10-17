@@ -3,7 +3,12 @@ package io.github.dey410.gardendlessloader
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
+import android.graphics.drawable.Icon
 import android.net.Uri
+import android.os.Build
+import android.provider.OpenableColumns
 import io.github.dey410.gardendlessloader.game.GameActivity
 import io.github.dey410.gardendlessloader.logging.AppLogStore
 import io.flutter.embedding.android.FlutterActivity
@@ -25,6 +30,11 @@ class MainActivity : FlutterActivity() {
     private var pendingTargetDirectory: String? = null
     private var lastImportProgressReportAt = 0L
     private var transferringToGameHost = false
+    /** A ZIP another app opened or shared, waiting for the launcher's decision. */
+    private var incomingZip: Uri? = null
+    private var shortcutChannel: MethodChannel? = null
+    /** The home-screen shortcut that opened the launcher, until Flutter takes it. */
+    private var pendingShortcut: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -80,10 +90,47 @@ class MainActivity : FlutterActivity() {
             "io.github.dey410.gardendlessloader/resource_zip_importer",
         )
         resourceZipImporterChannel = importChannel
+        incomingZip = incomingZipOf(intent)
+        pendingShortcut = shortcutOf(intent)
+        val shortcuts = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "io.github.dey410.gardendlessloader/shortcuts",
+        )
+        shortcutChannel = shortcuts
+        shortcuts.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "take" -> {
+                    result.success(pendingShortcut)
+                    pendingShortcut = null
+                }
+                "setItems" -> {
+                    val titles = call.arguments as? Map<*, *>
+                    if (titles == null) {
+                        result.error("invalid_shortcuts", "Shortcut titles must be a map", null)
+                    } else {
+                        publishShortcuts(titles)
+                        result.success(null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         importChannel.setMethodCallHandler { call, result ->
-            if (call.method != "pickAndExtractDocsZip") {
-                result.notImplemented()
-                return@setMethodCallHandler
+            when (call.method) {
+                "incomingZip" -> {
+                    result.success(incomingZip?.let(::displayName))
+                    return@setMethodCallHandler
+                }
+                "discardIncomingZip" -> {
+                    incomingZip = null
+                    result.success(null)
+                    return@setMethodCallHandler
+                }
+                "pickAndExtractDocsZip", "extractIncomingDocsZip" -> Unit
+                else -> {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
             }
 
             if (pendingResult != null) {
@@ -97,10 +144,62 @@ class MainActivity : FlutterActivity() {
                 return@setMethodCallHandler
             }
 
+            if (call.method == "extractIncomingDocsZip") {
+                val uri = incomingZip
+                incomingZip = null
+                if (uri == null) result.success(null) else extractInBackground(uri, targetDirectory, result)
+                return@setMethodCallHandler
+            }
+
             pendingResult = result
             pendingTargetDirectory = targetDirectory
             launchZipPicker(result)
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        incomingZipOf(intent)?.let { uri ->
+            incomingZip = uri
+            resourceZipImporterChannel?.invokeMethod("incomingZipReceived", displayName(uri))
+        }
+        shortcutOf(intent)?.let { shortcutChannel?.invokeMethod("perform", it) }
+    }
+
+    private fun incomingZipOf(intent: Intent?): Uri? =
+        intent?.data?.takeIf { intent.action == ACTION_IMPORT_ZIP }
+
+    private fun shortcutOf(intent: Intent?): String? =
+        intent?.getStringExtra(EXTRA_SHORTCUT)?.takeIf { intent.action == ACTION_SHORTCUT }
+
+    /** Titles come from the launcher so they follow its language setting. */
+    private fun publishShortcuts(titles: Map<*, *>) {
+        if (Build.VERSION.SDK_INT < 25) return
+        val icons = mapOf(
+            "startGame" to R.drawable.ic_shortcut_start_game,
+            "importResources" to R.drawable.ic_shortcut_import_resources,
+        )
+        val shortcuts = icons.mapNotNull { (id, icon) ->
+            val title = titles[id] as? String ?: return@mapNotNull null
+            ShortcutInfo.Builder(this, id)
+                .setShortLabel(title)
+                .setIcon(Icon.createWithResource(this, icon))
+                .setIntent(
+                    Intent(this, LaunchRouterActivity::class.java)
+                        .setAction(ACTION_SHORTCUT)
+                        .putExtra(EXTRA_SHORTCUT, id),
+                )
+                .build()
+        }
+        getSystemService(ShortcutManager::class.java).setDynamicShortcuts(shortcuts)
+    }
+
+    private fun displayName(uri: Uri): String {
+        val queried = runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        }.getOrNull()
+        return queried ?: uri.lastPathSegment ?: "ZIP"
     }
 
     override fun onDestroy() {
@@ -180,7 +279,10 @@ class MainActivity : FlutterActivity() {
             result.success(null)
             return
         }
+        extractInBackground(uri, targetDirectory, result)
+    }
 
+    private fun extractInBackground(uri: Uri, targetDirectory: String, result: MethodChannel.Result) {
         Thread {
             try {
                 lastImportProgressReportAt = 0L
@@ -445,6 +547,10 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        /** Intent action carrying a ZIP from [LaunchRouterActivity] or a game that held it. */
+        const val ACTION_IMPORT_ZIP = "io.github.dey410.gardendlessloader.IMPORT_ZIP"
+        const val ACTION_SHORTCUT = "io.github.dey410.gardendlessloader.SHORTCUT"
+        const val EXTRA_SHORTCUT = "shortcut"
         private const val pickZipRequestCode = 26410
         private const val zipCopyBufferSize = 64 * 1024
         private const val progressReportIntervalMs = 100L

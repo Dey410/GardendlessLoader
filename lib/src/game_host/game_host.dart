@@ -48,6 +48,7 @@ class GameSession {
     required this.watermarkEnabled,
     this.autoCollectSunEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
+    this.renderPixelRatioCap,
     required this.allowedRemoteHosts,
     required this.gpNextRoot,
     required this.exportTemporaryRoot,
@@ -69,6 +70,11 @@ class GameSession {
     if (generation is! int || generation < 0) {
       throw const FormatException('activationGeneration must be non-negative');
     }
+    final renderPixelRatioCap = json['renderPixelRatioCap'];
+    if (renderPixelRatioCap != null &&
+        (renderPixelRatioCap is! num || renderPixelRatioCap <= 0)) {
+      throw const FormatException('renderPixelRatioCap must be positive');
+    }
     return GameSession(
       sessionId: _requiredString(json, 'sessionId'),
       packageId: json['packageId'] as String?,
@@ -83,6 +89,7 @@ class GameSession {
       autoCollectSunEnabled: json['autoCollectSunEnabled'] as bool? ?? false,
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
+      renderPixelRatioCap: (renderPixelRatioCap as num?)?.toDouble(),
       allowedRemoteHosts: normalizedRemoteHosts,
       gpNextRoot: _requiredString(json, 'gpNextRoot'),
       exportTemporaryRoot: _requiredString(json, 'exportTemporaryRoot'),
@@ -103,6 +110,10 @@ class GameSession {
   final bool watermarkEnabled;
   final bool autoCollectSunEnabled;
   final bool detailedAudioDiagnosticsEnabled;
+
+  /// Highest device pixel ratio the game canvas renders at; null renders at
+  /// the device's own ratio.
+  final double? renderPixelRatioCap;
   final List<String> allowedRemoteHosts;
   final String gpNextRoot;
   final String exportTemporaryRoot;
@@ -136,6 +147,7 @@ class GameSession {
       'watermarkEnabled': watermarkEnabled,
       'autoCollectSunEnabled': autoCollectSunEnabled,
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
+      'renderPixelRatioCap': renderPixelRatioCap,
       'allowedRemoteHosts': normalizedRemoteHosts,
       'gpNextRoot': gpNextRoot,
       'exportTemporaryRoot': exportTemporaryRoot,

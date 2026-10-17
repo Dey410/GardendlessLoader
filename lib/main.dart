@@ -3,8 +3,10 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'src/app_controller.dart';
+import 'src/l10n/app_strings.dart';
 import 'src/logging/app_logger.dart';
 import 'src/logging/log_event_catalog.dart';
 import 'src/logging/native_app_logger.dart';
@@ -94,6 +96,11 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
   }
 
   @override
+  void didChangeLocales(List<Locale>? locales) {
+    _controller.systemLocalesChanged();
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     widget.logger.emit(
       level: LogLevel.info,
@@ -118,6 +125,14 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
           ThemePreference.light => ThemeMode.light,
           ThemePreference.dark => ThemeMode.dark,
         },
+        locale: AppStrings.current.locale,
+        supportedLocales: AppStrings.supportedLocales,
+        localizationsDelegates: const [
+          AppStrings.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         home: home,
       ),
       child: HomePage(controller: _controller),

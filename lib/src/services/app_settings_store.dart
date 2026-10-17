@@ -14,13 +14,47 @@ enum ThemePreference {
   }
 }
 
+enum LanguagePreference {
+  system,
+  chinese,
+  english;
+
+  static LanguagePreference fromName(Object? value) {
+    return LanguagePreference.values.firstWhere(
+      (preference) => preference.name == value,
+      orElse: () => LanguagePreference.system,
+    );
+  }
+}
+
+/// Caps the device pixel ratio the game renders at; a lower cap shrinks the
+/// game canvas and its GPU memory at the cost of sharpness.
+enum RenderResolution {
+  full(null),
+  medium(1.5),
+  low(1);
+
+  const RenderResolution(this.pixelRatioCap);
+
+  final double? pixelRatioCap;
+
+  static RenderResolution fromName(Object? value) {
+    return RenderResolution.values.firstWhere(
+      (resolution) => resolution.name == value,
+      orElse: () => RenderResolution.full,
+    );
+  }
+}
+
 class AppSettings {
   const AppSettings({
     this.watermarkEnabled = true,
     this.quickLaunchEnabled = false,
+    this.renderResolution = RenderResolution.full,
     this.detailedAudioDiagnosticsEnabled = false,
     this.themePreference = ThemePreference.system,
     this.reduceMotion = false,
+    this.languagePreference = LanguagePreference.system,
     this.seenAnnouncementId,
   });
 
@@ -28,10 +62,13 @@ class AppSettings {
     return AppSettings(
       watermarkEnabled: json['watermarkEnabled'] as bool? ?? true,
       quickLaunchEnabled: json['quickLaunchEnabled'] as bool? ?? false,
+      renderResolution: RenderResolution.fromName(json['renderResolution']),
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       themePreference: ThemePreference.fromName(json['themePreference']),
       reduceMotion: json['reduceMotion'] as bool? ?? false,
+      languagePreference:
+          LanguagePreference.fromName(json['languagePreference']),
       seenAnnouncementId: json['seenAnnouncementId'] as String?,
     );
   }
@@ -40,9 +77,11 @@ class AppSettings {
 
   /// Opens the game directly on a cold start instead of the launcher.
   final bool quickLaunchEnabled;
+  final RenderResolution renderResolution;
   final bool detailedAudioDiagnosticsEnabled;
   final ThemePreference themePreference;
   final bool reduceMotion;
+  final LanguagePreference languagePreference;
 
   /// Id of the last announcement shown to the user, so a new one pops up
   /// once and an old one never again.
@@ -51,18 +90,22 @@ class AppSettings {
   AppSettings copyWith({
     bool? watermarkEnabled,
     bool? quickLaunchEnabled,
+    RenderResolution? renderResolution,
     bool? detailedAudioDiagnosticsEnabled,
     ThemePreference? themePreference,
     bool? reduceMotion,
+    LanguagePreference? languagePreference,
     String? seenAnnouncementId,
   }) {
     return AppSettings(
       watermarkEnabled: watermarkEnabled ?? this.watermarkEnabled,
       quickLaunchEnabled: quickLaunchEnabled ?? this.quickLaunchEnabled,
+      renderResolution: renderResolution ?? this.renderResolution,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled ??
           this.detailedAudioDiagnosticsEnabled,
       themePreference: themePreference ?? this.themePreference,
       reduceMotion: reduceMotion ?? this.reduceMotion,
+      languagePreference: languagePreference ?? this.languagePreference,
       seenAnnouncementId: seenAnnouncementId ?? this.seenAnnouncementId,
     );
   }
@@ -70,9 +113,11 @@ class AppSettings {
   Map<String, Object?> toJson() => <String, Object?>{
         'watermarkEnabled': watermarkEnabled,
         'quickLaunchEnabled': quickLaunchEnabled,
+        'renderResolution': renderResolution.name,
         'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
         'themePreference': themePreference.name,
         'reduceMotion': reduceMotion,
+        'languagePreference': languagePreference.name,
         'seenAnnouncementId': seenAnnouncementId,
       };
 }

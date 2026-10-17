@@ -32,6 +32,12 @@ import UIKit
   private var pendingImportTargetDirectory: String?
   private var zipImportInProgress = false
   private var gameLaunchInProgress = false
+  /// A ZIP another app opened or shared with the loader. It waits here while
+  /// the game runs and until the launcher imports or discards it.
+  private var incomingZip: IncomingZip?
+  private var shortcutChannel: FlutterMethodChannel?
+  /// The home-screen shortcut that started the app, until the launcher takes it.
+  var pendingShortcut: String?
 
   override func application(
     _ application: UIApplication,
@@ -67,6 +73,55 @@ import UIKit
     registerResourceZipImporter(on: messenger)
     registerAppLogger(on: messenger)
     registerDisplay(on: messenger)
+    registerShortcuts(on: messenger)
+  }
+
+  private func registerShortcuts(on messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "io.github.dey410.gardendlessloader/shortcuts",
+      binaryMessenger: messenger
+    )
+    shortcutChannel = channel
+    channel.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "take":
+        result(self?.pendingShortcut)
+        self?.pendingShortcut = nil
+      case "setItems":
+        guard let titles = call.arguments as? [String: String] else {
+          result(
+            FlutterError(
+              code: "invalid_shortcuts",
+              message: "Shortcut titles must be a string map",
+              details: nil
+            )
+          )
+          return
+        }
+        let symbols = ["startGame": "play.fill", "importResources": "square.and.arrow.down"]
+        UIApplication.shared.shortcutItems = ["startGame", "importResources"].compactMap { type in
+          titles[type].map { title in
+            UIApplicationShortcutItem(
+              type: type,
+              localizedTitle: title,
+              localizedSubtitle: nil,
+              icon: symbols[type].map { UIApplicationShortcutIcon(systemImageName: $0) },
+              userInfo: nil
+            )
+          }
+        }
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  /// A shortcut used while the app runs. During play it only brings the game
+  /// back, so it never restarts the game or swaps resources under it.
+  func performShortcut(_ type: String) {
+    guard launcherEngine != nil else { return }
+    shortcutChannel?.invokeMethod("perform", arguments: type)
   }
 
   // iOS reports equal left and right safe-area insets in landscape, so
@@ -263,11 +318,78 @@ import UIKit
     )
     resourceZipImporterChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "pickAndExtractDocsZip" else {
-        result(FlutterMethodNotImplemented)
+      guard let self else {
+        result(nil)
         return
       }
-      self?.pickAndExtractDocsZip(call: call, result: result)
+      switch call.method {
+      case "pickAndExtractDocsZip":
+        self.pickAndExtractDocsZip(call: call, result: result)
+      case "incomingZip":
+        result(self.incomingZip?.url.lastPathComponent)
+      case "discardIncomingZip":
+        self.incomingZip?.discard()
+        self.incomingZip = nil
+        result(nil)
+      case "extractIncomingDocsZip":
+        self.extractIncomingDocsZip(call: call, result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  /// Keeps the latest ZIP opened or shared with the loader; a running
+  /// launcher is told at once, otherwise it asks when it starts.
+  func receiveIncomingZip(_ context: UIOpenURLContext) {
+    incomingZip?.discard()
+    let zip = IncomingZip(url: context.url, isCopy: !context.options.openInPlace)
+    incomingZip = zip
+    guard launcherEngine != nil else { return }
+    resourceZipImporterChannel?.invokeMethod(
+      "incomingZipReceived",
+      arguments: zip.url.lastPathComponent
+    )
+  }
+
+  private func extractIncomingDocsZip(
+    call: FlutterMethodCall,
+    result: @escaping FlutterResult
+  ) {
+    guard let args = call.arguments as? [String: Any],
+          let targetDirectory = args["targetDirectory"] as? String,
+          !targetDirectory.isEmpty else {
+      result(
+        FlutterError(
+          code: "invalid_target_directory",
+          message: "缺少导入目标目录",
+          details: nil
+        )
+      )
+      return
+    }
+    guard !zipImportInProgress, pendingImportResult == nil else {
+      result(
+        FlutterError(
+          code: "zip_import_busy",
+          message: "已有 ZIP 导入选择正在进行",
+          details: nil
+        )
+      )
+      return
+    }
+    guard let zip = incomingZip else {
+      result(nil)
+      return
+    }
+    incomingZip = nil
+    zipImportInProgress = true
+    finishPickedZipImport(
+      zipURL: zip.url,
+      targetDirectory: targetDirectory
+    ) { value in
+      zip.discard()
+      result(value)
     }
   }
 
@@ -475,6 +597,20 @@ import UIKit
   }
 }
 
+/// A ZIP handed over by another app. A copy the system placed in the app's
+/// Inbox belongs to the loader and is removed once used; a file opened in
+/// place stays where it is.
+private struct IncomingZip {
+  let url: URL
+  let isCopy: Bool
+
+  func discard() {
+    if isCopy {
+      try? FileManager.default.removeItem(at: url)
+    }
+  }
+}
+
 // iOS 27 terminates apps built with its SDK unless they adopt the UIScene lifecycle.
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   func scene(
@@ -484,8 +620,27 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   ) {
     guard let scene = scene as? UIWindowScene,
           let app = UIApplication.shared.delegate as? AppDelegate else { return }
+    if let context = connectionOptions.urlContexts.first {
+      app.receiveIncomingZip(context)
+    }
+    app.pendingShortcut = connectionOptions.shortcutItem?.type
     app.window = UIWindow(windowScene: scene)
     app.showLauncher()
+  }
+
+  func windowScene(
+    _ windowScene: UIWindowScene,
+    performActionFor shortcutItem: UIApplicationShortcutItem,
+    completionHandler: @escaping (Bool) -> Void
+  ) {
+    (UIApplication.shared.delegate as? AppDelegate)?.performShortcut(shortcutItem.type)
+    completionHandler(true)
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    guard let context = URLContexts.first,
+          let app = UIApplication.shared.delegate as? AppDelegate else { return }
+    app.receiveIncomingZip(context)
   }
 }
 

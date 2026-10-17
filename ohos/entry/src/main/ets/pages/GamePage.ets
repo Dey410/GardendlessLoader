@@ -219,6 +219,7 @@ struct GamePage {
       watermarkEnabled: session.watermarkEnabled,
       autoCollectSunEnabled: session.autoCollectSunEnabled,
       detailedAudioDiagnosticsEnabled: session.detailedAudioDiagnosticsEnabled,
+      renderPixelRatioCap: session.renderPixelRatioCap,
       gpNextBaseDirectory: this.gpNextBaseDirectory(session),
     });
     const names: string[] = [
@@ -228,6 +229,7 @@ struct GamePage {
       'auto_sun.js',
       'touch_state_machine.js',
       'touch_input_adapter.js',
+      'render_scale.js',
       'export_download_patch.js',
     ];
     names.push('watermark.js');

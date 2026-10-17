@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
 import '../../constants.dart';
+import '../../l10n/app_strings.dart';
 import '../../models.dart';
 import '../../services/app_settings_store.dart';
 import '../launcher_actions.dart';
@@ -49,12 +50,13 @@ class _LoaderPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     final update = controller.availableUpdate;
     final (String status, Color? statusColor) = update != null
-        ? ('有新版本', palette.accent)
+        ? (strings.updateAvailable, palette.accent)
         : controller.updateCheckInProgress
-            ? ('检查中', null)
-            : ('无可用更新', null);
+            ? (strings.checking, null)
+            : (strings.noUpdate, null);
     return SurfaceCard(
       key: update == null ? null : const ValueKey('app-update-entry'),
       child: Column(
@@ -67,9 +69,12 @@ class _LoaderPanel extends StatelessWidget {
           const SizedBox(height: 16),
           MetricRow(
             metrics: [
-              Metric(label: '当前版本', value: 'v${controller.currentAppVersion}'),
               Metric(
-                label: '最新版本',
+                label: strings.currentVersion,
+                value: 'v${controller.currentAppVersion}',
+              ),
+              Metric(
+                label: strings.latestVersion,
                 value: controller.latestAppVersion == null
                     ? '--'
                     : 'v${controller.latestAppVersion}',
@@ -79,7 +84,7 @@ class _LoaderPanel extends StatelessWidget {
           const SizedBox(height: 14),
           if (update == null)
             Text(
-              '进入启动器时会自动检查，也可以点右上角的刷新图标手动检查。',
+              strings.autoCheckHint,
               style: TextStyle(
                 color: palette.inkMuted,
                 fontSize: 12.5,
@@ -121,19 +126,19 @@ class _LoaderPanel extends StatelessWidget {
               runSpacing: 8,
               children: [
                 GardenButton(
-                  label: '网盘更新',
+                  label: strings.cloudDriveUpdate,
                   icon: Icons.download_rounded,
                   tone: GardenButtonTone.primary,
                   compact: true,
                   onPressed: () => actions.openUrl(appCloudDriveUpdateUrl),
                 ),
                 GardenButton(
-                  label: '查看 GitHub Release',
+                  label: strings.viewGithubRelease,
                   compact: true,
                   onPressed: () => actions.openRelease(update),
                 ),
                 GardenButton(
-                  label: '稍后提醒',
+                  label: strings.remindLater,
                   tone: GardenButtonTone.ghost,
                   compact: true,
                   onPressed: () => actions.deferUpdate(update),
@@ -155,6 +160,7 @@ class _LaunchPreferences extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     return SurfaceCard(
       key: const ValueKey('launch-preferences'),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -162,9 +168,9 @@ class _LaunchPreferences extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PanelHeader(
-            title: '启动偏好',
+            title: strings.launchPreferences,
             trailing: Text(
-              '下次启动生效',
+              strings.appliesNextLaunch,
               style: TextStyle(color: palette.inkFaint, fontSize: 12),
             ),
           ),
@@ -172,8 +178,8 @@ class _LaunchPreferences extends StatelessWidget {
           SwitchRow(
             key: const ValueKey('home-quick-launch'),
             switchKey: const ValueKey('home-quick-launch-switch'),
-            title: '快速启动',
-            subtitle: '打开应用时直接进入游戏，点击游戏左下角 X 返回加载器',
+            title: strings.quickLaunch,
+            subtitle: strings.quickLaunchSubtitle,
             value: controller.quickLaunchEnabled,
             onChanged: controller.initialized
                 ? controller.setQuickLaunchEnabled
@@ -183,19 +189,66 @@ class _LaunchPreferences extends StatelessWidget {
           SwitchRow(
             key: const ValueKey('home-auto-collect-sun'),
             switchKey: const ValueKey('home-auto-collect-sun-switch'),
-            title: '自动收集',
-            subtitle: '游戏中约每 3 秒模拟一次 A 键，暂停、后台或输入时不触发',
+            title: strings.autoCollectSun,
+            subtitle: strings.autoCollectSunSubtitle,
             value: controller.autoCollectSunEnabled,
             onChanged: controller.hasCurrentResource
                 ? controller.setAutoCollectSunEnabled
                 : null,
           ),
           Divider(color: palette.border),
+          Padding(
+            key: const ValueKey('render-resolution'),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        strings.renderResolution,
+                        style: TextStyle(
+                          color: palette.ink,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        strings.renderResolutionSubtitle,
+                        style: TextStyle(
+                          color: palette.inkMuted,
+                          fontSize: 12.5,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 168,
+                  child: GardenSegmented<RenderResolution>(
+                    values: RenderResolution.values,
+                    selected: controller.renderResolution,
+                    keyOf: (value) =>
+                        ValueKey('render-resolution-${value.name}'),
+                    labelOf: strings.renderResolutionLabel,
+                    onChanged: controller.initialized
+                        ? controller.setRenderResolution
+                        : (_) {},
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(color: palette.border),
           SwitchRow(
             key: const ValueKey('home-watermark'),
             switchKey: const ValueKey('home-watermark-switch'),
-            title: '游戏水印',
-            subtitle: '在游戏画面角落显示加载器标识',
+            title: strings.watermark,
+            subtitle: strings.watermarkSubtitle,
             value: controller.watermarkEnabled,
             onChanged:
                 controller.initialized ? controller.setWatermarkEnabled : null,
@@ -214,41 +267,55 @@ class _AppearancePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
+    final groupLabel = TextStyle(
+      color: palette.inkMuted,
+      fontSize: 12,
+      fontWeight: FontWeight.w700,
+    );
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PanelHeader(
-            title: '外观',
-          ),
+          PanelHeader(title: strings.appearance),
           const SizedBox(height: 14),
-          Text(
-            '主题',
-            style: TextStyle(
-              color: palette.inkMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Text(strings.theme, style: groupLabel),
           const SizedBox(height: 8),
           GardenSegmented<ThemePreference>(
             values: ThemePreference.values,
             selected: controller.themePreference,
             keyOf: (value) => ValueKey('theme-preference-${value.name}'),
             labelOf: (value) => switch (value) {
-              ThemePreference.system => '跟随系统',
-              ThemePreference.light => '浅色',
-              ThemePreference.dark => '深色',
+              ThemePreference.system => strings.followSystem,
+              ThemePreference.light => strings.lightTheme,
+              ThemePreference.dark => strings.darkTheme,
             },
             onChanged:
                 controller.initialized ? controller.setThemePreference : (_) {},
+          ),
+          const SizedBox(height: 14),
+          Text(strings.language, style: groupLabel),
+          const SizedBox(height: 8),
+          GardenSegmented<LanguagePreference>(
+            values: LanguagePreference.values,
+            selected: controller.languagePreference,
+            keyOf: (value) => ValueKey('language-preference-${value.name}'),
+            // Language names stay in their own language.
+            labelOf: (value) => switch (value) {
+              LanguagePreference.system => strings.followSystem,
+              LanguagePreference.chinese => '中文',
+              LanguagePreference.english => 'English',
+            },
+            onChanged: controller.initialized
+                ? controller.setLanguagePreference
+                : (_) {},
           ),
           const SizedBox(height: 8),
           SwitchRow(
             key: const ValueKey('reduce-motion'),
             switchKey: const ValueKey('reduce-motion-switch'),
-            title: '减少动效',
-            subtitle: '关闭按压缩放与切换过渡；系统的减少动态效果设置同样生效',
+            title: strings.reduceMotion,
+            subtitle: strings.reduceMotionSubtitle,
             value: controller.reduceMotion,
             onChanged:
                 controller.initialized ? controller.setReduceMotion : null,
@@ -268,22 +335,24 @@ class _AboutPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
-    const links = <AnnouncementLink>[
-      AnnouncementLink(label: '加载器 GitHub', url: appGithubUrl),
-      AnnouncementLink(label: '上游游戏 GitHub', url: githubUrl),
-      AnnouncementLink(label: 'B站主页', url: bilibiliHomeUrl),
+    final strings = context.strings;
+    final links = <AnnouncementLink>[
+      AnnouncementLink(label: strings.loaderGithub, url: appGithubUrl),
+      AnnouncementLink(label: strings.upstreamGithub, url: githubUrl),
+      AnnouncementLink(label: strings.bilibiliHome, url: bilibiliHomeUrl),
     ];
     return SurfaceCard(
       key: const ValueKey('about-panel'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PanelHeader(
-            title: '关于 GardendlessLoader',
-          ),
+          PanelHeader(title: strings.aboutTitle),
           const SizedBox(height: 12),
           SelectableText(
-            controller.aboutContent.content,
+            strings.isChinese
+                ? controller.aboutContent.content
+                : controller.aboutContent.contentEn ??
+                    controller.aboutContent.content,
             style: TextStyle(color: palette.ink, fontSize: 13.5, height: 1.6),
           ),
           const SizedBox(height: 14),
@@ -311,25 +380,24 @@ class _GuidePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
-    const gestures = <(IconData, String, String)>[
-      (Icons.touch_app_rounded, '单指轻点或拖动', '鼠标左键点击或拖动'),
-      (Icons.ads_click_rounded, '双指轻点', '双指中心执行右键点击'),
-      (Icons.swipe_vertical_rounded, '双指滑动', '模拟鼠标滚轮'),
-      (Icons.do_not_touch_rounded, '三指及以上', '取消当前触摸映射'),
-      (Icons.keyboard_rounded, '实体鼠标和键盘', '交由系统 WebView 原生处理'),
+    final strings = context.strings;
+    const icons = <IconData>[
+      Icons.touch_app_rounded,
+      Icons.ads_click_rounded,
+      Icons.swipe_vertical_rounded,
+      Icons.do_not_touch_rounded,
+      Icons.keyboard_rounded,
     ];
-    final tips = <String>[
-      '返回启动器：Android / 鸿蒙使用系统返回，iOS 从屏幕左边缘右滑。',
-      '存档导入导出、GP-Next 补丁与 Mod 安装都在游戏内完成，使用系统文件选择器。',
-      'JS Modding 由游戏内 GP-Next 管理；Mod 会在游戏中执行代码，请只安装可信来源的 Mod。',
+    final gestures = [
+      for (final (index, (gesture, mapping)) in strings.gestures.indexed)
+        (icons[index], gesture, mapping),
     ];
+    final tips = strings.guideTips;
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelHeader(
-            title: '使用说明',
-          ),
+          PanelHeader(title: strings.guide),
           const SizedBox(height: 10),
           for (final (icon, gesture, mapping) in gestures)
             Padding(

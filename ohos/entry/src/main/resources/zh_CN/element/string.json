@@ -1,0 +1,12 @@
+{
+  "string": [
+    {
+      "name": "shortcut_start_game",
+      "value": "开始游戏"
+    },
+    {
+      "name": "shortcut_import_resources",
+      "value": "导入资源"
+    }
+  ]
+}

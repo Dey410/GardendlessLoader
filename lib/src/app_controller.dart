@@ -9,7 +9,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'constants.dart';
 import 'game_host/game_host.dart';
 import 'game_host/game_session_store.dart';
+import 'l10n/app_strings.dart';
 import 'logging/app_logger.dart';
+import 'logging/log_event_catalog.dart';
 import 'models.dart';
 import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
@@ -22,12 +24,21 @@ import 'services/import_progress_meter.dart';
 import 'services/manifest_store.dart';
 import 'services/resource_validator.dart';
 import 'services/resource_picker_service.dart';
+import 'services/shortcut_service.dart';
 import 'services/update_check_service.dart';
 
 //AppController 是整个应用的核心控制器，负责管理应用的状态、处理业务逻辑，并与 UI 进行交互。它使用 ChangeNotifier 来通知 UI 更新。
 class AppController extends ChangeNotifier {
   AppController({required AppLogger appLogger}) : _appLogger = appLogger {
     _importService = ImportService(validator: _validator);
+    _resourcePickerService.onIncomingZip = (name) {
+      _incomingZipName = name;
+      notifyListeners();
+    };
+    _shortcutService.onShortcut = (shortcut) {
+      _pendingShortcut = shortcut;
+      notifyListeners();
+    };
   }
 
   final AppPathsService _pathsService = AppPathsService();
@@ -40,6 +51,7 @@ class AppController extends ChangeNotifier {
   final GameUpdateCheckService _gameUpdateCheckService =
       GameUpdateCheckService();
   final ResourcePickerService _resourcePickerService = ResourcePickerService();
+  final ShortcutService _shortcutService = ShortcutService();
   late final ImportService _importService;
   ImportProgressMeter? _importProgressMeter;
   Timer? _importCompletionTimer;
@@ -78,12 +90,28 @@ class AppController extends ChangeNotifier {
   bool _initialized = false;
   bool _busy = false;
   LauncherMessage? _message;
+  String? _incomingZipName;
+  LauncherShortcut? _pendingShortcut;
   AppLogSnapshot? _logSnapshot;
   bool _logSnapshotLoading = false;
 
   bool get initialized => _initialized;
   bool get busy => _busy;
   LauncherMessage? get message => _message;
+
+  /// Name of a ZIP another app opened or shared with the loader, waiting for
+  /// the user to import or dismiss it.
+  String? get incomingZipName => _incomingZipName;
+
+  /// A home-screen shortcut waiting for the launcher to act on it.
+  LauncherShortcut? get pendingShortcut => _pendingShortcut;
+
+  LauncherShortcut? takeShortcut() {
+    final shortcut = _pendingShortcut;
+    _pendingShortcut = null;
+    return shortcut;
+  }
+
   AppLogSnapshot? get logSnapshot => _logSnapshot;
   bool get logSnapshotLoading => _logSnapshotLoading;
   ResourceManifest get manifest => _manifest;
@@ -99,9 +127,11 @@ class AppController extends ChangeNotifier {
   bool get updateCheckInProgress => _updateCheckInProgress;
   bool get watermarkEnabled => _appSettings.watermarkEnabled;
   bool get quickLaunchEnabled => _appSettings.quickLaunchEnabled;
+  RenderResolution get renderResolution => _appSettings.renderResolution;
   bool get detailedAudioDiagnosticsEnabled =>
       _appSettings.detailedAudioDiagnosticsEnabled;
   ThemePreference get themePreference => _appSettings.themePreference;
+  LanguagePreference get languagePreference => _appSettings.languagePreference;
   bool get reduceMotion => _appSettings.reduceMotion;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
   GameHostPlatform get gameHostPlatform => GameHostPlatform.current();
@@ -121,7 +151,9 @@ class AppController extends ChangeNotifier {
   bool get canStartGame => hasCurrentResource;
 
   String get detectedTitle =>
-      _currentValidation.detectedTitle ?? _manifest.detectedTitle ?? '未检测到标题';
+      _currentValidation.detectedTitle ??
+      _manifest.detectedTitle ??
+      AppStrings.current.noTitleDetected;
   //返回一个适合在 UI 中显示的资源根目录名称。如果路径信息不可用，则返回一个默认的资源文件夹名称。
   String get userVisibleRoot {
     final root = _paths?.root;
@@ -146,6 +178,7 @@ class AppController extends ChangeNotifier {
         _emitInitializationStage('settings');
         _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
         _appSettings = await _appSettingsStore!.read();
+        _applyLanguage(_appSettings.languagePreference);
         _emitInitializationStage('manifest');
         _manifestStore = ManifestStore(_paths!.manifestFile);
         _manifest = await _manifestStore!.read();
@@ -205,31 +238,30 @@ class AppController extends ChangeNotifier {
         await _loadCurrentAppVersion();
         _emitInitializationStage('resource_validation');
         await refresh();
+        _incomingZipName = await _resourcePickerService.incomingZipName();
+        _pendingShortcut = await _shortcutService.take();
+        await _shortcutService.publish(AppStrings.current);
         if (_manifest.transactionState == TransactionState.cleaningOldSlot) {
-          _message = const LauncherMessage(
-            '游戏资源可用，旧槽清理将在下次启动重试',
-            'old_slot_cleanup_failed',
-          );
+          _message = _failureMessage('old_slot_cleanup_failed', null);
         } else if (interruptedTransaction) {
-          _message = const LauncherMessage(
-            '上次导入意外中断，已清理未完成文件',
-            'import_interrupted',
-          );
+          _message = _failureMessage('import_interrupted', null);
         } else if (exitResult?.reason == GameExitReason.rendererGone) {
-          _message = LauncherMessage(
-            exitResult?.message ?? '游戏渲染进程已退出',
+          _message = _failureMessage(
             exitResult?.code ?? 'webview_render_process_gone',
+            exitResult?.message,
           );
         } else if (exitResult?.reason == GameExitReason.launchFailed) {
-          _message = LauncherMessage(
-            exitResult?.message ?? '原生游戏宿主启动失败',
+          _message = _failureMessage(
             exitResult?.code ?? 'game_host_launch_failed',
+            exitResult?.message,
           );
         }
         _initialized = true;
         // Every game exit leaves an exit result, so only a cold start skips
         // the launcher; returning from the game always shows it.
         quickLaunch = exitResult == null &&
+            _incomingZipName == null &&
+            _pendingShortcut == null &&
             _appSettings.quickLaunchEnabled &&
             canStartGame;
       }
@@ -246,7 +278,7 @@ class AppController extends ChangeNotifier {
         await startGame();
       }
     } catch (error) {
-      _message = LauncherMessage('启动失败：$error', 'app_initialization_failed');
+      _message = _failureMessage('app_initialization_failed', '$error');
     } finally {
       _busy = false;
       notifyListeners();
@@ -327,33 +359,40 @@ class AppController extends ChangeNotifier {
       if (!silent) {
         final appSucceeded = results[0];
         final gameSucceeded = results[1];
+        final strings = AppStrings.current;
         if (!appSucceeded && !gameSucceeded) {
-          _message = const LauncherMessage(
-            '加载器和游戏更新检查失败，请稍后重试',
+          _message = LauncherMessage(
+            strings.updateCheckFailedBoth,
             'update_check_failed',
           );
         } else if (!appSucceeded) {
-          _message = const LauncherMessage(
-            '加载器更新检查失败，请稍后重试',
+          _message = LauncherMessage(
+            strings.updateCheckFailedLoader,
             'update_check_failed',
           );
         } else if (!gameSucceeded) {
-          _message = const LauncherMessage(
-            '游戏更新检查失败，请稍后重试',
+          _message = LauncherMessage(
+            strings.updateCheckFailedGame,
             'update_check_failed',
           );
         } else if (!_appUpdateDetected && !_gameUpdateDetected) {
           final currentGameVersion = _currentGameVersion;
           if (currentGameVersion == null) {
-            final gameState = hasCurrentResource ? '游戏版本未知' : '游戏资源尚未导入';
-            _message = LauncherMessage('加载器 v$_currentAppVersion 已是最新；'
-                '$gameState，当前稳定版 $_latestGameVersion');
+            _message = LauncherMessage(strings.loaderLatestGameUnknown(
+              _currentAppVersion,
+              hasCurrentResource,
+              _latestGameVersion,
+            ));
           } else if (_currentGameVersionIsAhead) {
-            _message = LauncherMessage('加载器 v$_currentAppVersion 已是最新；本地游戏 '
-                '$currentGameVersion 高于公开稳定版 $_latestGameVersion');
+            _message = LauncherMessage(strings.loaderLatestGameAhead(
+              _currentAppVersion,
+              currentGameVersion,
+              _latestGameVersion,
+            ));
           } else {
-            _message = LauncherMessage('加载器 v$_currentAppVersion 与游戏 '
-                '$currentGameVersion 均为最新版');
+            _message = LauncherMessage(
+              strings.bothUpToDate(_currentAppVersion, currentGameVersion),
+            );
           }
         }
       }
@@ -429,7 +468,20 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> importResources() async {
+  Future<void> importIncomingZip() {
+    _incomingZipName = null;
+    return importResources(incoming: true);
+  }
+
+  Future<void> discardIncomingZip() async {
+    _incomingZipName = null;
+    notifyListeners();
+    await _resourcePickerService.discardIncomingZip();
+  }
+
+  /// Imports a ZIP from the system picker, or with [incoming] the ZIP
+  /// another app handed to the loader.
+  Future<void> importResources({bool incoming = false}) async {
     final paths = _requirePaths();
     final manifestStore = _requireManifestStore();
     _message = null;
@@ -450,6 +502,7 @@ class AppController extends ChangeNotifier {
       event: 'resource_import_started',
       outcome: LogOutcome.started,
       operationId: operationId,
+      context: <String, Object?>{'source': incoming ? 'incoming' : 'picker'},
     );
 
     var restoreAwakeModeAfterImport = false;
@@ -468,8 +521,10 @@ class AppController extends ChangeNotifier {
         operationId: operationId,
         context: <String, Object?>{'targetSlot': importTarget.slot.name},
       );
-      _message = const LauncherMessage('正在打开系统文件选择器');
-      notifyListeners();
+      if (!incoming) {
+        _message = LauncherMessage(AppStrings.current.openingFilePicker);
+        notifyListeners();
+      }
       _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
@@ -477,7 +532,8 @@ class AppController extends ChangeNotifier {
         outcome: LogOutcome.started,
         operationId: operationId,
       );
-      final selectedSource = await _resourcePickerService.pickAndExtractDocsZip(
+      final selectedSource = await _resourcePickerService.extractDocsZip(
+        incoming: incoming,
         targetDirectory: importTarget.directory,
         onProgress: _updateImportProgress,
       );
@@ -495,7 +551,7 @@ class AppController extends ChangeNotifier {
           manifestStore: manifestStore,
         );
         importTarget = null;
-        _message = const LauncherMessage('已取消选择 ZIP');
+        _message = LauncherMessage(AppStrings.current.zipSelectionCancelled);
         _appLogger.emit(
           level: LogLevel.info,
           category: 'resource.import',
@@ -563,8 +619,8 @@ class AppController extends ChangeNotifier {
       );
       _message = LauncherMessage(
         _manifest.transactionState == TransactionState.cleaningOldSlot
-            ? '导入成功，旧槽清理将在下次启动重试'
-            : '导入成功',
+            ? AppStrings.current.importSucceededCleanupDeferred
+            : AppStrings.current.importSucceeded,
       );
       _importProgressTickTimer?.cancel();
       if (restoreAwakeModeAfterImport) {
@@ -612,11 +668,11 @@ class AppController extends ChangeNotifier {
         );
         importTarget = null;
       }
-      _message = LauncherMessage(failure.message, failure.code);
+      _message = _failureMessage(failure.code, failure.message);
       _updateImportProgress(
         ImportProgress(
           phase: ImportPhase.failed,
-          message: failure.message,
+          message: _message!.text,
           errorCode: failure.code,
         ),
       );
@@ -632,7 +688,7 @@ class AppController extends ChangeNotifier {
         stackTrace: StackTrace.current,
       );
     } on ImportFailure catch (failure) {
-      _message = LauncherMessage(failure.message, failure.code);
+      _message = _failureMessage(failure.code, failure.message);
       await refresh();
       _appLogger.emit(
         level: LogLevel.error,
@@ -664,7 +720,7 @@ class AppController extends ChangeNotifier {
         );
         importTarget = null;
       }
-      _message = LauncherMessage('导入失败：$error', 'import_extract_failed');
+      _message = _failureMessage('import_extract_failed', '$error');
       _updateImportProgress(
         ImportProgress(
           phase: ImportPhase.failed,
@@ -787,9 +843,9 @@ class AppController extends ChangeNotifier {
     _message = null;
     final activeDirectory = _importService.activeDirectory(paths, _manifest);
     if (!_currentValidation.isValid) {
-      _message = LauncherMessage(
-        _currentValidation.errorMessage ?? '激活槽资源无效',
+      _message = _failureMessage(
         _currentValidation.errorCode,
+        _currentValidation.errorMessage,
       );
       notifyListeners();
       _appLogger.emit(
@@ -798,7 +854,7 @@ class AppController extends ChangeNotifier {
         event: 'game_host_launch_finished',
         outcome: LogOutcome.failed,
         code: 'resource_validation_failed',
-        message: _message!.text,
+        message: _currentValidation.errorMessage,
       );
       throw StateError(_message!.text);
     }
@@ -817,6 +873,7 @@ class AppController extends ChangeNotifier {
       watermarkEnabled: watermarkEnabled,
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
+      renderPixelRatioCap: renderResolution.pixelRatioCap,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -955,6 +1012,12 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  Future<void> setRenderResolution(RenderResolution resolution) {
+    return _updateAppSettings(
+      _appSettings.copyWith(renderResolution: resolution),
+    );
+  }
+
   Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) {
     return _updateAppSettings(
       _appSettings.copyWith(detailedAudioDiagnosticsEnabled: enabled),
@@ -970,6 +1033,36 @@ class AppController extends ChangeNotifier {
   Future<void> setReduceMotion(bool enabled) {
     return _updateAppSettings(_appSettings.copyWith(reduceMotion: enabled));
   }
+
+  Future<void> setLanguagePreference(LanguagePreference preference) async {
+    _applyLanguage(preference);
+    await _updateAppSettings(
+      _appSettings.copyWith(languagePreference: preference),
+    );
+    await _shortcutService.publish(AppStrings.current);
+  }
+
+  /// Follows a system language change while the language setting is System.
+  void systemLocalesChanged() {
+    _applyLanguage(_appSettings.languagePreference);
+    notifyListeners();
+    unawaited(_shortcutService.publish(AppStrings.current));
+  }
+
+  void _applyLanguage(LanguagePreference preference) {
+    AppStrings.current = AppStrings.resolve(
+      preference,
+      PlatformDispatcher.instance.locales,
+    );
+  }
+
+  /// A failure notice worded by the error catalog; [detail] is shown only
+  /// for a code the catalog does not know.
+  LauncherMessage _failureMessage(String? code, String? detail) =>
+      LauncherMessage(
+        userErrorTitle(code, detail ?? code ?? 'unknown_error'),
+        code,
+      );
 
   Future<void> _updateAppSettings(AppSettings settings) async {
     if (settings.toJson().toString() == _appSettings.toJson().toString()) {

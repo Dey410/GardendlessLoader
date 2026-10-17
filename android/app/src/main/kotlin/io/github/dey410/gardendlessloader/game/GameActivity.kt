@@ -46,9 +46,12 @@ class GameActivity : Activity() {
     private var pendingGpSelection: PendingGpSelection? = null
     private var returning = false
     @Volatile private var destroyed = false
+    /** A ZIP opened from another app during play, handed to the launcher on return. */
+    private var incomingZip: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        running = true
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         enterImmersiveMode()
@@ -146,6 +149,7 @@ class GameActivity : Activity() {
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
             .put("detailedAudioDiagnosticsEnabled", session.detailedAudioDiagnosticsEnabled)
+            .put("renderPixelRatioCap", session.renderPixelRatioCap ?: JSONObject.NULL)
             .put(
                 "gpNextBaseDirectory",
                 File(session.gpNextRoot).parentFile?.absolutePath ?: session.appRoot,
@@ -157,6 +161,7 @@ class GameActivity : Activity() {
             add("auto_sun.js")
             add("touch_state_machine.js")
             add("touch_input_adapter.js")
+            add("render_scale.js")
             add("export_download_patch.js")
             add("watermark.js")
         }
@@ -415,6 +420,11 @@ class GameActivity : Activity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.action == MainActivity.ACTION_IMPORT_ZIP) incomingZip = intent.data
+    }
+
     @Deprecated("Invoked by the Android framework")
     override fun onBackPressed() {
         returnToLauncher(GameExitReason.USER_RETURNED, null)
@@ -428,6 +438,7 @@ class GameActivity : Activity() {
     fun returnToLauncher(reason: GameExitReason, message: String?) {
         if (returning) return
         returning = true
+        running = false
         AppLogStore.emit(
             source = "android",
             level = if (reason == GameExitReason.RENDERER_GONE || reason == GameExitReason.LAUNCH_FAILED) "ERROR" else "INFO",
@@ -443,11 +454,17 @@ class GameActivity : Activity() {
         writeExitResult(session.sessionId, reason, message, session.resourceRoot, session.packageId)
         startActivity(Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+            incomingZip?.let {
+                action = MainActivity.ACTION_IMPORT_ZIP
+                data = it
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         })
         finish()
     }
 
     override fun onDestroy() {
+        running = false
         destroyed = true
         pendingExport = null
         pendingGpSelection = null
@@ -735,6 +752,11 @@ class GameActivity : Activity() {
 
     companion object {
         const val EXTRA_SESSION = "gameSession"
+
+        /** True while a game host is open; see [LaunchRouterActivity]. */
+        @Volatile
+        var running = false
+            private set
         private const val REQUEST_FILE_CHOOSER = 4101
         private const val REQUEST_EXPORT = 4102
         private const val REQUEST_GP_NEXT_IMPORT = 4103

@@ -11,6 +11,14 @@
     {
       "name": "EntryAbility_label",
       "value": "GardendlessLoader"
+    },
+    {
+      "name": "shortcut_start_game",
+      "value": "Start Game"
+    },
+    {
+      "name": "shortcut_import_resources",
+      "value": "Import Resources"
     }
   ]
 }

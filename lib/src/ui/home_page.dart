@@ -6,9 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
+import '../l10n/app_strings.dart';
 import '../logging/log_event_catalog.dart';
 import '../models.dart';
 import '../services/sensor_housing_service.dart';
+import '../services/shortcut_service.dart';
 import '../services/update_check_service.dart';
 import 'launcher_actions.dart';
 import 'pages/play_page.dart';
@@ -39,6 +41,8 @@ class _HomePageState extends State<HomePage> {
   LauncherMessage? _lastMessage;
   bool _importDetailsExpanded = true;
   bool _announcementPopupScheduled = false;
+  bool _incomingZipDialogScheduled = false;
+  bool _shortcutScheduled = false;
   ImportPhase _lastImportPhase = ImportPhase.idle;
 
   AppController get _controller => widget.controller;
@@ -49,7 +53,7 @@ class _HomePageState extends State<HomePage> {
   late final LauncherActions _actions = LauncherActions(
     navigate: _navigate,
     startGame: _startGame,
-    importResources: _controller.importResources,
+    importResources: _importResources,
     openUrl: _openExternalUrl,
     openRelease: (UpdateInfo update) => _openExternalUrl(update.releaseUrl),
     deferUpdate: _controller.deferUpdate,
@@ -95,6 +99,8 @@ class _HomePageState extends State<HomePage> {
       builder: (context, _) {
         _showMessageIfNeeded();
         _showNewAnnouncementIfNeeded();
+        _showIncomingZipIfNeeded();
+        _performShortcutIfNeeded();
         _syncImportDetails(_controller.importProgress.phase);
         return GardenMotionScope(
           reduceMotion: _controller.reduceMotion,
@@ -290,6 +296,114 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// Asks whether to import a ZIP another app opened or shared with the
+  /// loader; an import or game launch already running waits for it.
+  void _showIncomingZipIfNeeded() {
+    if (_incomingZipDialogScheduled ||
+        _controller.incomingZipName == null ||
+        !_controller.initialized ||
+        _controller.busy ||
+        _controller.isImporting) {
+      return;
+    }
+    _incomingZipDialogScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final name = _controller.incomingZipName;
+      if (!mounted || name == null) {
+        _incomingZipDialogScheduled = false;
+        return;
+      }
+      final strings = context.strings;
+      final hasResource = _controller.hasCurrentResource;
+      final confirmed = await _confirm(
+        title: hasResource
+            ? strings.updateWithZipTitle(name)
+            : strings.importZipTitle(name),
+        message:
+            hasResource ? strings.backUpSaveMessage : strings.importZipMessage,
+        confirmLabel: strings.import,
+      );
+      _incomingZipDialogScheduled = false;
+      if (!confirmed) {
+        await _controller.discardIncomingZip();
+        return;
+      }
+      _navigate(LauncherDestination.resources);
+      await _controller.importIncomingZip();
+    });
+  }
+
+  void _performShortcutIfNeeded() {
+    if (_shortcutScheduled ||
+        _controller.pendingShortcut == null ||
+        !_controller.initialized ||
+        _controller.busy ||
+        _controller.isImporting) {
+      return;
+    }
+    _shortcutScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _shortcutScheduled = false;
+      final shortcut = _controller.takeShortcut();
+      if (!mounted || shortcut == null) return;
+      switch (shortcut) {
+        case LauncherShortcut.startGame when _controller.canStartGame:
+          _navigate(LauncherDestination.game);
+          await _startGame();
+        case LauncherShortcut.startGame:
+          _navigate(LauncherDestination.resources);
+        case LauncherShortcut.importResources:
+          _navigate(LauncherDestination.resources);
+          await _importResources();
+      }
+    });
+  }
+
+  Future<void> _importResources() async {
+    if (_controller.hasCurrentResource) {
+      final strings = context.strings;
+      final confirmed = await _confirm(
+        title: strings.backUpSaveTitle,
+        message: strings.backUpSaveMessage,
+        confirmLabel: strings.continueImport,
+      );
+      if (!confirmed) return;
+    }
+    await _controller.importResources();
+  }
+
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    GardenButtonTone confirmTone = GardenButtonTone.primary,
+    IconData? confirmIcon,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actions: [
+          GardenButton(
+            label: context.strings.cancel,
+            compact: true,
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          GardenButton(
+            label: confirmLabel,
+            compact: true,
+            tone: confirmTone,
+            icon: confirmIcon,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _openAnnouncement() async {
     unawaited(_controller.markAnnouncementSeen());
     await showAnnouncementDialog(
@@ -313,7 +427,7 @@ class _HomePageState extends State<HomePage> {
   /// Shows [message]; an error [code] adds that error's fix hint below it.
   void _toast(String message, {String? code}) {
     if (!mounted) return;
-    final hint = userErrorCatalog[code]?.action;
+    final hint = userErrorCatalog[code]?.action.of(context.strings);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -348,59 +462,57 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _startGame() async {
+    final strings = context.strings;
     try {
       await _controller.startGame();
     } on PlatformException catch (error) {
-      _toast('无法启动游戏：${error.message ?? error.code}', code: error.code);
+      _toast(
+        strings.cannotStartGame(
+          userErrorTitle(error.code, error.message ?? error.code),
+        ),
+        code: error.code,
+      );
     } catch (error) {
-      _toast('无法启动游戏：$error', code: 'game_host_launch_failed');
+      _toast(
+        strings.cannotStartGame('$error'),
+        code: 'game_host_launch_failed',
+      );
     }
   }
 
   Future<void> _copyResourceRoot() async {
+    final strings = context.strings;
     await Clipboard.setData(ClipboardData(text: _controller.userVisibleRoot));
-    _toast('资源根目录已复制');
+    _toast(strings.resourceRootCopied);
   }
 
   Future<void> _copyDiagnostics() async {
+    final strings = context.strings;
     await _controller.refreshLogs();
     await Clipboard.setData(
       ClipboardData(text: _controller.buildDiagnosticSummary()),
     );
-    _toast('日志信息已复制');
+    _toast(strings.diagnosticsCopied);
   }
 
   Future<void> _copyLogEvent(Map<String, Object?> event) async {
+    final strings = context.strings;
     await Clipboard.setData(
       ClipboardData(text: const JsonEncoder.withIndent('  ').convert(event)),
     );
-    _toast('单条事件 JSON 已复制');
+    _toast(strings.logEventCopied);
   }
 
   Future<void> _deleteLogHistory() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除历史日志？'),
-        content: const Text('只会删除已经结束的历史 Session，当前运行日志会保留。'),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        actions: [
-          GardenButton(
-            label: '取消',
-            compact: true,
-            onPressed: () => Navigator.of(context).pop(false),
-          ),
-          GardenButton(
-            label: '删除',
-            compact: true,
-            tone: GardenButtonTone.danger,
-            icon: Icons.delete_outline_rounded,
-            onPressed: () => Navigator.of(context).pop(true),
-          ),
-        ],
-      ),
+    final strings = context.strings;
+    final confirmed = await _confirm(
+      title: strings.deleteLogHistoryTitle,
+      message: strings.deleteLogHistoryMessage,
+      confirmLabel: strings.delete,
+      confirmTone: GardenButtonTone.danger,
+      confirmIcon: Icons.delete_outline_rounded,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await _controller.deleteLogHistory();
   }
 }
@@ -531,7 +643,7 @@ class _SidebarItem extends StatelessWidget {
       child: Pressable(
         key: ValueKey('nav-${destination.name}'),
         onTap: onTap,
-        semanticLabel: destination.label,
+        semanticLabel: destination.label(context.strings),
         scale: 0.95,
         child: Container(
           height: compact ? 52 : 60,
@@ -552,7 +664,7 @@ class _SidebarItem extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    destination.label,
+                    destination.label(context.strings),
                     style: TextStyle(
                       color: color,
                       fontSize: 11.5,
@@ -610,7 +722,7 @@ class _TopBar extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                destination.label,
+                destination.label(context.strings),
                 key: const ValueKey('page-title'),
                 style: GardenType.title(compact ? 24 : 28, color: palette.ink),
               ),
@@ -619,7 +731,7 @@ class _TopBar extends StatelessWidget {
             // top bar only carries the loader's own version.
             if (constraints.maxWidth >= 520) ...[
               Text(
-                '加载器 v${controller.currentAppVersion}',
+                context.strings.loaderVersion(controller.currentAppVersion),
                 key: const ValueKey('app-version-pill'),
                 style: TextStyle(color: palette.inkMuted, fontSize: 12.5),
               ),
@@ -628,7 +740,9 @@ class _TopBar extends StatelessWidget {
             GardenIconButton(
               key: const ValueKey('check-updates-button'),
               icon: Icons.refresh_rounded,
-              tooltip: controller.updateCheckInProgress ? '检查中' : '检查更新',
+              tooltip: controller.updateCheckInProgress
+                  ? context.strings.checking
+                  : context.strings.checkForUpdates,
               onPressed: controller.updateCheckInProgress
                   ? null
                   : () => controller.checkForUpdates(),
@@ -639,7 +753,7 @@ class _TopBar extends StatelessWidget {
                 GardenIconButton(
                   key: const ValueKey('announcement-button'),
                   icon: Icons.campaign_outlined,
-                  tooltip: '公告',
+                  tooltip: context.strings.announcement,
                   onPressed: onOpenAnnouncement,
                 ),
                 if (controller.hasUnseenAnnouncement)

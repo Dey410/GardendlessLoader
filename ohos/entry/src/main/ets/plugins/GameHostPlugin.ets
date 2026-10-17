@@ -26,6 +26,7 @@ interface GameSessionArguments {
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
   detailedAudioDiagnosticsEnabled: boolean;
+  renderPixelRatioCap: number | null;
   packageId: string;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
@@ -86,6 +87,7 @@ export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHa
       watermarkEnabled: call.argument('watermarkEnabled') as boolean,
       autoCollectSunEnabled: call.argument('autoCollectSunEnabled') as boolean,
       detailedAudioDiagnosticsEnabled: (call.argument('detailedAudioDiagnosticsEnabled') as boolean | null) ?? false,
+      renderPixelRatioCap: (call.argument('renderPixelRatioCap') as number | null) ?? null,
       packageId: (call.argument('packageId') as string | null) ?? 'unknown',
       allowedRemoteHosts: call.argument('allowedRemoteHosts') as string[],
       gpNextRoot: call.argument('gpNextRoot') as string,

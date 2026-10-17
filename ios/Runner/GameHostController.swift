@@ -718,6 +718,7 @@ final class GameHostController: UIViewController,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
       "detailedAudioDiagnosticsEnabled":
         session.detailedAudioDiagnosticsEnabled,
+      "renderPixelRatioCap": session.renderPixelRatioCap ?? NSNull(),
       "gpNextBaseDirectory": session.gpNextRoot
         .deletingLastPathComponent().path,
     ]
@@ -732,6 +733,7 @@ final class GameHostController: UIViewController,
       "auto_sun.js",
       "touch_state_machine.js",
       "touch_input_adapter.js",
+      "render_scale.js",
       "export_download_patch.js",
     ]
     names.append("watermark.js")
