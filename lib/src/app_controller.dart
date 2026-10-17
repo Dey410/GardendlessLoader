@@ -68,6 +68,7 @@ class AppController extends ChangeNotifier {
   String? _deferredGameUpdateTagName;
   String _currentAppVersion = appVersion;
   String? _currentGameVersion;
+  String? _latestAppVersion;
   String? _latestGameVersion;
   bool _currentGameVersionIsAhead = false;
   bool _appUpdateDetected = false;
@@ -92,6 +93,7 @@ class AppController extends ChangeNotifier {
   UpdateInfo? get availableUpdate => _availableUpdate;
   GameUpdateInfo? get availableGameUpdate => _availableGameUpdate;
   String get currentAppVersion => _currentAppVersion;
+  String? get latestAppVersion => _latestAppVersion;
   String? get currentGameVersion => _currentGameVersion;
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
@@ -363,7 +365,9 @@ class AppController extends ChangeNotifier {
 
   Future<bool> _checkAppForUpdate() async {
     try {
-      final update = await _updateCheckService.checkForUpdate();
+      final result = await _updateCheckService.checkForUpdate();
+      final update = result.update;
+      _latestAppVersion = result.latestVersion;
       if (update != null) {
         _currentAppVersion = update.currentVersion;
       }

@@ -70,7 +70,9 @@ class _LoaderPanel extends StatelessWidget {
               Metric(label: '当前版本', value: 'v${controller.currentAppVersion}'),
               Metric(
                 label: '最新版本',
-                value: update == null ? '--' : 'v${update.latestVersion}',
+                value: controller.latestAppVersion == null
+                    ? '--'
+                    : 'v${controller.latestAppVersion}',
               ),
             ],
           ),

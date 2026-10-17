@@ -49,7 +49,9 @@ class UpdateCheckService {
     });
   }
 
-  Future<UpdateInfo?> checkForUpdate() async {
+  /// Returns the latest release version, and the release itself when it is
+  /// newer than the installed version.
+  Future<({String latestVersion, UpdateInfo? update})> checkForUpdate() async {
     final response = await loadHttpText(
       _latestReleaseUri,
       defaultUpdateCheckTimeout,
@@ -75,17 +77,20 @@ class UpdateCheckService {
     final currentVersion = await loadCurrentVersion();
 
     if (_compareVersions(latestVersion, currentVersion) <= 0) {
-      return null;
+      return (latestVersion: latestVersion, update: null);
     }
 
-    return UpdateInfo(
-      currentVersion: currentVersion,
+    return (
       latestVersion: latestVersion,
-      tagName: tagName,
-      releaseUrl: releaseUrl,
-      releaseName: releaseName,
-      releaseNotes: releaseNotes,
-      publishedAt: publishedAt,
+      update: UpdateInfo(
+        currentVersion: currentVersion,
+        latestVersion: latestVersion,
+        tagName: tagName,
+        releaseUrl: releaseUrl,
+        releaseName: releaseName,
+        releaseNotes: releaseNotes,
+        publishedAt: publishedAt,
+      ),
     );
   }
 

@@ -503,16 +503,17 @@ class _TechnicalDetails extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.garden;
     final manifest = controller.manifest;
-    final rows = <(String, String)>[
-      ('activeSlot', manifest.activeSlot?.name ?? 'none'),
+    // Absent values (no transaction, no error) are omitted rather than shown.
+    final rows = <(String, String?)>[
+      ('activeSlot', manifest.activeSlot?.name),
       ('generation', '${manifest.generation}'),
       ('transaction', manifest.transactionState.name),
-      ('transactionSlot', manifest.transactionSlot?.name ?? 'none'),
+      ('transactionSlot', manifest.transactionSlot?.name),
       ('buildProfile', manifest.buildProfile.name),
-      ('gpNextVersion', controller.gpNextVersion ?? 'none'),
-      ('gpNextError', controller.gpNextCompatibilityError ?? 'none'),
+      ('gpNextVersion', controller.gpNextVersion),
+      ('gpNextError', controller.gpNextCompatibilityError),
       ('origin', controller.gameHostPlatform.origin),
-      ('lastErrorCode', manifest.lastErrorCode ?? 'none'),
+      ('lastErrorCode', manifest.lastErrorCode),
     ];
     return CodeBlock(
       child: SelectionArea(
@@ -520,27 +521,28 @@ class _TechnicalDetails extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final (key, value) in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 128,
-                      child: Text(
-                        key,
-                        style: GardenType.mono(11.5, color: palette.inkMuted),
+              if (value != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 128,
+                        child: Text(
+                          key,
+                          style: GardenType.mono(11.5, color: palette.inkMuted),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        value,
-                        style: GardenType.mono(11.5, color: palette.ink),
+                      Expanded(
+                        child: Text(
+                          value,
+                          style: GardenType.mono(11.5, color: palette.ink),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
           ],
         ),
       ),
