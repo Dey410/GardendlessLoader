@@ -333,16 +333,23 @@ for (const options of [
 }
 
 {
+  // Registered but not yet executed by Cocos: importing from here would run the
+  // game's circular module graph in another order and break project startup.
   const harness = createHarness({
     modulesAvailable: false,
     modulesRegistered: true,
   });
   await harness.flushMicrotasks();
-  assert.equal(harness.importCount, 2);
+  await harness.advance(1000);
+  assert.equal(harness.importCount, 0);
+  assert.deepEqual(harness.errors, []);
+  harness.setModulesAvailable(true);
+  await harness.advance(250);
   await harness.advance(2999);
   assert.deepEqual(harness.keyboardEvents, []);
   await harness.advance(1);
   assert.equal(harness.keyboardEvents[0].type, 'keydown');
+  assert.equal(harness.importCount, 0);
 }
 
 {

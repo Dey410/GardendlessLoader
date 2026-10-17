@@ -63,6 +63,7 @@
 - Leaving gameplay, pausing, entering an air-raid/special stage, focusing a native input/select/editable element, backgrounding, or losing window focus cancels the pending cycle.
 - Returning to valid foreground gameplay starts a fresh three-second wait with no catch-up presses.
 - A GP-Next session starts Loader automatic collection when the manifest value is enabled, independently of GP-Next's own auto-collect control.
+- Automatic collection only reads game modules Cocos has already executed (`System.get`) and never imports them; with it enabled, turning on JS Modding and letting the game restart does not fail project startup (`v.createLineLenDir`).
 - Failure to import the game-state modules disables automatic collection and logs the failure once without affecting gameplay.
 - The removed legacy in-game menu and its former 1.5-second unscoped collector are absent from Android, iOS, HarmonyOS, and shared assets.
 
