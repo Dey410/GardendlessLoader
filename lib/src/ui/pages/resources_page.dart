@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../app_controller.dart';
 import '../../constants.dart';
@@ -291,6 +292,8 @@ class _GameVersionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.garden;
     final update = controller.availableGameUpdate;
+    final noteStyle =
+        TextStyle(color: palette.inkMuted, fontSize: 12, height: 1.5);
     final current = controller.hasCurrentResource
         ? (controller.currentGameVersion ?? '未知')
         : '--';
@@ -333,18 +336,20 @@ class _GameVersionCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (update != null)
-                GardenButton(
-                  label: '获取游戏资源',
-                  icon: Icons.download_rounded,
-                  tone: GardenButtonTone.primary,
-                  compact: true,
-                  onPressed: () => actions.openUrl(appCloudDriveUpdateUrl),
-                ),
               GardenButton(
-                label: '查看游戏 GitHub',
+                label: 'GitHub 下载',
+                leading: const FaIcon(FontAwesomeIcons.github, size: 16),
                 compact: true,
                 onPressed: () => actions.openUrl(githubUrl),
+              ),
+              GardenButton(
+                label: '网盘下载',
+                icon: Icons.download_rounded,
+                tone: update != null
+                    ? GardenButtonTone.primary
+                    : GardenButtonTone.secondary,
+                compact: true,
+                onPressed: () => actions.openUrl(appCloudDriveUpdateUrl),
               ),
               if (update != null)
                 GardenButton(
@@ -355,6 +360,22 @@ class _GameVersionCard extends StatelessWidget {
                 ),
             ],
           ),
+          const SizedBox(height: 8),
+          for (final note in const [
+            'GitHub 下载是官方渠道，但部分地区可能无法访问。',
+            '网盘中的游戏资源由加载器作者自行上传，与 PvZ2 Gardendless 官方无关，仅为方便大家下载。',
+            '网盘更新可能晚于官方，如果迟迟没有更新，欢迎到 B 站提醒作者。',
+          ])
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('•  ', style: noteStyle),
+                  Expanded(child: Text(note, style: noteStyle)),
+                ],
+              ),
+            ),
         ],
       ),
     );
