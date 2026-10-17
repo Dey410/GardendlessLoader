@@ -57,6 +57,9 @@ final class FileTaskCoordinatorTests: XCTestCase {
       .appendingPathComponent("gardendless-file-retained-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let gpRoot = root.appendingPathComponent("gp-next")
+    // Fixture files live in packs/; the host itself never creates gp-next.
+    try FileManager.default.createDirectory(
+      at: gpRoot.appendingPathComponent("packs"), withIntermediateDirectories: true)
     let session = GameSession(
       sessionId: "test", resourceRoot: root, entryURL: URL(string: "gardendless-game://localhost/index.html")!,
       activationGeneration: 1, hasGpNext: gp, gpNextCompatible: gp,

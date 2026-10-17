@@ -43,10 +43,14 @@ final class GpNextTests: XCTestCase {
 
   func testFileSystemConfinesEveryPathToGpNextRoot() throws {
     let fs = try GpNextFileSystem(session: session)
+    // GP-Next's fresh-install check must not find a host-created gp-next.
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: session.gpNextRoot.path)
+    )
+    XCTAssertFalse(try fs.exists(path: "gp-next", options: ["baseDir": 14]))
+    try fs.mkdir(path: "gp-next/packs", options: ["baseDir": 14])
     let packs = session.gpNextRoot.appendingPathComponent("packs").path
-    let patches = session.gpNextRoot.appendingPathComponent("patches").path
     XCTAssertTrue(try fs.exists(path: packs, options: [:]))
-    XCTAssertTrue(try fs.exists(path: patches, options: [:]))
 
     // Relative AppData paths must start at the gp-next namespace; unrelated
     // relative paths and absolute paths outside the explicit root stay blocked.
@@ -222,6 +226,7 @@ final class GpNextTests: XCTestCase {
     XCTAssertEqual(metadata["isDirectory"] as? Bool, false)
     XCTAssertEqual(metadata["isSymlink"] as? Bool, false)
     XCTAssertEqual(metadata["size"] as? NSNumber, 9)
+    XCTAssertNotNil(metadata["mtime"] as? Int64)
 
     try fs.rename(
       oldPath: pending,
@@ -230,6 +235,53 @@ final class GpNextTests: XCTestCase {
     )
     XCTAssertFalse(try fs.exists(path: pending, options: [:]))
     XCTAssertTrue(try fs.exists(path: installed, options: [:]))
+  }
+
+  func testRenameReplacesAnExistingFileLikeTauri() throws {
+    let fs = try GpNextFileSystem(session: session)
+    let target = "gp-next/configuration-state.json"
+    let pending = "\(target).pending"
+    for revision in ["{\"revision\":0}", "{\"revision\":1}"] {
+      try writeFixture(fs, path: pending, bytes: Array(revision.utf8),
+                       options: ["baseDir": 14])
+      try fs.rename(
+        oldPath: pending,
+        newPath: target,
+        options: ["oldPathBaseDir": 14, "newPathBaseDir": 14]
+      )
+    }
+    XCTAssertEqual(
+      try readFixture(fs, path: target, options: ["baseDir": 14]),
+      Array("{\"revision\":1}".utf8)
+    )
+    XCTAssertFalse(try fs.exists(path: pending, options: ["baseDir": 14]))
+    XCTAssertThrowsError(
+      try fs.rename(
+        oldPath: target,
+        newPath: "gp-next",
+        options: ["oldPathBaseDir": 14, "newPathBaseDir": 14]
+      )
+    )
+  }
+
+  func testRouterServesStatWithModificationTime() throws {
+    let fs = try GpNextFileSystem(session: session)
+    let path = "gp-next/save-backups/native-player/backup.json"
+    try writeFixture(fs, path: path, bytes: Array("[]".utf8),
+                     options: ["baseDir": 14])
+    let router = try GpNextCommandRouter(session: session, fileSystem: fs)
+    let action = try router.dispatch([
+      "command": "plugin:fs|stat",
+      "args": ["path": path, "options": ["baseDir": 14]],
+      "options": [:] as [String: Any],
+    ])
+    guard case .value(let value) = action,
+          let info = value as? [String: Any],
+          let mtime = info["mtime"] as? Int64 else {
+      return XCTFail("expected stat metadata with mtime")
+    }
+    XCTAssertEqual(info["isFile"] as? Bool, true)
+    XCTAssertLessThan(abs(Double(mtime) - Date().timeIntervalSince1970 * 1000), 60_000)
   }
 
   func testRemoveRejectsRootAndSymbolicLinks() throws {
@@ -245,6 +297,7 @@ final class GpNextTests: XCTestCase {
     )
     let outside = root.appendingPathComponent("outside.txt")
     try Data("x".utf8).write(to: outside)
+    try fs.mkdir(path: "gp-next/patches", options: ["baseDir": 14])
     let link = session.gpNextRoot
       .appendingPathComponent("patches/link")
       .path
@@ -330,6 +383,32 @@ final class GpNextTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     try stager.clear()
     XCTAssertFalse(FileManager.default.fileExists(atPath: archive.path))
+  }
+
+  func testPackageImporterRejectsZipPacksOnceTheModPlatformIsActive() throws {
+    let packURL = root.appendingPathComponent("pack.zip")
+    try TestZipWriter.write(
+      [.file("pack.json", data: Data(#"{"name":"test"}"#.utf8))],
+      to: packURL
+    )
+    let patchURL = root.appendingPathComponent("patch.json")
+    try Data("{}".utf8).write(to: patchURL)
+    try FileManager.default.createDirectory(
+      at: session.gpNextRoot,
+      withIntermediateDirectories: true
+    )
+    try Data("{}".utf8).write(
+      to: session.gpNextRoot.appendingPathComponent("configuration-state.json")
+    )
+    let importer = GpNextPackageImporter(gpNextRoot: session.gpNextRoot)
+
+    XCTAssertThrowsError(try importer.importPackage(packURL) { _ in true })
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: session.gpNextRoot.appendingPathComponent("packs/pack.zip").path
+      )
+    )
+    XCTAssertEqual(try importer.importPackage(patchURL) { _ in true }, "patch.json")
   }
 
   func testPackageImporterNormalizesOneWrapperDirectory() throws {

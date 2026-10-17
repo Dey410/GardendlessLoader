@@ -22,10 +22,6 @@ public final class GpNextCommandRouter {
     self.fileSystem = try fileSystem ?? GpNextFileSystem(session: session)
     self.allowedRemoteHosts = session.allowedRemoteHosts
     self.exportTemporaryRoot = session.exportTemporaryRoot
-    try FileManager.default.createDirectory(
-      at: exportTemporaryRoot,
-      withIntermediateDirectories: true
-    )
   }
 
   public func dispatch(_ request: [String: Any]) throws -> GpNextAction {
@@ -48,7 +44,8 @@ public final class GpNextCommandRouter {
           options: nested
         )
       )
-    case "plugin:fs|lstat":
+    // Symbolic links are rejected inside the sandbox, so stat and lstat agree.
+    case "plugin:fs|lstat", "plugin:fs|stat":
       return .value(
         try fileSystem.lstat(
           path: try string(args, "path"),
@@ -91,6 +88,12 @@ public final class GpNextCommandRouter {
       let requested = options?["defaultPath"] as? String
         ?? "gardendless-export.json"
       let name = safeFileName(requested)
+      // Created on demand: it lives under gp-next, which must stay absent
+      // until GP-Next has run its fresh-install check.
+      try FileManager.default.createDirectory(
+        at: exportTemporaryRoot,
+        withIntermediateDirectories: true
+      )
       let requestedPath = exportTemporaryRoot.appendingPathComponent(name)
       // An earlier session may still be closing its picker. Keep its cleanup
       // destination separate from the next saved file.

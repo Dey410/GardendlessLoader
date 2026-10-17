@@ -32,8 +32,8 @@ class AppPathsService {
     }
     await paths.slotADir.create(recursive: true);
     await paths.slotBDir.create(recursive: true);
-    await paths.gpNextPacksDir.create(recursive: true);
-    await paths.gpNextPatchesDir.create(recursive: true);
+    // gp-next stays absent until GP-Next creates it: its fresh-install check
+    // treats an existing gp-next directory as a legacy installation.
   }
 
   Future<Directory> _defaultRoot() async {

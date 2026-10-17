@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import GardendlessCore
 
@@ -7,18 +8,6 @@ public final class GpNextFileSystem {
 
   public init(session: GameSession) throws {
     let root = session.gpNextRoot
-    try FileManager.default.createDirectory(
-      at: root,
-      withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-      at: root.appendingPathComponent("packs", isDirectory: true),
-      withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-      at: root.appendingPathComponent("patches", isDirectory: true),
-      withIntermediateDirectories: true
-    )
     resolver = try GpNextPathResolver(gpNextRoot: root)
     gpNextRoot = root.standardizedFileURL
   }
@@ -91,6 +80,7 @@ public final class GpNextFileSystem {
         .isSymbolicLinkKey,
         .fileSizeKey,
         .isWritableKey,
+        .contentModificationDateKey,
       ]
     )
     return [
@@ -98,7 +88,10 @@ public final class GpNextFileSystem {
       "isDirectory": values.isDirectory == true,
       "isSymlink": values.isSymbolicLink == true,
       "size": values.fileSize ?? 0,
-      "mtime": NSNull(),
+      // Tauri FileInfo times are milliseconds since the Unix epoch.
+      "mtime": values.contentModificationDate.map {
+        Int64(($0.timeIntervalSince1970 * 1000).rounded()) as Any
+      } ?? NSNull(),
       "atime": NSNull(),
       "birthtime": NSNull(),
       "readonly": values.isWritable == false,
@@ -164,20 +157,24 @@ public final class GpNextFileSystem {
     let destination = try resolver.resolve(newPath, options: newOptions)
     try resolver.assertNoSymlink(source)
     try resolver.assertNoSymlink(destination)
-    guard source != gpNextRoot else {
+    guard source != gpNextRoot, destination != gpNextRoot else {
       throw GameError.failed(.gpNextForbidden, "不允许移动 GP-Next 根目录")
     }
     guard FileManager.default.fileExists(atPath: source.path) else {
       throw GameError.failed(.gpNextForbidden, "源路径不存在：\(source.path)")
     }
-    guard !FileManager.default.fileExists(atPath: destination.path) else {
-      throw GameError.failed(.gpNextForbidden, "目标路径已存在：\(destination.path)")
-    }
     try FileManager.default.createDirectory(
       at: destination.deletingLastPathComponent(),
       withIntermediateDirectories: true
     )
-    try FileManager.default.moveItem(at: source, to: destination)
+    // Tauri's rename is std::fs::rename: an existing destination file is
+    // replaced atomically, which GP-Next relies on for `.pending` commits.
+    guard Darwin.rename(source.path, destination.path) == 0 else {
+      throw GameError.failed(
+        .gpNextForbidden,
+        "无法移动 GP-Next 路径：\(String(cString: strerror(errno)))"
+      )
+    }
   }
 
   public func resolveWritePath(

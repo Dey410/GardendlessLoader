@@ -74,11 +74,14 @@
 - Legacy Manifest and prepared-session JSON containing `jsModdingEnabled` is accepted, but the field is ignored and omitted from the next persisted value.
 - Android, iOS, and HarmonyOS do not pass a JS Modding field through `GameSession`, do not load `js_modding.js`, and never read or write `gp-next-settings`.
 - An existing game-owned enabled or disabled state remains unchanged. The user manages all later changes with the in-game switch.
-- Android, iOS, and HarmonyOS expose the same 0.15 command set: `plugin:dialog|open`, `plugin:fs|lstat`, `plugin:fs|rename`, and `plugin:fs|write_file`.
+- Android, iOS, and HarmonyOS expose the same 0.15 command set: `plugin:dialog|open`, `plugin:fs|lstat`, `plugin:fs|stat`, `plugin:fs|rename`, and `plugin:fs|write_file`. `lstat`/`stat` report `mtime` in milliseconds.
+- Neither the launcher nor a GameHost creates `gp-next` before GP-Next starts. On a fresh install GP-Next creates `gp-next/configuration-state.json` itself and its Mods page offers installation, not "更新模组管理".
+- With an existing legacy `gp-next`, "更新模组管理" → 保存配置 → restart succeeds, and later Mod enable/disable/order changes persist across restarts.
+- After `configuration-state.json` exists, the patch-folder import (`plugin:opener|open_path`) rejects ZIP packs with a message pointing to the GP-Next Mods page; JSON/JSON5 patches are still accepted.
 - `plugin:dialog|open` supports one ZIP or one folder. Native code copies it into the GP-Next sandbox and returns a path ending in `selection.zip` or `selection` respectively.
 - The previous selection is removed before the next picker opens. Cancellation, staging failure, and GameHost exit also remove selection staging; cancellation resolves to `null`.
 - Selected content rejects symbolic links, invalid names, more than 10,000 entries, or more than 512 MiB before the game installs it.
-- File operations remain confined to AppData base directory 14 and the `gp-next` root; traversal, foreign base directories, root moves/removals, and overwrite-by-rename are rejected consistently.
+- File operations remain confined to AppData base directory 14 and the `gp-next` root; traversal, foreign base directories, and root moves/removals are rejected consistently. Like Tauri's `std::fs::rename`, `plugin:fs|rename` atomically replaces an existing destination file.
 - Android, iOS, and HarmonyOS resolve `AppData/gp-next/...` directly from the session's explicit `gpNextRoot`; resolution does not depend on the resource slot's parent path matching that root.
 - Large binary writes are split into 96 KiB bridge requests, committed only after every byte arrives, and abandoned transfers are cleaned on failure or GameHost exit.
 - On a real device for each maintained platform, install the same trusted test Mod once from ZIP and once from a folder, restart the game, and verify GP-Next can load the installed content from `gp-next/installed`.

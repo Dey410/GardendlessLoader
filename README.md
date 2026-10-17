@@ -85,12 +85,15 @@ The app creates the following layout in its platform-specific application direct
 GardendlessLoader/
   slot-a/          # resource slot A
   slot-b/          # resource slot B
-  gp-next/
-    packs/         # persistent GP-Next ZIP patch packs
-    patches/       # persistent JSON/JSON5 single-file patches
-    installed/     # GP-Next 0.15 content-addressed Mod packages
+  gp-next/         # created by GP-Next on its first start
+    configuration-state.json  # GP-Next Mod configuration
+    installed/     # content-addressed Mods installed from the GP-Next Mods page
+    patches/       # JSON/JSON5 single-file patches
+    packs/         # legacy ZIP packs, read only before GP-Next migrates them
   manifest.json    # active slot, transaction state, resource stats, and game version
 ```
+
+The Loader never creates `gp-next` itself: GP-Next treats an existing `gp-next` directory as a legacy installation. A fresh install therefore starts directly on GP-Next's Mod platform, while an existing legacy `gp-next` is upgraded with GP-Next's "Update mod management" step. Install ZIP Mods from the GP-Next Mods page; once that platform is active, the Loader's patch-folder import accepts only JSON/JSON5 patches.
 
 At rest, only the active slot contains game files. During an update, at most one copy of the old resources and one candidate copy are retained. The manifest switches atomically only after the candidate passes validation; the old slot is then cleaned. Because `gp-next` is outside both slots, updating game resources does not remove imported patches or Mods.
 

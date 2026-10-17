@@ -764,8 +764,8 @@ class AppController extends ChangeNotifier {
       );
       throw StateError(_message!);
     }
+    // The native host creates it on the first export, after GP-Next startup.
     final exportRoot = Directory(p.join(paths.gpNextDir.path, '.exports'));
-    await exportRoot.create(recursive: true);
     final session = GameSession(
       sessionId: _newGameSessionId(),
       packageId: _currentValidation.packageId,

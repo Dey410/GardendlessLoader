@@ -61,7 +61,7 @@ interface GpNextFileInfo {
   isDirectory: boolean;
   isSymlink: boolean;
   size: number;
-  mtime: Object | null;
+  mtime: number;
   atime: Object | null;
   birthtime: Object | null;
   readonly: boolean;
@@ -205,10 +205,7 @@ export class GpNextNativeCore {
     }
     return this.runIO(async (): Promise<GpNextResult> => {
       const options = request.options ?? {};
-      if (!request.command.startsWith('file:')) {
-        this.requireGpNext();
-        await this.ensureGpDirectories();
-      }
+      if (!request.command.startsWith('file:')) this.requireGpNext();
       switch (request.command) {
         case 'file:begin': return this.beginFile(args);
         case 'file:chunk': return this.chunkFile(args);
@@ -218,7 +215,9 @@ export class GpNextNativeCore {
           return { value: null };
         case 'plugin:fs|read_dir':
           return { value: await this.readDirectory(await this.resolve(args.path, args.options ?? options)) };
+        // Symbolic links are rejected inside the sandbox, so stat and lstat agree.
         case 'plugin:fs|lstat':
+        case 'plugin:fs|stat':
           return { value: await this.fileInfo(await this.resolve(args.path, args.options ?? options)) };
         case 'plugin:fs|exists':
           return { value: await this.exists(await this.resolve(args.path, args.options ?? options)) };
@@ -256,12 +255,6 @@ export class GpNextNativeCore {
     }
   }
 
-  private async ensureGpDirectories(): Promise<void> {
-    await this.ensureDirectory(this.root);
-    await this.ensureDirectory(`${this.root}/packs`);
-    await this.ensureDirectory(`${this.root}/patches`);
-  }
-
   private integer(value: number | undefined, maximum: number): number {
     if (value == null || !Number.isSafeInteger(value) || value < 0 || value > maximum) {
       throw new FileFailure('invalid_file_transfer', 'Invalid file integer');
@@ -278,7 +271,6 @@ export class GpNextNativeCore {
     let exporting = args.destination === 'export';
     if (args.destination === 'gp-next') {
       this.requireGpNext();
-      await this.ensureGpDirectories();
       path = await this.resolve(args.path, args.options ?? {});
       exporting = this.pendingExports.has(path);
     } else {
@@ -588,14 +580,16 @@ export class GpNextNativeCore {
     await this.assertNoSymlink(path);
     const stat = await fs.lstat(path);
     return { isFile: stat.isFile(), isDirectory: stat.isDirectory(), isSymlink: stat.isSymbolicLink(),
-      size: stat.isFile() ? stat.size : 0, mtime: null, atime: null, birthtime: null, readonly: false,
+      // fs.Stat.mtime is in seconds; Tauri FileInfo times are milliseconds.
+      size: stat.isFile() ? stat.size : 0, mtime: stat.mtime * 1000, atime: null, birthtime: null, readonly: false,
       fileAttributes: null, dev: 0, ino: 0, mode: 0, nlink: 0, uid: 0, gid: 0, rdev: 0, blksize: 0, blocks: 0 };
   }
 
   private async rename(args: GpNextArguments, options: GpNextOptions): Promise<void> {
     const source = await this.resolve(args.oldPath, { baseDir: options.oldPathBaseDir });
     const destination = await this.resolve(args.newPath, { baseDir: options.newPathBaseDir });
-    if (source === this.root || !await this.exists(source) || await this.exists(destination)) {
+    // Like Tauri's std::fs::rename, an existing destination file is replaced atomically.
+    if (source === this.root || destination === this.root || !await this.exists(source)) {
       throw new FileFailure('invalid_file_transfer', 'Invalid GP-Next rename');
     }
     await this.ensureDirectory(destination.substring(0, destination.lastIndexOf('/')));

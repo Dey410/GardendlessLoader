@@ -289,6 +289,11 @@ export class GameBridge {
               ? `${this.session.gpNextRoot}/patches`
               : '';
           if (directory.length === 0) throw new Error(`不支持的 GP-Next 文件：${name}`);
+          // Only GP-Next's legacy runtime reads packs/; its mod platform installs
+          // ZIP mods from its own picker once configuration-state.json exists.
+          if (extension === 'zip' && await this.fileExists(`${this.session.gpNextRoot}/configuration-state.json`)) {
+            throw new Error('GP-Next 已启用新版模组管理，请在 GP-Next 模组页安装 ZIP 模组');
+          }
           const destination = `${directory}/${name}`;
           const incoming = `${directory}/.${name}.incoming-${Date.now()}`;
           let prepared = incoming;

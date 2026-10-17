@@ -63,7 +63,6 @@ public final class FileTaskCoordinator {
     self.session = session
     router = gpNextRouter
     now = clock
-    try FileManager.default.createDirectory(at: session.exportTemporaryRoot, withIntermediateDirectories: true)
     let timer = DispatchSource.makeTimerSource(queue: queue)
     timer.schedule(deadline: .now() + 60, repeating: 60)
     timer.setEventHandler { [weak self] in self?.expireHandles() }
@@ -191,6 +190,9 @@ public final class FileTaskCoordinator {
         : router.resolveWritePath(path: rawPath, options: options)
     } else {
       guard !reading else { throw failure("Export is write-only") }
+      // Created on demand: it lives under gp-next, which must stay absent
+      // until GP-Next has run its fresh-install check.
+      try FileManager.default.createDirectory(at: session.exportTemporaryRoot, withIntermediateDirectories: true)
       let name = safeName(args["suggestedFilename"] as? String ?? "gardendless-export.json")
       let requested = session.exportTemporaryRoot.appendingPathComponent(name)
       let occupied = FileManager.default.fileExists(atPath: requested.path)

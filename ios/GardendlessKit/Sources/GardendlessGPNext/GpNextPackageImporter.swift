@@ -26,6 +26,16 @@ public final class GpNextPackageImporter {
     let destinationDirectory: URL
     switch ext {
     case "zip":
+      // Only GP-Next's legacy runtime reads packs/; its mod platform installs
+      // ZIP mods from its own picker once configuration-state.json exists.
+      guard !FileManager.default.fileExists(
+        atPath: gpNextRoot.appendingPathComponent("configuration-state.json").path
+      ) else {
+        throw GameError.failed(
+          .gpNextForbidden,
+          "GP-Next 已启用新版模组管理，请在 GP-Next 模组页安装 ZIP 模组"
+        )
+      }
       destinationDirectory = gpNextRoot.appendingPathComponent(
         "packs",
         isDirectory: true

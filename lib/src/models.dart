@@ -50,10 +50,6 @@ class AppPaths {
 
   Directory get gpNextDir =>
       Directory('${root.path}${Platform.pathSeparator}gp-next');
-  Directory get gpNextPacksDir =>
-      Directory('${gpNextDir.path}${Platform.pathSeparator}packs');
-  Directory get gpNextPatchesDir =>
-      Directory('${gpNextDir.path}${Platform.pathSeparator}patches');
 
   Directory get legacyImportDir =>
       Directory('${root.path}${Platform.pathSeparator}import');

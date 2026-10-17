@@ -86,12 +86,15 @@ JS Modding 现在完全由游戏内的 GP-Next 管理。Loader 不再显示或�
 GardendlessLoader/
   slot-a/          # 资源槽 A
   slot-b/          # 资源槽 B
-  gp-next/
-    packs/         # 持久化的 GP-Next ZIP 补丁包
-    patches/       # 持久化的 JSON/JSON5 单文件补丁
-    installed/     # GP-Next 0.15 按内容摘要保存的 Mod 包
+  gp-next/         # 由 GP-Next 首次启动时创建
+    configuration-state.json  # GP-Next 模组配置
+    installed/     # 在 GP-Next 模组页安装、按内容摘要保存的 Mod
+    patches/       # JSON/JSON5 单文件补丁
+    packs/         # 旧式 ZIP 补丁包，仅在 GP-Next 迁移前读取
   manifest.json    # 激活槽、事务状态、资源统计和游戏版本
 ```
+
+Loader 不会自行创建 `gp-next`：GP-Next 会把已存在的 `gp-next` 目录视为旧式安装。因此全新安装直接进入 GP-Next 的模组平台，已有旧式 `gp-next` 则通过 GP-Next 的“更新模组管理”升级。ZIP Mod 请在 GP-Next 模组页安装；该平台启用后，Loader 的补丁目录导入只接受 JSON/JSON5 补丁。
 
 常态下只有激活槽包含游戏文件。更新期间旧资源与候选资源最多各保留一份；候选槽通过校验后，清单才会原子切换，随后旧槽被清理。`gp-next` 位于双槽之外，因此更新游戏资源不会删除已导入的补丁和 Mod。
 

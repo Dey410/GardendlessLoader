@@ -49,7 +49,7 @@ class GpNextNativeCore(
         val control = command == "file:finish" && args.optString("action") in setOf("close", "cancel")
         execute(requestId, control) {
             val options = request.optJSONObject("options") ?: JSONObject()
-            if (!command.startsWith("file:")) { requireGpNext(); ensureGpDirectories() }
+            if (!command.startsWith("file:")) requireGpNext()
             val value: Any? = when (command) {
                 "file:begin" -> beginFile(args)
                 "file:chunk" -> chunkFile(args)
@@ -62,7 +62,8 @@ class GpNextNativeCore(
                     null
                 }
                 "plugin:fs|read_dir" -> readDirectory(resolve(args.opt("path"), nestedOptions(args, options)))
-                "plugin:fs|lstat" -> fileInfo(resolve(args.opt("path"), nestedOptions(args, options)))
+                // Symbolic links are rejected inside the sandbox, so stat and lstat agree.
+                "plugin:fs|lstat", "plugin:fs|stat" -> fileInfo(resolve(args.opt("path"), nestedOptions(args, options)))
                 "plugin:fs|exists" -> exists(resolve(args.opt("path"), nestedOptions(args, options)))
                 "plugin:fs|remove" -> {
                     remove(resolve(args.opt("path"), nestedOptions(args, options)), recursive(nestedOptions(args, options)))
@@ -145,12 +146,6 @@ class GpNextNativeCore(
         if (destroyed || Thread.currentThread().isInterrupted) throw FileFailure("host_destroyed", "Game host was destroyed")
     }
 
-    private fun ensureGpDirectories() {
-        ensureSafeDirectory(root)
-        ensureSafeDirectory(File(root, "packs"))
-        ensureSafeDirectory(File(root, "patches"))
-    }
-
     private fun requireGpNext() {
         if (!session.hasGpNext || !session.gpNextCompatible) throw FileFailure("gp_next_unavailable", "GP-Next compatibility is unavailable")
     }
@@ -168,7 +163,6 @@ class GpNextNativeCore(
         var export = destination == "export"
         if (destination == "gp-next") {
             requireGpNext()
-            ensureGpDirectories()
             path = resolve(args.opt("path"), options)
             export = synchronized(this) { pendingExports.contains(path.path) }
         } else {
@@ -429,7 +423,7 @@ class GpNextNativeCore(
         val symlink = path.isSymbolicLink()
         return JSONObject().put("isFile", !symlink && path.isFile).put("isDirectory", !symlink && path.isDirectory)
             .put("isSymlink", symlink).put("size", if (path.isFile) path.length() else 0)
-            .put("mtime", JSONObject.NULL).put("atime", JSONObject.NULL).put("birthtime", JSONObject.NULL)
+            .put("mtime", path.lastModified()).put("atime", JSONObject.NULL).put("birthtime", JSONObject.NULL)
             .put("readonly", !path.canWrite()).put("fileAttributes", JSONObject.NULL)
             .put("dev", 0).put("ino", 0).put("mode", 0).put("nlink", 0).put("uid", 0).put("gid", 0)
             .put("rdev", 0).put("blksize", 0).put("blocks", 0)
@@ -443,10 +437,10 @@ class GpNextNativeCore(
         val source = resolve(args.opt("oldPath"), oldOptions)
         val destination = resolve(args.opt("newPath"), newOptions)
         requireSafeExisting(source)
-        require(source != root) { "不允许移动 GP-Next 根目录" }
-        require(!destination.exists()) { "目标路径已存在：${destination.path}" }
+        require(source != root && destination != root) { "不允许移动 GP-Next 根目录" }
         ensureSafeDirectory(requireNotNull(destination.parentFile) { "目标路径没有父目录" })
         ensureNoSymlink(destination)
+        // Like Tauri's std::fs::rename, rename(2) atomically replaces an existing destination file.
         require(source.renameTo(destination)) { "无法移动 GP-Next 路径" }
     }
 

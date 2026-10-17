@@ -508,6 +508,11 @@ class GameActivity : Activity() {
                 ?: uri.lastPathSegment ?: "gp-next-file"
             val name = ExportDocumentSpec.safeFileName(displayName)
             val extension = name.substringAfterLast('.', "").lowercase()
+            // Only GP-Next's legacy runtime reads packs/; its mod platform installs
+            // ZIP mods from its own picker once configuration-state.json exists.
+            require(extension != "zip" || !File(session.gpNextRoot, "configuration-state.json").exists()) {
+                "GP-Next 已启用新版模组管理，请在 GP-Next 模组页安装 ZIP 模组"
+            }
             val destinationDirectory = when (extension) {
                 "zip" -> File(session.gpNextRoot, "packs")
                 "json", "json5" -> File(session.gpNextRoot, "patches")

@@ -166,12 +166,12 @@ iOS还有一层非必要应答：`WKScriptMessageHandlerWithReply`先回复accep
 | `plugin:fs\|read_dir` | 返回目录元数据列表 | A3:38/91 | I4:45→I5:36 | O7:112/146 |
 | `plugin:fs\|read_file` | 返回文件字节 | A3:39/108 | I4:52→I5:71 | O7:114/166 |
 | `plugin:fs\|read_text_file` | 同上，wrapper之后解码文本 | 同上 | 同上 | 同上 |
-| `plugin:fs\|lstat` | 文件元数据 | A3:42/123 | I4:59→I5:77 | O7:117/192 |
+| `plugin:fs\|lstat` / `stat` | 文件元数据（沙箱拒绝链接，二者相同；mtime 为毫秒） | A3:42/123 | I4:59→I5:77 | O7:117/192 |
 | `plugin:fs\|exists` | 是否存在 | A3:43/147 | I4:66→I5:114 | O7:119/357 |
 | `plugin:fs\|remove` | 沙箱内移除 | A3:44/290 | I4:73→I5:119 | O7:121/366 |
 | `plugin:fs\|write_file` | 写字节，当前有全量/transfer双分支 | A3:48/152 | I4:79/181→I5:197 | O7:124/217/255 |
 | `plugin:fs\|write_text_file` | 同上，不是另一文本写引擎 | 同上 | 同上 | 同上 |
-| `plugin:fs\|rename` | 文件移动，禁止覆盖/根移动 | A3:54/277 | I4:110→I5:152 | O7:127/345 |
+| `plugin:fs\|rename` | 文件移动；同 std::fs::rename 原子替换已有目标文件（GP-Next `.pending` 提交依赖此语义），禁止根移动 | A3:54/277 | I4:110→I5:152 | O7:127/345 |
 | `plugin:dialog\|open` | 选一个ZIP/目录并Native暂存，返回路径给GP-Next | A3:58→A1:320/610 | I4:117→I1:472/593→I6 | O7:130→O4:425 |
 | `plugin:dialog\|save` | 创建导出暂存路径；**此时不弹保存对话框** | A3:71/266 | I4:128 | O7:135/337 |
 | `plugin:opener\|open_url` | 白名单HTTP(S)游戏外链 | A3:72→A1:288 | I4:137→I1:410 | O7:137→O4:300 |
@@ -180,7 +180,7 @@ iOS还有一层非必要应答：`WKScriptMessageHandlerWithReply`先回复accep
 必须保留的具体语义：
 
 - `dialog|save → write_file/write_text_file`写到pendingExports路径后才触发系统保存。不能仅根据方法名把save当成完成保存。
-- `dialog|open`让GP-Next接管选中Mod的后续处理；`opener|open_path`由Native安装旧式pack/patch。这是不同内容/既有流程，当前不能无证据直接删除其中一条，也不新增第三个通用安装器。普通系统文件选择和最终复制可共用一个小实现。
+- `dialog|open`让GP-Next接管选中Mod的后续处理；`opener|open_path`由Native安装旧式pack/patch。`packs/`只被GP-Next旧式运行时读取，`gp-next/configuration-state.json`存在后ZIP导入被拒绝并提示改用GP-Next模组页。Loader与GameHost都不预先创建`gp-next`：GP-Next以`gp-next`是否存在判断全新安装，已存在即视为旧式安装并要求迁移。这是不同内容/既有流程，当前不能无证据直接删除其中一条，也不新增第三个通用安装器。普通系统文件选择和最终复制可共用一个小实现。
 - GP-Next最终二进制API返回Uint8Array、文本API返回string。已只读核对0.15的`dist-js-DU-PxUYU.js`：invoke返回ArrayBuffer可直接生成视图/解码；若返回Uint8Array或number[]则可能再次复制。目标内部invoke统一返回ArrayBuffer；其他版本逐个用真实wrapper锁定，不在运行时试多种返回类型。
 - 各端路径解析、baseDir=14、祖先/叶链接拒绝是系统权限保证。JS做参数归一，Native做打开/写入时的权限判断；两者职责不同，不能删除Native检查。
 
