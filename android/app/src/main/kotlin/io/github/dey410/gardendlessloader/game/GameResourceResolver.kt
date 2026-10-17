@@ -20,11 +20,19 @@ data class GameResourceResponse(
     val body: InputStream,
 )
 
-class GameResourceResolver(root: File) {
+class GameResourceResolver(root: File, documentStartScript: String) {
     private val canonicalRoot = root.absoluteFile.also {
         require(!it.isSymbolicLink()) { "Resource root must not be a symbolic link" }
     }.canonicalFile.also {
         require(it.isDirectory) { "Resource root is not a directory" }
+    }
+
+    // Served HTML carries the bridge bootstrap as its first <head> script, so it runs
+    // before any page script on every WebView, without addDocumentStartJavaScript.
+    private val documentStartTag = run {
+        require(!documentStartScript.contains("</script", ignoreCase = true) &&
+            !documentStartScript.contains("<!--")) { "Document-start script cannot be inlined into HTML" }
+        "<script>$documentStartScript</script>"
     }
 
     fun resolve(
@@ -43,7 +51,10 @@ class GameResourceResolver(root: File) {
         val relativePath = decodePath(uri.rawPath ?: "/")
             ?: return error(403, "Forbidden")
         val file = resolveFile(relativePath) ?: return error(404, "Not Found")
-        val length = file.length()
+        val html = if (mimeFor(relativePath) == "text/html") {
+            withDocumentStartScript(file) ?: return error(500, "HTML document has no head element")
+        } else null
+        val length = html?.size?.toLong() ?: file.length()
         val etag = etag(file, length)
         val commonHeaders = linkedMapOf(
             "Accept-Ranges" to "bytes",
@@ -74,6 +85,8 @@ class GameResourceResolver(root: File) {
         }
         val body = if (method == "HEAD" || responseLength == 0L) {
             ByteArrayInputStream(ByteArray(0))
+        } else if (html != null) {
+            ByteArrayInputStream(html, start.toInt(), responseLength.toInt())
         } else {
             RangedFileInputStream(file, start, responseLength)
         }
@@ -85,6 +98,14 @@ class GameResourceResolver(root: File) {
             headers = headers,
             body = body,
         )
+    }
+
+    private fun withDocumentStartScript(file: File): ByteArray? {
+        val text = file.readText(StandardCharsets.UTF_8)
+        val head = headTag.find(text) ?: return null
+        val insertAt = head.range.last + 1
+        return (text.substring(0, insertAt) + documentStartTag + text.substring(insertAt))
+            .toByteArray(StandardCharsets.UTF_8)
     }
 
     private fun resolveFile(relativePath: String): File? {
@@ -237,6 +258,7 @@ class GameResourceResolver(root: File) {
         // Cocos binary payloads (ASTC textures, .cconb assets, effect.bin and asm.js
         // memory files) that are correctly served as application/octet-stream.
         val BINARY_EXTENSIONS = setOf("astc", "bin", "cconb")
+        private val headTag = Regex("(?i)<head\\b[^>]*>")
         private val encodedEscape = Regex("(?i)%(?:2e|2f|5c|25)")
         private val contentHash = Regex("(?i)(?:^|[._-])[0-9a-f]{8,}(?:[._-]|$)")
     }

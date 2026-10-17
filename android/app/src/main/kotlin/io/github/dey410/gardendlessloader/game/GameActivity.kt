@@ -62,10 +62,15 @@ class GameActivity : Activity() {
             )
             configureWebView()
         } catch (error: Exception) {
+            val webViewPackage = WebViewCompat.getCurrentWebViewPackage(this)
             AppLogStore.emit(
                 source = "android", level = "ERROR", category = "game.host",
                 event = "game_host_launch_finished", outcome = "failed",
                 code = "game_host_launch_failed", error = error,
+                context = mapOf(
+                    "webViewPackage" to webViewPackage?.packageName,
+                    "webViewVersion" to webViewPackage?.versionName,
+                ),
             )
             writeExitResult(
                 rawSession?.let { runCatching { JSONObject(it).optString("sessionId") }.getOrNull() }
@@ -80,9 +85,6 @@ class GameActivity : Activity() {
     }
 
     private fun configureWebView() {
-        check(WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            "Installed Android System WebView lacks document-start injection"
-        }
         check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             "Installed Android System WebView lacks origin-scoped messaging"
         }
@@ -112,13 +114,9 @@ class GameActivity : Activity() {
             setOf(session.origin),
             bridge,
         )
-        val documentStartScript = buildDocumentStartScript()
-        WebViewCompat.addDocumentStartJavaScript(
-            webView,
-            documentStartScript,
-            setOf(session.origin),
-        )
-        webView.webViewClient = GameWebViewClient(session) { crashed ->
+        // The resource handler inlines this into every served HTML document; the
+        // WebView API for document-start scripts is missing on older WebViews.
+        webView.webViewClient = GameWebViewClient(session, buildDocumentStartScript()) { crashed ->
             returnToLauncher(
                 GameExitReason.RENDERER_GONE,
                 if (crashed) "Android WebView renderer crashed" else "Android WebView renderer exited",

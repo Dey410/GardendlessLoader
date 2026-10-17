@@ -14,9 +14,10 @@ import java.util.Locale
 
 class GameWebViewClient(
     private val session: NativeGameSession,
+    documentStartScript: String,
     private val onRendererGone: (Boolean) -> Unit,
 ) : WebViewClient() {
-    private val resolver = GameResourceResolver(java.io.File(session.resourceRoot))
+    private val resolver = GameResourceResolver(java.io.File(session.resourceRoot), documentStartScript)
     private val origin = Uri.parse(session.origin)
     private val allowedRemoteHosts = session.allowedRemoteHosts
 

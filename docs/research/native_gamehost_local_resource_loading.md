@@ -122,6 +122,9 @@ ArkWeb 官方文档明确允许 SchemeHandler 拦截 Web 组件或 Service Worke
   `compatibleSdkVersion: 5.0.0(12)`，对应 SchemeHandler、Bridge permission 和来源查询的最低 API 12。
 - 三平台通过同一份 [`assets/game_bridge`](../../assets/game_bridge) document-start 脚本共享 Transport、
   GP-Next 协议、触摸、导出、水印和菜单行为；平台代码只保留资源、文件选择器、系统浏览器和生命周期边界。
+  Android 不使用 `WebViewCompat.addDocumentStartJavaScript`（WebView 侧 `DOCUMENT_START_SCRIPT:1`
+  只在 2023 年后的版本提供，旧版或厂商 WebView 缺失），而是由资源处理器把这组脚本内联为所返回
+  HTML 的第一个 `<head>` 脚本；消息仍走受 Origin 和主框架限制的 `addWebMessageListener`。
 
 ## 可统一与不可统一
 

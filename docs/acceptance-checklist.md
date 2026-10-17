@@ -11,6 +11,7 @@
 - Launch page shows resource imported and detected title.
 - Start game destroys the Flutter launcher and opens a landscape native GameHost.
 - Android loads from `https://appassets.androidplatform.net`, iOS from `gardendless-game://localhost`, and HarmonyOS from `https://gardendless.invalid`.
+- Android inlines the shared bridge scripts as the first `<head>` script of every HTML document it serves, so a System WebView without `DOCUMENT_START_SCRIPT` still starts the game; a GameHost launch failure logs the WebView package and version.
 - The entry URL includes `?generation=<activationGeneration>` while the platform origin remains stable.
 - The in-game export button opens a save-location picker and writes a `.json` save file.
 - The exported `.json` save file can be imported back by the game.
