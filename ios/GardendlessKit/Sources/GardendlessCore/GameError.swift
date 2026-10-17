@@ -14,6 +14,8 @@ public enum GameError: Error, LocalizedError {
     case zipUnsupported
     case zipSymbolicLink
     case zipPathUnsafe
+    case zipDocsMissing
+    case zipWriteFailed
     case gpNextForbidden
     case gpNextUnavailable
     case exportInProgress

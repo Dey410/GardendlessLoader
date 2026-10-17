@@ -443,6 +443,7 @@ class InfoRow extends StatelessWidget {
     this.trailing,
     this.mono = false,
     this.maxLines = 2,
+    this.hint,
   });
 
   final String label;
@@ -452,9 +453,24 @@ class InfoRow extends StatelessWidget {
   final bool mono;
   final int maxLines;
 
+  /// Fix hint shown below an error [value].
+  final String? hint;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final text = Text(
+      value,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: mono
+          ? GardenType.mono(12, color: color ?? palette.ink)
+          : TextStyle(
+              color: color ?? palette.ink,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+            ),
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -471,18 +487,21 @@ class InfoRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              value,
-              maxLines: maxLines,
-              overflow: TextOverflow.ellipsis,
-              style: mono
-                  ? GardenType.mono(12, color: color ?? palette.ink)
-                  : TextStyle(
-                      color: color ?? palette.ink,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w500,
-                    ),
-            ),
+            child: hint == null
+                ? text
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      text,
+                      const SizedBox(height: 2),
+                      Text(
+                        hint!,
+                        style:
+                            TextStyle(color: palette.inkMuted, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
           ),
           if (trailing != null) ...[const SizedBox(width: 8), trailing!],
         ],

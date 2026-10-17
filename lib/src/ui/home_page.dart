@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
+import '../logging/log_event_catalog.dart';
 import '../models.dart';
 import '../services/sensor_housing_service.dart';
 import '../services/update_check_service.dart';
@@ -35,7 +36,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   LauncherDestination _destination = LauncherDestination.game;
-  String? _lastMessage;
+  LauncherMessage? _lastMessage;
   bool _importDetailsExpanded = true;
   bool _announcementPopupScheduled = false;
   ImportPhase _lastImportPhase = ImportPhase.idle;
@@ -304,14 +305,40 @@ class _HomePageState extends State<HomePage> {
     _lastMessage = message;
     final phase = _controller.importProgress.phase;
     if (phase == ImportPhase.completed || phase == ImportPhase.failed) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _toast(message));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _toast(message.text, code: message.code),
+    );
   }
 
-  void _toast(String message) {
+  /// Shows [message]; an error [code] adds that error's fix hint below it.
+  void _toast(String message, {String? code}) {
     if (!mounted) return;
+    final hint = userErrorCatalog[code]?.action;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(
+        SnackBar(
+          duration: Duration(seconds: hint == null ? 4 : 8),
+          content: hint == null
+              ? Text(message)
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(message),
+                    const SizedBox(height: 4),
+                    Text(
+                      hint,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      );
   }
 
   Future<void> _openExternalUrl(String url) async {
@@ -323,8 +350,10 @@ class _HomePageState extends State<HomePage> {
   Future<void> _startGame() async {
     try {
       await _controller.startGame();
+    } on PlatformException catch (error) {
+      _toast('无法启动游戏：${error.message ?? error.code}', code: error.code);
     } catch (error) {
-      _toast('无法启动游戏：$error');
+      _toast('无法启动游戏：$error', code: 'game_host_launch_failed');
     }
   }
 

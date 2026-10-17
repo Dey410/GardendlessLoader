@@ -76,13 +76,13 @@ class AppController extends ChangeNotifier {
   AppSettings _appSettings = const AppSettings();
   bool _initialized = false;
   bool _busy = false;
-  String? _message;
+  LauncherMessage? _message;
   AppLogSnapshot? _logSnapshot;
   bool _logSnapshotLoading = false;
 
   bool get initialized => _initialized;
   bool get busy => _busy;
-  String? get message => _message;
+  LauncherMessage? get message => _message;
   AppLogSnapshot? get logSnapshot => _logSnapshot;
   bool get logSnapshotLoading => _logSnapshotLoading;
   ResourceManifest get manifest => _manifest;
@@ -204,13 +204,25 @@ class AppController extends ChangeNotifier {
         _emitInitializationStage('resource_validation');
         await refresh();
         if (_manifest.transactionState == TransactionState.cleaningOldSlot) {
-          _message = '游戏资源可用，旧槽清理将在下次启动重试';
+          _message = const LauncherMessage(
+            '游戏资源可用，旧槽清理将在下次启动重试',
+            'old_slot_cleanup_failed',
+          );
         } else if (interruptedTransaction) {
-          _message = '上次导入意外中断，已清理未完成文件';
+          _message = const LauncherMessage(
+            '上次导入意外中断，已清理未完成文件',
+            'import_interrupted',
+          );
         } else if (exitResult?.reason == GameExitReason.rendererGone) {
-          _message = exitResult?.message ?? '游戏渲染进程已退出';
+          _message = LauncherMessage(
+            exitResult?.message ?? '游戏渲染进程已退出',
+            exitResult?.code ?? 'webview_render_process_gone',
+          );
         } else if (exitResult?.reason == GameExitReason.launchFailed) {
-          _message = exitResult?.message ?? '原生游戏宿主启动失败';
+          _message = LauncherMessage(
+            exitResult?.message ?? '原生游戏宿主启动失败',
+            exitResult?.code ?? 'game_host_launch_failed',
+          );
         }
         _initialized = true;
         // Every game exit leaves an exit result, so only a cold start skips
@@ -232,7 +244,7 @@ class AppController extends ChangeNotifier {
         await startGame();
       }
     } catch (error) {
-      _message = '启动失败：$error';
+      _message = LauncherMessage('启动失败：$error', 'app_initialization_failed');
     } finally {
       _busy = false;
       notifyListeners();
@@ -314,23 +326,32 @@ class AppController extends ChangeNotifier {
         final appSucceeded = results[0];
         final gameSucceeded = results[1];
         if (!appSucceeded && !gameSucceeded) {
-          _message = '加载器和游戏更新检查失败，请稍后重试';
+          _message = const LauncherMessage(
+            '加载器和游戏更新检查失败，请稍后重试',
+            'update_check_failed',
+          );
         } else if (!appSucceeded) {
-          _message = '加载器更新检查失败，请稍后重试';
+          _message = const LauncherMessage(
+            '加载器更新检查失败，请稍后重试',
+            'update_check_failed',
+          );
         } else if (!gameSucceeded) {
-          _message = '游戏更新检查失败，请稍后重试';
+          _message = const LauncherMessage(
+            '游戏更新检查失败，请稍后重试',
+            'update_check_failed',
+          );
         } else if (!_appUpdateDetected && !_gameUpdateDetected) {
           final currentGameVersion = _currentGameVersion;
           if (currentGameVersion == null) {
             final gameState = hasCurrentResource ? '游戏版本未知' : '游戏资源尚未导入';
-            _message = '加载器 v$_currentAppVersion 已是最新；'
-                '$gameState，当前稳定版 $_latestGameVersion';
+            _message = LauncherMessage('加载器 v$_currentAppVersion 已是最新；'
+                '$gameState，当前稳定版 $_latestGameVersion');
           } else if (_currentGameVersionIsAhead) {
-            _message = '加载器 v$_currentAppVersion 已是最新；本地游戏 '
-                '$currentGameVersion 高于公开稳定版 $_latestGameVersion';
+            _message = LauncherMessage('加载器 v$_currentAppVersion 已是最新；本地游戏 '
+                '$currentGameVersion 高于公开稳定版 $_latestGameVersion');
           } else {
-            _message = '加载器 v$_currentAppVersion 与游戏 '
-                '$currentGameVersion 均为最新版';
+            _message = LauncherMessage('加载器 v$_currentAppVersion 与游戏 '
+                '$currentGameVersion 均为最新版');
           }
         }
       }
@@ -443,7 +464,7 @@ class AppController extends ChangeNotifier {
         operationId: operationId,
         context: <String, Object?>{'targetSlot': importTarget.slot.name},
       );
-      _message = '正在打开系统文件选择器';
+      _message = const LauncherMessage('正在打开系统文件选择器');
       notifyListeners();
       _appLogger.emit(
         level: LogLevel.info,
@@ -470,7 +491,7 @@ class AppController extends ChangeNotifier {
           manifestStore: manifestStore,
         );
         importTarget = null;
-        _message = '已取消选择 ZIP';
+        _message = const LauncherMessage('已取消选择 ZIP');
         _appLogger.emit(
           level: LogLevel.info,
           category: 'resource.import',
@@ -536,9 +557,11 @@ class AppController extends ChangeNotifier {
               _manifest.transactionState == TransactionState.cleaningOldSlot,
         },
       );
-      _message = _manifest.transactionState == TransactionState.cleaningOldSlot
-          ? '导入成功，旧槽清理将在下次启动重试'
-          : '导入成功';
+      _message = LauncherMessage(
+        _manifest.transactionState == TransactionState.cleaningOldSlot
+            ? '导入成功，旧槽清理将在下次启动重试'
+            : '导入成功',
+      );
       _importProgressTickTimer?.cancel();
       if (restoreAwakeModeAfterImport) {
         await _setImportAwakeMode(false);
@@ -585,9 +608,13 @@ class AppController extends ChangeNotifier {
         );
         importTarget = null;
       }
-      _message = failure.message;
+      _message = LauncherMessage(failure.message, failure.code);
       _updateImportProgress(
-        ImportProgress(phase: ImportPhase.failed, message: failure.message),
+        ImportProgress(
+          phase: ImportPhase.failed,
+          message: failure.message,
+          errorCode: failure.code,
+        ),
       );
       _appLogger.emit(
         level: LogLevel.error,
@@ -601,7 +628,7 @@ class AppController extends ChangeNotifier {
         stackTrace: StackTrace.current,
       );
     } on ImportFailure catch (failure) {
-      _message = failure.message;
+      _message = LauncherMessage(failure.message, failure.code);
       await refresh();
       _appLogger.emit(
         level: LogLevel.error,
@@ -633,9 +660,13 @@ class AppController extends ChangeNotifier {
         );
         importTarget = null;
       }
-      _message = '导入失败：$error';
+      _message = LauncherMessage('导入失败：$error', 'import_extract_failed');
       _updateImportProgress(
-        ImportProgress(phase: ImportPhase.failed, message: _message),
+        ImportProgress(
+          phase: ImportPhase.failed,
+          message: _message!.text,
+          errorCode: 'import_extract_failed',
+        ),
       );
       await refresh();
       _appLogger.emit(
@@ -752,7 +783,10 @@ class AppController extends ChangeNotifier {
     _message = null;
     final activeDirectory = _importService.activeDirectory(paths, _manifest);
     if (!_currentValidation.isValid) {
-      _message = _currentValidation.errorMessage ?? '激活槽资源无效';
+      _message = LauncherMessage(
+        _currentValidation.errorMessage ?? '激活槽资源无效',
+        _currentValidation.errorCode,
+      );
       notifyListeners();
       _appLogger.emit(
         level: LogLevel.error,
@@ -760,9 +794,9 @@ class AppController extends ChangeNotifier {
         event: 'game_host_launch_finished',
         outcome: LogOutcome.failed,
         code: 'resource_validation_failed',
-        message: _message,
+        message: _message!.text,
       );
-      throw StateError(_message!);
+      throw StateError(_message!.text);
     }
     // The native host creates it on the first export, after GP-Next startup.
     final exportRoot = Directory(p.join(paths.gpNextDir.path, '.exports'));

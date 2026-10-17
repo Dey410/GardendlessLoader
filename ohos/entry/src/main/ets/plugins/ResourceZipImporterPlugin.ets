@@ -29,6 +29,16 @@ interface ImportProgressPayload {
   totalFiles: number;
 }
 
+// A ZIP import failure whose code names the cause, selecting the launcher's fix hint.
+class ZipImportError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, MethodCallHandler {
   private channel: MethodChannel | null = null;
   private context: common.UIAbilityContext | null = null;
@@ -83,7 +93,7 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
       .catch((error: Error) => {
         this.busy = false;
         result.error(
-          'zip_import_failed',
+          error instanceof ZipImportError ? error.code : 'zip_import_failed',
           `无法导入选择的 ZIP：${error.message ?? error.toString()}`,
           null,
         );
@@ -134,7 +144,7 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
 
       const docsDirectory = this.findDocsDirectory(targetDirectory);
       if (docsDirectory == null) {
-        throw new Error('选择的 ZIP 中没有找到有效的 docs 资源目录');
+        throw new ZipImportError('zip_docs_missing', '选择的 ZIP 中没有找到有效的 docs 资源目录');
       }
 
       this.reportExtractedFiles(docsDirectory);

@@ -63,10 +63,11 @@ class GameActivity : Activity() {
             configureWebView()
         } catch (error: Exception) {
             val webViewPackage = WebViewCompat.getCurrentWebViewPackage(this)
+            val code = if (error is WebViewUnsupportedException) "webview_unsupported" else "game_host_launch_failed"
             AppLogStore.emit(
                 source = "android", level = "ERROR", category = "game.host",
                 event = "game_host_launch_finished", outcome = "failed",
-                code = "game_host_launch_failed", error = error,
+                code = code, error = error,
                 context = mapOf(
                     "webViewPackage" to webViewPackage?.packageName,
                     "webViewVersion" to webViewPackage?.versionName,
@@ -78,6 +79,7 @@ class GameActivity : Activity() {
                 GameExitReason.LAUNCH_FAILED,
                 error.message ?: error.toString(),
                 rawSession?.let { runCatching { JSONObject(it).optString("resourceRoot") }.getOrNull() },
+                code = code,
             )
             startActivity(Intent(this, MainActivity::class.java))
             finish()
@@ -85,8 +87,8 @@ class GameActivity : Activity() {
     }
 
     private fun configureWebView() {
-        check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            "Installed Android System WebView lacks origin-scoped messaging"
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            throw WebViewUnsupportedException("Installed Android System WebView lacks origin-scoped messaging")
         }
         webView = WebView(this).apply {
             setBackgroundColor(Color.BLACK)
@@ -691,6 +693,7 @@ class GameActivity : Activity() {
         message: String?,
         resourceRoot: String?,
         packageId: String = "unknown",
+        code: String? = null,
     ) {
         val root = resourceRoot?.let { File(it).parentFile } ?: return
         val output = File(root, "game_exit_result.json")
@@ -704,6 +707,7 @@ class GameActivity : Activity() {
                 timeZone = TimeZone.getTimeZone("UTC")
             }.format(Date()))
             .put("message", message ?: JSONObject.NULL)
+            .put("code", code)
         runCatching {
             temporary.writeText(json.toString(2) + "\n")
             check(temporary.renameTo(output)) { "Cannot commit exit result" }
@@ -744,3 +748,6 @@ class GameActivity : Activity() {
 private fun File.isSelectionSymbolicLink(): Boolean = runCatching {
     OsConstants.S_ISLNK(Os.lstat(path).st_mode)
 }.getOrDefault(false)
+
+/** The System WebView lacks a feature the GameHost needs; updating it fixes the launch. */
+private class WebViewUnsupportedException(message: String) : IllegalStateException(message)

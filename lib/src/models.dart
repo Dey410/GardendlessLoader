@@ -278,6 +278,7 @@ class ImportProgress {
     this.elapsed = Duration.zero,
     this.bytesPerSecond = 0,
     this.message,
+    this.errorCode,
   });
 
   final ImportPhase phase;
@@ -288,6 +289,9 @@ class ImportProgress {
   final Duration elapsed;
   final double bytesPerSecond;
   final String? message;
+
+  /// Code of the failure that ended a [ImportPhase.failed] import.
+  final String? errorCode;
 
   static const idle = ImportProgress(phase: ImportPhase.idle);
 
@@ -333,8 +337,24 @@ class ImportProgress {
       elapsed: elapsed ?? this.elapsed,
       bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
       message: message ?? this.message,
+      errorCode: errorCode,
     );
   }
+}
+
+/// A launcher notice; an error notice carries the code that selects its fix hint.
+class LauncherMessage {
+  const LauncherMessage(this.text, [this.code]);
+
+  final String text;
+  final String? code;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LauncherMessage && other.text == text && other.code == code;
+
+  @override
+  int get hashCode => Object.hash(text, code);
 }
 
 class ResourceManifest {

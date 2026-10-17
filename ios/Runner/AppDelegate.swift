@@ -336,7 +336,7 @@ import UIKit
       guard let self else {
         result(
           FlutterError(
-            code: "missing_app_delegate",
+            code: "zip_picker_failed",
             message: "无法获取 iOS 应用代理",
             details: nil
           )
@@ -346,7 +346,7 @@ import UIKit
       guard let rootController = self.topViewController() else {
         result(
           FlutterError(
-            code: "missing_view_controller",
+            code: "zip_picker_failed",
             message: "Unable to present ZIP picker",
             details: nil
           )
@@ -387,7 +387,7 @@ import UIKit
         DispatchQueue.main.async {
           result(
             FlutterError(
-              code: "missing_app_delegate",
+              code: "zip_picker_failed",
               message: "无法获取 iOS 应用代理",
               details: nil
             )
@@ -421,13 +421,26 @@ import UIKit
           self.zipImportInProgress = false
           result(
             FlutterError(
-              code: "zip_import_failed",
+              code: Self.zipImportErrorCode(error),
               message: "无法导入选择的 ZIP：\(error.localizedDescription)",
               details: nil
             )
           )
         }
       }
+    }
+  }
+
+  /// Flutter error code naming the failure cause; it selects the launcher's fix hint.
+  private static func zipImportErrorCode(_ error: Error) -> String {
+    switch (error as? GameError)?.code {
+    case .zipDocsMissing: return "zip_docs_missing"
+    case .zipInvalid: return "zip_invalid"
+    case .zipEncrypted: return "zip_encrypted"
+    case .zipUnsupported: return "zip_unsupported"
+    case .zipSymbolicLink, .zipPathUnsafe: return "zip_path_unsafe"
+    case .zipWriteFailed: return "zip_write_failed"
+    default: return "zip_import_failed"
     }
   }
 

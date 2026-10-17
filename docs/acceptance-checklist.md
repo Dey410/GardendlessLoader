@@ -103,4 +103,7 @@
 - A corrupt manifest is rebuilt from valid slot metadata using the greatest activation generation.
 - Upgrade migration prefers valid legacy `current`, otherwise valid `previous`, and removes all legacy resource directories after success.
 - Cancelling game save export shows a cancellation notice instead of an export failure.
+- Every Loader error, in the SnackBar, the failed import panel, the resource card's 最近错误 and GP-Next rows, and the logs page, shows the fix hint that `userErrorCatalog` gives its error code.
+- ZIP import failures report their cause to Flutter on every platform: `zip_docs_missing`, `zip_invalid`, `zip_encrypted`, `zip_unsupported`, `zip_path_unsafe` or `zip_write_failed`, with `zip_import_failed` for anything else. Each cause shows its own hint.
+- An Android System WebView without `WEB_MESSAGE_LISTENER` writes exit-result code `webview_unsupported`, and the launcher tells the user to update the WebView.
 - HarmonyOS CI emits a skip notice instead of failing when `OHOS_COMMANDLINE_TOOLS_URL` is not configured.

@@ -15,6 +15,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.Locale
+import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
 import org.json.JSONObject
 
@@ -188,7 +189,11 @@ class MainActivity : FlutterActivity() {
             } catch (error: Exception) {
                 runOnUiThread {
                     result.error(
-                        "zip_import_failed",
+                        when (error) {
+                            is ZipImportException -> error.code
+                            is ZipException -> "zip_invalid"
+                            else -> "zip_import_failed"
+                        },
                         "无法导入选择的 ZIP：${error.message ?: error.toString()}",
                         null,
                     )
@@ -209,7 +214,7 @@ class MainActivity : FlutterActivity() {
             force = true,
         )
         val scan = findDocsPrefix(uri, sourceBytes)
-            ?: throw IllegalArgumentException("选择的 ZIP 中没有找到有效的 docs 资源目录")
+            ?: throw ZipImportException("zip_docs_missing", "选择的 ZIP 中没有找到有效的 docs 资源目录")
         resetDirectory(targetDirectory)
         var processedBytes = 0L
         var processedFiles = 0
@@ -390,7 +395,7 @@ class MainActivity : FlutterActivity() {
             .split('/')
             .filter { it.isNotEmpty() && it != "." }
         if (path.startsWith("/") || parts.isEmpty() || parts.any { it == ".." }) {
-            throw IllegalArgumentException("选择的 ZIP 包含不安全路径")
+            throw ZipImportException("zip_path_unsafe", "选择的 ZIP 包含不安全路径")
         }
         return parts.joinToString("/")
     }
@@ -405,7 +410,7 @@ class MainActivity : FlutterActivity() {
         val rootPath = rootFile.path
         val targetPath = targetFile.path
         if (targetPath != rootPath && !targetPath.startsWith(rootPath + File.separator)) {
-            throw IllegalArgumentException("选择的 ZIP 包含 docs 外部路径")
+            throw ZipImportException("zip_path_unsafe", "选择的 ZIP 包含 docs 外部路径")
         }
         return targetFile
     }
@@ -476,3 +481,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 }
+
+/** A ZIP import failure whose [code] names the cause, selecting the launcher's fix hint. */
+private class ZipImportException(val code: String, message: String) : Exception(message)

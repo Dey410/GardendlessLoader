@@ -218,7 +218,11 @@ class ImportService {
       );
       await manifestStore.write(failed);
       report(
-        ImportProgress(phase: ImportPhase.failed, message: failure.message),
+        ImportProgress(
+          phase: ImportPhase.failed,
+          message: failure.message,
+          errorCode: failure.code,
+        ),
       );
       throw failure;
     }

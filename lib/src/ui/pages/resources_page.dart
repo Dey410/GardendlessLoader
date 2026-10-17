@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
 import '../../constants.dart';
+import '../../logging/log_event_catalog.dart';
 import '../../models.dart';
 import '../launcher_actions.dart';
 import '../theme/garden_theme.dart';
@@ -134,6 +135,7 @@ class _ImportProgressView extends StatelessWidget {
     final failed = progress.phase == ImportPhase.failed;
     final completed = progress.phase == ImportPhase.completed;
     final message = progress.message ?? importPhaseMessage(progress.phase);
+    final hint = failed ? userErrorCatalog[progress.errorCode]?.action : null;
     final title = failed
         ? '导入失败 · $message'
         : completed
@@ -213,6 +215,14 @@ class _ImportProgressView extends StatelessWidget {
                           ),
                       ],
                     ),
+                    if (hint != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        hint,
+                        style:
+                            TextStyle(color: palette.inkMuted, fontSize: 12.5),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -426,12 +436,18 @@ class _CurrentResourceCard extends StatelessWidget {
             value: lastError ?? '无',
             color: lastError == null ? null : palette.danger,
             maxLines: 3,
+            hint: lastError == null
+                ? null
+                : userErrorCatalog[manifest.lastErrorCode]?.action,
           ),
           InfoRow(
             label: 'GP-Next',
             value: gpNext,
             color: controller.hasGpNext && !controller.gpNextCompatible
                 ? palette.danger
+                : null,
+            hint: controller.hasGpNext && !controller.gpNextCompatible
+                ? userErrorCatalog['gp_next_incompatible']?.action
                 : null,
           ),
           InfoRow(
