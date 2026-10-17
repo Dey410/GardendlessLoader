@@ -234,6 +234,9 @@ class GameResourceResolver(root: File) {
     }
 
     companion object {
+        // Cocos binary payloads (ASTC textures, .cconb assets, effect.bin and asm.js
+        // memory files) that are correctly served as application/octet-stream.
+        val BINARY_EXTENSIONS = setOf("astc", "bin", "cconb")
         private val encodedEscape = Regex("(?i)%(?:2e|2f|5c|25)")
         private val contentHash = Regex("(?i)(?:^|[._-])[0-9a-f]{8,}(?:[._-]|$)")
     }

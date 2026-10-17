@@ -222,7 +222,10 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       let end = range?.upperBound ?? max(0, length - 1)
       let responseLength = length == 0 ? 0 : end - start + 1
       headers["Content-Type"] = metadata.mimeType
-      if metadata.mimeType == "application/octet-stream" {
+      if metadata.mimeType == "application/octet-stream",
+         !ResourceMIME.binaryExtensions.contains(
+           (relativePath as NSString).pathExtension.lowercased()
+         ) {
         diagnose(
           "resource_mime_mismatch",
           path: relativePath,

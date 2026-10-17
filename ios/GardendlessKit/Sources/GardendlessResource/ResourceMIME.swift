@@ -1,6 +1,10 @@
 import Foundation
 
 public enum ResourceMIME {
+  /// Cocos binary payloads (ASTC textures, `.cconb` assets, `effect.bin` and
+  /// asm.js memory files) that are correctly served as application/octet-stream.
+  public static let binaryExtensions: Set<String> = ["astc", "bin", "cconb"]
+
   public static func type(for path: String) -> String {
     switch (path as NSString).pathExtension.lowercased() {
     case "html", "htm":

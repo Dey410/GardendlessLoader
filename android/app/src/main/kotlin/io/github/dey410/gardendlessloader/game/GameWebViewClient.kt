@@ -10,6 +10,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import io.github.dey410.gardendlessloader.logging.AppLogStore
 import java.io.ByteArrayInputStream
+import java.util.Locale
 
 class GameWebViewClient(
     private val session: NativeGameSession,
@@ -47,7 +48,10 @@ class GameWebViewClient(
                     gameSessionId = session.sessionId,
                     context = mapOf("path" to url.path, "statusCode" to response.statusCode),
                 )
-            } else if (response.mimeType == "application/octet-stream") {
+            } else if (response.mimeType == "application/octet-stream" &&
+                url.lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase(Locale.US)
+                    !in GameResourceResolver.BINARY_EXTENSIONS
+            ) {
                 AppLogStore.emit(
                     source = "android",
                     level = "WARN",

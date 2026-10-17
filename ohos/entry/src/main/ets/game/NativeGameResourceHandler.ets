@@ -120,7 +120,10 @@ export class NativeGameResourceHandler {
         headers.set('Content-Range', `bytes ${start}-${end}/${stat.size}`);
       }
       const mime = this.mimeType(relativePath, filePath);
-      if (mime === 'application/octet-stream') {
+      // Cocos binary payloads (ASTC textures, .cconb assets, effect.bin and asm.js
+      // memory files) are correctly served as application/octet-stream.
+      const extension = relativePath.substring(relativePath.lastIndexOf('.') + 1).toLowerCase();
+      if (mime === 'application/octet-stream' && !['astc', 'bin', 'cconb'].includes(extension)) {
         this.logFailure(
           'resource_mime_mismatch',
           relativePath,
