@@ -77,7 +77,7 @@ class _LoaderPanel extends StatelessWidget {
           const SizedBox(height: 14),
           if (update == null)
             Text(
-              '进入启动器时会自动检查，也可以使用右上角的「检查更新」。',
+              '进入启动器时会自动检查，也可以点右上角的刷新图标手动检查。',
               style: TextStyle(
                 color: palette.inkMuted,
                 fontSize: 12.5,

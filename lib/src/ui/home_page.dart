@@ -596,17 +596,14 @@ class _TopBar extends StatelessWidget {
               ),
               const SizedBox(width: 16),
             ],
-            GardenButton(
+            GardenIconButton(
               key: const ValueKey('check-updates-button'),
-              label: controller.updateCheckInProgress ? '检查中' : '检查更新',
               icon: Icons.refresh_rounded,
-              compact: true,
-              busy: controller.updateCheckInProgress,
+              tooltip: controller.updateCheckInProgress ? '检查中' : '检查更新',
               onPressed: controller.updateCheckInProgress
                   ? null
                   : () => controller.checkForUpdates(),
             ),
-            const SizedBox(width: 6),
             Stack(
               clipBehavior: Clip.none,
               children: [
