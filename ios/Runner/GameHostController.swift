@@ -408,9 +408,11 @@ final class GameHostController: UIViewController,
       return
     }
     pendingGpNextSelection = (id, directory)
+    // UIKit asserts when a folder is opened as a copy. A folder is opened in
+    // place and staged under its security scope in documentPicker(_:didPickDocumentsAt:).
     let picker = UIDocumentPickerViewController(
       forOpeningContentTypes: [directory ? .folder : .zip],
-      asCopy: true
+      asCopy: !directory
     )
     activePicker = picker
     picker.delegate = self
