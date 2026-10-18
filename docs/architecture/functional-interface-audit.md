@@ -51,7 +51,7 @@ ImportService承担实际状态机；GameHost承担实际WebView、选择器和�
 | F09 | 启动前检查 | D1:875 → D6:9 `ResourceValidator.validate` | 检查当前时间的文件现实；不同于同一导入结果反复验证 |
 | F10 | 返回/异常退出后恢复启动器 | D1:235 → D7:90 `consumeExitResult`；原生写退出结果 | 保留sessionId关联和恢复；仅保存需要的恢复数据 |
 | F11 | 展开启动设置 | U1:2142/2334 本地bool | 保持现状 |
-| F12 | 自动收集偏好 | U1:2197 → D1:1102 → D8 `ManifestStore.write` → 下一GameSession | 单一写者；**成功导入重置为off是既有产品规则**，不能误报为bug |
+| F12 | 自动收集偏好 | U1:2197 → D1:1102 → D8 `ManifestStore.write` → 下一GameSession | 单一写者；只有玩家切换才改变，导入（成功、失败或取消）和旧版迁移都保留原值 |
 | F13 | 详细音频诊断偏好 | U1:870 → D1:1073 → D9 `AppSettingsStore.write` | 当前UI唯一入口；Android/OHOS尚未接入，不写成已全平台可用 |
 | F14 | 检查加载器更新 | U1:44/1158 → D1:417/461 → D10:77 `checkForUpdate` | 保留release产品解析；版本身份只读一次 |
 | F15 | 检查游戏更新 | U1:1169 → D1:476 → D11:151/179 `check/loadLatestVersion` | 保留tags/稳定版规则；与F14不是同一产品的双实现 |

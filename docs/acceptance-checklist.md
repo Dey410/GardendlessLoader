@@ -59,7 +59,7 @@
 - With no valid resource, the panel is absent, the arrow is disabled, and the start button keeps all four rounded corners.
 - During an import over an existing standard resource, an already expanded panel remains visible at reduced opacity and cannot be changed.
 - Collapsing hides every setting row, and re-entering the Loader home page always restores the collapsed presentation without changing persisted setting values.
-- Restarting the Loader preserves the current resource's choice; every successful import resets it to off, while failed or cancelled imports preserve it.
+- The choice only changes when the player toggles it: restarting the Loader, a successful, failed or cancelled import, and a legacy resource migration all preserve it.
 - When enabled, continuously valid gameplay waits three seconds before sending `A` keydown, sends keyup after 50 ms, then repeats every three seconds.
 - Leaving gameplay, pausing, entering an air-raid/special stage, focusing a native input/select/editable element, backgrounding, or losing window focus cancels the pending cycle.
 - Returning to valid foreground gameplay starts a fresh three-second wait with no catch-up presses.

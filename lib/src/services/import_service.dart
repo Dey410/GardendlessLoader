@@ -158,6 +158,7 @@ class ImportService {
             validation.gpNextCompatibilityError == null,
         resourceStatus: ResourceStatus.ready,
         lastSelfCheckAt: now,
+        autoCollectSunEnabled: manifest.autoCollectSunEnabled,
         clearError: true,
       );
       await manifestStore.write(manifest);
@@ -346,6 +347,7 @@ class ImportService {
             validation.gpNextCompatibilityError == null,
         resourceStatus: ResourceStatus.ready,
         lastSelfCheckAt: now,
+        autoCollectSunEnabled: manifest.autoCollectSunEnabled,
         clearError: true,
       );
       await manifestStore.write(manifest);
@@ -565,6 +567,7 @@ class ImportService {
       resourceStatus: ResourceStatus.ready,
       lastSelfCheckAt: manifest.lastSelfCheckAt,
       transactionState: TransactionState.migrating,
+      autoCollectSunEnabled: manifest.autoCollectSunEnabled,
       clearError: true,
     );
     await manifestStore.write(manifest);
