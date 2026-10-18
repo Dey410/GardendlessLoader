@@ -82,6 +82,7 @@ final class GameHostController: UIViewController,
   private var pendingGpNextSelection: (id: String, directory: Bool)?
   private var exiting = false
   private var cleanedUp = false
+  private var sceneActivityObservers: [NSObjectProtocol] = []
 
   init(
     session: GameSession,
@@ -203,6 +204,23 @@ final class GameHostController: UIViewController,
         cachePolicy: .useProtocolCachePolicy
       )
     )
+    // The page suspends its audio while the scene is inactive and resumes it
+    // only once the scene is active again (audio_lifecycle.js).
+    for (name, active) in [
+      (UIScene.willDeactivateNotification, false),
+      (UIScene.didActivateNotification, true),
+    ] {
+      sceneActivityObservers.append(
+        NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
+          [weak self] notification in
+          guard let self, (notification.object as? UIScene) === self.view.window?.windowScene
+          else { return }
+          self.webView.evaluateJavaScript(
+            "window.__gardendlessSetSceneActive&&window.__gardendlessSetSceneActive(\(active))"
+          )
+        }
+      )
+    }
   }
 
   override var prefersStatusBarHidden: Bool { true }
@@ -672,6 +690,8 @@ final class GameHostController: UIViewController,
     pendingGpNextSelection = nil
     clearSelection()
     fileTasks.destroy()
+    sceneActivityObservers.forEach(NotificationCenter.default.removeObserver)
+    sceneActivityObservers = []
     webView.configuration.userContentController.removeScriptMessageHandler(
       forName: ScriptMessageBridge.name,
       contentWorld: .page
@@ -729,6 +749,7 @@ final class GameHostController: UIViewController,
     var names = [
       "transport.js",
       "logging.js",
+      "audio_lifecycle.js",
       "audio_diagnostic.js",
       "auto_sun.js",
       "touch_state_machine.js",

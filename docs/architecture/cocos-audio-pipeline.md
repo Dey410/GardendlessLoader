@@ -4,10 +4,11 @@
 
 iOS 游戏宿主不再实现独立的原生音频引擎，也不再修改 Cocos 引擎包。音频的加载模式、解码、播放、音量、静音、循环、变速和结束事件全部由资源包自带的 Cocos Creator WebAudio / HTMLMediaElement 后端决定。
 
-Loader 只负责两件事：
+Loader 只负责三件事：
 
 1. 通过 `gardendless-game://localhost` 正确提供音频资源。
 2. 以不改变音频行为的浏览器 API 观察器记录错误、汇总和可选的详细事件。
+3. 按场景活跃状态挂起和恢复页面音频，使切换应用后能重新发声（见“切换应用”）。
 
 该边界适用于通过现有资源校验的通用 Cocos Web 包，不再与某个压缩后的 Cocos bundle 版本绑定。
 
@@ -30,6 +31,18 @@ Cocos AudioSource / playOneShot
 - [`import_service.dart`](../../lib/src/services/import_service.dart) 校验并激活资源，但不改写 Cocos JavaScript。
 
 不存在 Loader 侧的格式白名单、短音效/长音频分类、解码回退、AVAudioSession 管理、主音量、播放节点池或 Cocos bundle 补丁。
+
+## 切换应用
+
+iPad（iPadOS 27）实测：App 进入后台时，iOS 中断 WKWebView 的音频会话，回到前台后 WebKit 不会重新激活它；
+页面若在场景重新激活之前调用 `AudioContext.resume()` 或媒体 `play()`，激活被拒绝，而 WebKit 网页进程已把会话
+记为激活，此后不再重试。结果是页面的 WebAudio 和 `<audio>` 都无法再发声（`resume()` 报
+`Failed to start the audio device`，或状态为 running 但时钟停止）。旧资源包同样受影响。
+
+[`GameHostController.swift`](../../ios/Runner/GameHostController.swift) 在场景 `willDeactivate` /
+`didActivate` 时调用页面的 `__gardendlessSetSceneActive`。[`audio_lifecycle.js`](../../assets/game_bridge/audio_lifecycle.js)
+在场景失活时挂起正在运行的 AudioContext、暂停正在播放的媒体元素（此时 App 仍在前台，WebKit 会正常停用会话），
+失活期间推迟 `resume()` 与 `play()`，场景激活后再恢复，WebKit 随之重新激活会话。只在 iOS 注入。
 
 ## 与 Android 当前实现的区别
 
