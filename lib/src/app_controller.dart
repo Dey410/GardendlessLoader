@@ -78,6 +78,7 @@ class AppController extends ChangeNotifier {
   ImportProgress _importProgress = ImportProgress.idle;
   Announcement? _announcement;
   SeasonalTheme? _seasonalTheme;
+  LauncherLinks _links = const LauncherLinks();
   ({String from, String to})? _versionUpgrade;
   int _importTipIndex = 0;
   AboutContent _aboutContent = localFallbackAboutContent;
@@ -124,6 +125,7 @@ class AppController extends ChangeNotifier {
   ResourceManifest get manifest => _manifest;
   ImportProgress get importProgress => _importProgress;
   Announcement? get announcement => _announcement;
+  LauncherLinks get links => _links;
 
   /// The remote seasonal theme, while today is within its dates.
   SeasonalTheme? get seasonalTheme =>
@@ -356,10 +358,24 @@ class AppController extends ChangeNotifier {
         gpNextCompatibilityError: _manifest.gpNextCompatibilityError,
       ).asReady();
 
+  /// Applies the saved feed at once, then the remote one if it arrives.
+  /// Fetched links replace the built-in ones and are saved with the feed, so
+  /// they stay in use offline and when a later file leaves them out.
   Future<void> refreshAnnouncement() async {
+    final cacheFile =
+        File(p.join(_requirePaths().root.path, 'announcements.json'));
+    final cached = await _announcementService.loadCached(cacheFile);
+    if (cached != null) _applyFeed(cached);
     final feed = await _announcementService.fetch();
+    if (feed == null) return;
+    _applyFeed(feed);
+    await _announcementService.save(cacheFile, feed, _links);
+  }
+
+  void _applyFeed(AnnouncementFeed feed) {
     _announcement = feed.announcement;
     _seasonalTheme = feed.theme;
+    _links = _links.merge(feed.urls);
     notifyListeners();
   }
 

@@ -131,7 +131,8 @@ class _LoaderPanel extends StatelessWidget {
                   icon: Icons.download_rounded,
                   tone: GardenButtonTone.primary,
                   compact: true,
-                  onPressed: () => actions.openUrl(appCloudDriveUpdateUrl),
+                  onPressed: () =>
+                      actions.openUrl(controller.links.loaderCloudDrive),
                 ),
                 GardenButton(
                   label: strings.viewGithubRelease,
@@ -376,10 +377,14 @@ class _AboutPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.garden;
     final strings = context.strings;
+    final launcherLinks = controller.links;
     final links = <AnnouncementLink>[
-      AnnouncementLink(label: strings.loaderGithub, url: appGithubUrl),
-      AnnouncementLink(label: strings.upstreamGithub, url: githubUrl),
-      AnnouncementLink(label: strings.bilibiliHome, url: bilibiliHomeUrl),
+      AnnouncementLink(
+          label: strings.loaderGithub, url: launcherLinks.loaderGithub),
+      AnnouncementLink(
+          label: strings.upstreamGithub, url: launcherLinks.gameGithub),
+      AnnouncementLink(
+          label: strings.bilibiliHome, url: launcherLinks.bilibili),
     ];
     return SurfaceCard(
       key: const ValueKey('about-panel'),

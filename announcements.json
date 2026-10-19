@@ -7,6 +7,14 @@
     "accentDark": "#fb923c",
     "badge": "🎃"
   },
+  "urls": {
+    "loaderGithub": "https://github.com/Dey410/GardendlessLoader",
+    "gameGithub": "https://github.com/Gzh0821/pvzge_web",
+    "loaderCloudDrive": "https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU",
+    "gameCloudDrive": "https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU",
+    "bilibili": "https://space.bilibili.com/523667580",
+    "gameReleaseNotes": "https://github.com/Gzh0821/pvzg_site/releases/tag/{version}"
+  },
   "announcement": {
     "id": "2026-10-19-v0.9.0",
     "title": "v0.9.0 启动器焕新",

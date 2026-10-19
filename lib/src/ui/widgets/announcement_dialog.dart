@@ -10,11 +10,12 @@ import 'garden_widgets.dart';
 List<AnnouncementLink> announcementLinks(
   Announcement? announcement,
   AppStrings strings,
+  LauncherLinks launcherLinks,
 ) {
   final links = announcement?.links ?? const <AnnouncementLink>[];
   return <AnnouncementLink>[
     ...links,
-    for (final link in socialLinks(strings))
+    for (final link in socialLinks(strings, launcherLinks))
       if (!links.any(
         (item) => Uri.tryParse(item.url)?.host == Uri.parse(link.url).host,
       ))
@@ -25,10 +26,11 @@ List<AnnouncementLink> announcementLinks(
 Future<void> showAnnouncementDialog(
   BuildContext context, {
   required Announcement? announcement,
+  required LauncherLinks launcherLinks,
   required Future<void> Function(String url) openUrl,
 }) {
   final strings = context.strings;
-  final links = announcementLinks(announcement, strings);
+  final links = announcementLinks(announcement, strings, launcherLinks);
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(

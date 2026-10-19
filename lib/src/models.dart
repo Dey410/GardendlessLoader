@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'constants.dart';
+
 enum ResourceStatus { missing, valid, invalid, ready }
 
 enum ResourceBuildProfile { standardWeb, gpNext }
@@ -307,6 +309,64 @@ class SeasonalTheme {
     }
     return 0xff000000 | int.parse(match[1]!, radix: 16);
   }
+}
+
+/// The links the launcher opens. A link fetched under `urls` in the remote
+/// announcement replaces the built-in one for good, so a dead link needs no
+/// app release.
+class LauncherLinks {
+  const LauncherLinks({
+    this.loaderGithub = appGithubUrl,
+    this.gameGithub = githubUrl,
+    this.loaderCloudDrive = cloudDriveUrl,
+    this.gameCloudDrive = cloudDriveUrl,
+    this.bilibili = bilibiliHomeUrl,
+    this.gameReleaseNotes = gameReleaseNotesUrl,
+  });
+
+  /// These links with each valid https entry of [urls] written over its
+  /// link; a missing or invalid entry leaves the link as it is.
+  LauncherLinks merge(Object? urls) {
+    if (urls is! Map<String, dynamic>) return this;
+    String pick(String key, String current) {
+      final url = urls[key];
+      return url is String && AnnouncementLink._isAllowedHttpsUrl(url)
+          ? url.trim()
+          : current;
+    }
+
+    final releaseNotes = pick('gameReleaseNotes', gameReleaseNotes);
+    return LauncherLinks(
+      loaderGithub: pick('loaderGithub', loaderGithub),
+      gameGithub: pick('gameGithub', gameGithub),
+      loaderCloudDrive: pick('loaderCloudDrive', loaderCloudDrive),
+      gameCloudDrive: pick('gameCloudDrive', gameCloudDrive),
+      bilibili: pick('bilibili', bilibili),
+      gameReleaseNotes:
+          releaseNotes.contains('{version}') ? releaseNotes : gameReleaseNotes,
+    );
+  }
+
+  Map<String, String> toJson() => {
+        'loaderGithub': loaderGithub,
+        'gameGithub': gameGithub,
+        'loaderCloudDrive': loaderCloudDrive,
+        'gameCloudDrive': gameCloudDrive,
+        'bilibili': bilibili,
+        'gameReleaseNotes': gameReleaseNotes,
+      };
+
+  final String loaderGithub;
+  final String gameGithub;
+  final String loaderCloudDrive;
+  final String gameCloudDrive;
+  final String bilibili;
+
+  /// Contains `{version}`, which [gameReleaseNotesFor] fills in.
+  final String gameReleaseNotes;
+
+  String gameReleaseNotesFor(String version) =>
+      gameReleaseNotes.replaceAll('{version}', version);
 }
 
 class AboutContent {

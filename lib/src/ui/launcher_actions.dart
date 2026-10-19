@@ -58,9 +58,9 @@ class LauncherActions {
   final VoidCallback toggleImportDetails;
 }
 
-List<AnnouncementLink> socialLinks(AppStrings strings) => [
-      AnnouncementLink(label: strings.bilibiliHome, url: bilibiliHomeUrl),
-      const AnnouncementLink(label: 'GitHub', url: appGithubUrl),
+List<AnnouncementLink> socialLinks(AppStrings strings, LauncherLinks links) => [
+      AnnouncementLink(label: strings.bilibiliHome, url: links.bilibili),
+      AnnouncementLink(label: 'GitHub', url: links.loaderGithub),
     ];
 
 Widget linkIcon(AnnouncementLink link, {double size = 16, Color? color}) {
