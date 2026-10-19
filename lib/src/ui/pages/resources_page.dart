@@ -6,6 +6,7 @@ import '../../constants.dart';
 import '../../l10n/app_strings.dart';
 import '../../logging/log_event_catalog.dart';
 import '../../models.dart';
+import '../../services/garden_journal.dart';
 import '../launcher_actions.dart';
 import '../theme/garden_theme.dart';
 import '../widgets/garden_widgets.dart';
@@ -28,7 +29,13 @@ class ResourcesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return TwoColumn(
       gap: compact ? 16 : 24,
-      left: [_CurrentResourceCard(controller: controller, actions: actions)],
+      left: [
+        _CurrentResourceCard(controller: controller, actions: actions),
+        if (controller.journal.imports.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _VersionRingsCard(controller: controller),
+        ],
+      ],
       right: [
         _GameVersionCard(controller: controller, actions: actions),
         const SizedBox(height: 16),
@@ -89,9 +96,12 @@ class _ImportCard extends StatelessWidget {
                     child: _ImportProgressView(
                       key: const ValueKey('resource-progress-region'),
                       progress: progress,
+                      upgrade: controller.versionUpgrade,
+                      tip: controller.importTip,
                       expanded: detailsExpanded,
                       onToggle: actions.toggleImportDetails,
                       onDismiss: controller.dismissImportProgress,
+                      onOpenUrl: actions.openUrl,
                     ),
                   ),
           ),
@@ -122,15 +132,23 @@ class _ImportProgressView extends StatelessWidget {
   const _ImportProgressView({
     super.key,
     required this.progress,
+    required this.upgrade,
+    required this.tip,
     required this.expanded,
     required this.onToggle,
     required this.onDismiss,
+    required this.onOpenUrl,
   });
 
   final ImportProgress progress;
+
+  /// Set on a completed import that moved the game to a newer version.
+  final ({String from, String to})? upgrade;
+  final String tip;
   final bool expanded;
   final VoidCallback onToggle;
   final VoidCallback onDismiss;
+  final Future<void> Function(String url) onOpenUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +157,7 @@ class _ImportProgressView extends StatelessWidget {
     final steps = strings.importSteps;
     final failed = progress.phase == ImportPhase.failed;
     final completed = progress.phase == ImportPhase.completed;
+    final upgrade = completed ? this.upgrade : null;
     final hint = failed
         ? userErrorCatalog[progress.errorCode]?.action.of(strings)
         : null;
@@ -146,13 +165,15 @@ class _ImportProgressView extends StatelessWidget {
         ? strings.importFailedTitle(
             progress.message ?? strings.importPhase(progress.phase),
           )
-        : completed
-            ? strings.importCompletedTitle
-            : strings.importStepTitle(
-                progress.stepIndex,
-                progress.stepCount,
-                strings.importPhase(progress.phase),
-              );
+        : upgrade != null
+            ? strings.upgradedTitle(upgrade.to)
+            : completed
+                ? strings.importCompletedTitle
+                : strings.importStepTitle(
+                    progress.stepIndex,
+                    progress.stepCount,
+                    strings.importPhase(progress.phase),
+                  );
     final color = failed ? palette.danger : palette.accent;
     final value = failed || completed ? 1.0 : progress.value;
     final step = completed ? 5 : progress.stepIndex;
@@ -171,25 +192,27 @@ class _ImportProgressView extends StatelessWidget {
                 value: value,
                 size: 44,
                 color: color,
-                child: failed || completed
-                    ? Icon(
-                        failed ? Icons.close_rounded : Icons.check_rounded,
-                        size: 20,
-                        color: color,
-                      )
-                    : value == null
-                        ? null
-                        : Text(
-                            '${(value * 100).round()}%',
-                            style: TextStyle(
-                              color: palette.ink,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
+                child: upgrade != null
+                    ? _Sprout(color: color)
+                    : failed || completed
+                        ? Icon(
+                            failed ? Icons.close_rounded : Icons.check_rounded,
+                            size: 20,
+                            color: color,
+                          )
+                        : value == null
+                            ? null
+                            : Text(
+                                '${(value * 100).round()}%',
+                                style: TextStyle(
+                                  color: palette.ink,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                              ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -233,6 +256,39 @@ class _ImportProgressView extends StatelessWidget {
                         hint,
                         style:
                             TextStyle(color: palette.inkMuted, fontSize: 12.5),
+                      ),
+                    ],
+                    if (!failed && !completed) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '💡 $tip',
+                        key: const ValueKey('import-tip'),
+                        style:
+                            TextStyle(color: palette.inkMuted, fontSize: 12.5),
+                      ),
+                    ],
+                    if (upgrade != null) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 10,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            '${upgrade.from} → ${upgrade.to}',
+                            style: GardenType.mono(12.5, color: palette.ink),
+                          ),
+                          // Release notes exist for public releases only.
+                          if (RegExp(r'^\d+\.\d+\.\d+$').hasMatch(upgrade.to))
+                            GardenButton(
+                              key: const ValueKey('game-release-notes'),
+                              label: strings.releaseNotes,
+                              icon: Icons.open_in_new_rounded,
+                              tone: GardenButtonTone.ghost,
+                              compact: true,
+                              onPressed: () => onOpenUrl(
+                                  '$gameReleaseUrlPrefix${upgrade.to}'),
+                            ),
+                        ],
                       ),
                     ],
                   ],
@@ -567,4 +623,163 @@ class _TechnicalDetails extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A seedling that grows in once when an import moves the game to a newer
+/// version.
+class _Sprout extends StatelessWidget {
+  const _Sprout({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(Icons.eco_rounded, size: 22, color: color);
+    if (GardenMotionScope.reduced(context)) return icon;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.2, end: 1),
+      duration: GardenMotion.panel,
+      curve: GardenMotion.easeOut,
+      builder: (context, value, child) => Transform.scale(
+        scale: value,
+        alignment: Alignment.bottomCenter,
+        child: child,
+      ),
+      child: icon,
+    );
+  }
+}
+
+/// Every game version this device has imported, oldest on the left; each
+/// later version carries one more ring.
+class _VersionRingsCard extends StatelessWidget {
+  const _VersionRingsCard({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final imports = controller.journal.imports;
+    return SurfaceCard(
+      key: const ValueKey('version-rings'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PanelHeader(
+            title: strings.versionRings,
+            trailing: Text(
+              strings.importCount(imports.length),
+              style: TextStyle(color: palette.inkFaint, fontSize: 12),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            // Opens on the newest ring.
+            reverse: true,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final (index, record) in imports.indexed) ...[
+                  if (index > 0)
+                    Container(
+                      width: 18,
+                      height: 1,
+                      margin: const EdgeInsets.only(top: 18),
+                      color: palette.border,
+                    ),
+                  _Ring(
+                    record: record,
+                    rings: index + 1,
+                    current: index == imports.length - 1,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Ring extends StatelessWidget {
+  const _Ring({
+    required this.record,
+    required this.rings,
+    required this.current,
+  });
+
+  final ImportRecord record;
+  final int rings;
+  final bool current;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final color = current ? palette.accent : palette.inkFaint;
+    return Tooltip(
+      message: [
+        if (record.gpNextVersion != null) 'GP-Next ${record.gpNextVersion}',
+        formatBytes(record.totalBytes),
+      ].join(' · '),
+      child: SizedBox(
+        width: 72,
+        child: Column(
+          children: [
+            CustomPaint(
+              size: const Size.square(36),
+              painter: _RingsPainter(count: rings, color: color),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              record.gameVersion ?? strings.unknown,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GardenType.mono(
+                11.5,
+                weight: current ? FontWeight.w600 : null,
+                color: current ? palette.ink : palette.inkMuted,
+              ),
+            ),
+            Text(
+              strings.shortDate(record.importedAt),
+              style: TextStyle(color: palette.inkFaint, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RingsPainter extends CustomPainter {
+  const _RingsPainter({required this.count, required this.color});
+
+  final int count;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final outer = size.shortestSide / 2 - 1;
+    // Past six rings they would merge, so the spacing stops shrinking.
+    final shown = count.clamp(1, 6);
+    final step = outer / shown;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..color = color;
+    for (var ring = 1; ring <= shown; ring++) {
+      canvas.drawCircle(center, step * ring, paint);
+    }
+    canvas.drawCircle(center, 2, paint..style = PaintingStyle.fill);
+  }
+
+  @override
+  bool shouldRepaint(_RingsPainter oldDelegate) =>
+      oldDelegate.count != count || oldDelegate.color != color;
 }

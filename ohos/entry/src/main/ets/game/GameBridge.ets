@@ -124,9 +124,11 @@ export class GameBridge {
             'audio_summary', 'audio_decode_started', 'audio_decode_succeeded', 'audio_decode_failed',
             'audio_media_load_started', 'audio_media_ready', 'audio_media_play_requested',
             'audio_media_playing', 'audio_media_ended', 'audio_media_failed',
+            'touch_trace',
           ];
           const event = allowed.includes(requested) ? requested : 'javascript_console';
           const audio = event.startsWith('audio_');
+          const touchTrace = event === 'touch_trace';
           const outcome = args.outcome ?? (event === 'javascript_console' ? 'observed' : 'failed');
           const context: AppLogContext = args.context ?? {
             page: args.page ?? '',
@@ -141,7 +143,7 @@ export class GameBridge {
           const logEvent: AppLogEvent = {
             source: 'javascript',
             level: args.level ?? 'ERROR',
-            category: audio ? 'game.audio' : 'game.javascript',
+            category: audio ? 'game.audio' : touchTrace ? 'game.touch' : 'game.javascript',
             event: event,
             outcome: outcome,
             code: outcome === 'failed' ? event : undefined,

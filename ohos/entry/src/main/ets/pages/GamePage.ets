@@ -22,6 +22,9 @@ struct GamePage {
   private bridge: GameBridge | null = null;
   private documentStartScripts: Array<ScriptItem> = [];
   private exiting: boolean = false;
+  // Foreground play time; shownAt is the clock while the page shows, else 0.
+  private playedMs: number = 0;
+  private shownAt: number = 0;
   @State private viewportWidth: string = '100%';
   @State private viewportHeight: string = '100%';
   @State private viewportScaleX: number = 1;
@@ -185,6 +188,17 @@ struct GamePage {
     });
   }
 
+  onPageShow(): void {
+    this.shownAt = Date.now();
+  }
+
+  onPageHide(): void {
+    if (this.shownAt !== 0) {
+      this.playedMs += Date.now() - this.shownAt;
+    }
+    this.shownAt = 0;
+  }
+
   onBackPress(): boolean {
     this.returnToLauncher('userReturned', null);
     return true;
@@ -221,7 +235,7 @@ struct GamePage {
       hostAbi: 1,
       platform: 'ohos',
       touchWheelCssMultiplier: -4.5,
-      touchDiagnosticsEnabled: false,
+      touchDiagnosticsEnabled: session.touchDiagnosticsEnabled,
       origin: GameSession.ORIGIN,
       activationGeneration: session.activationGeneration,
       hasGpNext: session.hasGpNext,
@@ -231,6 +245,7 @@ struct GamePage {
       autoCollectSunEnabled: session.autoCollectSunEnabled,
       detailedAudioDiagnosticsEnabled: session.detailedAudioDiagnosticsEnabled,
       renderScale: session.renderScale,
+      gestureHint: session.gestureHint,
       gpNextBaseDirectory: this.gpNextBaseDirectory(session),
     });
     const names: string[] = [
@@ -244,6 +259,7 @@ struct GamePage {
       'export_download_patch.js',
     ];
     names.push('watermark.js');
+    names.push('gesture_hint.js');
     let source = `window.__gardendlessHostConfig=${config};`;
     for (const name of names) {
       const bytes = this.context.resourceManager.getRawFileContentSync(
@@ -293,7 +309,8 @@ struct GamePage {
       };
       if (message != null) finishedEvent.message = message;
       appLogStore.emit(finishedEvent);
-      exitResult = this.writeExitResult(session.appRoot, session.sessionId, reason, message, session.packageId);
+      const playedMs = this.playedMs + (this.shownAt !== 0 ? Date.now() - this.shownAt : 0);
+      exitResult = this.writeExitResult(session.appRoot, session.sessionId, reason, message, session.packageId, playedMs);
     }
     this.bridge?.destroy();
     Promise.all([exitResult, appLogStore.flush()]).finally((): void => this.startLauncher());
@@ -305,6 +322,7 @@ struct GamePage {
     reason: string,
     message: string | null,
     packageId: string = 'unknown',
+    playedMs: number = 0,
   ): Promise<void> {
     const output = `${appRoot}/game_exit_result.json`;
     const temporary = `${output}.tmp`;
@@ -315,6 +333,7 @@ struct GamePage {
       reason: reason,
       finishedAt: new Date().toISOString(),
       message: message,
+      playedMs: Math.round(playedMs),
     }, null, 2);
     try {
       await this.writeTextFile(temporary, `${value}\n`);

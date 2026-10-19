@@ -98,6 +98,7 @@ function createTouchHarness({
 } = {}) {
   const appendedElements = [];
   const frames = new Map();
+  const intervals = [];
   const mutationObservers = [];
   let nextFrame = 1;
   let now = 0;
@@ -165,6 +166,10 @@ function createTouchHarness({
       frames.set(id, callback);
       return id;
     },
+    setInterval(callback) {
+      intervals.push(callback);
+      return intervals.length;
+    },
     window,
   };
   context.globalThis = context;
@@ -192,6 +197,11 @@ function createTouchHarness({
     document,
     advanceTime(milliseconds) {
       now += milliseconds;
+    },
+    runIntervals() {
+      for (const callback of intervals) {
+        callback();
+      }
     },
     flushAnimationFrame() {
       const pending = Array.from(frames.values());
@@ -647,6 +657,34 @@ for (const platform of ['android', 'ios', 'ohos']) {
     false,
     'touch diagnostics must not capture page or form content',
   );
+
+  const logs = [];
+  harness.window.__gardendlessHost = {
+    invoke(command, payload) {
+      logs.push({command, args: payload.args});
+      return Promise.resolve(null);
+    },
+  };
+  harness.runIntervals();
+  assert.ok(logs.length > 0, 'the trace must reach the host logs');
+  const sent = [];
+  for (const {command, args} of logs) {
+    assert.equal(command, 'host:log');
+    assert.equal(args.event, 'touch_trace');
+    assert.equal(args.outcome, 'observed');
+    assert.ok(args.message.length <= 1900, 'each batch fits a log message');
+    const batch = JSON.parse(args.message);
+    assert.equal(args.context.count, batch.length);
+    sent.push(...batch);
+  }
+  assert.deepEqual(
+    sent.map((entry) => entry.sequence),
+    [...trace].map((entry) => entry.sequence),
+    'every recorded entry is sent once, in order',
+  );
+  logs.length = 0;
+  harness.runIntervals();
+  assert.equal(logs.length, 0, 'sent entries are not sent again');
 }
 
 {

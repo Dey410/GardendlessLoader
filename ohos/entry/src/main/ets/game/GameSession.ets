@@ -14,6 +14,8 @@ export interface GameSessionPayload {
   detailedAudioDiagnosticsEnabled?: boolean;
   renderScale?: number | null;
   screenFit?: string;
+  touchDiagnosticsEnabled?: boolean;
+  gestureHint?: string[] | null;
   packageId?: string;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
@@ -35,6 +37,10 @@ export class GameSession {
   readonly renderScale: number | null;
   /** balanced (16:10–17:9), showAll (17:9) or stretch: how the game viewport fits the screen. */
   readonly screenFit: string;
+  /** Records the touch adapter's trace into the logs. */
+  readonly touchDiagnosticsEnabled: boolean;
+  /** Lines of the one-time gesture hint shown over the game; null shows none. */
+  readonly gestureHint: string[] | null;
   readonly packageId: string;
   readonly allowedRemoteHosts: Set<string>;
   readonly gpNextRoot: string;
@@ -69,6 +75,8 @@ export class GameSession {
     if (!['balanced', 'showAll', 'stretch'].includes(this.screenFit)) {
       throw new Error('Invalid screen fit');
     }
+    this.touchDiagnosticsEnabled = value.touchDiagnosticsEnabled === true;
+    this.gestureHint = value.gestureHint ?? null;
     this.packageId = value.packageId ?? 'unknown';
     if (this.packageId !== 'unknown' && !/^sha256:[a-f0-9]{64}$/.test(this.packageId)) throw new Error('Invalid package identity');
     this.allowedRemoteHosts = new Set<string>();

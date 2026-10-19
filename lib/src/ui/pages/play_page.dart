@@ -86,6 +86,8 @@ class _Hero extends StatelessWidget {
     final palette = context.garden;
     final strings = context.strings;
     final ready = controller.canStartGame;
+    final journal = controller.journal;
+    final lastPlayedAt = journal.lastPlayedAt;
     final details = <String>[
       if (ready) strings.gameVersionLabel(controller.currentGameVersion),
       if (ready)
@@ -119,6 +121,14 @@ class _Hero extends StatelessWidget {
           ready ? details.join('  ·  ') : strings.importToPlayHint,
           style: TextStyle(color: palette.inkMuted, fontSize: 14, height: 1.5),
         ),
+        if (ready && lastPlayedAt != null)
+          Text(
+            '${strings.lastPlayed(lastPlayedAt, Duration(milliseconds: journal.lastPlayMs))}'
+            '  ·  ${strings.totalPlayed(Duration(milliseconds: journal.totalPlayMs))}',
+            key: const ValueKey('last-played'),
+            style:
+                TextStyle(color: palette.inkFaint, fontSize: 13, height: 1.5),
+          ),
       ],
     );
   }

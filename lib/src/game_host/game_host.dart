@@ -73,6 +73,8 @@ class GameSession {
     this.detailedAudioDiagnosticsEnabled = false,
     this.renderScale,
     this.screenFit = ScreenFit.balanced,
+    this.touchDiagnosticsEnabled = false,
+    this.gestureHint,
     required this.allowedRemoteHosts,
     required this.gpNextRoot,
     required this.exportTemporaryRoot,
@@ -98,6 +100,11 @@ class GameSession {
     if (renderScale != null && (renderScale is! num || renderScale <= 0)) {
       throw const FormatException('renderScale must be positive');
     }
+    final gestureHint = json['gestureHint'];
+    if (gestureHint != null &&
+        (gestureHint is! List || gestureHint.any((line) => line is! String))) {
+      throw const FormatException('gestureHint must be a string list');
+    }
     return GameSession(
       sessionId: _requiredString(json, 'sessionId'),
       packageId: json['packageId'] as String?,
@@ -114,6 +121,9 @@ class GameSession {
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       renderScale: (renderScale as num?)?.toDouble(),
       screenFit: ScreenFit.fromName(json['screenFit']),
+      touchDiagnosticsEnabled:
+          json['touchDiagnosticsEnabled'] as bool? ?? false,
+      gestureHint: (gestureHint as List?)?.cast<String>(),
       allowedRemoteHosts: normalizedRemoteHosts,
       gpNextRoot: _requiredString(json, 'gpNextRoot'),
       exportTemporaryRoot: _requiredString(json, 'exportTemporaryRoot'),
@@ -139,6 +149,12 @@ class GameSession {
   /// at the device's own ratio.
   final double? renderScale;
   final ScreenFit screenFit;
+
+  /// Records the touch adapter's trace into the logs (tool shed).
+  final bool touchDiagnosticsEnabled;
+
+  /// Lines of the one-time gesture hint shown over the game; null shows none.
+  final List<String>? gestureHint;
   final List<String> allowedRemoteHosts;
   final String gpNextRoot;
   final String exportTemporaryRoot;
@@ -174,6 +190,8 @@ class GameSession {
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
       'renderScale': renderScale,
       'screenFit': screenFit.name,
+      'touchDiagnosticsEnabled': touchDiagnosticsEnabled,
+      'gestureHint': gestureHint,
       'allowedRemoteHosts': normalizedRemoteHosts,
       'gpNextRoot': gpNextRoot,
       'exportTemporaryRoot': exportTemporaryRoot,

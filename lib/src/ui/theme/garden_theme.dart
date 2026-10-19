@@ -63,6 +63,25 @@ class GardenPalette extends ThemeExtension<GardenPalette> {
 
   bool get isDark => brightness == Brightness.dark;
 
+  /// This palette with a different accent; text on it turns dark or light to
+  /// stay readable.
+  GardenPalette withAccent(Color value) => GardenPalette(
+        brightness: brightness,
+        background: background,
+        surface: surface,
+        surfaceMuted: surfaceMuted,
+        border: border,
+        ink: ink,
+        inkMuted: inkMuted,
+        inkFaint: inkFaint,
+        accent: value,
+        onAccent: value.computeLuminance() > 0.4
+            ? const Color(0xff111113)
+            : Colors.white,
+        danger: danger,
+        warning: warning,
+      );
+
   @override
   GardenPalette copyWith() => this;
 
@@ -150,9 +169,11 @@ class GardenType {
       );
 }
 
-ThemeData buildGardenTheme(Brightness brightness) {
-  final palette =
+/// The launcher theme; [accent], from a seasonal theme, replaces the green.
+ThemeData buildGardenTheme(Brightness brightness, {Color? accent}) {
+  final standard =
       brightness == Brightness.dark ? GardenPalette.dark : GardenPalette.light;
+  final palette = accent == null ? standard : standard.withAccent(accent);
   final scheme = ColorScheme.fromSeed(
     seedColor: palette.accent,
     brightness: brightness,

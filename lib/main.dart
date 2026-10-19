@@ -118,8 +118,20 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
       builder: (context, home) => MaterialApp(
         title: 'GardendlessLoader',
         debugShowCheckedModeBanner: false,
-        theme: buildGardenTheme(Brightness.light),
-        darkTheme: buildGardenTheme(Brightness.dark),
+        theme: buildGardenTheme(
+          Brightness.light,
+          accent: switch (_controller.seasonalTheme) {
+            final theme? => Color(theme.accent),
+            null => null,
+          },
+        ),
+        darkTheme: buildGardenTheme(
+          Brightness.dark,
+          accent: switch (_controller.seasonalTheme) {
+            final theme? => Color(theme.accentDark ?? theme.accent),
+            null => null,
+          },
+        ),
         themeMode: switch (_controller.themePreference) {
           ThemePreference.system => ThemeMode.system,
           ThemePreference.light => ThemeMode.light,

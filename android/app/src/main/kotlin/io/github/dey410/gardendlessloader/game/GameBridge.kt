@@ -73,6 +73,7 @@ class GameBridge(
                     val args = request.optJSONObject("args") ?: JSONObject()
                     val event = args.optString("event").takeIf { it in LOG_EVENTS } ?: "javascript_console"
                     val audio = event.startsWith("audio_")
+                    val touchTrace = event == "touch_trace"
                     val outcome = args.optString("outcome").takeIf { it in setOf("started", "succeeded", "failed", "observed") }
                         ?: if (event == "javascript_console") "observed" else "failed"
                     val details = args.optJSONObject("context")
@@ -93,7 +94,11 @@ class GameBridge(
                         mapOf(
                             "source" to "javascript",
                             "level" to args.optString("level", "ERROR"),
-                            "category" to if (audio) "game.audio" else "game.javascript",
+                            "category" to when {
+                                audio -> "game.audio"
+                                touchTrace -> "game.touch"
+                                else -> "game.javascript"
+                            },
                             "event" to event,
                             "outcome" to outcome,
                             "code" to if (outcome == "failed") event else null,
@@ -197,6 +202,7 @@ class GameBridge(
             "audio_summary", "audio_decode_started", "audio_decode_succeeded", "audio_decode_failed",
             "audio_media_load_started", "audio_media_ready", "audio_media_play_requested",
             "audio_media_playing", "audio_media_ended", "audio_media_failed",
+            "touch_trace",
         )
     }
 }

@@ -44,6 +44,8 @@ class _HomePageState extends State<HomePage> {
   bool _incomingZipDialogScheduled = false;
   bool _shortcutScheduled = false;
   ImportPhase _lastImportPhase = ImportPhase.idle;
+  int _iconTaps = 0;
+  DateTime? _lastIconTap;
 
   AppController get _controller => widget.controller;
 
@@ -190,6 +192,7 @@ class _HomePageState extends State<HomePage> {
           compact: compact,
           leftInset: padding.left,
           onSelected: _navigate,
+          onIconTap: _onIconTap,
         ),
         Expanded(
           child: Padding(
@@ -329,7 +332,7 @@ class _HomePageState extends State<HomePage> {
         return;
       }
       _navigate(LauncherDestination.resources);
-      await _controller.importIncomingZip();
+      await _controller.importIncomingZip(confirmDowngrade: _confirmDowngrade);
     });
   }
 
@@ -369,7 +372,39 @@ class _HomePageState extends State<HomePage> {
       );
       if (!confirmed) return;
     }
-    await _controller.importResources();
+    await _controller.importResources(confirmDowngrade: _confirmDowngrade);
+  }
+
+  Future<bool> _confirmDowngrade(String current, String incoming) {
+    final strings = context.strings;
+    return _confirm(
+      title: strings.downgradeTitle,
+      message: strings.downgradeMessage(current, incoming),
+      confirmLabel: strings.importAnyway,
+      confirmTone: GardenButtonTone.danger,
+    );
+  }
+
+  /// Seven quick taps on the launcher icon find or put away the tool shed;
+  /// from the fourth tap a countdown shows how close it is.
+  void _onIconTap() {
+    final now = DateTime.now();
+    final last = _lastIconTap;
+    _lastIconTap = now;
+    _iconTaps =
+        last != null && now.difference(last) < const Duration(milliseconds: 800)
+            ? _iconTaps + 1
+            : 1;
+    final strings = context.strings;
+    if (_iconTaps >= 7) {
+      _iconTaps = 0;
+      final unlocked = !_controller.toolShedUnlocked;
+      unawaited(_controller.setToolShedUnlocked(unlocked));
+      _toast(unlocked ? strings.toolShedFound : strings.toolShedHidden);
+      if (unlocked) _navigate(LauncherDestination.logs);
+    } else if (_iconTaps >= 4) {
+      _toast(strings.toolShedTapsLeft(7 - _iconTaps));
+    }
   }
 
   Future<bool> _confirm({
@@ -524,6 +559,7 @@ class _Sidebar extends StatelessWidget {
     required this.compact,
     required this.leftInset,
     required this.onSelected,
+    required this.onIconTap,
   });
 
   final AppController controller;
@@ -531,6 +567,7 @@ class _Sidebar extends StatelessWidget {
   final bool compact;
   final double leftInset;
   final ValueChanged<LauncherDestination> onSelected;
+  final VoidCallback onIconTap;
 
   static double widthFor({required double leftInset, required bool compact}) =>
       leftInset + (compact ? 76 : 92);
@@ -538,6 +575,7 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final badge = controller.seasonalTheme?.badge;
     // Frosted glass: the home art flows underneath instead of stopping at a
     // hard edge; elsewhere it reads as a plain tinted panel.
     return ClipRect(
@@ -563,14 +601,34 @@ class _Sidebar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(compact ? 9 : 11),
-                  child: Image.asset(
-                    _appIconAsset,
-                    width: compact ? 36 : 42,
-                    height: compact ? 36 : 42,
-                    cacheWidth: 128,
-                    semanticLabel: 'GardendlessLoader',
+                child: Pressable(
+                  key: const ValueKey('launcher-icon'),
+                  onTap: onIconTap,
+                  scale: 0.9,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(compact ? 9 : 11),
+                        child: Image.asset(
+                          _appIconAsset,
+                          width: compact ? 36 : 42,
+                          height: compact ? 36 : 42,
+                          cacheWidth: 128,
+                          semanticLabel: 'GardendlessLoader',
+                        ),
+                      ),
+                      if (badge != null)
+                        Positioned(
+                          key: const ValueKey('seasonal-badge'),
+                          right: -7,
+                          bottom: -7,
+                          child: Text(
+                            badge,
+                            style: const TextStyle(fontSize: 16, height: 1),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),

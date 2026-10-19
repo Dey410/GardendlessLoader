@@ -89,6 +89,19 @@
 - On a real device for each maintained platform, install the same trusted test Mod once from ZIP and once from a folder, restart the game, and verify GP-Next can load the installed content from `gp-next/installed`.
 - Imported JS Mods are executable game content and are not evaluated by the Loader itself; device acceptance uses only trusted test packages.
 
+## Garden extras
+
+- Seven quick taps on the sidebar icon (under 0.8 s apart) find the tool shed: taps four to six count down, the seventh opens the Logs page with a 工具棚 section. Seven more taps, or 收起工具棚, put it away. The choice survives a restart.
+- With 触摸轨迹记录 on and the tool shed found, the next game writes `game.touch` / `touch_trace` INFO events about every 2 s while touching; each message is a JSON array within 1,900 characters and no entry repeats. With either off, no `touch_trace` events appear.
+- 本地数据 in the tool shed shows `manifest.json`, `app_settings.json` and `journal.json` as the launcher holds them.
+- After returning from a game, the Play page shows 上次游玩 (today/yesterday/date and time), that session's length and the total. Time with the app in the background does not count; a launch failure records nothing.
+- The Resources page shows 版本年轮 once a resource exists: an existing install starts with its current version, each successful import adds a ring at the right, and at most 30 are kept.
+- Importing a newer game version keeps the completed panel open with a growing sprout, `old → new`, and 更新说明 opening `github.com/Gzh0821/pvzg_site/releases/tag/<version>` for public x.y.z releases; dismissing it closes the panel. Same-version and first imports finish as before.
+- Importing an older game version asks before replacing the active one after validation. 取消 keeps the current game and slot, shows 已取消导入, and records no error; 仍然导入 activates it.
+- Each import shows one tip under its progress steps, unchanged until the import ends.
+- During a `theme` window in the remote `announcements.json` the accent colour (`accentDark` in dark mode) and the badge on the sidebar icon change; outside the window, offline, or with a malformed theme the launcher stays green and the announcement still works. Clients without theme support ignore the field.
+- The first game launch after install shows the gesture hint at the bottom of the game: three touch mappings and the platform's way back. The first touch or click fades it; later launches never show it.
+
 ## Failure paths
 
 - A ZIP without a valid `docs/index.html` rejects import and leaves the active slot unchanged.

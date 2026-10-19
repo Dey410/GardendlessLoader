@@ -435,6 +435,10 @@ class _Overview extends StatelessWidget {
                 ? controller.setDetailedAudioDiagnosticsEnabled
                 : null,
           ),
+          if (controller.toolShedUnlocked) ...[
+            Divider(color: palette.border),
+            _ToolShed(controller: controller),
+          ],
           Divider(color: palette.border),
           Disclosure(
             key: const ValueKey('log-technical-details'),
@@ -456,6 +460,74 @@ class _Overview extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Maintenance tools found by tapping the launcher icon seven times.
+class _ToolShed extends StatelessWidget {
+  const _ToolShed({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    return Column(
+      key: const ValueKey('tool-shed'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 10),
+        Text(
+          '🪴 ${strings.toolShed}',
+          style: TextStyle(
+            color: palette.ink,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          strings.toolShedIntro,
+          style:
+              TextStyle(color: palette.inkMuted, fontSize: 12.5, height: 1.4),
+        ),
+        SwitchRow(
+          key: const ValueKey('touch-trace'),
+          switchKey: const ValueKey('touch-trace-switch'),
+          title: strings.touchTrace,
+          subtitle: strings.touchTraceSubtitle,
+          value: controller.touchDiagnosticsEnabled,
+          onChanged: controller.setTouchDiagnosticsEnabled,
+        ),
+        Disclosure(
+          key: const ValueKey('tool-shed-local-data'),
+          title: strings.localData,
+          child: CodeBlock(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  controller.toolShedSnapshot(),
+                  style: GardenType.mono(10.5, color: palette.ink),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: GardenButton(
+            key: const ValueKey('hide-tool-shed'),
+            label: strings.hideToolShed,
+            tone: GardenButtonTone.ghost,
+            compact: true,
+            onPressed: () => controller.setToolShedUnlocked(false),
+          ),
+        ),
+      ],
     );
   }
 }

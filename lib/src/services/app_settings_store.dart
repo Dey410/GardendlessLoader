@@ -60,6 +60,9 @@ class AppSettings {
     this.reduceMotion = false,
     this.languagePreference = LanguagePreference.system,
     this.seenAnnouncementId,
+    this.toolShedUnlocked = false,
+    this.touchDiagnosticsEnabled = false,
+    this.gestureHintShown = false,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -75,6 +78,10 @@ class AppSettings {
       languagePreference:
           LanguagePreference.fromName(json['languagePreference']),
       seenAnnouncementId: json['seenAnnouncementId'] as String?,
+      toolShedUnlocked: json['toolShedUnlocked'] as bool? ?? false,
+      touchDiagnosticsEnabled:
+          json['touchDiagnosticsEnabled'] as bool? ?? false,
+      gestureHintShown: json['gestureHintShown'] as bool? ?? false,
     );
   }
 
@@ -93,6 +100,16 @@ class AppSettings {
   /// once and an old one never again.
   final String? seenAnnouncementId;
 
+  /// The tool shed found by tapping the launcher icon seven times.
+  final bool toolShedUnlocked;
+
+  /// Records the touch trace on the next launch; only while the tool shed is
+  /// unlocked.
+  final bool touchDiagnosticsEnabled;
+
+  /// The gesture hint shows over the game once, on the first launch.
+  final bool gestureHintShown;
+
   AppSettings copyWith({
     bool? watermarkEnabled,
     bool? quickLaunchEnabled,
@@ -103,6 +120,9 @@ class AppSettings {
     bool? reduceMotion,
     LanguagePreference? languagePreference,
     String? seenAnnouncementId,
+    bool? toolShedUnlocked,
+    bool? touchDiagnosticsEnabled,
+    bool? gestureHintShown,
   }) {
     return AppSettings(
       watermarkEnabled: watermarkEnabled ?? this.watermarkEnabled,
@@ -115,6 +135,10 @@ class AppSettings {
       reduceMotion: reduceMotion ?? this.reduceMotion,
       languagePreference: languagePreference ?? this.languagePreference,
       seenAnnouncementId: seenAnnouncementId ?? this.seenAnnouncementId,
+      toolShedUnlocked: toolShedUnlocked ?? this.toolShedUnlocked,
+      touchDiagnosticsEnabled:
+          touchDiagnosticsEnabled ?? this.touchDiagnosticsEnabled,
+      gestureHintShown: gestureHintShown ?? this.gestureHintShown,
     );
   }
 
@@ -128,6 +152,9 @@ class AppSettings {
         'reduceMotion': reduceMotion,
         'languagePreference': languagePreference.name,
         'seenAnnouncementId': seenAnnouncementId,
+        'toolShedUnlocked': toolShedUnlocked,
+        'touchDiagnosticsEnabled': touchDiagnosticsEnabled,
+        'gestureHintShown': gestureHintShown,
       };
 }
 

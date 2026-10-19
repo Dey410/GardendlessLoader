@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -18,6 +19,7 @@ import 'services/announcement_service.dart';
 import 'services/app_paths_service.dart';
 import 'services/app_settings_store.dart';
 import 'services/diagnostics_service.dart';
+import 'services/garden_journal.dart';
 import 'services/game_update_check_service.dart';
 import 'services/import_service.dart';
 import 'services/import_progress_meter.dart';
@@ -63,6 +65,8 @@ class AppController extends ChangeNotifier {
 
   AppPaths? _paths;
   AppSettingsStore? _appSettingsStore;
+  GardenJournalStore? _journalStore;
+  GardenJournal _journal = const GardenJournal();
   ManifestStore? _manifestStore;
   GameSessionStore? _gameSessionStore;
   ResourceManifest _manifest = ResourceManifest.initial();
@@ -73,6 +77,9 @@ class AppController extends ChangeNotifier {
   );
   ImportProgress _importProgress = ImportProgress.idle;
   Announcement? _announcement;
+  SeasonalTheme? _seasonalTheme;
+  ({String from, String to})? _versionUpgrade;
+  int _importTipIndex = 0;
   AboutContent _aboutContent = localFallbackAboutContent;
   UpdateInfo? _availableUpdate;
   GameUpdateInfo? _availableGameUpdate;
@@ -117,6 +124,22 @@ class AppController extends ChangeNotifier {
   ResourceManifest get manifest => _manifest;
   ImportProgress get importProgress => _importProgress;
   Announcement? get announcement => _announcement;
+
+  /// The remote seasonal theme, while today is within its dates.
+  SeasonalTheme? get seasonalTheme =>
+      _seasonalTheme?.isActiveOn(DateTime.now()) == true
+          ? _seasonalTheme
+          : null;
+
+  /// Play time and the version rings, kept on this device only.
+  GardenJournal get journal => _journal;
+
+  /// The game versions of the last import, while its completion shows and
+  /// only when it moved the game to a newer version.
+  ({String from, String to})? get versionUpgrade => _versionUpgrade;
+
+  /// One tip shown while the current import runs.
+  String get importTip => AppStrings.current.importTips[_importTipIndex];
   AboutContent get aboutContent => _aboutContent;
   UpdateInfo? get availableUpdate => _availableUpdate;
   GameUpdateInfo? get availableGameUpdate => _availableGameUpdate;
@@ -134,6 +157,8 @@ class AppController extends ChangeNotifier {
   ThemePreference get themePreference => _appSettings.themePreference;
   LanguagePreference get languagePreference => _appSettings.languagePreference;
   bool get reduceMotion => _appSettings.reduceMotion;
+  bool get toolShedUnlocked => _appSettings.toolShedUnlocked;
+  bool get touchDiagnosticsEnabled => _appSettings.touchDiagnosticsEnabled;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
   GameHostPlatform get gameHostPlatform => GameHostPlatform.current();
 
@@ -180,6 +205,16 @@ class AppController extends ChangeNotifier {
         _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
         _appSettings = await _appSettingsStore!.read();
         _applyLanguage(_appSettings.languagePreference);
+        _journalStore = GardenJournalStore(_paths!.journalFile);
+        _journal = await _journalStore!.read();
+        if (exitResult != null &&
+            exitResult.reason != GameExitReason.launchFailed &&
+            exitResult.playedMs > 0) {
+          await _saveJournal(_journal.recordPlay(
+            finishedAt: exitResult.finishedAt,
+            playedMs: exitResult.playedMs,
+          ));
+        }
         _emitInitializationStage('manifest');
         _manifestStore = ManifestStore(_paths!.manifestFile);
         _manifest = await _manifestStore!.read();
@@ -239,6 +274,12 @@ class AppController extends ChangeNotifier {
         await _loadCurrentAppVersion();
         _emitInitializationStage('resource_validation');
         await refresh();
+        // The rings begin with the resource imported before they existed.
+        if (_journal.imports.isEmpty &&
+            hasCurrentResource &&
+            _manifest.lastImportAt != null) {
+          await _saveJournal(_journal.recordImport(_importRecord()));
+        }
         _incomingZipName = await _resourcePickerService.incomingZipName();
         _pendingShortcut = await _shortcutService.take();
         await _shortcutService.publish(AppStrings.current);
@@ -316,7 +357,9 @@ class AppController extends ChangeNotifier {
       ).asReady();
 
   Future<void> refreshAnnouncement() async {
-    _announcement = await _announcementService.fetchCurrentAnnouncement();
+    final feed = await _announcementService.fetch();
+    _announcement = feed.announcement;
+    _seasonalTheme = feed.theme;
     notifyListeners();
   }
 
@@ -469,9 +512,12 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> importIncomingZip() {
+  Future<void> importIncomingZip({
+    required Future<bool> Function(String current, String incoming)
+        confirmDowngrade,
+  }) {
     _incomingZipName = null;
-    return importResources(incoming: true);
+    return importResources(incoming: true, confirmDowngrade: confirmDowngrade);
   }
 
   Future<void> discardIncomingZip() async {
@@ -481,13 +527,21 @@ class AppController extends ChangeNotifier {
   }
 
   /// Imports a ZIP from the system picker, or with [incoming] the ZIP
-  /// another app handed to the loader.
-  Future<void> importResources({bool incoming = false}) async {
+  /// another app handed to the loader. A ZIP with an older game version than
+  /// the active one replaces it only after [confirmDowngrade].
+  Future<void> importResources({
+    bool incoming = false,
+    required Future<bool> Function(String current, String incoming)
+        confirmDowngrade,
+  }) async {
     final paths = _requirePaths();
     final manifestStore = _requireManifestStore();
+    final previousVersion = hasCurrentResource ? _currentGameVersion : null;
     _message = null;
     _busy = true;
     _importCompletionTimer?.cancel();
+    _versionUpgrade = null;
+    _importTipIndex = Random().nextInt(AppStrings.current.importTips.length);
     _importProgress = ImportProgress.idle;
     _importProgressMeter = ImportProgressMeter();
     _startImportProgressTicker();
@@ -586,13 +640,36 @@ class AppController extends ChangeNotifier {
         operationId: operationId,
       );
 
-      _manifest = await _importService.completeImport(
+      final activated = await _importService.completeImport(
         paths: paths,
         manifestStore: manifestStore,
         target: importTarget,
+        confirmActivation: (candidate) async {
+          final incomingVersion = candidate.gameVersion;
+          final order = _versionOrder(incomingVersion, previousVersion);
+          return order == null ||
+              order >= 0 ||
+              await confirmDowngrade(previousVersion!, incomingVersion!);
+        },
         onProgress: _updateImportProgress,
       );
       importTarget = null;
+      if (activated == null) {
+        _manifest = await manifestStore.read();
+        _importProgress = ImportProgress.idle;
+        _message = LauncherMessage(AppStrings.current.downgradeDeclined);
+        _appLogger.emit(
+          level: LogLevel.info,
+          category: 'resource.import',
+          event: 'resource_import_finished',
+          outcome: LogOutcome.cancelled,
+          operationId: operationId,
+          durationMs: importStopwatch.elapsedMilliseconds,
+          context: const <String, Object?>{'stage': 'downgrade_declined'},
+        );
+        return;
+      }
+      _manifest = activated;
       _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.validation',
@@ -636,7 +713,14 @@ class AppController extends ChangeNotifier {
         _gameUpdateDetected = false;
       }
       await _checkGameForUpdate(reuseLatestVersion: true);
-      _scheduleCompletedProgressReset();
+      final newVersion = _manifest.gameVersion;
+      if ((_versionOrder(newVersion, previousVersion) ?? 0) > 0) {
+        // The upgrade stays on screen until the player dismisses it.
+        _versionUpgrade = (from: previousVersion!, to: newVersion!);
+      } else {
+        _scheduleCompletedProgressReset();
+      }
+      await _saveJournal(_journal.recordImport(_importRecord()));
       _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
@@ -792,6 +876,7 @@ class AppController extends ChangeNotifier {
       return;
     }
     _importCompletionTimer?.cancel();
+    _versionUpgrade = null;
     _importProgress = ImportProgress.idle;
     notifyListeners();
   }
@@ -876,6 +961,10 @@ class AppController extends ChangeNotifier {
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
       renderScale: renderResolution.scale,
       screenFit: screenFit,
+      touchDiagnosticsEnabled: toolShedUnlocked && touchDiagnosticsEnabled,
+      gestureHint: _appSettings.gestureHintShown
+          ? null
+          : AppStrings.current.gestureHintLines(gameHostPlatform),
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -887,6 +976,10 @@ class AppController extends ChangeNotifier {
       await store.prepare(session);
       _importCompletionTimer?.cancel();
       _importProgressTickTimer?.cancel();
+      // Saved first: the launcher engine is torn down once the game opens.
+      if (session.gestureHint != null) {
+        await _updateAppSettings(_appSettings.copyWith(gestureHintShown: true));
+      }
       await _gameHost.launch(session);
     }
 
@@ -1036,6 +1129,54 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  Future<void> setToolShedUnlocked(bool unlocked) {
+    return _updateAppSettings(
+      _appSettings.copyWith(toolShedUnlocked: unlocked),
+    );
+  }
+
+  Future<void> setTouchDiagnosticsEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(touchDiagnosticsEnabled: enabled),
+    );
+  }
+
+  /// The launcher's own state files as they are on disk, for the tool shed.
+  String toolShedSnapshot() {
+    const encoder = JsonEncoder.withIndent('  ');
+    return [
+      ('manifest.json', _manifest.toJson()),
+      ('app_settings.json', _appSettings.toJson()),
+      ('journal.json', _journal.toJson()),
+    ].map((file) => '# ${file.$1}\n${encoder.convert(file.$2)}').join('\n\n');
+  }
+
+  ImportRecord _importRecord() => ImportRecord(
+        importedAt: _manifest.lastImportAt ?? DateTime.now(),
+        totalBytes: _manifest.totalBytes,
+        gameVersion: _manifest.gameVersion,
+        gpNextVersion: _manifest.gpNextVersion,
+      );
+
+  /// The journal is a keepsake: failing to save it never fails the import or
+  /// launch that recorded it.
+  Future<void> _saveJournal(GardenJournal journal) async {
+    _journal = journal;
+    try {
+      await _journalStore?.write(journal);
+    } catch (error, stackTrace) {
+      _appLogger.emit(
+        level: LogLevel.warn,
+        category: 'app.journal',
+        event: 'journal_write_failed',
+        outcome: LogOutcome.failed,
+        code: 'journal_write_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
   Future<void> setReduceMotion(bool enabled) {
     return _updateAppSettings(_appSettings.copyWith(reduceMotion: enabled));
   }
@@ -1131,6 +1272,15 @@ class AppController extends ChangeNotifier {
     return manifestStore;
   }
 }
+
+/// How [incoming] orders against [current]; null when either is missing or
+/// not a version [compareGameVersions] understands.
+int? _versionOrder(String? incoming, String? current) => incoming != null &&
+        current != null &&
+        gameVersionPattern.hasMatch(incoming) &&
+        gameVersionPattern.hasMatch(current)
+    ? compareGameVersions(incoming, current)
+    : null;
 
 String _newGameSessionId() {
   return '${DateTime.now().toUtc().microsecondsSinceEpoch}-${pid.toRadixString(16)}';

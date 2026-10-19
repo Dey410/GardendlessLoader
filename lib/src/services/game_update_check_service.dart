@@ -43,7 +43,8 @@ class GameUpdateCheckService {
     String? latestVersion,
   }) async {
     final resolvedLatestVersion = latestVersion ?? await loadLatestVersion();
-    final comparison = _compareVersions(resolvedLatestVersion, currentVersion);
+    final comparison =
+        compareGameVersions(resolvedLatestVersion, currentVersion);
     if (comparison <= 0) {
       return GameUpdateCheckResult(
         currentVersion: currentVersion,
@@ -90,28 +91,32 @@ class GameUpdateCheckService {
     if (stableVersions.isEmpty) {
       throw const GameUpdateCheckException('No stable game tag found');
     }
-    stableVersions.sort(_compareVersions);
+    stableVersions.sort(compareGameVersions);
     return stableVersions.last;
   }
-
-  static int _compareVersions(String left, String right) {
-    final leftParts = left.split('-').first.split('.').map(int.parse).toList();
-    final rightParts =
-        right.split('-').first.split('.').map(int.parse).toList();
-    for (var index = 0; index < 3; index++) {
-      final comparison = leftParts[index].compareTo(rightParts[index]);
-      if (comparison != 0) {
-        return comparison;
-      }
-    }
-    final leftIsPrerelease = left.contains('-');
-    final rightIsPrerelease = right.contains('-');
-    if (leftIsPrerelease == rightIsPrerelease) {
-      return 0;
-    }
-    return leftIsPrerelease ? -1 : 1;
-  }
 }
+
+/// Orders game versions such as `0.15.0` and `0.15.1-beta`; a pre-release
+/// sorts before its release.
+int compareGameVersions(String left, String right) {
+  final leftParts = left.split('-').first.split('.').map(int.parse).toList();
+  final rightParts = right.split('-').first.split('.').map(int.parse).toList();
+  for (var index = 0; index < 3; index++) {
+    final comparison = leftParts[index].compareTo(rightParts[index]);
+    if (comparison != 0) {
+      return comparison;
+    }
+  }
+  final leftIsPrerelease = left.contains('-');
+  final rightIsPrerelease = right.contains('-');
+  if (leftIsPrerelease == rightIsPrerelease) {
+    return 0;
+  }
+  return leftIsPrerelease ? -1 : 1;
+}
+
+/// Versions [compareGameVersions] understands.
+final gameVersionPattern = RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$');
 
 class GameUpdateCheckException implements Exception {
   const GameUpdateCheckException(this.message);

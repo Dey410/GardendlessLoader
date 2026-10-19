@@ -67,10 +67,15 @@ class ImportService {
     return aborted;
   }
 
-  Future<ResourceManifest> completeImport({
+  /// Validates the candidate and makes it the active resource.
+  /// [confirmActivation] sees the validated candidate before it replaces the
+  /// active resource; declining aborts the import and returns null.
+  Future<ResourceManifest?> completeImport({
     required AppPaths paths,
     required ManifestStore manifestStore,
     required ImportTarget target,
+    required Future<bool> Function(ResourceValidationResult candidate)
+        confirmActivation,
     ImportProgressCallback? onProgress,
   }) async {
     var manifest = await manifestStore.read();
@@ -102,6 +107,10 @@ class ImportService {
           validation.errorCode ?? 'validation_failed',
           validation.errorMessage ?? '导入资源校验失败',
         );
+      }
+      if (!await confirmActivation(validation)) {
+        await abortImport(paths: paths, manifestStore: manifestStore);
+        return null;
       }
       final stats = validation.stats;
 

@@ -28,6 +28,8 @@ interface GameSessionArguments {
   detailedAudioDiagnosticsEnabled: boolean;
   renderScale: number | null;
   screenFit: string;
+  touchDiagnosticsEnabled: boolean;
+  gestureHint: string[] | null;
   packageId: string;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
@@ -90,6 +92,8 @@ export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHa
       detailedAudioDiagnosticsEnabled: (call.argument('detailedAudioDiagnosticsEnabled') as boolean | null) ?? false,
       renderScale: (call.argument('renderScale') as number | null) ?? null,
       screenFit: (call.argument('screenFit') as string | null) ?? 'balanced',
+      touchDiagnosticsEnabled: (call.argument('touchDiagnosticsEnabled') as boolean | null) ?? false,
+      gestureHint: (call.argument('gestureHint') as string[] | null) ?? null,
       packageId: (call.argument('packageId') as string | null) ?? 'unknown',
       allowedRemoteHosts: call.argument('allowedRemoteHosts') as string[],
       gpNextRoot: call.argument('gpNextRoot') as string,

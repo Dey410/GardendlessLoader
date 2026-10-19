@@ -413,6 +413,139 @@ class AppStrings {
         '加载器 v$appVersion 与游戏 $game 均为最新版',
         'Loader v$appVersion and game $game are both up to date',
       );
+
+  // Garden journal: play time and version rings.
+  String lastPlayed(DateTime at, Duration duration) => _t(
+        '上次游玩 ${relativeTime(at)} · ${playDuration(duration)}',
+        'Last played ${relativeTime(at)} · ${playDuration(duration)}',
+      );
+  String totalPlayed(Duration duration) =>
+      _t('累计 ${playDuration(duration)}', '${playDuration(duration)} in total');
+  String playDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    if (hours == 0 && minutes == 0) return _t('不到 1 分钟', 'under a minute');
+    if (hours == 0) return _t('$minutes 分钟', '$minutes min');
+    if (minutes == 0) return _t('$hours 小时', '$hours h');
+    return _t('$hours 小时 $minutes 分钟', '$hours h $minutes min');
+  }
+
+  /// Today and yesterday by name with the time, other days by date.
+  String relativeTime(DateTime at) {
+    final local = at.toLocal();
+    final now = DateTime.now();
+    final day = DateTime(local.year, local.month, local.day);
+    final days = DateTime(now.year, now.month, now.day).difference(day).inDays;
+    final time = '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+    if (days == 0) return _t('今天 $time', 'today at $time');
+    if (days == 1) return _t('昨天 $time', 'yesterday at $time');
+    return shortDate(local);
+  }
+
+  String shortDate(DateTime at) {
+    final local = at.toLocal();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final thisYear = local.year == DateTime.now().year;
+    return isChinese
+        ? '${thisYear ? '' : '${local.year}年'}${local.month}月${local.day}日'
+        : '${months[local.month - 1]} ${local.day}'
+            '${thisYear ? '' : ', ${local.year}'}';
+  }
+
+  String get versionRings => _t('版本年轮', 'Version rings');
+  String importCount(int count) => _t(
+        '$count 次导入',
+        count == 1 ? '1 import' : '$count imports',
+      );
+
+  // Version moments.
+  String get downgradeTitle =>
+      _t('这个资源包的版本更旧', 'This package is an older version');
+  String downgradeMessage(String current, String incoming) => _t(
+        '当前游戏是 $current，这个资源包是 $incoming。旧版本可能读不了新版本写过的存档。'
+            '建议先取消，进入游戏导出存档后再导入。',
+        'The current game is $current and this package is $incoming. An '
+            'older version may not read a save written by a newer one. '
+            'Cancel, export your save in the game, then import again.',
+      );
+  String get importAnyway => _t('仍然导入', 'Import anyway');
+  String get downgradeDeclined => _t(
+        '已取消导入，当前游戏保持不变',
+        'Import cancelled; the current game is unchanged',
+      );
+  String upgradedTitle(String version) =>
+      _t('已升级到 $version', 'Updated to $version');
+  String get releaseNotes => _t('更新说明', 'Release notes');
+
+  // One tip shown while an import runs.
+  List<String> get importTips => isChinese
+      ? const [
+          '双指轻点就是右键，双指上下滑动可以滚动。',
+          '画面卡顿或游戏闪退？试试把设置里的渲染分辨率调到 75%。',
+          '黑边太宽或画面被裁？设置里的画面比例可以换成完整显示或强制拉伸。',
+          '打开自动收集后，关卡中约每 3 秒自动收一次阳光。',
+          '更新资源不会删除存档、补丁和 Mod，不过更新前导出一次存档更安心。',
+          'JS Mod 会在游戏里执行代码，只安装可信来源的 Mod。',
+          '打开快速启动，下次打开应用就直接进入游戏。',
+          'iOS 从屏幕左边缘右滑，Android 和鸿蒙用系统返回，就能回到加载器。',
+          '遇到问题时，到日志页复制诊断，反馈时附上它。',
+          '加载器的图标好像藏着什么……多点几下试试？',
+        ]
+      : const [
+          'A two-finger tap is a right click; swipe with two fingers to '
+              'scroll.',
+          'Stutters or crashes? Try setting Render resolution to 75%.',
+          'Black bars too wide or picture cut off? Change Screen fit to Show '
+              'all or Stretch.',
+          'With Auto Collect Sun on, sun is collected about every 3 seconds '
+              'in a level.',
+          'Updating resources keeps your save, patches and Mods, but exporting '
+              'the save first is safer.',
+          'JS Mods run code in the game; only install Mods you trust.',
+          'Turn on Quick launch to go straight into the game next time.',
+          'Swipe right from the left edge on iOS, or use system Back on '
+              'Android and HarmonyOS, to return to the launcher.',
+          'When something goes wrong, copy the diagnostics on the Logs page '
+              'and attach them to your report.',
+          'The launcher icon seems to hide something... try tapping it a few '
+              'times?',
+        ];
+
+  // Gesture hint shown over the game on the first launch.
+  List<String> gestureHintLines(GameHostPlatform platform) => [
+        for (final (gesture, mapping) in gestures.take(3))
+          '$gesture → $mapping',
+        platform == GameHostPlatform.ios
+            ? _t('从屏幕左边缘右滑 → 返回加载器',
+                'Swipe right from the left edge → back to the launcher')
+            : _t('系统返回 → 返回加载器', 'System Back → back to the launcher'),
+      ];
+
+  // Tool shed, found by tapping the launcher icon seven times.
+  String toolShedTapsLeft(int count) => _t(
+        '再点 $count 次…',
+        count == 1 ? '1 more tap…' : '$count more taps…',
+      );
+  String get toolShedFound => _t('你发现了工具棚 🪴', 'You found the tool shed 🪴');
+  String get toolShedHidden => _t('工具棚已收起', 'Tool shed put away');
+  String get toolShed => _t('工具棚', 'Tool shed');
+  String get toolShedIntro => _t(
+        '藏在花园角落的维护工具，排查问题时再用。',
+        'Maintenance tools tucked in a corner of the garden, for tracking '
+            'down problems.',
+      );
+  String get touchTrace => _t('触摸轨迹记录', 'Touch trace');
+  String get touchTraceSubtitle => _t(
+        '下一次启动游戏时，把触摸输入与映射结果写入日志（game.touch）',
+        'Writes touch input and how it was mapped to the logs (game.touch) '
+            'on the next game launch',
+      );
+  String get localData => _t('本地数据', 'Local data');
+  String get hideToolShed => _t('收起工具棚', 'Put the tool shed away');
 }
 
 class _Delegate extends LocalizationsDelegate<AppStrings> {

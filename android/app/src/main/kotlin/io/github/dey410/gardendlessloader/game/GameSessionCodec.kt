@@ -32,6 +32,10 @@ data class NativeGameSession(
     val detailedAudioDiagnosticsEnabled: Boolean = false,
     val renderScale: Double? = null,
     val screenFit: GameScreenFit = GameScreenFit.BALANCED,
+    /** Records the touch adapter's trace into the logs. */
+    val touchDiagnosticsEnabled: Boolean = false,
+    /** Lines of the one-time gesture hint shown over the game; null shows none. */
+    val gestureHint: List<String>? = null,
     val packageId: String = "unknown",
     val allowedRemoteHosts: Set<String>,
     val gpNextRoot: String,
@@ -75,6 +79,10 @@ object GameSessionCodec {
             },
             screenFit = json.optString("screenFit", GameScreenFit.BALANCED.wireName).let { name ->
                 requireNotNull(GameScreenFit.entries.firstOrNull { it.wireName == name }) { "Invalid screen fit" }
+            },
+            touchDiagnosticsEnabled = json.optBoolean("touchDiagnosticsEnabled", false),
+            gestureHint = json.optJSONArray("gestureHint")?.let { lines ->
+                List(lines.length()) { lines.getString(it) }
             },
             packageId = packageId,
             allowedRemoteHosts = buildSet {

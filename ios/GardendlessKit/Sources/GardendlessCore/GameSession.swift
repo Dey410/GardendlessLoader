@@ -33,6 +33,10 @@ public struct GameSession: Codable, Equatable {
   /// the device's own ratio.
   public let renderScale: Double?
   public let screenFit: GameScreenFit
+  /// Records the touch adapter's trace into the logs.
+  public let touchDiagnosticsEnabled: Bool
+  /// Lines of the one-time gesture hint shown over the game; nil shows none.
+  public let gestureHint: [String]?
   public let allowedRemoteHosts: Set<String>
   public let gpNextRoot: URL
   public let exportTemporaryRoot: URL
@@ -55,6 +59,8 @@ public struct GameSession: Codable, Equatable {
     detailedAudioDiagnosticsEnabled: Bool = false,
     renderScale: Double? = nil,
     screenFit: GameScreenFit = .balanced,
+    touchDiagnosticsEnabled: Bool = false,
+    gestureHint: [String]? = nil,
     allowedRemoteHosts: Set<String>,
     gpNextRoot: URL,
     exportTemporaryRoot: URL
@@ -72,6 +78,8 @@ public struct GameSession: Codable, Equatable {
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
     self.renderScale = renderScale
     self.screenFit = screenFit
+    self.touchDiagnosticsEnabled = touchDiagnosticsEnabled
+    self.gestureHint = gestureHint
     self.allowedRemoteHosts = allowedRemoteHosts
     self.gpNextRoot = gpNextRoot
     self.exportTemporaryRoot = exportTemporaryRoot
@@ -126,6 +134,8 @@ public enum GameSessionDecoder {
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
       renderScale: renderScale,
       screenFit: screenFit,
+      touchDiagnosticsEnabled: json["touchDiagnosticsEnabled"] as? Bool ?? false,
+      gestureHint: json["gestureHint"] as? [String],
       allowedRemoteHosts: Set(hosts.map { $0.lowercased() }),
       gpNextRoot: try requiredDirectoryURL(json, "gpNextRoot"),
       exportTemporaryRoot: try requiredDirectoryURL(json, "exportTemporaryRoot")

@@ -21,6 +21,8 @@
   const physicalPixelRatio =
     Object.getOwnPropertyDescriptor(window, "devicePixelRatio").get;
   const traceEntries = [];
+  let nextTraceSequence = 1;
+  let flushedTraceSequence = 0;
   let owner = "idle";
   let backdropStartedAt = null;
   let backdropStartPoint = null;
@@ -43,12 +45,52 @@
       return;
     }
     traceEntries.push(Object.assign({
-      sequence: traceEntries.length + 1,
+      sequence: nextTraceSequence++,
       platform: String(config.platform || "unknown")
     }, entry));
     if (traceEntries.length > 256) {
       traceEntries.shift();
     }
+  }
+
+  // The host tears the page down without notice, so the trace reaches the
+  // logs in batches while it is recorded, each within the log message limit.
+  function flushTrace() {
+    const host = window.__gardendlessHost;
+    if (!host || typeof host.invoke !== "function") {
+      return;
+    }
+    let batch = [];
+    let length = 2;
+    function send() {
+      if (!batch.length) {
+        return;
+      }
+      host.invoke("host:log", {
+        args: {
+          event: "touch_trace",
+          level: "INFO",
+          outcome: "observed",
+          message: "[" + batch.join(",") + "]",
+          context: {count: batch.length}
+        }
+      }).catch(function () {});
+      batch = [];
+      length = 2;
+    }
+    for (const entry of traceEntries) {
+      if (entry.sequence <= flushedTraceSequence) {
+        continue;
+      }
+      flushedTraceSequence = entry.sequence;
+      const text = JSON.stringify(entry);
+      if (length + text.length > 1900) {
+        send();
+      }
+      batch.push(text);
+      length += text.length + 1;
+    }
+    send();
   }
 
   if (diagnosticsEnabled) {
@@ -59,6 +101,7 @@
         });
       }
     });
+    setInterval(flushTrace, 2000);
   }
 
   function reportFailure(code) {

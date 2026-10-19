@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.system.Os
@@ -26,6 +27,7 @@ import io.github.dey410.gardendlessloader.MainActivity
 import io.github.dey410.gardendlessloader.prepareForDocumentPicker
 import io.github.dey410.gardendlessloader.restoreLandscapeOrientation
 import io.github.dey410.gardendlessloader.logging.AppLogStore
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -48,6 +50,9 @@ class GameActivity : Activity() {
     @Volatile private var destroyed = false
     /** A ZIP opened from another app during play, handed to the launcher on return. */
     private var incomingZip: Uri? = null
+    /** Foreground play time; [resumedAt] is the elapsed-realtime clock while resumed, else 0. */
+    private var playedMs = 0L
+    private var resumedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -140,7 +145,7 @@ class GameActivity : Activity() {
             .put("hostAbi", 1)
             .put("platform", "android")
             .put("touchWheelCssMultiplier", -4.5)
-            .put("touchDiagnosticsEnabled", false)
+            .put("touchDiagnosticsEnabled", session.touchDiagnosticsEnabled)
             .put("origin", session.origin)
             .put("activationGeneration", session.activationGeneration)
             .put("hasGpNext", session.hasGpNext)
@@ -150,6 +155,7 @@ class GameActivity : Activity() {
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
             .put("detailedAudioDiagnosticsEnabled", session.detailedAudioDiagnosticsEnabled)
             .put("renderScale", session.renderScale ?: JSONObject.NULL)
+            .put("gestureHint", session.gestureHint?.let { JSONArray(it) } ?: JSONObject.NULL)
             .put(
                 "gpNextBaseDirectory",
                 File(session.gpNextRoot).parentFile?.absolutePath ?: session.appRoot,
@@ -164,6 +170,7 @@ class GameActivity : Activity() {
             add("render_scale.js")
             add("export_download_patch.js")
             add("watermark.js")
+            add("gesture_hint.js")
         }
         return buildString {
             append("window.__gardendlessHostConfig=")
@@ -425,6 +432,17 @@ class GameActivity : Activity() {
         if (intent.action == MainActivity.ACTION_IMPORT_ZIP) incomingZip = intent.data
     }
 
+    override fun onResume() {
+        super.onResume()
+        resumedAt = SystemClock.elapsedRealtime()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (resumedAt != 0L) playedMs += SystemClock.elapsedRealtime() - resumedAt
+        resumedAt = 0L
+    }
+
     @Deprecated("Invoked by the Android framework")
     override fun onBackPressed() {
         returnToLauncher(GameExitReason.USER_RETURNED, null)
@@ -451,7 +469,11 @@ class GameActivity : Activity() {
             context = mapOf("reason" to reason.wireName, "packageId" to session.packageId),
         )
         AppLogStore.flush(500)
-        writeExitResult(session.sessionId, reason, message, session.resourceRoot, session.packageId)
+        val foregroundMs = if (resumedAt != 0L) SystemClock.elapsedRealtime() - resumedAt else 0L
+        writeExitResult(
+            session.sessionId, reason, message, session.resourceRoot, session.packageId,
+            playedMs = playedMs + foregroundMs,
+        )
         startActivity(Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
             incomingZip?.let {
@@ -711,6 +733,7 @@ class GameActivity : Activity() {
         resourceRoot: String?,
         packageId: String = "unknown",
         code: String? = null,
+        playedMs: Long = 0,
     ) {
         val root = resourceRoot?.let { File(it).parentFile } ?: return
         val output = File(root, "game_exit_result.json")
@@ -725,6 +748,7 @@ class GameActivity : Activity() {
             }.format(Date()))
             .put("message", message ?: JSONObject.NULL)
             .put("code", code)
+            .put("playedMs", playedMs)
         runCatching {
             temporary.writeText(json.toString(2) + "\n")
             check(temporary.renameTo(output)) { "Cannot commit exit result" }

@@ -102,6 +102,8 @@ final class GameHostController: UIViewController,
   private var exiting = false
   private var cleanedUp = false
   private var sceneActivityObservers: [NSObjectProtocol] = []
+  private var playedTime: TimeInterval = 0
+  private var activeSince: Date?
 
   init(
     session: GameSession,
@@ -230,7 +232,9 @@ final class GameHostController: UIViewController,
       )
     )
     // The page suspends its audio while the scene is inactive and resumes it
-    // only once the scene is active again (audio_lifecycle.js).
+    // only once the scene is active again (audio_lifecycle.js). Only time with
+    // the scene active counts as play time.
+    activeSince = Date()
     for (name, active) in [
       (UIScene.willDeactivateNotification, false),
       (UIScene.didActivateNotification, true),
@@ -240,6 +244,12 @@ final class GameHostController: UIViewController,
           [weak self] notification in
           guard let self, (notification.object as? UIScene) === self.view.window?.windowScene
           else { return }
+          if active {
+            self.activeSince = self.activeSince ?? Date()
+          } else if let since = self.activeSince {
+            self.playedTime += Date().timeIntervalSince(since)
+            self.activeSince = nil
+          }
           self.webView.evaluateJavaScript(
             "window.__gardendlessSetSceneActive&&window.__gardendlessSetSceneActive(\(active))"
           )
@@ -288,9 +298,12 @@ final class GameHostController: UIViewController,
     ]
     let requested = arguments["event"] as? String ?? "javascript_console"
     let isAudio = audioEvents.contains(requested)
-    let event = isAudio || javascriptEvents.contains(requested)
+    let isTouchTrace = requested == "touch_trace"
+    // Audio events and the touch trace are observations, not script errors.
+    let isObservation = isAudio || isTouchTrace
+    let event = isObservation || javascriptEvents.contains(requested)
       ? requested : "javascript_console"
-    let context = isAudio
+    let context = isObservation
       ? arguments["context"] as? [String: Any] ?? [:]
       : [
         "page": arguments["page"] as? String ?? "",
@@ -300,15 +313,15 @@ final class GameHostController: UIViewController,
     logStore.emit([
       "source": "javascript",
       "level": arguments["level"] as? String ?? "ERROR",
-      "category": isAudio ? "game.audio" : "game.javascript",
+      "category": isAudio ? "game.audio" : isTouchTrace ? "game.touch" : "game.javascript",
       "event": event,
-      "outcome": isAudio
+      "outcome": isObservation
         ? arguments["outcome"] as? String ?? "observed" : "failed",
       "code": event.contains("failed") ? event : NSNull(),
       "message": arguments["message"] as? String ?? "",
       "gameSessionId": session.sessionId,
       "context": context,
-      "error": isAudio ? NSNull() : [
+      "error": isObservation ? NSNull() : [
         "type": "JavaScriptError",
         "message": arguments["message"] as? String ?? "",
         "stackTrace": arguments["stack"] as? String ?? "",
@@ -738,6 +751,7 @@ final class GameHostController: UIViewController,
       "packageId": session.packageId ?? NSNull(),
       "finishedAt": formatter.string(from: Date()),
       "message": message ?? NSNull(),
+      "playedMs": Int((playedTime + (activeSince.map { Date().timeIntervalSince($0) } ?? 0)) * 1000),
     ]
     if let data = try? JSONSerialization.data(
       withJSONObject: json,
@@ -753,7 +767,7 @@ final class GameHostController: UIViewController,
       "packageId": session.packageId ?? NSNull(),
       "platform": "ios",
       "touchWheelCssMultiplier": -4.5,
-      "touchDiagnosticsEnabled": false,
+      "touchDiagnosticsEnabled": session.touchDiagnosticsEnabled,
       "origin": GameOrigin.value,
       "activationGeneration": session.activationGeneration,
       "hasGpNext": session.hasGpNext,
@@ -764,6 +778,7 @@ final class GameHostController: UIViewController,
       "detailedAudioDiagnosticsEnabled":
         session.detailedAudioDiagnosticsEnabled,
       "renderScale": session.renderScale ?? NSNull(),
+      "gestureHint": session.gestureHint ?? NSNull(),
       "gpNextBaseDirectory": session.gpNextRoot
         .deletingLastPathComponent().path,
     ]
@@ -783,6 +798,7 @@ final class GameHostController: UIViewController,
       "export_download_patch.js",
     ]
     names.append("watermark.js")
+    names.append("gesture_hint.js")
     for name in names {
       guard let script = Self.loadFlutterAsset("assets/game_bridge/\(name)") else {
         preconditionFailure("Missing shared game bridge asset: \(name)")

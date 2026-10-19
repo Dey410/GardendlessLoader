@@ -6,10 +6,19 @@ import '../constants.dart';
 import 'http_text.dart';
 import '../models.dart';
 
+/// What the remote announcement file carries: the announcement and an
+/// optional seasonal theme, each valid on its own.
+class AnnouncementFeed {
+  const AnnouncementFeed({this.announcement, this.theme});
+
+  final Announcement? announcement;
+  final SeasonalTheme? theme;
+}
+
 class AnnouncementService {
   static final Uri _remoteUri = Uri.parse(remoteAnnouncementUrl);
 
-  Future<Announcement?> fetchCurrentAnnouncement() async {
+  Future<AnnouncementFeed> fetch() async {
     try {
       final response = await loadHttpText(
         _remoteUri,
@@ -17,27 +26,28 @@ class AnnouncementService {
         announcementMaxBytes,
       ).timeout(announcementTimeout);
       if (response.statusCode != HttpStatus.ok) {
-        return null;
+        return const AnnouncementFeed();
       }
 
       final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        return null;
+      if (decoded is! Map<String, dynamic> || decoded['schemaVersion'] != 1) {
+        return const AnnouncementFeed();
       }
-      if (decoded['schemaVersion'] != 1) {
-        return null;
-      }
-      if (!decoded.containsKey('announcement')) {
-        return null;
-      }
-
-      final rawAnnouncement = decoded['announcement'];
-      if (rawAnnouncement == null) {
-        return null;
-      }
-
-      return Announcement.fromJson(rawAnnouncement);
+      return AnnouncementFeed(
+        announcement: _parse(decoded['announcement'], Announcement.fromJson),
+        theme: _parse(decoded['theme'], SeasonalTheme.fromJson),
+      );
     } catch (_) {
+      return const AnnouncementFeed();
+    }
+  }
+
+  /// A malformed part is dropped without discarding the other.
+  static T? _parse<T>(Object? value, T Function(Object?) fromJson) {
+    if (value == null) return null;
+    try {
+      return fromJson(value);
+    } on FormatException {
       return null;
     }
   }
