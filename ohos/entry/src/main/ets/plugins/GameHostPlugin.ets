@@ -27,6 +27,7 @@ interface GameSessionArguments {
   autoCollectSunEnabled: boolean;
   detailedAudioDiagnosticsEnabled: boolean;
   renderPixelRatioCap: number | null;
+  screenFit: string;
   packageId: string;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
@@ -88,6 +89,7 @@ export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHa
       autoCollectSunEnabled: call.argument('autoCollectSunEnabled') as boolean,
       detailedAudioDiagnosticsEnabled: (call.argument('detailedAudioDiagnosticsEnabled') as boolean | null) ?? false,
       renderPixelRatioCap: (call.argument('renderPixelRatioCap') as number | null) ?? null,
+      screenFit: (call.argument('screenFit') as string | null) ?? 'keepAspect',
       packageId: (call.argument('packageId') as string | null) ?? 'unknown',
       allowedRemoteHosts: call.argument('allowedRemoteHosts') as string[],
       gpNextRoot: call.argument('gpNextRoot') as string,

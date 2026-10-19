@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
 import '../../constants.dart';
+import '../../game_host/game_host.dart';
 import '../../l10n/app_strings.dart';
 import '../../models.dart';
 import '../../services/app_settings_store.dart';
@@ -197,51 +198,29 @@ class _LaunchPreferences extends StatelessWidget {
                 : null,
           ),
           Divider(color: palette.border),
-          Padding(
+          _SegmentedSettingRow<RenderResolution>(
             key: const ValueKey('render-resolution'),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        strings.renderResolution,
-                        style: TextStyle(
-                          color: palette.ink,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        strings.renderResolutionSubtitle,
-                        style: TextStyle(
-                          color: palette.inkMuted,
-                          fontSize: 12.5,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: 168,
-                  child: GardenSegmented<RenderResolution>(
-                    values: RenderResolution.values,
-                    selected: controller.renderResolution,
-                    keyOf: (value) =>
-                        ValueKey('render-resolution-${value.name}'),
-                    labelOf: strings.renderResolutionLabel,
-                    onChanged: controller.initialized
-                        ? controller.setRenderResolution
-                        : (_) {},
-                  ),
-                ),
-              ],
-            ),
+            title: strings.renderResolution,
+            subtitle: strings.renderResolutionSubtitle,
+            values: RenderResolution.values,
+            selected: controller.renderResolution,
+            keyOf: (value) => ValueKey('render-resolution-${value.name}'),
+            labelOf: strings.renderResolutionLabel,
+            onChanged: controller.initialized
+                ? controller.setRenderResolution
+                : (_) {},
+          ),
+          Divider(color: palette.border),
+          _SegmentedSettingRow<ScreenFit>(
+            key: const ValueKey('screen-fit'),
+            title: strings.screenFit,
+            subtitle: strings.screenFitSubtitle,
+            values: ScreenFit.values,
+            selected: controller.screenFit,
+            keyOf: (value) => ValueKey('screen-fit-${value.name}'),
+            labelOf: strings.screenFitLabel,
+            onChanged:
+                controller.initialized ? controller.setScreenFit : (_) {},
           ),
           Divider(color: palette.border),
           SwitchRow(
@@ -252,6 +231,74 @@ class _LaunchPreferences extends StatelessWidget {
             value: controller.watermarkEnabled,
             onChanged:
                 controller.initialized ? controller.setWatermarkEnabled : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SegmentedSettingRow<T> extends StatelessWidget {
+  const _SegmentedSettingRow({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.values,
+    required this.selected,
+    required this.keyOf,
+    required this.labelOf,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<T> values;
+  final T selected;
+  final Key Function(T value) keyOf;
+  final String Function(T value) labelOf;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: palette.ink,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: palette.inkMuted,
+                    fontSize: 12.5,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          SizedBox(
+            width: 216,
+            child: GardenSegmented<T>(
+              values: values,
+              selected: selected,
+              keyOf: keyOf,
+              labelOf: labelOf,
+              onChanged: onChanged,
+            ),
           ),
         ],
       ),

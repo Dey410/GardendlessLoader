@@ -128,7 +128,7 @@ class GameActivity : Activity() {
             )
         }
         webView.webChromeClient = GameChromeClient(::openFileChooser)
-        val viewport = GameViewportLayout(this).apply {
+        val viewport = GameViewportLayout(this, session.screenFit).apply {
             addView(webView)
         }
         setContentView(viewport)

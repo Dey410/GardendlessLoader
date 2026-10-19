@@ -24,6 +24,8 @@ struct GamePage {
   private exiting: boolean = false;
   @State private viewportWidth: string = '100%';
   @State private viewportHeight: string = '100%';
+  @State private viewportScaleX: number = 1;
+  @State private viewportScaleY: number = 1;
 
   aboutToAppear(): void {
     try {
@@ -74,6 +76,7 @@ struct GamePage {
       Web({ src: '', controller: this.controller })
         .width(this.viewportWidth)
         .height(this.viewportHeight)
+        .scale({ x: this.viewportScaleX, y: this.viewportScaleY })
         .backgroundColor(Color.Black)
         .javaScriptAccess(true)
         .domStorageAccess(true)
@@ -191,18 +194,28 @@ struct GamePage {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
       return;
     }
+    const screenFit = this.session?.screenFit ?? 'keepAspect';
     const minimumAspectRatio = 16 / 10;
     const maximumAspectRatio = 17 / 9;
     const aspectRatio = width / height;
     let viewportWidth = width;
     let viewportHeight = height;
-    if (aspectRatio > maximumAspectRatio) {
-      viewportWidth = Math.floor(height * maximumAspectRatio);
-    } else if (aspectRatio < minimumAspectRatio) {
-      viewportHeight = Math.floor(width / minimumAspectRatio);
+    // SHOW_ALL gives the game the whole window and lets its own policy adapt.
+    if (screenFit !== 'showAll') {
+      if (aspectRatio > maximumAspectRatio) {
+        viewportWidth = Math.floor(height * maximumAspectRatio);
+      } else if (aspectRatio < minimumAspectRatio) {
+        viewportHeight = Math.floor(width / minimumAspectRatio);
+      }
     }
     this.viewportWidth = `${viewportWidth}vp`;
     this.viewportHeight = `${viewportHeight}vp`;
+    // The page keeps the clamped viewport; scaling around the centre
+    // stretches it over the whole window.
+    if (screenFit === 'stretch') {
+      this.viewportScaleX = width / viewportWidth;
+      this.viewportScaleY = height / viewportHeight;
+    }
   }
 
   private buildDocumentStartScript(session: GameSession): string {

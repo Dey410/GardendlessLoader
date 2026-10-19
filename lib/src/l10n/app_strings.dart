@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../game_host/game_host.dart';
 import '../models.dart';
 import '../services/app_settings_store.dart';
 
@@ -246,6 +247,19 @@ class AppStrings {
         RenderResolution.full => _t('原生', 'Native'),
         RenderResolution.medium => '1.5×',
         RenderResolution.low => '1×',
+      };
+  String get screenFit => _t('画面比例', 'Screen fit');
+  String get screenFitSubtitle => _t(
+        '屏幕超出 16:10–17:9 时：保持比例会留黑边；完整显示会铺满屏幕，但可能露出场景外的区域；'
+            '强制拉伸会铺满屏幕，但可能造成画面变形',
+        'On screens outside 16:10–17:9: Keep ratio adds black bars; Show all '
+            'fills the screen but can show area outside the scene; Stretch '
+            'fills the screen but can distort the picture',
+      );
+  String screenFitLabel(ScreenFit fit) => switch (fit) {
+        ScreenFit.keepAspect => _t('保持比例', 'Keep ratio'),
+        ScreenFit.showAll => _t('完整显示', 'Show all'),
+        ScreenFit.stretch => _t('强制拉伸', 'Stretch'),
       };
   String get watermark => _t('游戏水印', 'Watermark');
   String get watermarkSubtitle => _t(

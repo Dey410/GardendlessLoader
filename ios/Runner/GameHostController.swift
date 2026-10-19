@@ -34,9 +34,11 @@ enum GameViewportSize {
 
 private final class GameViewportView: UIView {
   let webView: WKWebView
+  private let screenFit: GameScreenFit
 
-  init(webView: WKWebView) {
+  init(webView: WKWebView, screenFit: GameScreenFit) {
     self.webView = webView
+    self.screenFit = screenFit
     super.init(frame: .zero)
     backgroundColor = .black
     addSubview(webView)
@@ -50,12 +52,29 @@ private final class GameViewportView: UIView {
   override func layoutSubviews() {
     super.layoutSubviews()
     let size = GameViewportSize.fit(bounds.size)
-    webView.frame = CGRect(
-      x: floor((bounds.width - size.width) / 2),
-      y: floor((bounds.height - size.height) / 2),
-      width: size.width,
-      height: size.height
-    )
+    switch screenFit {
+    case .keepAspect:
+      webView.frame = CGRect(
+        x: floor((bounds.width - size.width) / 2),
+        y: floor((bounds.height - size.height) / 2),
+        width: size.width,
+        height: size.height
+      )
+    case .showAll:
+      // The game's own SHOW_ALL policy adapts to the whole screen.
+      webView.frame = bounds
+    case .stretch:
+      // The page keeps the clamped viewport; the transform stretches it over
+      // the whole screen.
+      webView.bounds = CGRect(origin: .zero, size: size)
+      webView.center = CGPoint(x: bounds.midX, y: bounds.midY)
+      webView.transform = size.width > 0 && size.height > 0
+        ? CGAffineTransform(
+          scaleX: bounds.width / size.width,
+          y: bounds.height / size.height
+        )
+        : .identity
+    }
   }
 }
 
@@ -162,6 +181,9 @@ final class GameHostController: UIViewController,
     webView.backgroundColor = .black
     webView.scrollView.backgroundColor = .black
     webView.scrollView.bounces = false
+    // The page must fill the web view; safe-area insets would leave a bar of
+    // page background where the web view reaches the home indicator.
+    webView.scrollView.contentInsetAdjustmentBehavior = .never
     webView.allowsBackForwardNavigationGestures = false
     webView.allowsLinkPreview = false
 
@@ -177,7 +199,10 @@ final class GameHostController: UIViewController,
     navigationPolicy.owner = self
     webView.navigationDelegate = navigationPolicy
 
-    let viewport = GameViewportView(webView: webView)
+    let viewport = GameViewportView(
+      webView: webView,
+      screenFit: session.screenFit
+    )
     let edgeGesture = UIScreenEdgePanGestureRecognizer(
       target: self,
       action: #selector(returnToLauncher)

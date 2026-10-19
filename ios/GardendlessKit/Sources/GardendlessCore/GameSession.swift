@@ -1,5 +1,17 @@
 import Foundation
 
+/// How the game fills a screen outside the 16:10 to 17:9 range it is laid
+/// out for.
+public enum GameScreenFit: String, Codable, Equatable {
+  /// Clamps the game viewport to 16:10–17:9 and leaves black bars.
+  case keepAspect
+  /// Gives the game the whole screen; its SHOW_ALL policy reveals area beyond
+  /// the design resolution.
+  case showAll
+  /// Stretches the clamped viewport over the whole screen.
+  case stretch
+}
+
 /// Prepared session contract written by the Flutter launcher and consumed by
 /// the native game host. Schema v1 is a frozen public contract.
 public struct GameSession: Codable, Equatable {
@@ -19,6 +31,7 @@ public struct GameSession: Codable, Equatable {
   /// Highest device pixel ratio the game canvas renders at; nil keeps the
   /// device's own ratio.
   public let renderPixelRatioCap: Double?
+  public let screenFit: GameScreenFit
   public let allowedRemoteHosts: Set<String>
   public let gpNextRoot: URL
   public let exportTemporaryRoot: URL
@@ -40,6 +53,7 @@ public struct GameSession: Codable, Equatable {
     autoCollectSunEnabled: Bool,
     detailedAudioDiagnosticsEnabled: Bool = false,
     renderPixelRatioCap: Double? = nil,
+    screenFit: GameScreenFit = .keepAspect,
     allowedRemoteHosts: Set<String>,
     gpNextRoot: URL,
     exportTemporaryRoot: URL
@@ -56,6 +70,7 @@ public struct GameSession: Codable, Equatable {
     self.autoCollectSunEnabled = autoCollectSunEnabled
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
     self.renderPixelRatioCap = renderPixelRatioCap
+    self.screenFit = screenFit
     self.allowedRemoteHosts = allowedRemoteHosts
     self.gpNextRoot = gpNextRoot
     self.exportTemporaryRoot = exportTemporaryRoot
@@ -86,6 +101,11 @@ public enum GameSessionDecoder {
     if let renderPixelRatioCap, renderPixelRatioCap <= 0 {
       throw GameError.failed(.invalidSession, "Invalid render pixel ratio cap")
     }
+    guard let screenFit = GameScreenFit(
+      rawValue: json["screenFit"] as? String ?? GameScreenFit.keepAspect.rawValue
+    ) else {
+      throw GameError.failed(.invalidSession, "Invalid screen fit")
+    }
     let hosts = json["allowedRemoteHosts"] as? [String] ?? []
     guard hosts.allSatisfy(isValidRemoteHost) else {
       throw GameError.failed(.invalidSession, "Invalid remote host")
@@ -104,6 +124,7 @@ public enum GameSessionDecoder {
       detailedAudioDiagnosticsEnabled:
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
       renderPixelRatioCap: renderPixelRatioCap,
+      screenFit: screenFit,
       allowedRemoteHosts: Set(hosts.map { $0.lowercased() }),
       gpNextRoot: try requiredDirectoryURL(json, "gpNextRoot"),
       exportTemporaryRoot: try requiredDirectoryURL(json, "exportTemporaryRoot")

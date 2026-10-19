@@ -23,7 +23,10 @@ internal object GameViewportSize {
     }
 }
 
-internal class GameViewportLayout(context: Context) : FrameLayout(context) {
+internal class GameViewportLayout(
+    context: Context,
+    private val screenFit: GameScreenFit,
+) : FrameLayout(context) {
     init {
         setBackgroundColor(Color.BLACK)
     }
@@ -34,7 +37,12 @@ internal class GameViewportLayout(context: Context) : FrameLayout(context) {
         setMeasuredDimension(width, height)
         if (childCount == 0) return
 
-        val (viewportWidth, viewportHeight) = GameViewportSize.fit(width, height)
+        // SHOW_ALL gives the game the whole window and lets its own policy adapt.
+        val (viewportWidth, viewportHeight) = if (screenFit == GameScreenFit.SHOW_ALL) {
+            width to height
+        } else {
+            GameViewportSize.fit(width, height)
+        }
         val childWidthSpec = MeasureSpec.makeMeasureSpec(viewportWidth, MeasureSpec.EXACTLY)
         val childHeightSpec = MeasureSpec.makeMeasureSpec(viewportHeight, MeasureSpec.EXACTLY)
         for (index in 0 until childCount) {
@@ -47,6 +55,16 @@ internal class GameViewportLayout(context: Context) : FrameLayout(context) {
         val height = bottom - top
         for (index in 0 until childCount) {
             val child: View = getChildAt(index)
+            if (screenFit == GameScreenFit.STRETCH && child.measuredWidth > 0 && child.measuredHeight > 0) {
+                // The page keeps the clamped viewport; scaling from the top-left
+                // corner stretches it over the whole window.
+                child.layout(0, 0, child.measuredWidth, child.measuredHeight)
+                child.pivotX = 0f
+                child.pivotY = 0f
+                child.scaleX = width.toFloat() / child.measuredWidth
+                child.scaleY = height.toFloat() / child.measuredHeight
+                continue
+            }
             val childLeft = (width - child.measuredWidth) / 2
             val childTop = (height - child.measuredHeight) / 2
             child.layout(

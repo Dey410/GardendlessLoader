@@ -128,6 +128,7 @@ class AppController extends ChangeNotifier {
   bool get watermarkEnabled => _appSettings.watermarkEnabled;
   bool get quickLaunchEnabled => _appSettings.quickLaunchEnabled;
   RenderResolution get renderResolution => _appSettings.renderResolution;
+  ScreenFit get screenFit => _appSettings.screenFit;
   bool get detailedAudioDiagnosticsEnabled =>
       _appSettings.detailedAudioDiagnosticsEnabled;
   ThemePreference get themePreference => _appSettings.themePreference;
@@ -874,6 +875,7 @@ class AppController extends ChangeNotifier {
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
       renderPixelRatioCap: renderResolution.pixelRatioCap,
+      screenFit: screenFit,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -1016,6 +1018,10 @@ class AppController extends ChangeNotifier {
     return _updateAppSettings(
       _appSettings.copyWith(renderResolution: resolution),
     );
+  }
+
+  Future<void> setScreenFit(ScreenFit fit) {
+    return _updateAppSettings(_appSettings.copyWith(screenFit: fit));
   }
 
   Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) {

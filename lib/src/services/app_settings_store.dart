@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../game_host/game_host.dart';
+
 enum ThemePreference {
   system,
   light,
@@ -51,6 +53,7 @@ class AppSettings {
     this.watermarkEnabled = true,
     this.quickLaunchEnabled = false,
     this.renderResolution = RenderResolution.full,
+    this.screenFit = ScreenFit.keepAspect,
     this.detailedAudioDiagnosticsEnabled = false,
     this.themePreference = ThemePreference.system,
     this.reduceMotion = false,
@@ -63,6 +66,7 @@ class AppSettings {
       watermarkEnabled: json['watermarkEnabled'] as bool? ?? true,
       quickLaunchEnabled: json['quickLaunchEnabled'] as bool? ?? false,
       renderResolution: RenderResolution.fromName(json['renderResolution']),
+      screenFit: ScreenFit.fromName(json['screenFit']),
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       themePreference: ThemePreference.fromName(json['themePreference']),
@@ -78,6 +82,7 @@ class AppSettings {
   /// Opens the game directly on a cold start instead of the launcher.
   final bool quickLaunchEnabled;
   final RenderResolution renderResolution;
+  final ScreenFit screenFit;
   final bool detailedAudioDiagnosticsEnabled;
   final ThemePreference themePreference;
   final bool reduceMotion;
@@ -91,6 +96,7 @@ class AppSettings {
     bool? watermarkEnabled,
     bool? quickLaunchEnabled,
     RenderResolution? renderResolution,
+    ScreenFit? screenFit,
     bool? detailedAudioDiagnosticsEnabled,
     ThemePreference? themePreference,
     bool? reduceMotion,
@@ -101,6 +107,7 @@ class AppSettings {
       watermarkEnabled: watermarkEnabled ?? this.watermarkEnabled,
       quickLaunchEnabled: quickLaunchEnabled ?? this.quickLaunchEnabled,
       renderResolution: renderResolution ?? this.renderResolution,
+      screenFit: screenFit ?? this.screenFit,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled ??
           this.detailedAudioDiagnosticsEnabled,
       themePreference: themePreference ?? this.themePreference,
@@ -114,6 +121,7 @@ class AppSettings {
         'watermarkEnabled': watermarkEnabled,
         'quickLaunchEnabled': quickLaunchEnabled,
         'renderResolution': renderResolution.name,
+        'screenFit': screenFit.name,
         'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
         'themePreference': themePreference.name,
         'reduceMotion': reduceMotion,

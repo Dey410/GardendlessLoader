@@ -34,6 +34,27 @@ enum GameHostPlatform {
   }
 }
 
+/// How the game fills a screen outside the 16:10 to 17:9 range it is laid
+/// out for. The names are the native session wire values.
+enum ScreenFit {
+  /// Clamps the game viewport to 16:10–17:9 and leaves black bars.
+  keepAspect,
+
+  /// Gives the game the whole screen; its SHOW_ALL policy reveals area beyond
+  /// the design resolution.
+  showAll,
+
+  /// Stretches the clamped viewport over the whole screen.
+  stretch;
+
+  static ScreenFit fromName(Object? value) {
+    return ScreenFit.values.firstWhere(
+      (fit) => fit.name == value,
+      orElse: () => ScreenFit.keepAspect,
+    );
+  }
+}
+
 class GameSession {
   const GameSession({
     required this.sessionId,
@@ -49,6 +70,7 @@ class GameSession {
     this.autoCollectSunEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
     this.renderPixelRatioCap,
+    this.screenFit = ScreenFit.keepAspect,
     required this.allowedRemoteHosts,
     required this.gpNextRoot,
     required this.exportTemporaryRoot,
@@ -90,6 +112,7 @@ class GameSession {
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       renderPixelRatioCap: (renderPixelRatioCap as num?)?.toDouble(),
+      screenFit: ScreenFit.fromName(json['screenFit']),
       allowedRemoteHosts: normalizedRemoteHosts,
       gpNextRoot: _requiredString(json, 'gpNextRoot'),
       exportTemporaryRoot: _requiredString(json, 'exportTemporaryRoot'),
@@ -114,6 +137,7 @@ class GameSession {
   /// Highest device pixel ratio the game canvas renders at; null renders at
   /// the device's own ratio.
   final double? renderPixelRatioCap;
+  final ScreenFit screenFit;
   final List<String> allowedRemoteHosts;
   final String gpNextRoot;
   final String exportTemporaryRoot;
@@ -148,6 +172,7 @@ class GameSession {
       'autoCollectSunEnabled': autoCollectSunEnabled,
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
       'renderPixelRatioCap': renderPixelRatioCap,
+      'screenFit': screenFit.name,
       'allowedRemoteHosts': normalizedRemoteHosts,
       'gpNextRoot': gpNextRoot,
       'exportTemporaryRoot': exportTemporaryRoot,
