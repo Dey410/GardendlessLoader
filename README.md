@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="tool/generated_icons/app_icon_readme.png" width="128" height="128" alt="GardendlessLoader icon">
+<img src="tool/generated_icons/app_icon_readme.png" width="128" height="128" alt="GardendlessLoader 图标">
 
 # GardendlessLoader
 
-**Play PvZ2 Gardendless on your phone and tablet**
+**在手机和平板上畅玩 PvZ2 Gardendless**
 
 Android · iOS / iPadOS · HarmonyOS
 
@@ -13,221 +13,221 @@ Android · iOS / iPadOS · HarmonyOS
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/Dey410/GardendlessLoader)](https://github.com/Dey410/GardendlessLoader/commits/main)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-[**Download**](https://github.com/Dey410/GardendlessLoader/releases) · [Quick start](#quick-start) · [Guide](#guide) · [FAQ](#faq) · [Report an issue](https://github.com/Dey410/GardendlessLoader/issues)
+[**下载应用**](https://github.com/Dey410/GardendlessLoader/releases) · [快速开始](#快速开始) · [使用指南](#使用指南) · [常见问题](#常见问题) · [问题反馈](https://github.com/Dey410/GardendlessLoader/issues)
 
-[简体中文](README.zh-CN.md) · **English**
+**简体中文** · [English](README.en.md)
 
 </div>
 
 ---
 
-[PvZ2 Gardendless](https://github.com/Gzh0821/pvzge_web) is a rewrite of *Plants vs. Zombies 2* built entirely with web technologies, including the Cocos engine. **GardendlessLoader** brings it to mobile: import a game resource ZIP and the game runs straight from local files in the system's native WebView, with no server to set up and no browser to keep open.
+[PvZ2 Gardendless](https://github.com/Gzh0821/pvzge_web) 是一款完全使用 Web 技术（包括 Cocos 引擎）重写的《植物大战僵尸 2》。**GardendlessLoader** 把它带到了移动设备上：导入一份游戏资源 ZIP，就能在系统原生 WebView 中直接从本地运行游戏，无需搭建服务器，也不用开着浏览器。
 
-## Highlights
+## 功能亮点
 
-- 📦 **One-tap import**: pick a ZIP and the app extracts, validates, and self-checks it. You can also open a ZIP in the loader straight from another app.
-- 🛡️ **Safe updates**: A/B slot updates replace the old resources only after the new ones pass validation. A failed or cancelled import never touches your current version.
-- 👆 **Made for touch**: one- and two-finger gestures map to mouse input, and physical keyboards and mice work too.
-- 🧩 **GP-Next ready**: supports patches, Mod installation, and JS Modding in GP-Next builds.
-- 🎛️ **Adjustable display**: tune render resolution and screen fit, and turn on Auto Collect Sun or Quick launch.
-- ⚡ **Runs natively**: uses WebView, WKWebView, and ArkWeb on each platform to load local resources directly.
+- 📦 **一键导入**：选好 ZIP，自动完成解压、校验和自检；也能在其他应用里直接用加载器打开 ZIP。
+- 🛡️ **安全更新**：A/B 双槽更新，新资源通过校验才会替换旧资源；导入失败或取消都不会影响当前版本。
+- 👆 **触屏适配**：单指、双指手势映射为鼠标操作，同时支持实体键盘和鼠标。
+- 🧩 **支持 GP-Next**：兼容 GP-Next 构建的补丁、Mod 安装与 JS Modding。
+- 🎛️ **画面可调**：自由调整渲染分辨率和画面比例，还能开启自动收集阳光、快速启动。
+- ⚡ **原生运行**：三个平台分别使用 WebView、WKWebView 和 ArkWeb，直接读取本地资源。
 
-## Quick start
+## 快速开始
 
-### Step 1: Install the loader
+### 第一步：安装加载器
 
-Download the package for your platform from [GitHub Releases](https://github.com/Dey410/GardendlessLoader/releases):
+从 [GitHub Releases](https://github.com/Dey410/GardendlessLoader/releases) 下载对应平台的安装包：
 
-| Platform | File | Requires | How to install |
+| 平台 | 文件 | 系统要求 | 安装方式 |
 | --- | --- | --- | --- |
-| Android | `.apk` | Android 7.0+ | Install directly; you may need to allow installing unknown apps |
-| iOS / iPadOS | `.ipa` | iOS 15.0+ | Unsigned; sign with a sideloading tool such as AltStore or your own developer certificate, then install |
-| HarmonyOS | `.hap` | HarmonyOS 5.0+ | Unsigned; sign it yourself before installing |
+| Android | `.apk` | Android 7.0+ | 直接安装，可能需要允许“安装未知应用” |
+| iOS / iPadOS | `.ipa` | iOS 15.0+ | 未签名，需用 AltStore 等侧载工具或自己的开发者证书签名后安装 |
+| HarmonyOS | `.hap` | HarmonyOS 5.0+ | 未签名，需自行签名后安装 |
 
-Want to try what's in development? Open any successful run in [GitHub Actions](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml) to download the latest build.
+想抢先体验开发中的版本？在 [GitHub Actions](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml) 中打开任意一次成功的运行，即可下载最新构建。
 
-### Step 2: Get the game resources
+### 第二步：获取游戏资源
 
-The loader ships without any game resources. Get a ZIP from one of these sources:
+加载器本身不包含任何游戏资源，请从以下任一渠道获取 ZIP：
 
-| Source | What you get | How |
+| 渠道 | 内容 | 获取方式 |
 | --- | --- | --- |
-| **Quark Cloud Drive** (recommended) | Mobile-optimized package | [Open the link](https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU), extraction code `qLBU` |
-| **extract-pvzge-gpnext** | Automatically built GP-Next package with mobile optimizations | Run GitHub Actions in [that repository](https://github.com/Dey410/extract-pvzge-gpnext) |
-| **Upstream original** | Official web resources | In the [PvZ2 Gardendless repository](https://github.com/Gzh0821/pvzge_web), select `Code` → `Download ZIP` |
+| **夸克网盘**（推荐） | 移动端优化包 | [打开链接](https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU)，提取码 `qLBU` |
+| **extract-pvzge-gpnext** | 自动打包的 GP-Next 移动端优化包 | 在 [该仓库](https://github.com/Dey410/extract-pvzge-gpnext) 中运行 GitHub Actions |
+| **上游原版** | 官方原版 Web 资源 | 在 [PvZ2 Gardendless 仓库](https://github.com/Gzh0821/pvzge_web) 点击 `Code` → `Download ZIP` |
 
 > [!NOTE]
-> The cloud drive copies are uploaded by the loader author, are not affiliated with PvZ2 Gardendless, and may lag behind official releases. If an update is overdue, feel free to remind the author on [Bilibili](https://space.bilibili.com/523667580). Downloads through the cloud drive link may earn the author a small referral reward, which helps support development.
+> 网盘中的资源由加载器作者上传，与 PvZ2 Gardendless 官方无关，更新可能略晚于官方；如果迟迟没有更新，欢迎到 [B 站](https://space.bilibili.com/523667580)提醒。通过网盘链接下载时，作者可能获得少量推广收益，用于支持项目开发。
 
-### Step 3: Import and play
+### 第三步：导入并开始游戏
 
-1. Open GardendlessLoader, go to the **Resources** tab, and tap **Select ZIP to import**.
-2. Wait for the four steps to finish: **Read → Extract → Validate → Self-check**.
-3. Switch to the **Play** tab and tap **Start Game**. 🌻
+1. 打开 GardendlessLoader，切换到 **资源** 页，点击 **选择 ZIP 导入**。
+2. 等待 **读取 → 解压 → 校验 → 自检** 四个步骤完成。
+3. 切换到 **游戏** 页，点击 **开始游戏**。🌻
 
-## Guide
+## 使用指南
 
-### Launch preferences
+### 启动偏好
 
-Adjust these under **Settings → Launch Preferences**; changes apply the next time the game starts:
+在 **设置 → 启动偏好** 中调整，下次启动游戏时生效：
 
-| Option | What it does |
+| 选项 | 作用 |
 | --- | --- |
-| **Quick launch** | Opens the game directly when the app starts |
-| **Auto Collect Sun** | Presses `A` about every 3 seconds during play to collect sun; skipped while paused, in the background, or while you are typing |
-| **Render resolution** | Renders at 100% / 75% / 50% of the screen's native resolution; lower uses less GPU memory but looks softer |
-| **Screen fit** | **Balanced** (default) trims a little of the picture for smaller black bars; **Show all** keeps the whole picture with larger bars; **Stretch** fills the screen but may distort the picture |
-| **Watermark** | Shows the loader name in a corner of the game |
+| **快速启动** | 打开应用后直接进入游戏 |
+| **自动收集** | 游戏进行中约每 3 秒模拟按一次 `A` 键收集阳光；暂停、切到后台或正在输入文字时不会触发 |
+| **渲染分辨率** | 以屏幕原生分辨率的 100% / 75% / 50% 渲染；比例越低越省显存，画面也越模糊 |
+| **画面比例** | **均衡比例**（默认）裁掉少量画面以缩小黑边；**完整显示**保留全部画面，黑边更大；**强制拉伸**铺满屏幕，但画面可能变形 |
+| **游戏水印** | 在游戏画面角落显示加载器标识 |
 
-### Touch controls
+### 触摸操作
 
-| Gesture | Action |
+| 手势 | 对应操作 |
 | --- | --- |
-| One-finger tap or drag | Left click or drag |
-| Two-finger tap | Right click at the midpoint between your fingers |
-| Two-finger swipe | Mouse wheel |
-| Three or more fingers | Cancels the current touch |
-| Physical mouse and keyboard | Handled natively by the system WebView |
+| 单指轻点或拖动 | 鼠标左键点击或拖动 |
+| 双指轻点 | 在两指中点执行鼠标右键点击 |
+| 双指滑动 | 鼠标滚轮 |
+| 三指及以上 | 取消当前触摸 |
+| 实体鼠标和键盘 | 由系统 WebView 原生处理 |
 
-### Tips
+### 实用技巧
 
-- **Update resources**: on the **Resources** tab, tap **Select ZIP to update**. Export a save backup in the game first.
-- **Import from another app**: open a ZIP with GardendlessLoader from a file manager or chat app (Android and iOS also accept it through Share). A ZIP received during play is imported once you return to the launcher.
-- **Home-screen shortcuts**: long-press the app icon to jump straight to **Start Game** or **Import Resources**.
-- **Back to the launcher**: use system Back on Android and HarmonyOS, swipe right from the left edge on iOS, or use the game's own quit button.
+- **更新资源**：在 **资源** 页点击 **选择 ZIP 更新**。更新前建议先在游戏里导出存档备份。
+- **从其他应用导入**：在文件管理器、聊天软件中选择用 GardendlessLoader 打开 ZIP 即可导入；Android 和 iOS 还支持通过“分享”导入。游戏运行期间收到的 ZIP，会等你回到启动器后再导入。
+- **桌面快捷方式**：长按应用图标，可以直接选择 **开始游戏** 或 **导入资源**。
+- **返回启动器**：Android 和鸿蒙使用系统返回手势，iOS 从屏幕左边缘向右滑动，也可以点击游戏内的退出按钮。
 
-### GP-Next and Mods
+### GP-Next 与 Mod
 
-- Save import/export, patches, and Mod installs all happen inside the game through the system file picker.
-- Install ZIP Mods from the GP-Next Mods page. Once the Mod platform is active, the patch folder accepts only single-file JSON/JSON5 patches.
-- A ZIP patch pack may keep `pack.json` at the archive root or inside exactly one wrapper folder; the loader handles the wrapper for you and ignores `.DS_Store` and `__MACOSX`.
-- The JS Modding switch lives only in GP-Next inside the game. The loader never reads or changes it, so your choice survives loader updates.
+- 存档导入导出、补丁和 Mod 安装都在游戏内完成，通过系统文件选择器选取文件。
+- ZIP Mod 请在 GP-Next 的模组页安装。模组平台启用后，补丁目录只接受 JSON/JSON5 单文件补丁。
+- ZIP 补丁包的 `pack.json` 可以放在压缩包根目录，也可以放在唯一的一层外层目录中；加载器会自动处理外层目录，并忽略 `.DS_Store` 与 `__MACOSX`。
+- JS Modding 的开关只在游戏内的 GP-Next 中设置，加载器不会读取或修改它，升级加载器后你的选择保持不变。
 
 > [!WARNING]
-> JS Mods run code inside the game. Only install Mods from sources you trust.
+> JS Mod 会在游戏中执行代码，请只安装来源可信的 Mod。
 
-## FAQ
+## 常见问题
 
 <details>
-<summary><b>Why do I have to sign the iOS package myself?</b></summary>
+<summary><b>iOS 安装包为什么需要自己签名？</b></summary>
 
 <br>
 
-Apple requires every iOS app to be signed before it can be installed, and this repository contains no signing files, so the published IPA is unsigned. Sign it with a sideloading tool such as AltStore or with your own Apple developer certificate. Apps signed with a free Apple ID must be re-signed every 7 days. See the [iOS deployment guide](docs/deployment.md) for packaging and signing details.
+苹果要求 iOS 应用必须经过签名才能安装，而本仓库不包含任何签名文件，所以发布的 IPA 都是未签名的。你可以使用 AltStore 等侧载工具，或用自己的 Apple 开发者证书签名后安装。使用免费 Apple ID 签名的应用每 7 天需要重新签名一次。打包与签名的细节见 [iOS 部署说明](docs/deployment.md)。
 
 </details>
 
 <details>
-<summary><b>Will updating resources wipe my save?</b></summary>
+<summary><b>更新资源会丢失存档吗？</b></summary>
 
 <br>
 
-No. Your save lives in the game, and updating resources does not delete it. A new game version may still rewrite the save, and an error could corrupt it, so export a backup in the game before updating. Installed patches and Mods are kept as well.
+不会。存档保存在游戏内，更新资源不会删除它。但新版本游戏可能会改写存档，出错时也有可能损坏存档，所以更新前最好先在游戏里导出一份备份。已安装的补丁和 Mod 也不会因为更新资源而丢失。
 
 </details>
 
 <details>
-<summary><b>The game stutters, runs hot, or crashes. What can I do?</b></summary>
+<summary><b>游戏卡顿、发热或者闪退怎么办？</b></summary>
 
 <br>
 
-Lower **Render resolution** to 75% or 50% under **Settings → Launch Preferences**; this noticeably reduces GPU memory use. A mobile-optimized package also helps, since it uses lower-resolution textures and adjusted audio quality.
+先尝试在 **设置 → 启动偏好** 中把 **渲染分辨率** 调到 75% 或 50%，这能明显减少显存占用。也推荐改用移动端优化包，它降低了贴图分辨率并调整了音频质量，更适合手机和平板。
 
 </details>
 
 <details>
-<summary><b>There are black bars, or the edges are cut off.</b></summary>
+<summary><b>画面有黑边，或者边缘被裁掉了？</b></summary>
 
 <br>
 
-Change **Settings → Launch Preferences → Screen fit**: **Balanced** trades a small crop for smaller bars, **Show all** never crops, and **Stretch** removes the bars but may distort the picture.
+在 **设置 → 启动偏好 → 画面比例** 中切换：**均衡比例**在黑边和完整画面之间取得平衡；**完整显示**不裁切任何画面；**强制拉伸**没有黑边，但画面可能变形。
 
 </details>
 
 <details>
-<summary><b>Images in the game don't show up.</b></summary>
+<summary><b>游戏中的图片显示不出来？</b></summary>
 
 <br>
 
-Some HarmonyOS/ArkWeb versions cannot decode AVIF images. Use a mobile-optimized package whose images have been converted to a compatible format.
+部分 HarmonyOS/ArkWeb 版本无法解码 AVIF 图片。请改用已经把图片转换为兼容格式的移动端优化包。
 
 </details>
 
 <details>
-<summary><b>The import failed. What now?</b></summary>
+<summary><b>导入失败了怎么办？</b></summary>
 
 <br>
 
-A failed or cancelled import never affects the resources you already have. Make sure the ZIP contains complete Gardendless web resources, then follow the error message in the app. If the problem persists, please [report it](#reporting-issues).
+导入失败或中途取消都不会影响当前已导入的资源。请确认 ZIP 是完整的 Gardendless Web 资源，再根据界面上的错误提示处理。如果问题仍然存在，欢迎[反馈问题](#问题反馈)。
 
 </details>
 
 <details>
-<summary><b>Which resource packages and GP-Next versions are supported?</b></summary>
+<summary><b>支持哪些资源包和 GP-Next 版本？</b></summary>
 
 <br>
 
-Standard Cocos builds, GP-Next builds, and mobile lightweight packages are supported as long as they follow the Gardendless web resource layout and pass validation. GP-Next compatibility is detected from key fingerprints in the entry bundle and the local `gp-next-*.js` module it references, not from a hard-coded version number. The bridge implements the commands GP-Next 0.15 uses, so passing detection does not guarantee compatibility if a later version changes the protocol.
+支持符合 Gardendless Web 资源结构、并能通过校验的标准 Cocos 构建、GP-Next 构建，以及各种移动端轻量包。加载器会检测入口脚本及其引用的本地 `gp-next-*.js` 模块中的关键特征来判断 GP-Next 兼容性，而不是硬编码版本号；桥接层实现的是 GP-Next 0.15 所用的命令，如果后续版本修改了通信协议，即使检测通过也不能保证完全兼容。
 
 </details>
 
 <details>
-<summary><b>Why doesn't the loader include the game?</b></summary>
+<summary><b>为什么加载器不直接内置游戏？</b></summary>
 
 <br>
 
-GardendlessLoader only loads and runs the game; it does not download or distribute game resources for you. The resources belong to the upstream project, so get them from one of the sources listed above.
+GardendlessLoader 只负责加载和运行，不会代为下载或分发游戏资源。游戏资源属于上游项目，请从上文列出的渠道获取。
 
 </details>
 
-## Platform support
+## 平台支持
 
-| Feature | Android | iOS | HarmonyOS / OpenHarmony |
+| 功能 | Android | iOS | HarmonyOS / OpenHarmony |
 | --- | :---: | :---: | :---: |
-| ZIP import and resource validation | ✅ | ✅ | ✅ |
-| Native GameHost | ✅ WebView | ✅ WKWebView | ✅ ArkWeb |
-| A/B slot updates and recovery | ✅ | ✅ | ✅ |
-| Touch, keyboard/mouse, and game bridge | ✅ | ✅ | ✅ |
-| GP-Next bridge and patch import | ✅ | ✅ | ✅ |
-| GP-Next 0.15 ZIP/folder Mod installation | ✅ | ✅ | ✅ |
-| In-game JS Modding control | ✅ | ✅ | ✅ |
-| CI artifacts | APK | Unsigned IPA | Unsigned HAP (when CI is configured) |
+| ZIP 导入与资源校验 | ✅ | ✅ | ✅ |
+| 原生 GameHost | ✅ WebView | ✅ WKWebView | ✅ ArkWeb |
+| A/B 双槽更新与恢复 | ✅ | ✅ | ✅ |
+| 触摸、键鼠与游戏桥接 | ✅ | ✅ | ✅ |
+| GP-Next 桥接与补丁导入 | ✅ | ✅ | ✅ |
+| GP-Next 0.15 ZIP / 文件夹 Mod 安装 | ✅ | ✅ | ✅ |
+| 游戏内管理 JS Modding | ✅ | ✅ | ✅ |
+| CI 构建产物 | APK | 未签名 IPA | 未签名 HAP（视 CI 配置） |
 
-**Known limitations**
+**已知限制**
 
-- Media, audio, and input behavior can differ between system WebView implementations.
-- HarmonyOS build and device compatibility depend on the OpenHarmony Flutter SDK and the DevEco toolchain.
-- High-refresh-rate support on iOS relies on private WebKit SPI. It is meant only for sideloaded builds, may break after system updates, and is not guaranteed to pass App Store review.
+- 不同系统 WebView 在媒体、音频和输入方面的表现可能存在差异。
+- HarmonyOS 的构建与设备兼容性取决于 OpenHarmony Flutter SDK 和 DevEco 工具链。
+- iOS 的高刷新率支持依赖 WebKit 私有 SPI，仅适用于侧载安装，可能随系统更新失效，也无法保证通过 App Store 审核。
 
-## Reporting issues
+## 问题反馈
 
-Search the existing [Issues](https://github.com/Dey410/GardendlessLoader/issues) first. If nothing matches, open a new one and include:
+遇到问题时，请先搜索已有的 [Issues](https://github.com/Dey410/GardendlessLoader/issues)，没有找到再提交新问题，并附上以下信息：
 
-- [ ] Device model and OS version
-- [ ] Loader version and game resource version
-- [ ] Steps to reproduce
-- [ ] Diagnostics: tap **Copy diagnostics** on the app's **Logs** tab and paste the result
+- [ ] 设备型号与系统版本
+- [ ] 加载器版本与游戏资源版本
+- [ ] 问题的复现步骤
+- [ ] 诊断信息：在应用 **日志** 页点击 **复制诊断** 后粘贴
 
-Please do not upload or attach game resource packages. Project introductions and tutorials are on the author's [Bilibili profile](https://space.bilibili.com/523667580).
+请不要上传或附带游戏资源包。项目介绍和使用教程可以在作者的 [哔哩哔哩主页](https://space.bilibili.com/523667580) 找到。
 
-## Development
+## 参与开发
 
-GardendlessLoader uses Flutter for the launcher UI and a native GameHost on each platform. Code, documentation, bug reports, and feature ideas are all welcome.
+GardendlessLoader 使用 Flutter 编写启动器界面，并为每个平台实现了原生 GameHost。欢迎提交代码、文档、错误报告和功能建议。
 
 <details>
-<summary><b>Build requirements and commands</b></summary>
+<summary><b>构建环境与命令</b></summary>
 
 <br>
 
-**Requirements**
+**环境要求**
 
-- Flutter `3.41.9` (matches CI)
+- Flutter `3.41.9`（与 CI 保持一致）
 - Dart `>=3.5.0 <4.0.0`
-- Android: JDK 17
-- iOS: macOS, Xcode, and CocoaPods
-- HarmonyOS: the OpenHarmony Flutter SDK, DevEco command-line tools, and JDK 17
+- Android：JDK 17
+- iOS：macOS、Xcode 与 CocoaPods
+- HarmonyOS：OpenHarmony 版 Flutter SDK、DevEco 命令行工具与 JDK 17
 
-**Clone and check**
+**克隆并检查**
 
 ```bash
 git clone https://github.com/Dey410/GardendlessLoader.git
@@ -242,7 +242,7 @@ flutter analyze
 flutter build apk --release
 ```
 
-The APK is written to `build/app/outputs/flutter-apk/app-release.apk`.
+产物位于 `build/app/outputs/flutter-apk/app-release.apk`。
 
 **iOS**
 
@@ -253,18 +253,18 @@ cd ..
 flutter build ios --release --no-codesign
 ```
 
-The output is `build/ios/iphoneos/Runner.app` and must be signed before installation or distribution; see the [iOS deployment guide](docs/deployment.md) for unsigned IPA packaging. If Apple developer signing is already set up on your machine, run `flutter build ios --release` instead.
+产物位于 `build/ios/iphoneos/Runner.app`，安装或分发前需要签名；打包未签名 IPA 的流程见 [iOS 部署说明](docs/deployment.md)。如果本机已配置 Apple 开发者签名，可以直接运行 `flutter build ios --release`。
 
 **HarmonyOS / OpenHarmony**
 
-The official Flutter stable SDK does not support `flutter build hap`. CI uses the OpenHarmony Flutter SDK:
+官方 Flutter stable SDK 不支持 `flutter build hap`，CI 使用的是 OpenHarmony Flutter SDK：
 
 ```text
 https://gitcode.com/openharmony-tpc/flutter_flutter.git
 ref: oh-3.35.7-release
 ```
 
-Enable the OpenHarmony dependency overrides before building locally:
+本地构建前先启用 OpenHarmony 依赖覆盖：
 
 ```bash
 cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
@@ -276,66 +276,66 @@ flutter build hap --release --target-platform ohos-arm64
 </details>
 
 <details>
-<summary><b>How resources are stored and updated</b></summary>
+<summary><b>资源存储与更新机制</b></summary>
 
 <br>
 
-The app creates this layout in its platform-private directory:
+应用会在平台私有目录中创建如下结构：
 
 ```text
 GardendlessLoader/
-  slot-a/          # resource slot A
-  slot-b/          # resource slot B
-  gp-next/         # created by GP-Next on its first start
-    configuration-state.json  # GP-Next Mod configuration
-    installed/     # Mods installed from the Mods page, stored by content hash
-    patches/       # single-file JSON/JSON5 patches
-    packs/         # legacy ZIP packs, read only until GP-Next migrates them
-  manifest.json    # active slot, transaction state, resource stats, and game version
+  slot-a/          # 资源槽 A
+  slot-b/          # 资源槽 B
+  gp-next/         # 由 GP-Next 首次启动时创建
+    configuration-state.json  # GP-Next 模组配置
+    installed/     # 在模组页安装的 Mod，按内容摘要存放
+    patches/       # JSON/JSON5 单文件补丁
+    packs/         # 旧式 ZIP 补丁包，仅在 GP-Next 迁移前读取
+  manifest.json    # 激活槽、事务状态、资源统计与游戏版本
 ```
 
-- **A/B updates**: normally only the active slot holds game files. An update writes the new resources to the idle slot, and `manifest.json` switches to it atomically only after validation and the self-check pass; the old slot is then cleaned up, so at most two copies exist at any time.
-- **Patches and Mods live apart**: `gp-next/` sits outside both slots, so updating game resources never removes it.
-- **GP-Next creates `gp-next/` itself**: GP-Next treats an existing `gp-next` folder as a legacy installation, so the loader never creates it in advance. A fresh install goes straight to GP-Next's Mod platform, and an existing legacy folder is upgraded through GP-Next's "Update mod management" step.
-- **Wrapped ZIP patch packs**: the loader strips the wrapper folder only from its internal copy; the file you picked is never modified. Archives with several candidate folders, other files outside the wrapper, or deeper nesting are rejected.
+- **双槽更新**：平时只有激活槽中存放游戏文件。更新时，新资源写入空闲槽，通过校验和自检后，`manifest.json` 才会原子地切换到新槽，随后清理旧槽，所以最多同时保留新旧两份资源。
+- **补丁与 Mod 独立存放**：`gp-next/` 位于两个资源槽之外，更新游戏资源不会删除它。
+- **`gp-next/` 由 GP-Next 自行创建**：GP-Next 会把已存在的 `gp-next` 目录视为旧式安装，因此加载器不会预先创建它。全新安装会直接进入 GP-Next 的模组平台，已有的旧式目录则通过 GP-Next 的“更新模组管理”升级。
+- **ZIP 补丁包的外层目录**：加载器只在内部副本中去掉外层目录，你选择的原始文件不会被修改。如果包含多个候选目录、外层目录之外还有其他文件，或嵌套超过一层，导入会被拒绝。
 
 </details>
 
-**How to contribute**
+**贡献流程**
 
-1. Fork the repository and create a feature branch from the latest `main`.
-2. Use two-space indentation and single quotes in Dart code.
-3. After your changes, run `dart format lib` and `flutter analyze`, then build the affected platforms and verify on a real device. The project currently has no Flutter unit or widget tests.
-4. Open a pull request that describes the change and how you verified it; include screenshots or recordings for UI changes.
+1. Fork 本仓库，并基于最新的 `main` 分支创建功能分支。
+2. Dart 代码使用两空格缩进和单引号。
+3. 修改后运行 `dart format lib` 与 `flutter analyze`，然后构建受影响的平台并在真机上验证。项目目前不包含 Flutter 单元测试和组件测试。
+4. 提交 Pull Request，说明改动内容和验证方式；界面改动请附上截图或录屏。
 
-Please keep the existing safety boundaries intact: resource paths stay confined to the active slot, A/B slots switch atomically, and the WebView blocks requests outside the allowlist by default.
+请保持现有的安全边界：资源路径只能限定在激活槽内、A/B 槽必须原子切换、WebView 默认拦截白名单之外的请求。
 
-## Roadmap
+## 路线图
 
-- [ ] Make the three native GameHosts more consistent, stable, and fast
-- [ ] Improve import progress, error messages, and recovery for large resource packages
-- [ ] Support newer GP-Next versions and smooth out mobile file workflows
-- [ ] Strengthen automated checks, release artifacts, and device acceptance testing
+- [ ] 提升三个平台原生 GameHost 的一致性、稳定性和性能
+- [ ] 改善大体积资源包的导入进度显示、错误提示和失败恢复
+- [ ] 兼容更新版本的 GP-Next，优化移动端的文件操作流程
+- [ ] 完善自动化检查、发布产物和真机验收流程
 
-Ideas and discussion are welcome in [Issues](https://github.com/Dey410/GardendlessLoader/issues).
+欢迎在 [Issues](https://github.com/Dey410/GardendlessLoader/issues) 中提出建议、参与讨论。
 
-## License and notices
+## 许可证与声明
 
-GardendlessLoader is open source under the [GNU General Public License v3.0](LICENSE). You may use, study, modify, and redistribute it under the terms of that license.
+GardendlessLoader 基于 [GNU General Public License v3.0](LICENSE) 开源。在遵守许可证条款的前提下，你可以自由使用、研究、修改和再分发本项目。
 
-- Game resources, the upstream project, and third-party components remain under their own licenses; this repository's GPL-3.0 license grants no additional rights to them.
-- *Plants vs. Zombies* is a trademark of Electronic Arts Inc. GardendlessLoader is an unofficial project and is not affiliated with Electronic Arts or PopCap Games.
-- Parts of this project's UI, logic, and platform adaptation were built with the help of AI tools and are continually improved through code review, automated checks, and device testing.
+- 游戏资源、上游项目和第三方组件仍受各自许可证约束，本仓库的 GPL-3.0 许可证不对它们授予任何额外权利。
+- 《植物大战僵尸》（Plants vs. Zombies）是 Electronic Arts Inc. 的商标。GardendlessLoader 是非官方项目，与 Electronic Arts 和 PopCap Games 均无关联。
+- 本项目的部分界面、逻辑和平台适配借助 AI 工具完成，并通过代码审查、自动化检查和真机验收持续改进。
 
-## Acknowledgements
+## 致谢
 
-- [PvZ2 Gardendless](https://github.com/Gzh0821/pvzge_web), the upstream game this loader serves.
-- [Flutter](https://flutter.dev/) and Dart, which power the cross-platform launcher UI and app logic.
-- Android WebView, Apple WebKit, and HarmonyOS ArkWeb, the foundations of each platform's native GameHost.
-- Everyone who has contributed code, tested builds, reported issues, or shared feedback.
+- [PvZ2 Gardendless](https://github.com/Gzh0821/pvzge_web)：本加载器所服务的上游游戏项目。
+- [Flutter](https://flutter.dev/) 与 Dart：跨平台启动器界面与业务逻辑。
+- Android WebView、Apple WebKit 与 HarmonyOS ArkWeb：各平台原生 GameHost 的基础。
+- 每一位贡献代码、参与测试、反馈问题和提出建议的朋友。
 
 <div align="center">
 
-<sub>If this project helps you, a ⭐ Star is always appreciated!</sub>
+<sub>如果这个项目对你有帮助，欢迎点一个 ⭐ Star 支持一下！</sub>
 
 </div>
