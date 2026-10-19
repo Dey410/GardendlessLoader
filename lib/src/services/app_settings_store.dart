@@ -29,16 +29,17 @@ enum LanguagePreference {
   }
 }
 
-/// Caps the device pixel ratio the game renders at; a lower cap shrinks the
-/// game canvas and its GPU memory at the cost of sharpness.
+/// Renders the game at a share of the device's native resolution; a lower
+/// share shrinks the game canvas and its GPU memory at the cost of sharpness.
 enum RenderResolution {
   full(null),
-  medium(1.5),
-  low(1);
+  medium(0.75),
+  low(0.5);
 
-  const RenderResolution(this.pixelRatioCap);
+  const RenderResolution(this.scale);
 
-  final double? pixelRatioCap;
+  /// Share of the device pixel ratio the game renders at; null is native.
+  final double? scale;
 
   static RenderResolution fromName(Object? value) {
     return RenderResolution.values.firstWhere(

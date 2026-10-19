@@ -7,7 +7,7 @@ const source = fs.readFileSync(
   'utf8',
 );
 
-function run(renderPixelRatioCap, realRatio = 2) {
+function run(renderScale, realRatio = 2) {
   const display = {ratio: realRatio};
   const window = {};
   Object.defineProperty(window, 'devicePixelRatio', {
@@ -15,23 +15,21 @@ function run(renderPixelRatioCap, realRatio = 2) {
     enumerable: true,
     get: () => display.ratio,
   });
-  window.__gardendlessHost = {config: {renderPixelRatioCap}};
+  window.__gardendlessHost = {config: {renderScale}};
   vm.runInNewContext(source, {window});
   return {window, display};
 }
 
 {
-  const {window, display} = run(1.5);
+  const {window, display} = run(0.75);
   assert.equal(window.devicePixelRatio, 1.5);
-  display.ratio = 1;
-  assert.equal(window.devicePixelRatio, 1, 'a lower real ratio is kept');
   display.ratio = 3;
-  assert.equal(window.devicePixelRatio, 1.5, 'the cap follows ratio changes');
+  assert.equal(window.devicePixelRatio, 2.25, 'the scale follows ratio changes');
 }
 
-for (const cap of [null, undefined, 0, -1, '1']) {
-  const {window} = run(cap);
-  assert.equal(window.devicePixelRatio, 2, `cap ${String(cap)} leaves the ratio`);
+for (const scale of [null, undefined, 0, -1, '1']) {
+  const {window} = run(scale);
+  assert.equal(window.devicePixelRatio, 2, `scale ${String(scale)} leaves the ratio`);
 }
 
 console.log('render_scale.js checks passed');

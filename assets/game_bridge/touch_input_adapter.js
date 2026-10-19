@@ -16,7 +16,7 @@
   const wheelCssMultiplier = Number.isFinite(config.touchWheelCssMultiplier)
     ? config.touchWheelCssMultiplier
     : -4.5;
-  // Gesture thresholds are physical pixels. Read before render_scale.js caps
+  // Gesture thresholds are physical pixels. Read before render_scale.js scales
   // the ratio the game engine sees.
   const physicalPixelRatio =
     Object.getOwnPropertyDescriptor(window, "devicePixelRatio").get;

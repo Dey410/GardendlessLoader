@@ -12,7 +12,7 @@ export interface GameSessionPayload {
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
   detailedAudioDiagnosticsEnabled?: boolean;
-  renderPixelRatioCap?: number | null;
+  renderScale?: number | null;
   screenFit?: string;
   packageId?: string;
   allowedRemoteHosts: string[];
@@ -32,7 +32,7 @@ export class GameSession {
   readonly watermarkEnabled: boolean;
   readonly autoCollectSunEnabled: boolean;
   readonly detailedAudioDiagnosticsEnabled: boolean;
-  readonly renderPixelRatioCap: number | null;
+  readonly renderScale: number | null;
   /** balanced (16:10–17:9), showAll (17:9) or stretch: how the game viewport fits the screen. */
   readonly screenFit: string;
   readonly packageId: string;
@@ -61,9 +61,9 @@ export class GameSession {
     this.watermarkEnabled = value.watermarkEnabled;
     this.autoCollectSunEnabled = value.autoCollectSunEnabled;
     this.detailedAudioDiagnosticsEnabled = value.detailedAudioDiagnosticsEnabled === true;
-    this.renderPixelRatioCap = value.renderPixelRatioCap ?? null;
-    if (this.renderPixelRatioCap !== null && !(this.renderPixelRatioCap > 0)) {
-      throw new Error('Invalid render pixel ratio cap');
+    this.renderScale = value.renderScale ?? null;
+    if (this.renderScale !== null && !(this.renderScale > 0)) {
+      throw new Error('Invalid render scale');
     }
     this.screenFit = value.screenFit ?? 'balanced';
     if (!['balanced', 'showAll', 'stretch'].includes(this.screenFit)) {

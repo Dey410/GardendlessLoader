@@ -763,7 +763,7 @@ final class GameHostController: UIViewController,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
       "detailedAudioDiagnosticsEnabled":
         session.detailedAudioDiagnosticsEnabled,
-      "renderPixelRatioCap": session.renderPixelRatioCap ?? NSNull(),
+      "renderScale": session.renderScale ?? NSNull(),
       "gpNextBaseDirectory": session.gpNextRoot
         .deletingLastPathComponent().path,
     ]

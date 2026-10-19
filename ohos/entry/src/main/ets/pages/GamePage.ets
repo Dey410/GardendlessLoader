@@ -230,7 +230,7 @@ struct GamePage {
       watermarkEnabled: session.watermarkEnabled,
       autoCollectSunEnabled: session.autoCollectSunEnabled,
       detailedAudioDiagnosticsEnabled: session.detailedAudioDiagnosticsEnabled,
-      renderPixelRatioCap: session.renderPixelRatioCap,
+      renderScale: session.renderScale,
       gpNextBaseDirectory: this.gpNextBaseDirectory(session),
     });
     const names: string[] = [

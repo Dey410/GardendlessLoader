@@ -874,7 +874,7 @@ class AppController extends ChangeNotifier {
       watermarkEnabled: watermarkEnabled,
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
-      renderPixelRatioCap: renderResolution.pixelRatioCap,
+      renderScale: renderResolution.scale,
       screenFit: screenFit,
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']

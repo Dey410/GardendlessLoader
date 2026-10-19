@@ -30,7 +30,7 @@ data class NativeGameSession(
     val watermarkEnabled: Boolean,
     val autoCollectSunEnabled: Boolean,
     val detailedAudioDiagnosticsEnabled: Boolean = false,
-    val renderPixelRatioCap: Double? = null,
+    val renderScale: Double? = null,
     val screenFit: GameScreenFit = GameScreenFit.BALANCED,
     val packageId: String = "unknown",
     val allowedRemoteHosts: Set<String>,
@@ -68,9 +68,9 @@ object GameSessionCodec {
             watermarkEnabled = json.getBoolean("watermarkEnabled"),
             autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled"),
             detailedAudioDiagnosticsEnabled = json.optBoolean("detailedAudioDiagnosticsEnabled", false),
-            renderPixelRatioCap = if (json.isNull("renderPixelRatioCap")) null else {
-                json.getDouble("renderPixelRatioCap").also {
-                    require(it > 0) { "Invalid render pixel ratio cap" }
+            renderScale = if (json.isNull("renderScale")) null else {
+                json.getDouble("renderScale").also {
+                    require(it > 0) { "Invalid render scale" }
                 }
             },
             screenFit = json.optString("screenFit", GameScreenFit.BALANCED.wireName).let { name ->

@@ -29,9 +29,9 @@ public struct GameSession: Codable, Equatable {
   public let watermarkEnabled: Bool
   public let autoCollectSunEnabled: Bool
   public let detailedAudioDiagnosticsEnabled: Bool
-  /// Highest device pixel ratio the game canvas renders at; nil keeps the
-  /// device's own ratio.
-  public let renderPixelRatioCap: Double?
+  /// Share of the device pixel ratio the game canvas renders at; nil keeps
+  /// the device's own ratio.
+  public let renderScale: Double?
   public let screenFit: GameScreenFit
   public let allowedRemoteHosts: Set<String>
   public let gpNextRoot: URL
@@ -53,7 +53,7 @@ public struct GameSession: Codable, Equatable {
     watermarkEnabled: Bool,
     autoCollectSunEnabled: Bool,
     detailedAudioDiagnosticsEnabled: Bool = false,
-    renderPixelRatioCap: Double? = nil,
+    renderScale: Double? = nil,
     screenFit: GameScreenFit = .balanced,
     allowedRemoteHosts: Set<String>,
     gpNextRoot: URL,
@@ -70,7 +70,7 @@ public struct GameSession: Codable, Equatable {
     self.watermarkEnabled = watermarkEnabled
     self.autoCollectSunEnabled = autoCollectSunEnabled
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
-    self.renderPixelRatioCap = renderPixelRatioCap
+    self.renderScale = renderScale
     self.screenFit = screenFit
     self.allowedRemoteHosts = allowedRemoteHosts
     self.gpNextRoot = gpNextRoot
@@ -98,9 +98,9 @@ public enum GameSessionDecoder {
           generation >= 0 else {
       throw GameError.failed(.invalidSession, "Invalid activation generation")
     }
-    let renderPixelRatioCap = json["renderPixelRatioCap"] as? Double
-    if let renderPixelRatioCap, renderPixelRatioCap <= 0 {
-      throw GameError.failed(.invalidSession, "Invalid render pixel ratio cap")
+    let renderScale = json["renderScale"] as? Double
+    if let renderScale, renderScale <= 0 {
+      throw GameError.failed(.invalidSession, "Invalid render scale")
     }
     guard let screenFit = GameScreenFit(
       rawValue: json["screenFit"] as? String ?? GameScreenFit.balanced.rawValue
@@ -124,7 +124,7 @@ public enum GameSessionDecoder {
       autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled"),
       detailedAudioDiagnosticsEnabled:
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
-      renderPixelRatioCap: renderPixelRatioCap,
+      renderScale: renderScale,
       screenFit: screenFit,
       allowedRemoteHosts: Set(hosts.map { $0.lowercased() }),
       gpNextRoot: try requiredDirectoryURL(json, "gpNextRoot"),

@@ -238,15 +238,15 @@ class AppStrings {
       );
   String get renderResolution => _t('渲染分辨率', 'Render resolution');
   String get renderResolutionSubtitle => _t(
-        '降低游戏画面的像素密度以减少显存占用，画面会略微变模糊',
-        'Lowers the pixel density of the game to use less GPU memory; the '
-            'picture gets slightly softer',
+        '按屏幕原生分辨率的百分比渲染游戏画面，百分比越低越省显存，画面也越模糊',
+        'Renders the game at a percentage of the screen\'s native resolution; '
+            'a lower percentage uses less GPU memory and looks softer',
       );
   String renderResolutionLabel(RenderResolution resolution) =>
       switch (resolution) {
-        RenderResolution.full => _t('原生', 'Native'),
-        RenderResolution.medium => '1.5×',
-        RenderResolution.low => '1×',
+        RenderResolution.full => '100%',
+        RenderResolution.medium => '75%',
+        RenderResolution.low => '50%',
       };
   String get screenFit => _t('画面比例', 'Screen fit');
   String get screenFitSubtitle => _t(

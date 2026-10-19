@@ -71,7 +71,7 @@ class GameSession {
     required this.watermarkEnabled,
     this.autoCollectSunEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
-    this.renderPixelRatioCap,
+    this.renderScale,
     this.screenFit = ScreenFit.balanced,
     required this.allowedRemoteHosts,
     required this.gpNextRoot,
@@ -94,10 +94,9 @@ class GameSession {
     if (generation is! int || generation < 0) {
       throw const FormatException('activationGeneration must be non-negative');
     }
-    final renderPixelRatioCap = json['renderPixelRatioCap'];
-    if (renderPixelRatioCap != null &&
-        (renderPixelRatioCap is! num || renderPixelRatioCap <= 0)) {
-      throw const FormatException('renderPixelRatioCap must be positive');
+    final renderScale = json['renderScale'];
+    if (renderScale != null && (renderScale is! num || renderScale <= 0)) {
+      throw const FormatException('renderScale must be positive');
     }
     return GameSession(
       sessionId: _requiredString(json, 'sessionId'),
@@ -113,7 +112,7 @@ class GameSession {
       autoCollectSunEnabled: json['autoCollectSunEnabled'] as bool? ?? false,
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
-      renderPixelRatioCap: (renderPixelRatioCap as num?)?.toDouble(),
+      renderScale: (renderScale as num?)?.toDouble(),
       screenFit: ScreenFit.fromName(json['screenFit']),
       allowedRemoteHosts: normalizedRemoteHosts,
       gpNextRoot: _requiredString(json, 'gpNextRoot'),
@@ -136,9 +135,9 @@ class GameSession {
   final bool autoCollectSunEnabled;
   final bool detailedAudioDiagnosticsEnabled;
 
-  /// Highest device pixel ratio the game canvas renders at; null renders at
-  /// the device's own ratio.
-  final double? renderPixelRatioCap;
+  /// Share of the device pixel ratio the game canvas renders at; null renders
+  /// at the device's own ratio.
+  final double? renderScale;
   final ScreenFit screenFit;
   final List<String> allowedRemoteHosts;
   final String gpNextRoot;
@@ -173,7 +172,7 @@ class GameSession {
       'watermarkEnabled': watermarkEnabled,
       'autoCollectSunEnabled': autoCollectSunEnabled,
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
-      'renderPixelRatioCap': renderPixelRatioCap,
+      'renderScale': renderScale,
       'screenFit': screenFit.name,
       'allowedRemoteHosts': normalizedRemoteHosts,
       'gpNextRoot': gpNextRoot,

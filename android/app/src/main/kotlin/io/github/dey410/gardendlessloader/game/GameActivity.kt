@@ -149,7 +149,7 @@ class GameActivity : Activity() {
             .put("watermarkEnabled", session.watermarkEnabled)
             .put("autoCollectSunEnabled", session.autoCollectSunEnabled)
             .put("detailedAudioDiagnosticsEnabled", session.detailedAudioDiagnosticsEnabled)
-            .put("renderPixelRatioCap", session.renderPixelRatioCap ?: JSONObject.NULL)
+            .put("renderScale", session.renderScale ?: JSONObject.NULL)
             .put(
                 "gpNextBaseDirectory",
                 File(session.gpNextRoot).parentFile?.absolutePath ?: session.appRoot,
