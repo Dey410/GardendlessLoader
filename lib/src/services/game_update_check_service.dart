@@ -2,31 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:path/path.dart' as p;
-
-import '../constants.dart';
+import 'http_text.dart';
 
 const defaultGameTagsApiUrl =
     'https://api.github.com/repos/Gzh0821/pvzg_site/tags?per_page=100';
 const defaultGameUpdateCheckTimeout = Duration(seconds: 5);
 const defaultGameUpdateCheckMaxBytes = 64 * 1024;
-
-typedef GameUpdateCheckHttpLoader = Future<GameUpdateCheckHttpResponse>
-    Function(
-  Uri uri,
-  Duration timeout,
-  int maxBytes,
-);
-
-class GameUpdateCheckHttpResponse {
-  const GameUpdateCheckHttpResponse({
-    required this.statusCode,
-    required this.body,
-  });
-
-  final int statusCode;
-  final String body;
-}
 
 class GameUpdateInfo {
   const GameUpdateInfo({
@@ -55,105 +36,15 @@ class GameUpdateCheckResult {
 }
 
 class GameUpdateCheckService {
-  GameUpdateCheckService({
-    String tagsApiUrl = defaultGameTagsApiUrl,
-    Duration timeout = defaultGameUpdateCheckTimeout,
-    int maxBytes = defaultGameUpdateCheckMaxBytes,
-    GameUpdateCheckHttpLoader? loader,
-  })  : _tagsUri = Uri.parse(tagsApiUrl),
-        _timeout = timeout,
-        _maxBytes = maxBytes,
-        _loader = loader ?? _loadWithHttpClient;
-
-  final Uri _tagsUri;
-  final Duration _timeout;
-  final int _maxBytes;
-  final GameUpdateCheckHttpLoader _loader;
-
-  Future<String?> loadCurrentVersion(Directory root) async {
-    final indexFile = File('${root.path}${Platform.pathSeparator}index.html');
-    if (!await indexFile.exists()) {
-      return null;
-    }
-
-    final html = await indexFile.readAsString();
-    final title = RegExp(
-      r'<title[^>]*>(.*?)</title>',
-      caseSensitive: false,
-      dotAll: true,
-    ).firstMatch(html)?.group(1);
-    final titleVersion = title == null
-        ? null
-        : RegExp(
-            r'(?:^|[^0-9A-Za-z])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?![0-9A-Za-z.-])',
-            caseSensitive: false,
-          ).firstMatch(title)?.group(1);
-    if (titleVersion != null) {
-      return titleVersion;
-    }
-
-    final moduleTag = RegExp(
-      r'''<script\b(?=[^>]*\btype\s*=\s*["']module["'])[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>''',
-      caseSensitive: false,
-    ).firstMatch(html);
-    final source = moduleTag?.group(1);
-    if (source == null || source.contains('://')) {
-      return null;
-    }
-    final relative = (Uri.tryParse(source)?.path ?? source).replaceFirst(
-      RegExp(r'^/+'),
-      '',
-    );
-    final module = File(p.join(root.path, relative));
-    if (!await module.exists()) {
-      return null;
-    }
-    final entry = await module.readAsString();
-    final entryVersion = _readEmbeddedGameVersion(entry);
-    if (entryVersion != null) {
-      return entryVersion;
-    }
-
-    final rootPath = p.normalize(p.absolute(root.path));
-    final moduleDirectory = p.dirname(p.normalize(p.absolute(module.path)));
-    final gpNextReferences = RegExp(
-      r'''["']((?:/?assets/|\./)gp-next-[0-9A-Za-z_-]+\.js)["']''',
-    ).allMatches(entry);
-    for (final reference in gpNextReferences) {
-      final referencedPath = reference.group(1)!;
-      final candidatePath = p.normalize(
-        referencedPath.startsWith('./')
-            ? p.join(moduleDirectory, referencedPath.substring(2))
-            : p.join(rootPath, referencedPath.replaceFirst(RegExp(r'^/+'), '')),
-      );
-      if (!p.isWithin(rootPath, candidatePath)) {
-        continue;
-      }
-      final candidate = File(candidatePath);
-      if (!await candidate.exists()) {
-        continue;
-      }
-      final version = _readEmbeddedGameVersion(await candidate.readAsString());
-      if (version != null) {
-        return version;
-      }
-    }
-    return null;
-  }
-
-  String? _readEmbeddedGameVersion(String source) {
-    return RegExp(
-      r'(?:Playing version|Game Version:)\s*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)',
-      caseSensitive: false,
-    ).firstMatch(source)?.group(1);
-  }
+  static final Uri _tagsUri = Uri.parse(defaultGameTagsApiUrl);
 
   Future<GameUpdateCheckResult> check({
     required String currentVersion,
     String? latestVersion,
   }) async {
     final resolvedLatestVersion = latestVersion ?? await loadLatestVersion();
-    final comparison = _compareVersions(resolvedLatestVersion, currentVersion);
+    final comparison =
+        compareGameVersions(resolvedLatestVersion, currentVersion);
     if (comparison <= 0) {
       return GameUpdateCheckResult(
         currentVersion: currentVersion,
@@ -177,11 +68,11 @@ class GameUpdateCheckService {
   }
 
   Future<String> loadLatestVersion() async {
-    final response = await _loader(
+    final response = await loadHttpText(
       _tagsUri,
-      _timeout,
-      _maxBytes,
-    ).timeout(_timeout);
+      defaultGameUpdateCheckTimeout,
+      defaultGameUpdateCheckMaxBytes,
+    ).timeout(defaultGameUpdateCheckTimeout);
     if (response.statusCode != HttpStatus.ok) {
       throw const GameUpdateCheckException('GitHub tags request failed');
     }
@@ -200,61 +91,32 @@ class GameUpdateCheckService {
     if (stableVersions.isEmpty) {
       throw const GameUpdateCheckException('No stable game tag found');
     }
-    stableVersions.sort(_compareVersions);
+    stableVersions.sort(compareGameVersions);
     return stableVersions.last;
   }
-
-  static int _compareVersions(String left, String right) {
-    final leftParts = left.split('-').first.split('.').map(int.parse).toList();
-    final rightParts =
-        right.split('-').first.split('.').map(int.parse).toList();
-    for (var index = 0; index < 3; index++) {
-      final comparison = leftParts[index].compareTo(rightParts[index]);
-      if (comparison != 0) {
-        return comparison;
-      }
-    }
-    final leftIsPrerelease = left.contains('-');
-    final rightIsPrerelease = right.contains('-');
-    if (leftIsPrerelease == rightIsPrerelease) {
-      return 0;
-    }
-    return leftIsPrerelease ? -1 : 1;
-  }
-
-  static Future<GameUpdateCheckHttpResponse> _loadWithHttpClient(
-    Uri uri,
-    Duration timeout,
-    int maxBytes,
-  ) async {
-    final client = HttpClient()..connectionTimeout = timeout;
-    try {
-      final request = await client.getUrl(uri).timeout(timeout);
-      request.headers.set(
-        HttpHeaders.acceptHeader,
-        'application/vnd.github+json',
-      );
-      request.headers.set(HttpHeaders.userAgentHeader, appDisplayName);
-      final response = await request.close().timeout(timeout);
-      if (response.contentLength > maxBytes) {
-        throw const FormatException('game update response is too large');
-      }
-      final bytes = await response.fold<List<int>>(<int>[], (buffer, chunk) {
-        if (buffer.length + chunk.length > maxBytes) {
-          throw const FormatException('game update response is too large');
-        }
-        buffer.addAll(chunk);
-        return buffer;
-      }).timeout(timeout);
-      return GameUpdateCheckHttpResponse(
-        statusCode: response.statusCode,
-        body: utf8.decode(bytes),
-      );
-    } finally {
-      client.close(force: true);
-    }
-  }
 }
+
+/// Orders game versions such as `0.15.0` and `0.15.1-beta`; a pre-release
+/// sorts before its release.
+int compareGameVersions(String left, String right) {
+  final leftParts = left.split('-').first.split('.').map(int.parse).toList();
+  final rightParts = right.split('-').first.split('.').map(int.parse).toList();
+  for (var index = 0; index < 3; index++) {
+    final comparison = leftParts[index].compareTo(rightParts[index]);
+    if (comparison != 0) {
+      return comparison;
+    }
+  }
+  final leftIsPrerelease = left.contains('-');
+  final rightIsPrerelease = right.contains('-');
+  if (leftIsPrerelease == rightIsPrerelease) {
+    return 0;
+  }
+  return leftIsPrerelease ? -1 : 1;
+}
+
+/// Versions [compareGameVersions] understands.
+final gameVersionPattern = RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$');
 
 class GameUpdateCheckException implements Exception {
   const GameUpdateCheckException(this.message);

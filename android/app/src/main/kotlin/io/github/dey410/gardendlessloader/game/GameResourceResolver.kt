@@ -20,11 +20,19 @@ data class GameResourceResponse(
     val body: InputStream,
 )
 
-class GameResourceResolver(root: File) {
+class GameResourceResolver(root: File, documentStartScript: String) {
     private val canonicalRoot = root.absoluteFile.also {
         require(!it.isSymbolicLink()) { "Resource root must not be a symbolic link" }
     }.canonicalFile.also {
         require(it.isDirectory) { "Resource root is not a directory" }
+    }
+
+    // Served HTML carries the bridge bootstrap as its first <head> script, so it runs
+    // before any page script on every WebView, without addDocumentStartJavaScript.
+    private val documentStartTag = run {
+        require(!documentStartScript.contains("</script", ignoreCase = true) &&
+            !documentStartScript.contains("<!--")) { "Document-start script cannot be inlined into HTML" }
+        "<script>$documentStartScript</script>"
     }
 
     fun resolve(
@@ -43,7 +51,10 @@ class GameResourceResolver(root: File) {
         val relativePath = decodePath(uri.rawPath ?: "/")
             ?: return error(403, "Forbidden")
         val file = resolveFile(relativePath) ?: return error(404, "Not Found")
-        val length = file.length()
+        val html = if (mimeFor(relativePath) == "text/html") {
+            withDocumentStartScript(file) ?: return error(500, "HTML document has no head element")
+        } else null
+        val length = html?.size?.toLong() ?: file.length()
         val etag = etag(file, length)
         val commonHeaders = linkedMapOf(
             "Accept-Ranges" to "bytes",
@@ -51,16 +62,8 @@ class GameResourceResolver(root: File) {
             "Cache-Control" to cacheControl(relativePath),
             "X-Content-Type-Options" to "nosniff",
         )
-        if (requestHeaders.value("If-None-Match") == etag) {
-            return GameResourceResponse(
-                statusCode = 304,
-                reason = "Not Modified",
-                mimeType = mimeFor(relativePath),
-                encoding = encodingFor(relativePath),
-                headers = commonHeaders,
-                body = ByteArrayInputStream(ByteArray(0)),
-            )
-        }
+        // Android WebResourceResponse rejects every 3xx status, including 304.
+        // Serve the current representation as 200/206 even when the ETag matches.
         val rangeHeader = requestHeaders.value("Range")
         val range = rangeHeader?.let { parseRange(it, length) }
         if (rangeHeader != null && range == null) {
@@ -82,17 +85,27 @@ class GameResourceResolver(root: File) {
         }
         val body = if (method == "HEAD" || responseLength == 0L) {
             ByteArrayInputStream(ByteArray(0))
+        } else if (html != null) {
+            ByteArrayInputStream(html, start.toInt(), responseLength.toInt())
         } else {
             RangedFileInputStream(file, start, responseLength)
         }
         return GameResourceResponse(
             statusCode = if (range == null) 200 else 206,
             reason = if (range == null) "OK" else "Partial Content",
-            mimeType = mimeFor(relativePath),
+            mimeType = resourceMime(relativePath, file),
             encoding = encodingFor(relativePath),
             headers = headers,
             body = body,
         )
+    }
+
+    private fun withDocumentStartScript(file: File): ByteArray? {
+        val text = file.readText(StandardCharsets.UTF_8)
+        val head = headTag.find(text) ?: return null
+        val insertAt = head.range.last + 1
+        return (text.substring(0, insertAt) + documentStartTag + text.substring(insertAt))
+            .toByteArray(StandardCharsets.UTF_8)
     }
 
     private fun resolveFile(relativePath: String): File? {
@@ -115,6 +128,7 @@ class GameResourceResolver(root: File) {
         if (path.contains('\\') || path.indexOf('\u0000') >= 0) return null
         val segments = path.split('/')
         if (segments.any { it.isEmpty() || it == "." || it == ".." }) return null
+        if (segments.first().lowercase(Locale.US) == "__gardendless") return null
         return segments.joinToString(File.separator)
     }
 
@@ -179,7 +193,7 @@ class GameResourceResolver(root: File) {
         }
         return when (normalized.substringAfterLast('.', "").lowercase(Locale.US)) {
             "png", "jpg", "jpeg", "gif", "webp", "svg", "mp3", "ogg", "wav",
-            "mp4", "webm", "wasm", "bin" -> "public, max-age=86400"
+            "m4a", "aac", "mp4", "webm", "wasm", "bin" -> "public, max-age=86400"
             else -> "no-cache"
         }
     }
@@ -196,6 +210,8 @@ class GameResourceResolver(root: File) {
         "gif" -> "image/gif"
         "webp" -> "image/webp"
         "mp3" -> "audio/mpeg"
+        "m4a" -> "audio/mp4"
+        "aac" -> "audio/aac"
         "ogg" -> "audio/ogg"
         "wav" -> "audio/wav"
         "mp4" -> "video/mp4"
@@ -204,6 +220,15 @@ class GameResourceResolver(root: File) {
         "woff2" -> "font/woff2"
         "ttf" -> "font/ttf"
         else -> "application/octet-stream"
+    }
+
+    private fun resourceMime(path: String, file: File): String {
+        if (!path.endsWith(".mp3", ignoreCase = true)) return mimeFor(path)
+        val header = ByteArray(64)
+        val count = file.inputStream().use { it.read(header) }
+        if (count >= 2 && (header[0].toInt() and 0xff) == 0xff && (header[1].toInt() and 0xf6) == 0xf0) return "audio/aac"
+        if (count >= 12 && String(header, 4, 4, StandardCharsets.US_ASCII) == "ftyp") return "audio/mp4"
+        return "audio/mpeg"
     }
 
     private fun encodingFor(path: String): String? = when (mimeFor(path)) {
@@ -230,6 +255,10 @@ class GameResourceResolver(root: File) {
     }
 
     companion object {
+        // Cocos binary payloads (ASTC textures, .cconb assets, effect.bin and asm.js
+        // memory files) that are correctly served as application/octet-stream.
+        val BINARY_EXTENSIONS = setOf("astc", "bin", "cconb")
+        private val headTag = Regex("(?i)<head\\b[^>]*>")
         private val encodedEscape = Regex("(?i)%(?:2e|2f|5c|25)")
         private val contentHash = Regex("(?i)(?:^|[._-])[0-9a-f]{8,}(?:[._-]|$)")
     }

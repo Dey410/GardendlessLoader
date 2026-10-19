@@ -1,5 +1,6 @@
 import fs from '@ohos.file.fs';
 import { util } from '@kit.ArkTS';
+import { GpNextNativeCore } from './GpNextNativeCore';
 
 class PackZipEntry {
   readonly path: string;
@@ -44,8 +45,8 @@ class NormalizedPackZipEntry {
 }
 
 export class GpNextPackArchiveNormalizer {
-  static prepare(source: string, directory: string, displayName: string): string {
-    const entries = GpNextPackArchiveNormalizer.readEntries(source, displayName);
+  static async prepare(source: string, directory: string, displayName: string, core: GpNextNativeCore): Promise<string> {
+    const entries = await GpNextPackArchiveNormalizer.readEntries(source, displayName, core);
     if (entries.some((entry: PackZipEntry): boolean =>
       !entry.isDirectory && entry.path === 'pack.json')) {
       return source;
@@ -86,22 +87,23 @@ export class GpNextPackArchiveNormalizer {
 
     const output = `${directory}/.${displayName}.normalized-${Date.now()}`;
     try {
-      GpNextPackArchiveNormalizer.writeArchive(source, output, normalized);
+      await GpNextPackArchiveNormalizer.writeArchive(source, output, normalized, core);
       return output;
     } catch (error) {
-      try { fs.unlinkSync(output); } catch (_cleanupError) {}
+      try { await fs.unlink(output); } catch (_cleanupError) {}
       throw new Error((error as Error).message);
     }
   }
 
-  private static readEntries(path: string, displayName: string): PackZipEntry[] {
+  private static async readEntries(path: string, displayName: string, core: GpNextNativeCore): Promise<PackZipEntry[]> {
     let file: fs.File | null = null;
     try {
-      const size = fs.statSync(path).size;
+      const size = (await fs.stat(path)).size;
+      if (size > GpNextNativeCore.MAX_FILE_BYTES) throw new Error('GP-Next ZIP 超过 512 MiB');
       if (size < 22) throw new Error(`${displayName} 不是有效的 ZIP`);
-      file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      file = await core.openFile(path, fs.OpenMode.READ_ONLY | fs.OpenMode.NOFOLLOW);
       const tailLength = Math.min(size, 65557);
-      const tail = GpNextPackArchiveNormalizer.read(file, size - tailLength, tailLength);
+      const tail = await GpNextPackArchiveNormalizer.read(file, size - tailLength, tailLength, core);
       let eocd = -1;
       for (let index = tail.length - 22; index >= 0; index--) {
         if (GpNextPackArchiveNormalizer.uint32LE(tail, index) !== 0x06054b50) continue;
@@ -122,7 +124,7 @@ export class GpNextPackArchiveNormalizer {
       const decoder = util.TextDecoder.create('utf-8');
       const entries: PackZipEntry[] = [];
       for (let index = 0; index < entryCount; index++) {
-        const header = GpNextPackArchiveNormalizer.read(file, offset, 46);
+        const header = await GpNextPackArchiveNormalizer.read(file, offset, 46, core);
         if (GpNextPackArchiveNormalizer.uint32LE(header, 0) !== 0x02014b50) {
           throw new Error(`${displayName} 的 ZIP 中央目录无效`);
         }
@@ -145,7 +147,7 @@ export class GpNextPackArchiveNormalizer {
           localHeaderOffset === 0xffffffff) {
           throw new Error('暂不支持 ZIP64 格式');
         }
-        const nameBytes = GpNextPackArchiveNormalizer.read(file, offset + 46, nameLength);
+        const nameBytes = await GpNextPackArchiveNormalizer.read(file, offset + 46, nameLength, core);
         const name = decoder.decodeToString(nameBytes).replace(/\\/g, '/');
         const archivePath = GpNextPackArchiveNormalizer.safeArchivePath(name);
         if (!GpNextPackArchiveNormalizer.isMetadataArtifact(archivePath)) {
@@ -164,21 +166,22 @@ export class GpNextPackArchiveNormalizer {
       }
       return entries;
     } finally {
-      if (file != null) fs.closeSync(file.fd);
+      if (file != null) await core.closeFile(file);
     }
   }
 
-  private static writeArchive(
+  private static async writeArchive(
     sourcePath: string,
     outputPath: string,
     entries: NormalizedPackZipEntry[],
-  ): void {
+    core: GpNextNativeCore,
+  ): Promise<void> {
     if (entries.length > 0xffff) throw new Error('GP-Next ZIP 文件条目过多');
     let source: fs.File | null = null;
     let output: fs.File | null = null;
     try {
-      source = fs.openSync(sourcePath, fs.OpenMode.READ_ONLY);
-      output = fs.openSync(
+      source = await core.openFile(sourcePath, fs.OpenMode.READ_ONLY | fs.OpenMode.NOFOLLOW);
+      output = await core.openFile(
         outputPath,
         fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC,
       );
@@ -188,10 +191,10 @@ export class GpNextPackArchiveNormalizer {
         if (nameBytes.length > 0xffff) throw new Error('GP-Next ZIP 文件名过长');
         entry.localHeaderOffset = outputOffset;
         const header = GpNextPackArchiveNormalizer.localHeader(entry.source, nameBytes);
-        GpNextPackArchiveNormalizer.write(output, outputOffset, header);
+        await GpNextPackArchiveNormalizer.write(output, outputOffset, header, core);
         outputOffset += header.length;
-        const dataOffset = GpNextPackArchiveNormalizer.localDataOffset(source, entry.source);
-        GpNextPackArchiveNormalizer.copy(source, dataOffset, output, outputOffset, entry.source.compressedSize);
+        const dataOffset = await GpNextPackArchiveNormalizer.localDataOffset(source, entry.source, core);
+        await GpNextPackArchiveNormalizer.copy(source, dataOffset, output, outputOffset, entry.source.compressedSize, core);
         outputOffset += entry.source.compressedSize;
         if (outputOffset > 0xffffffff) throw new Error('暂不支持 ZIP64 格式');
       }
@@ -199,43 +202,46 @@ export class GpNextPackArchiveNormalizer {
       const centralOffset = outputOffset;
       for (const entry of entries) {
         const central = GpNextPackArchiveNormalizer.centralHeader(entry, GpNextPackArchiveNormalizer.utf8(entry.name));
-        GpNextPackArchiveNormalizer.write(output, outputOffset, central);
+        await GpNextPackArchiveNormalizer.write(output, outputOffset, central, core);
         outputOffset += central.length;
       }
       const centralSize = outputOffset - centralOffset;
       if (outputOffset > 0xffffffff || centralSize > 0xffffffff) {
         throw new Error('暂不支持 ZIP64 格式');
       }
-      GpNextPackArchiveNormalizer.write(
+      await GpNextPackArchiveNormalizer.write(
         output,
         outputOffset,
         GpNextPackArchiveNormalizer.endOfCentralDirectory(entries.length, centralSize, centralOffset),
+        core,
       );
+      await fs.fsync(output.fd);
     } finally {
-      if (source != null) fs.closeSync(source.fd);
-      if (output != null) fs.closeSync(output.fd);
+      if (source != null) await core.closeFile(source);
+      if (output != null) await core.closeFile(output);
     }
   }
 
-  private static localDataOffset(file: fs.File, entry: PackZipEntry): number {
-    const header = GpNextPackArchiveNormalizer.read(file, entry.localHeaderOffset, 30);
+  private static async localDataOffset(file: fs.File, entry: PackZipEntry, core: GpNextNativeCore): Promise<number> {
+    const header = await GpNextPackArchiveNormalizer.read(file, entry.localHeaderOffset, 30, core);
     if (GpNextPackArchiveNormalizer.uint32LE(header, 0) !== 0x04034b50) throw new Error('ZIP 本地文件头无效');
     return entry.localHeaderOffset + 30 +
       GpNextPackArchiveNormalizer.uint16LE(header, 26) + GpNextPackArchiveNormalizer.uint16LE(header, 28);
   }
 
-  private static copy(
+  private static async copy(
     source: fs.File,
     sourceOffset: number,
     output: fs.File,
     outputOffset: number,
     byteCount: number,
-  ): void {
+    core: GpNextNativeCore,
+  ): Promise<void> {
     let copied = 0;
     while (copied < byteCount) {
       const length = Math.min(64 * 1024, byteCount - copied);
-      const bytes = GpNextPackArchiveNormalizer.read(source, sourceOffset + copied, length);
-      GpNextPackArchiveNormalizer.write(output, outputOffset + copied, bytes);
+      const bytes = await GpNextPackArchiveNormalizer.read(source, sourceOffset + copied, length, core);
+      await GpNextPackArchiveNormalizer.write(output, outputOffset + copied, bytes, core);
       copied += length;
     }
   }
@@ -305,15 +311,19 @@ export class GpNextPackArchiveNormalizer {
     return `${displayName} 缺少根目录 pack.json，且未找到唯一的单层外壳目录`;
   }
 
-  private static read(file: fs.File, offset: number, length: number): Uint8Array {
+  private static async read(file: fs.File, offset: number, length: number, core: GpNextNativeCore): Promise<Uint8Array> {
+    core.checkActive();
     const buffer = new ArrayBuffer(length);
-    const count = fs.readSync(file.fd, buffer, { offset: offset, length: length });
+    const count = await fs.read(file.fd, buffer, { offset: offset, length: length });
+    core.checkActive();
     if (count !== length) throw new Error('ZIP 文件内容不完整');
     return new Uint8Array(buffer);
   }
 
-  private static write(file: fs.File, offset: number, bytes: Uint8Array): void {
-    const count = fs.writeSync(file.fd, bytes.buffer, { offset: offset, length: bytes.length });
+  private static async write(file: fs.File, offset: number, bytes: Uint8Array, core: GpNextNativeCore): Promise<void> {
+    core.checkActive();
+    const count = await fs.write(file.fd, bytes.buffer, { offset: offset, length: bytes.length });
+    core.checkActive();
     if (count !== bytes.length) throw new Error('无法写入规范化 GP-Next ZIP');
   }
 

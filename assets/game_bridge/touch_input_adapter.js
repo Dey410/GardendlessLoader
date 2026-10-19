@@ -5,7 +5,6 @@
   window.__gardendlessTouchInputInstalled = true;
 
   const config = window.__gardendlessHostConfig || {};
-  const frameSynchronizedJavascript = config.touchAdapter === "javascript";
   const diagnosticsEnabled = config.touchDiagnosticsEnabled === true;
   const touchActionStyleId = "gardendless-touch-action";
   const backdropMoveThreshold = 20;
@@ -17,7 +16,13 @@
   const wheelCssMultiplier = Number.isFinite(config.touchWheelCssMultiplier)
     ? config.touchWheelCssMultiplier
     : -4.5;
+  // Gesture thresholds are physical pixels. Read before render_scale.js scales
+  // the ratio the game engine sees.
+  const physicalPixelRatio =
+    Object.getOwnPropertyDescriptor(window, "devicePixelRatio").get;
   const traceEntries = [];
+  let nextTraceSequence = 1;
+  let flushedTraceSequence = 0;
   let owner = "idle";
   let backdropStartedAt = null;
   let backdropStartPoint = null;
@@ -40,12 +45,52 @@
       return;
     }
     traceEntries.push(Object.assign({
-      sequence: traceEntries.length + 1,
+      sequence: nextTraceSequence++,
       platform: String(config.platform || "unknown")
     }, entry));
     if (traceEntries.length > 256) {
       traceEntries.shift();
     }
+  }
+
+  // The host tears the page down without notice, so the trace reaches the
+  // logs in batches while it is recorded, each within the log message limit.
+  function flushTrace() {
+    const host = window.__gardendlessHost;
+    if (!host || typeof host.invoke !== "function") {
+      return;
+    }
+    let batch = [];
+    let length = 2;
+    function send() {
+      if (!batch.length) {
+        return;
+      }
+      host.invoke("host:log", {
+        args: {
+          event: "touch_trace",
+          level: "INFO",
+          outcome: "observed",
+          message: "[" + batch.join(",") + "]",
+          context: {count: batch.length}
+        }
+      }).catch(function () {});
+      batch = [];
+      length = 2;
+    }
+    for (const entry of traceEntries) {
+      if (entry.sequence <= flushedTraceSequence) {
+        continue;
+      }
+      flushedTraceSequence = entry.sequence;
+      const text = JSON.stringify(entry);
+      if (length + text.length > 1900) {
+        send();
+      }
+      batch.push(text);
+      length += text.length + 1;
+    }
+    send();
   }
 
   if (diagnosticsEnabled) {
@@ -56,6 +101,7 @@
         });
       }
     });
+    setInterval(flushTrace, 2000);
   }
 
   function reportFailure(code) {
@@ -190,7 +236,7 @@
   }
 
   function pixelRatio() {
-    const value = Number(window.devicePixelRatio);
+    const value = Number(physicalPixelRatio.call(window));
     return Number.isFinite(value) && value > 0 ? value : 1;
   }
 
@@ -391,23 +437,11 @@
         y: command.point && command.point.clientY
       });
       if (command.type === "primaryDown") {
-        if (frameSynchronizedJavascript) {
-          beginJavascriptPrimary(canvas, command.point);
-        } else {
-          dispatchMouse(canvas, "mousedown", command.point, 0, 1);
-        }
+        beginJavascriptPrimary(canvas, command.point);
       } else if (command.type === "primaryMove") {
-        if (frameSynchronizedJavascript) {
-          moveJavascriptPrimary(command.point);
-        } else {
-          dispatchMouse(canvas, "mousemove", command.point, 0, 1);
-        }
+        moveJavascriptPrimary(command.point);
       } else if (command.type === "primaryUp") {
-        if (frameSynchronizedJavascript) {
-          releaseJavascriptPrimary(command.point);
-        } else {
-          dispatchMouse(canvas, "mouseup", command.point, 0, 1);
-        }
+        releaseJavascriptPrimary(command.point);
       } else if (command.type === "neutralMove") {
         cancelJavascriptPrimary();
         dispatchMouse(canvas, "mousemove", command.point, 0, 0);

@@ -35,6 +35,7 @@ Apple 的公共 API 不允许给 WebKit 已处理的 `http`/`https` 注册处理
 - 处理器应读取 `Range`，返回 `206`、`Content-Range`、`Accept-Ranges: bytes`、正确的区间 `Content-Length`；非法范围返回 `416`。`HEAD` 只返回响应头；其他本地资源方法拒绝。
 - MIME 由扩展名映射，至少显式覆盖 HTML、JS/MJS、CSS、JSON/JSON5、WASM、字体、图片、音频、视频、bin；响应对象必须包含 MIME。[Apple 对响应 MIME 的要求](https://developer.apple.com/documentation/webkit/wkurlschemetask/didreceive(_:)-2u23r)
 - 读取应在专用有界队列进行，使用 `FileHandle`/POSIX fd 定位到 Range 起点并以固定大小缓冲块读取；收到 `stop` 后必须原子取消并停止回调，因为任务停止后继续发送数据会抛异常。[`WKURLSchemeHandler`](https://developer.apple.com/documentation/webkit/wkurlschemehandler)
+- `start`/`stop` 总在主线程调用；后台线程调用 `WKURLSchemeTask` 的 `didReceive`/`didFinish`/`didFailWithError` 时，WebKit 会同步等待主 run loop（`callOnMainRunLoopAndWait`）。因此不能在持有主线程也会获取的锁时调用任务方法，否则主线程的下一次 `start`/`stop` 与读取线程互相等待，页面加载永久挂起。实现（`TaskCallbackGate`）把回调切到主线程，并在主线程上检查任务状态后再调用，使回调与 `stop` 串行化。
 - 可返回 `ETag`、`If-None-Match`/`304` 与 `Cache-Control`，但 Apple 公共文档没有承诺自定义 scheme 会获得与 HTTP(S) 相同的磁盘 HTTP 缓存语义。不要为大资源再建一份内存缓存；依赖文件系统页缓存，并把“自定义 scheme 是否命中 WebKit 磁盘缓存”列为真机验证项。
 
 ### 路径安全
@@ -121,6 +122,9 @@ ArkWeb 官方文档明确允许 SchemeHandler 拦截 Web 组件或 Service Worke
   `compatibleSdkVersion: 5.0.0(12)`，对应 SchemeHandler、Bridge permission 和来源查询的最低 API 12。
 - 三平台通过同一份 [`assets/game_bridge`](../../assets/game_bridge) document-start 脚本共享 Transport、
   GP-Next 协议、触摸、导出、水印和菜单行为；平台代码只保留资源、文件选择器、系统浏览器和生命周期边界。
+  Android 不使用 `WebViewCompat.addDocumentStartJavaScript`（WebView 侧 `DOCUMENT_START_SCRIPT:1`
+  只在 2023 年后的版本提供，旧版或厂商 WebView 缺失），而是由资源处理器把这组脚本内联为所返回
+  HTML 的第一个 `<head>` 脚本；消息仍走受 Origin 和主框架限制的 `addWebMessageListener`。
 
 ## 可统一与不可统一
 

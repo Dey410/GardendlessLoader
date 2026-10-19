@@ -15,9 +15,11 @@ import {
   AbilityPluginBinding,
 } from '@ohos/flutter_ohos/src/main/ets/embedding/engine/plugins/ability/AbilityPluginBinding';
 import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientation';
+import { LaunchRequests } from './LaunchRequests';
 
 const CHANNEL_NAME = 'io.github.dey410.gardendlessloader/resource_zip_importer';
 const METHOD_PICK_AND_EXTRACT = 'pickAndExtractDocsZip';
+const METHOD_EXTRACT_INCOMING = 'extractIncomingDocsZip';
 const ZIP_COPY_NAME = 'gardendless-resource.zip';
 const PROGRESS_REPORT_INTERVAL_MS = 100;
 
@@ -27,6 +29,16 @@ interface ImportProgressPayload {
   totalBytes: number;
   processedFiles: number;
   totalFiles: number;
+}
+
+// A ZIP import failure whose code names the cause, selecting the launcher's fix hint.
+class ZipImportError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
 }
 
 export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, MethodCallHandler {
@@ -42,9 +54,13 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
   onAttachedToEngine(binding: FlutterPluginBinding): void {
     this.channel = new MethodChannel(binding.getBinaryMessenger(), CHANNEL_NAME);
     this.channel.setMethodCallHandler(this);
+    LaunchRequests.onZip = (name: string): void => {
+      this.channel?.invokeMethod('incomingZipReceived', name);
+    };
   }
 
   onDetachedFromEngine(binding: FlutterPluginBinding): void {
+    LaunchRequests.onZip = null;
     this.channel?.setMethodCallHandler(null);
     this.channel = null;
   }
@@ -58,7 +74,17 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
   }
 
   onMethodCall(call: MethodCall, result: MethodResult): void {
-    if (call.method !== METHOD_PICK_AND_EXTRACT) {
+    if (call.method === 'incomingZip') {
+      const uri = LaunchRequests.zipUri;
+      result.success(uri === null ? null : LaunchRequests.zipName(uri));
+      return;
+    }
+    if (call.method === 'discardIncomingZip') {
+      LaunchRequests.zipUri = null;
+      result.success(null);
+      return;
+    }
+    if (call.method !== METHOD_PICK_AND_EXTRACT && call.method !== METHOD_EXTRACT_INCOMING) {
       result.notImplemented();
       return;
     }
@@ -75,7 +101,10 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
     }
 
     this.busy = true;
-    this.pickAndExtractDocsZip(targetDirectory)
+    const extraction = call.method === METHOD_EXTRACT_INCOMING
+      ? this.extractIncomingDocsZip(targetDirectory)
+      : this.pickAndExtractDocsZip(targetDirectory);
+    extraction
       .then((path: string | null) => {
         this.busy = false;
         result.success(path);
@@ -83,7 +112,7 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
       .catch((error: Error) => {
         this.busy = false;
         result.error(
-          'zip_import_failed',
+          error instanceof ZipImportError ? error.code : 'zip_import_failed',
           `无法导入选择的 ZIP：${error.message ?? error.toString()}`,
           null,
         );
@@ -100,7 +129,28 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
     if (selectedUri == null) {
       return null;
     }
+    return this.extractDocsZip(context, selectedUri, targetDirectory);
+  }
 
+  private async extractIncomingDocsZip(targetDirectory: string): Promise<string | null> {
+    const context = this.context;
+    if (context == null) {
+      throw new Error('无法获取鸿蒙应用上下文');
+    }
+
+    const uri = LaunchRequests.zipUri;
+    LaunchRequests.zipUri = null;
+    if (uri === null) {
+      return null;
+    }
+    return this.extractDocsZip(context, uri, targetDirectory);
+  }
+
+  private async extractDocsZip(
+    context: common.UIAbilityContext,
+    selectedUri: string,
+    targetDirectory: string,
+  ): Promise<string> {
     const workRoot = this.joinPath(context.cacheDir, `resource_zip_import_${Date.now()}`);
     const zipPath = this.joinPath(workRoot, ZIP_COPY_NAME);
 
@@ -134,7 +184,7 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
 
       const docsDirectory = this.findDocsDirectory(targetDirectory);
       if (docsDirectory == null) {
-        throw new Error('选择的 ZIP 中没有找到有效的 docs 资源目录');
+        throw new ZipImportError('zip_docs_missing', '选择的 ZIP 中没有找到有效的 docs 资源目录');
       }
 
       this.reportExtractedFiles(docsDirectory);

@@ -2,6 +2,7 @@ import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import window from '@ohos.window';
 import { appLogStore, AppLogContext, AppLogEvent } from '../logging/AppLogStore';
+import { LaunchRequests } from '../plugins/LaunchRequests';
 
 export default class GameAbility extends UIAbility {
   private sessionJson: string = '';
@@ -9,6 +10,7 @@ export default class GameAbility extends UIAbility {
   private returningToLauncher: boolean = false;
 
   onCreate(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    LaunchRequests.gameRunning = true;
     appLogStore.initialize(this.context);
     this.logStage('ability_on_create_entered');
     try {
@@ -94,6 +96,7 @@ export default class GameAbility extends UIAbility {
       return;
     }
     this.returningToLauncher = true;
+    LaunchRequests.gameRunning = false;
     this.context.startAbility({
       bundleName: 'io.github.dey410.gardendlessloader',
       abilityName: 'EntryAbility',

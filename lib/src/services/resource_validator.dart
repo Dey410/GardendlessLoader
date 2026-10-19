@@ -1,15 +1,44 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models.dart';
 
+typedef _PackageScan = ({
+  String? packageId,
+  String? gameVersion,
+  bool? hasGpNext,
+  String? gpNextVersion,
+  ResourceStats stats,
+});
+
 class ResourceValidator {
+  /// Validates the resource tree at [root], opening every file and hashing
+  /// every indexed file.
   Future<ResourceValidationResult> validate(Directory root) async {
+    try {
+      return await _validate(root);
+    } on UnsupportedError catch (error) {
+      return ResourceValidationResult.invalid(
+          'host_abi_unsupported', error.message?.toString() ?? '资源包需要新版宿主');
+    } on FormatException catch (error) {
+      return ResourceValidationResult.invalid(
+          'package_metadata_invalid', error.message);
+    } on FileSystemException catch (error) {
+      return ResourceValidationResult.invalid(
+          'resource_path_unsafe', error.message);
+    }
+  }
+
+  Future<ResourceValidationResult> _validate(Directory root) async {
     if (!await root.exists()) {
       return ResourceValidationResult.missing('${root.path} 不存在');
     }
+
+    await _requireSafePath(root, root.path, FileSystemEntityType.directory);
 
     final requiredDirectories = [
       Directory(p.join(root.path, 'assets')),
@@ -17,6 +46,9 @@ class ResourceValidator {
       Directory(p.join(root.path, 'src')),
     ];
     for (final directory in requiredDirectories) {
+      await _requireSafePath(
+          root, directory.path, FileSystemEntityType.directory,
+          allowMissing: true);
       if (!await directory.exists()) {
         return ResourceValidationResult.invalid(
           'missing_required_directory',
@@ -29,7 +61,14 @@ class ResourceValidator {
     final settingsFile = File(p.join(root.path, 'src', 'settings.json'));
     final importMapFile = File(p.join(root.path, 'src', 'import-map.json'));
 
-    for (final file in [indexFile, settingsFile, importMapFile]) {
+    for (final file in [
+      indexFile,
+      settingsFile,
+      importMapFile,
+      File(p.join(root.path, 'cocos-js', 'cc.js'))
+    ]) {
+      await _requireSafePath(root, file.path, FileSystemEntityType.file,
+          allowMissing: true);
       if (!await file.exists()) {
         return ResourceValidationResult.invalid(
           'missing_required_file',
@@ -65,8 +104,18 @@ class ResourceValidator {
       return settingsResult;
     }
 
+    final package = await _validatePackageInBackground(root.path);
+    if (package.hasGpNext != null && package.hasGpNext != gpNext.detected) {
+      throw const FormatException('资源包 GP-Next 标记与内容不一致');
+    }
     return ResourceValidationResult.valid(
+      stats: package.stats,
       detectedTitle: detectedTitle,
+      packageId: package.packageId,
+      gameVersion: package.gameVersion ??
+          _titleVersion(detectedTitle) ??
+          gpNext.gameVersion,
+      gpNextVersion: package.gpNextVersion,
       buildProfile: gpNext.detected
           ? ResourceBuildProfile.gpNext
           : ResourceBuildProfile.standardWeb,
@@ -74,32 +123,233 @@ class ResourceValidator {
     );
   }
 
-  Future<ResourceStats> scanStats(
-    Directory root, {
-    String? detectedTitle,
-    ResourceBuildProfile buildProfile = ResourceBuildProfile.standardWeb,
-    String? gpNextVersion,
-    String? gpNextCompatibilityError,
-  }) async {
+  static const hostAbi = 1;
+  static const _manifestPath = '__gardendless/package/resource-manifest.json';
+  static const _indexPath = '__gardendless/package/file-index.json';
+  static const _maxManifestBytes = 64 * 1024;
+  static const _maxIndexBytes = 32 * 1024 * 1024;
+
+  // Thousands of per-file calls run synchronously on a background isolate:
+  // far cheaper than awaiting each one, and the UI stays smooth. Static, so
+  // the closure sends only the path to the isolate.
+  static Future<_PackageScan> _validatePackageInBackground(String rootPath) =>
+      Isolate.run(
+        () => ResourceValidator()._validatePackage(Directory(rootPath)),
+      );
+
+  Future<_PackageScan> _validatePackage(Directory root) async {
+    final marker = Directory(p.join(root.path, '__gardendless'));
+    final indexed =
+        await FileSystemEntity.type(marker.path, followLinks: false) !=
+            FileSystemEntityType.notFound;
+    final payload = <String, ({File file, int sizeBytes})>{};
     var fileCount = 0;
     var totalBytes = 0;
-
-    await for (final entity in root.list(recursive: true, followLinks: false)) {
-      if (entity is File) {
-        fileCount++;
-        totalBytes += await entity.length();
+    for (final entity in root.listSync(recursive: true, followLinks: false)) {
+      final relative =
+          p.posix.joinAll(p.split(p.relative(entity.path, from: root.path)));
+      final type = FileSystemEntity.typeSync(entity.path, followLinks: false);
+      if (type != FileSystemEntityType.directory &&
+          type != FileSystemEntityType.file) {
+        if (indexed) throw const FormatException('资源包含链接或非普通文件');
+        throw const FileSystemException('资源包含链接或非普通文件');
+      }
+      if (type != FileSystemEntityType.file) continue;
+      if (relative.startsWith('__gardendless/package/') &&
+          relative != _manifestPath &&
+          relative != _indexPath) {
+        throw const FormatException('资源包保留目录含额外文件');
+      }
+      final file = File(entity.path);
+      final sizeBytes = file.lengthSync();
+      fileCount++;
+      totalBytes += sizeBytes;
+      if (indexed) {
+        payload[relative] = (file: file, sizeBytes: sizeBytes);
+      } else {
+        file.openSync(mode: FileMode.read).closeSync();
       }
     }
+    final stats = ResourceStats(fileCount: fileCount, totalBytes: totalBytes);
+    if (!indexed) {
+      return (
+        packageId: null,
+        gameVersion: null,
+        hasGpNext: null,
+        gpNextVersion: null,
+        stats: stats
+      );
+    }
+    await _requireSafePath(root, marker.path, FileSystemEntityType.directory);
+    final reserved = Directory(p.join(marker.path, 'package'));
+    if (!await reserved.exists()) {
+      throw const FormatException('资源包元数据目录缺失');
+    }
+    await _requireSafePath(root, reserved.path, FileSystemEntityType.directory);
+    Future<List<int>> metadataBytes(String relative, int maxBytes) async {
+      final entry = payload.remove(relative);
+      if (entry == null) throw const FormatException('资源包元数据缺失');
+      await _requireSafePath(root, entry.file.path, FileSystemEntityType.file);
+      if (entry.sizeBytes > maxBytes) {
+        throw const FormatException('资源包元数据过大');
+      }
+      final bytes = await entry.file.readAsBytes();
+      if (bytes.length != entry.sizeBytes) {
+        throw const FormatException('资源包元数据在校验期间发生变化');
+      }
+      return bytes;
+    }
 
-    return ResourceStats(
-      fileCount: fileCount,
-      totalBytes: totalBytes,
-      detectedTitle: detectedTitle,
-      buildProfile: buildProfile,
-      gpNextVersion: gpNextVersion,
-      gpNextCompatibilityError: gpNextCompatibilityError,
+    final manifestBytes = await metadataBytes(_manifestPath, _maxManifestBytes);
+    final indexBytes = await metadataBytes(_indexPath, _maxIndexBytes);
+    final manifest = jsonDecode(utf8.decode(manifestBytes));
+    final hexDigest = RegExp(r'^[a-f0-9]{64}$');
+    final version = RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$');
+    const manifestFields = {
+      'schemaVersion',
+      'gameVersion',
+      'cocosVersion',
+      'hasGpNext',
+      'gpNextVersion',
+      'producerCommit',
+      'minHostAbi',
+      'fileIndexSha256'
+    };
+    if (manifest is! Map<String, dynamic> ||
+        manifest.length != manifestFields.length ||
+        !manifest.keys.toSet().containsAll(manifestFields) ||
+        manifest['schemaVersion'] != 1 ||
+        manifest['gameVersion'] is! String ||
+        !version.hasMatch(manifest['gameVersion'] as String) ||
+        manifest['cocosVersion'] is! String ||
+        !version.hasMatch(manifest['cocosVersion'] as String) ||
+        manifest['hasGpNext'] is! bool ||
+        (manifest['gpNextVersion'] != null &&
+            (manifest['gpNextVersion'] is! String ||
+                !version.hasMatch(manifest['gpNextVersion'] as String))) ||
+        (manifest['hasGpNext'] == false && manifest['gpNextVersion'] != null) ||
+        manifest['producerCommit'] is! String ||
+        !RegExp(r'^[a-f0-9]{40}$')
+            .hasMatch(manifest['producerCommit'] as String) ||
+        manifest['minHostAbi'] is! int ||
+        (manifest['minHostAbi'] as int) < 1 ||
+        manifest['fileIndexSha256'] is! String ||
+        !hexDigest.hasMatch(manifest['fileIndexSha256'] as String)) {
+      throw const FormatException('资源包 manifest 格式无效');
+    }
+    if ((manifest['minHostAbi'] as int) > hostAbi) {
+      throw UnsupportedError('资源包需要宿主 ABI ${manifest['minHostAbi']}，请升级加载器');
+    }
+    if (sha256.convert(indexBytes).toString() != manifest['fileIndexSha256']) {
+      throw const FormatException('资源包索引摘要不匹配');
+    }
+    final index = jsonDecode(utf8.decode(indexBytes));
+    if (index is! Map<String, dynamic> ||
+        index.length != 2 ||
+        index['schemaVersion'] != 1 ||
+        index['files'] is! List) {
+      throw const FormatException('资源包索引格式无效');
+    }
+    String? previous;
+    for (final entry in index['files'] as List) {
+      if (entry is! Map<String, dynamic> ||
+          entry.length != 3 ||
+          entry['path'] is! String ||
+          entry['sizeBytes'] is! int ||
+          (entry['sizeBytes'] as int) < 0 ||
+          entry['sha256'] is! String ||
+          !hexDigest.hasMatch(entry['sha256'] as String)) {
+        throw const FormatException('资源包索引条目无效');
+      }
+      final path = entry['path'] as String;
+      final uri = Uri.tryParse(path);
+      if (path.isEmpty ||
+          path.contains('\\') ||
+          path.contains('\u0000') ||
+          p.posix.isAbsolute(path) ||
+          p.posix.normalize(path) != path ||
+          path
+              .split('/')
+              .any((part) => part.isEmpty || part == '.' || part == '..') ||
+          uri == null ||
+          uri.hasScheme ||
+          uri.hasAuthority ||
+          (previous != null && previous.compareTo(path) >= 0)) {
+        throw const FormatException('资源包索引路径不安全、重复或未排序');
+      }
+      previous = path;
+      final file = payload.remove(path);
+      if (file == null ||
+          file.sizeBytes != entry['sizeBytes'] ||
+          (await sha256.bind(file.file.openRead()).first).toString() !=
+              entry['sha256']) {
+        throw const FormatException('资源文件大小或摘要不匹配');
+      }
+    }
+    if (payload.isNotEmpty) {
+      throw const FormatException('资源包含未索引文件');
+    }
+    return (
+      packageId: 'sha256:${sha256.convert(manifestBytes)}',
+      gameVersion: manifest['gameVersion'] as String,
+      hasGpNext: manifest['hasGpNext'] as bool,
+      gpNextVersion: manifest['gpNextVersion'] as String?,
+      stats: stats,
     );
   }
+
+  Future<void> _requireSafePath(
+    Directory root,
+    String path,
+    FileSystemEntityType expected, {
+    bool allowMissing = false,
+  }) async {
+    final absoluteRoot = p.normalize(root.absolute.path);
+    final absolutePath = p.normalize(p.absolute(path));
+    if (absoluteRoot != absolutePath &&
+        !p.isWithin(absoluteRoot, absolutePath)) {
+      throw const FileSystemException('文件越出资源根目录');
+    }
+    var current = absoluteRoot;
+    final components = p.equals(absoluteRoot, absolutePath)
+        ? const <String>[]
+        : p.split(p.relative(absolutePath, from: absoluteRoot));
+    for (final component in <String>['', ...components]) {
+      if (component.isNotEmpty) current = p.join(current, component);
+      if (await FileSystemEntity.type(current, followLinks: false) ==
+          FileSystemEntityType.link) {
+        throw const FileSystemException('资源路径不能包含符号链接');
+      }
+    }
+    final type = await FileSystemEntity.type(absolutePath, followLinks: false);
+    if (type == FileSystemEntityType.notFound && allowMissing) return;
+    if (type != expected) {
+      throw const FileSystemException('资源类型无效');
+    }
+    final canonicalRoot = p.normalize(await root.resolveSymbolicLinks());
+    final resolved = p.normalize(await (expected == FileSystemEntityType.file
+        ? File(absolutePath).resolveSymbolicLinks()
+        : Directory(absolutePath).resolveSymbolicLinks()));
+    if (resolved != canonicalRoot && !p.isWithin(canonicalRoot, resolved)) {
+      throw const FileSystemException('文件越出资源根目录');
+    }
+    if (expected == FileSystemEntityType.file) {
+      final handle = await File(resolved).open(mode: FileMode.read);
+      await handle.close();
+    }
+  }
+
+  String? _titleVersion(String? title) => title == null
+      ? null
+      : RegExp(
+          r'(?:^|[^0-9A-Za-z])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?![0-9A-Za-z.-])',
+          caseSensitive: false,
+        ).firstMatch(title)?.group(1);
+
+  String? _embeddedVersion(String source) => RegExp(
+        r'(?:Playing version|Game Version:)\s*v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)',
+        caseSensitive: false,
+      ).firstMatch(source)?.group(1);
 
   Future<_GpNextDetection> _detectGpNext(
     Directory root,
@@ -123,6 +373,7 @@ class ResourceValidator {
       return const _GpNextDetection.notDetected();
     }
 
+    await _requireSafePath(root, entryFile.path, FileSystemEntityType.file);
     final entry = await entryFile.readAsString();
     final fingerprints = StringBuffer(entry);
     for (final modulePath in _gpNextModulePaths(entry, normalizedPath)) {
@@ -130,6 +381,8 @@ class ResourceValidator {
         p.joinAll([root.path, ...p.posix.split(modulePath)]),
       );
       if (await moduleFile.exists()) {
+        await _requireSafePath(
+            root, moduleFile.path, FileSystemEntityType.file);
         fingerprints
           ..writeln()
           ..write(await moduleFile.readAsString());
@@ -141,7 +394,8 @@ class ResourceValidator {
         source.contains('window.gpNext') &&
         source.contains('loadAllPatches');
     if (!hasMarker) {
-      return const _GpNextDetection.notDetected();
+      return _GpNextDetection.notDetected(
+          gameVersion: _embeddedVersion(source));
     }
 
     final requiredFingerprints = {
@@ -156,6 +410,7 @@ class ResourceValidator {
         missing.isEmpty ? null : 'GP-Next 缺少兼容模块：${missing.join(', ')}';
     return _GpNextDetection(
       detected: true,
+      gameVersion: _embeddedVersion(source),
       compatibilityError: compatibilityError,
     );
   }
@@ -179,7 +434,9 @@ class ResourceValidator {
       final candidate = p.posix.normalize(
         referencePath.startsWith('/')
             ? referencePath.substring(1)
-            : p.posix.join(p.posix.dirname(entryPath), referencePath),
+            : referencePath.startsWith('assets/')
+                ? referencePath
+                : p.posix.join(p.posix.dirname(entryPath), referencePath),
       );
       final basename = p.posix.basename(candidate);
       if (candidate == '.' ||
@@ -213,7 +470,7 @@ class ResourceValidator {
         continue;
       }
       final source = RegExp(
-        r'''\bsrc\s*=\s*["']([^"']+)["']''',
+        r'''\s(?:data-gardendless-src|src)\s*=\s*["']([^"']+)["']''',
         caseSensitive: false,
       ).firstMatch(tag)?.group(1);
       if (source != null && !source.contains('://')) {
@@ -303,12 +560,14 @@ class _GpNextDetection {
   const _GpNextDetection({
     required this.detected,
     required this.compatibilityError,
+    this.gameVersion,
   });
 
-  const _GpNextDetection.notDetected()
+  const _GpNextDetection.notDetected({this.gameVersion})
       : detected = false,
         compatibilityError = null;
 
+  final String? gameVersion;
   final bool detected;
   final String? compatibilityError;
 }

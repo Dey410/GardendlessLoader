@@ -8,46 +8,14 @@ import '../models.dart';
 
 const _androidMediaIgnoreFileName = '.nomedia';
 
-typedef DirectoryProvider = Future<Directory> Function();
-typedef NullableDirectoryProvider = Future<Directory?> Function();
-
 class AppPathsService {
-  AppPathsService({
-    Directory? rootOverride,
-    String? platformName,
-    DirectoryProvider? documentsDirectoryProvider,
-    NullableDirectoryProvider? externalStorageDirectoryProvider,
-  })  : _rootOverride = rootOverride,
-        _platformName = platformName ?? Platform.operatingSystem,
-        _documentsDirectoryProvider =
-            documentsDirectoryProvider ?? getApplicationDocumentsDirectory,
-        _externalStorageDirectoryProvider =
-            externalStorageDirectoryProvider ?? getExternalStorageDirectory;
-
-  final Directory? _rootOverride;
-  final String _platformName;
-  final DirectoryProvider _documentsDirectoryProvider;
-  final NullableDirectoryProvider _externalStorageDirectoryProvider;
+  final String _platformName = Platform.operatingSystem;
 
   Future<AppPaths> ensureInitialized() async {
-    if (_rootOverride != null) {
-      final paths = _buildPaths(_rootOverride);
-      await _createPaths(paths);
-      return paths;
-    }
-
-    Object? lastError;
-    for (final root in await _defaultRoots()) {
-      final paths = _buildPaths(root);
-      try {
-        await _createPaths(paths);
-        return paths;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw StateError('Unable to initialize app directories: $lastError');
+    final root = await _defaultRoot();
+    final paths = _buildPaths(root);
+    await _createPaths(paths);
+    return paths;
   }
 
   AppPaths _buildPaths(Directory root) {
@@ -64,31 +32,26 @@ class AppPathsService {
     }
     await paths.slotADir.create(recursive: true);
     await paths.slotBDir.create(recursive: true);
-    await paths.gpNextPacksDir.create(recursive: true);
-    await paths.gpNextPatchesDir.create(recursive: true);
+    // gp-next stays absent until GP-Next creates it: its fresh-install check
+    // treats an existing gp-next directory as a legacy installation.
   }
 
-  Future<List<Directory>> _defaultRoots() async {
-    if (_platformName == 'ios') {
-      final documents = await _documentsDirectoryProvider();
-      return [Directory(p.join(documents.path, resourceFolderName))];
-    }
-
-    if (_platformName == 'ohos') {
-      final documents = await _documentsDirectoryProvider();
-      return [Directory(p.join(documents.path, resourceFolderName))];
+  Future<Directory> _defaultRoot() async {
+    if (_platformName == 'ios' || _platformName == 'ohos') {
+      final documents = await getApplicationDocumentsDirectory();
+      return Directory(p.join(documents.path, resourceFolderName));
     }
 
     if (_platformName == 'android') {
-      final external = await _externalStorageDirectoryProvider();
+      final external = await getExternalStorageDirectory();
       if (external != null) {
-        return [Directory(p.join(external.path, resourceFolderName))];
+        return Directory(p.join(external.path, resourceFolderName));
       }
     }
 
     if (_platformName == 'android') {
-      final documents = await _documentsDirectoryProvider();
-      return [Directory(p.join(documents.path, resourceFolderName))];
+      final documents = await getApplicationDocumentsDirectory();
+      return Directory(p.join(documents.path, resourceFolderName));
     }
 
     throw UnsupportedError('当前平台不受支持：$_platformName');

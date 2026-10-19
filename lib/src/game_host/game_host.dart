@@ -14,8 +14,8 @@ enum GameHostPlatform {
 
   String get nativeHostName => '$wireName-native';
 
-  static GameHostPlatform current({String? operatingSystem}) {
-    final value = operatingSystem ?? Platform.operatingSystem;
+  static GameHostPlatform current() {
+    final value = Platform.operatingSystem;
     return GameHostPlatform.values.firstWhere(
       (platform) => platform.wireName == value,
       orElse: () => throw UnsupportedError(
@@ -34,9 +34,33 @@ enum GameHostPlatform {
   }
 }
 
+/// How the game viewport fits the screen. The game shows 16:10 to 17:9 without
+/// distortion and its whole picture at 17:9. The names are the native session
+/// wire values.
+enum ScreenFit {
+  /// Clamps the viewport to 16:10–17:9: trims some of the picture for
+  /// smaller black bars.
+  balanced,
+
+  /// Keeps the viewport at 17:9 so the whole picture shows, with larger
+  /// black bars.
+  showAll,
+
+  /// Stretches the balanced viewport over the whole screen.
+  stretch;
+
+  static ScreenFit fromName(Object? value) {
+    return ScreenFit.values.firstWhere(
+      (fit) => fit.name == value,
+      orElse: () => ScreenFit.balanced,
+    );
+  }
+}
+
 class GameSession {
   const GameSession({
     required this.sessionId,
+    this.packageId,
     required this.resourceRoot,
     required this.platform,
     required this.entryPath,
@@ -47,6 +71,10 @@ class GameSession {
     required this.watermarkEnabled,
     this.autoCollectSunEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
+    this.renderScale,
+    this.screenFit = ScreenFit.balanced,
+    this.touchDiagnosticsEnabled = false,
+    this.gestureHint,
     required this.allowedRemoteHosts,
     required this.gpNextRoot,
     required this.exportTemporaryRoot,
@@ -68,8 +96,18 @@ class GameSession {
     if (generation is! int || generation < 0) {
       throw const FormatException('activationGeneration must be non-negative');
     }
+    final renderScale = json['renderScale'];
+    if (renderScale != null && (renderScale is! num || renderScale <= 0)) {
+      throw const FormatException('renderScale must be positive');
+    }
+    final gestureHint = json['gestureHint'];
+    if (gestureHint != null &&
+        (gestureHint is! List || gestureHint.any((line) => line is! String))) {
+      throw const FormatException('gestureHint must be a string list');
+    }
     return GameSession(
       sessionId: _requiredString(json, 'sessionId'),
+      packageId: json['packageId'] as String?,
       resourceRoot: _requiredString(json, 'resourceRoot'),
       platform: GameHostPlatform.fromWireName(json['platform']),
       entryPath: entryPath,
@@ -81,6 +119,11 @@ class GameSession {
       autoCollectSunEnabled: json['autoCollectSunEnabled'] as bool? ?? false,
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
+      renderScale: (renderScale as num?)?.toDouble(),
+      screenFit: ScreenFit.fromName(json['screenFit']),
+      touchDiagnosticsEnabled:
+          json['touchDiagnosticsEnabled'] as bool? ?? false,
+      gestureHint: (gestureHint as List?)?.cast<String>(),
       allowedRemoteHosts: normalizedRemoteHosts,
       gpNextRoot: _requiredString(json, 'gpNextRoot'),
       exportTemporaryRoot: _requiredString(json, 'exportTemporaryRoot'),
@@ -90,6 +133,7 @@ class GameSession {
   static const schemaVersion = 1;
 
   final String sessionId;
+  final String? packageId;
   final String resourceRoot;
   final GameHostPlatform platform;
   final String entryPath;
@@ -100,6 +144,17 @@ class GameSession {
   final bool watermarkEnabled;
   final bool autoCollectSunEnabled;
   final bool detailedAudioDiagnosticsEnabled;
+
+  /// Share of the device pixel ratio the game canvas renders at; null renders
+  /// at the device's own ratio.
+  final double? renderScale;
+  final ScreenFit screenFit;
+
+  /// Records the touch adapter's trace into the logs (tool shed).
+  final bool touchDiagnosticsEnabled;
+
+  /// Lines of the one-time gesture hint shown over the game; null shows none.
+  final List<String>? gestureHint;
   final List<String> allowedRemoteHosts;
   final String gpNextRoot;
   final String exportTemporaryRoot;
@@ -119,6 +174,7 @@ class GameSession {
     return {
       'schemaVersion': schemaVersion,
       'sessionId': sessionId,
+      'packageId': packageId,
       'state': 'prepared',
       'resourceRoot': resourceRoot,
       'platform': platform.wireName,
@@ -132,112 +188,24 @@ class GameSession {
       'watermarkEnabled': watermarkEnabled,
       'autoCollectSunEnabled': autoCollectSunEnabled,
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
+      'renderScale': renderScale,
+      'screenFit': screenFit.name,
+      'touchDiagnosticsEnabled': touchDiagnosticsEnabled,
+      'gestureHint': gestureHint,
       'allowedRemoteHosts': normalizedRemoteHosts,
       'gpNextRoot': gpNextRoot,
       'exportTemporaryRoot': exportTemporaryRoot,
     };
   }
-
-  GameSession copyWith({int? activationGeneration}) {
-    return GameSession(
-      sessionId: sessionId,
-      resourceRoot: resourceRoot,
-      platform: platform,
-      entryPath: entryPath,
-      activationGeneration: activationGeneration ?? this.activationGeneration,
-      hasGpNext: hasGpNext,
-      gpNextCompatible: gpNextCompatible,
-      gpNextVersion: gpNextVersion,
-      watermarkEnabled: watermarkEnabled,
-      autoCollectSunEnabled: autoCollectSunEnabled,
-      detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
-      allowedRemoteHosts: allowedRemoteHosts,
-      gpNextRoot: gpNextRoot,
-      exportTemporaryRoot: exportTemporaryRoot,
-    );
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is GameSession &&
-        other.sessionId == sessionId &&
-        other.resourceRoot == resourceRoot &&
-        other.platform == platform &&
-        other.entryPath == entryPath &&
-        other.activationGeneration == activationGeneration &&
-        other.hasGpNext == hasGpNext &&
-        other.gpNextCompatible == gpNextCompatible &&
-        other.gpNextVersion == gpNextVersion &&
-        other.watermarkEnabled == watermarkEnabled &&
-        other.autoCollectSunEnabled == autoCollectSunEnabled &&
-        other.detailedAudioDiagnosticsEnabled ==
-            detailedAudioDiagnosticsEnabled &&
-        _listEquals(other.allowedRemoteHosts, allowedRemoteHosts) &&
-        other.gpNextRoot == gpNextRoot &&
-        other.exportTemporaryRoot == exportTemporaryRoot;
-  }
-
-  @override
-  int get hashCode => Object.hash(
-        sessionId,
-        resourceRoot,
-        platform,
-        entryPath,
-        activationGeneration,
-        hasGpNext,
-        gpNextCompatible,
-        gpNextVersion,
-        watermarkEnabled,
-        autoCollectSunEnabled,
-        detailedAudioDiagnosticsEnabled,
-        Object.hashAll(allowedRemoteHosts),
-        gpNextRoot,
-        exportTemporaryRoot,
-      );
 }
 
-abstract interface class GameHost {
-  Future<void> launch(GameSession session);
-}
+class MethodChannelGameHost {
+  const MethodChannelGameHost();
 
-class GameHostRouter implements GameHost {
-  const GameHostRouter({required Map<GameHostPlatform, GameHost> hosts})
-      : _hosts = hosts;
+  static const MethodChannel _channel = MethodChannel(
+    'io.github.dey410.gardendlessloader/game_host',
+  );
 
-  factory GameHostRouter.platformChannel({
-    MethodChannel channel = const MethodChannel(
-      'io.github.dey410.gardendlessloader/game_host',
-    ),
-  }) {
-    final host = MethodChannelGameHost(channel: channel);
-    return GameHostRouter(
-      hosts: {
-        for (final platform in GameHostPlatform.values) platform: host,
-      },
-    );
-  }
-
-  final Map<GameHostPlatform, GameHost> _hosts;
-
-  @override
-  Future<void> launch(GameSession session) async {
-    final host = _hosts[session.platform];
-    if (host == null) {
-      throw UnsupportedError(
-        'No native GameHost is registered for ${session.platform.wireName}',
-      );
-    }
-    await host.launch(session);
-  }
-}
-
-class MethodChannelGameHost implements GameHost {
-  const MethodChannelGameHost({required MethodChannel channel})
-      : _channel = channel;
-
-  final MethodChannel _channel;
-
-  @override
   Future<void> launch(GameSession session) async {
     await _channel.invokeMethod<void>('launch', session.toJson());
   }
@@ -285,16 +253,4 @@ void _validateEntryPath(String value) {
       uri.pathSegments.any((segment) => segment == '.' || segment == '..')) {
     throw const FormatException('entryPath must stay inside the resource root');
   }
-}
-
-bool _listEquals(List<String> left, List<String> right) {
-  if (left.length != right.length) {
-    return false;
-  }
-  for (var index = 0; index < left.length; index += 1) {
-    if (left[index] != right[index]) {
-      return false;
-    }
-  }
-  return true;
 }

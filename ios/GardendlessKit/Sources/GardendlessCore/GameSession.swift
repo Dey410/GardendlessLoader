@@ -1,10 +1,24 @@
 import Foundation
 
+/// How the game viewport fits the screen. The game shows 16:10 to 17:9 without
+/// distortion and its whole picture at 17:9.
+public enum GameScreenFit: String, Codable, Equatable {
+  /// Clamps the viewport to 16:10–17:9: trims some of the picture for
+  /// smaller black bars.
+  case balanced
+  /// Keeps the viewport at 17:9 so the whole picture shows, with larger
+  /// black bars.
+  case showAll
+  /// Stretches the balanced viewport over the whole screen.
+  case stretch
+}
+
 /// Prepared session contract written by the Flutter launcher and consumed by
 /// the native game host. Schema v1 is a frozen public contract.
 public struct GameSession: Codable, Equatable {
   public static let schemaVersion = 1
 
+  public let packageId: String?
   public let sessionId: String
   public let resourceRoot: URL
   public let entryURL: URL
@@ -15,6 +29,14 @@ public struct GameSession: Codable, Equatable {
   public let watermarkEnabled: Bool
   public let autoCollectSunEnabled: Bool
   public let detailedAudioDiagnosticsEnabled: Bool
+  /// Share of the device pixel ratio the game canvas renders at; nil keeps
+  /// the device's own ratio.
+  public let renderScale: Double?
+  public let screenFit: GameScreenFit
+  /// Records the touch adapter's trace into the logs.
+  public let touchDiagnosticsEnabled: Bool
+  /// Lines of the one-time gesture hint shown over the game; nil shows none.
+  public let gestureHint: [String]?
   public let allowedRemoteHosts: Set<String>
   public let gpNextRoot: URL
   public let exportTemporaryRoot: URL
@@ -25,6 +47,7 @@ public struct GameSession: Codable, Equatable {
 
   public init(
     sessionId: String,
+    packageId: String? = nil,
     resourceRoot: URL,
     entryURL: URL,
     activationGeneration: Int,
@@ -34,10 +57,15 @@ public struct GameSession: Codable, Equatable {
     watermarkEnabled: Bool,
     autoCollectSunEnabled: Bool,
     detailedAudioDiagnosticsEnabled: Bool = false,
+    renderScale: Double? = nil,
+    screenFit: GameScreenFit = .balanced,
+    touchDiagnosticsEnabled: Bool = false,
+    gestureHint: [String]? = nil,
     allowedRemoteHosts: Set<String>,
     gpNextRoot: URL,
     exportTemporaryRoot: URL
   ) {
+    self.packageId = packageId
     self.sessionId = sessionId
     self.resourceRoot = resourceRoot
     self.entryURL = entryURL
@@ -48,6 +76,10 @@ public struct GameSession: Codable, Equatable {
     self.watermarkEnabled = watermarkEnabled
     self.autoCollectSunEnabled = autoCollectSunEnabled
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
+    self.renderScale = renderScale
+    self.screenFit = screenFit
+    self.touchDiagnosticsEnabled = touchDiagnosticsEnabled
+    self.gestureHint = gestureHint
     self.allowedRemoteHosts = allowedRemoteHosts
     self.gpNextRoot = gpNextRoot
     self.exportTemporaryRoot = exportTemporaryRoot
@@ -74,12 +106,22 @@ public enum GameSessionDecoder {
           generation >= 0 else {
       throw GameError.failed(.invalidSession, "Invalid activation generation")
     }
+    let renderScale = json["renderScale"] as? Double
+    if let renderScale, renderScale <= 0 {
+      throw GameError.failed(.invalidSession, "Invalid render scale")
+    }
+    guard let screenFit = GameScreenFit(
+      rawValue: json["screenFit"] as? String ?? GameScreenFit.balanced.rawValue
+    ) else {
+      throw GameError.failed(.invalidSession, "Invalid screen fit")
+    }
     let hosts = json["allowedRemoteHosts"] as? [String] ?? []
     guard hosts.allSatisfy(isValidRemoteHost) else {
       throw GameError.failed(.invalidSession, "Invalid remote host")
     }
     return GameSession(
       sessionId: sessionId,
+      packageId: json["packageId"] as? String,
       resourceRoot: resourceRoot,
       entryURL: entry,
       activationGeneration: generation,
@@ -90,6 +132,10 @@ public enum GameSessionDecoder {
       autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled"),
       detailedAudioDiagnosticsEnabled:
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
+      renderScale: renderScale,
+      screenFit: screenFit,
+      touchDiagnosticsEnabled: json["touchDiagnosticsEnabled"] as? Bool ?? false,
+      gestureHint: json["gestureHint"] as? [String],
       allowedRemoteHosts: Set(hosts.map { $0.lowercased() }),
       gpNextRoot: try requiredDirectoryURL(json, "gpNextRoot"),
       exportTemporaryRoot: try requiredDirectoryURL(json, "exportTemporaryRoot")

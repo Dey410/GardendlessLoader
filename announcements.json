@@ -1,5 +1,12 @@
 {
   "schemaVersion": 1,
+  "theme": {
+    "from": "2026-10-24",
+    "to": "2026-11-01",
+    "accent": "#ea580c",
+    "accentDark": "#fb923c",
+    "badge": "🎃"
+  },
   "announcement": {
     "id": "2026-10-04-v0.8.2",
     "title": "v0.8.2 重要更新",

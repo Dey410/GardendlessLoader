@@ -17,13 +17,13 @@ class GameResourceResolverTest {
     @Before
     fun setUp() {
         root = Files.createTempDirectory("gardendless-resource-").toFile()
-        File(root, "index.html").writeText("index")
+        File(root, "index.html").writeText("<head></head>index")
         File(root, "src").mkdirs()
         File(root, "src/settings.json").writeText("{}")
         File(root, "assets").mkdirs()
         File(root, "assets/chunk.1234abcd.js").writeText("0123456789")
         File(root, "assets/向日葵.png").writeBytes(byteArrayOf(1, 2, 3))
-        resolver = GameResourceResolver(root)
+        resolver = GameResourceResolver(root, "boot()")
     }
 
     @After
@@ -36,10 +36,11 @@ class GameResourceResolverTest {
         val get = resolver.resolve("https://appassets.androidplatform.net/", "GET")
         assertEquals(200, get.statusCode)
         assertEquals("text/html", get.mimeType)
-        assertEquals("index", get.body.readBytes().decodeToString())
+        val served = "<head><script>boot()</script></head>index"
+        assertEquals(served, get.body.readBytes().decodeToString())
 
         val head = resolver.resolve("https://appassets.androidplatform.net/", "HEAD")
-        assertEquals("5", head.headers["Content-Length"])
+        assertEquals(served.length.toString(), head.headers["Content-Length"])
         assertEquals(0, head.body.readBytes().size)
     }
 
@@ -57,7 +58,8 @@ class GameResourceResolverTest {
             "GET",
             mapOf("If-None-Match" to partial.headers.getValue("ETag")),
         )
-        assertEquals(304, cached.statusCode)
+        assertEquals(200, cached.statusCode)
+        cached.body.use { assertEquals("0123456789", it.readBytes().decodeToString()) }
     }
 
     @Test
@@ -140,10 +142,24 @@ class GameResourceResolverTest {
         val linkedRoot = File(parent, "gardendless-linked-root-${System.nanoTime()}")
         try {
             Files.createSymbolicLink(linkedRoot.toPath(), root.toPath())
-            runCatching { GameResourceResolver(linkedRoot) }
+            runCatching { GameResourceResolver(linkedRoot, "") }
                 .onSuccess { throw AssertionError("symbolic link root was accepted") }
         } finally {
             Files.deleteIfExists(linkedRoot.toPath())
+        }
+    }
+
+    @Test
+    fun `HTML without a head element is not served without the bootstrap`() {
+        File(root, "bare.html").writeText("<body>bare</body>")
+        assertEquals(500, resolver.resolve("https://appassets.androidplatform.net/bare.html", "GET").statusCode)
+    }
+
+    @Test
+    fun `bootstrap that would break an inline script is rejected`() {
+        for (script in listOf("a='</script>'", "a='<!--'")) {
+            runCatching { GameResourceResolver(root, script) }
+                .onSuccess { throw AssertionError("uninlinable bootstrap was accepted: $script") }
         }
     }
 }

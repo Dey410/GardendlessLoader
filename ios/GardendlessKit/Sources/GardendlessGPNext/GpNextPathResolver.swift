@@ -6,17 +6,11 @@ import GardendlessCore
 public final class GpNextPathResolver {
   private let gpNextRoot: URL
 
+  /// The root may be absent: GP-Next creates it on a fresh install, and its
+  /// fresh-install check treats an existing `gp-next` as a legacy install.
   public init(gpNextRoot: URL) throws {
-    let values = try gpNextRoot.resourceValues(
-      forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-    )
-    guard values.isDirectory == true, values.isSymbolicLink != true else {
-      throw GameError.failed(
-        .gpNextForbidden,
-        "GP-Next 根目录不能是符号链接"
-      )
-    }
     self.gpNextRoot = gpNextRoot.standardizedFileURL
+    try assertNoSymlink(self.gpNextRoot)
   }
 
   public func resolve(_ value: Any?, options: [String: Any]) throws -> URL {
@@ -59,7 +53,8 @@ public final class GpNextPathResolver {
   }
 
   public func assertNoSymlink(_ target: URL) throws {
-    if try gpNextRoot.resourceValues(forKeys: [.isSymbolicLinkKey])
+    if FileManager.default.fileExists(atPath: gpNextRoot.path),
+       try gpNextRoot.resourceValues(forKeys: [.isSymbolicLinkKey])
       .isSymbolicLink == true {
       throw GameError.failed(
         .gpNextForbidden,

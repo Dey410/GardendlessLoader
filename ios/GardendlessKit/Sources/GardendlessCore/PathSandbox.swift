@@ -35,6 +35,7 @@ public struct PathSandbox {
       omittingEmptySubsequences: false
     ).map(String.init)
     guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
+          !Self.isPackageMetadataPath(effective),
           !effective.contains("\\"),
           !effective.contains("\0") else {
       return nil
@@ -43,7 +44,8 @@ public struct PathSandbox {
   }
 
   public func resolve(_ relativePath: String) -> URL? {
-    guard !relativePath.isEmpty, !relativePath.hasPrefix("/") else { return nil }
+    guard !relativePath.isEmpty, !relativePath.hasPrefix("/"),
+          !Self.isPackageMetadataPath(relativePath) else { return nil }
     var cursor = root
     for component in relativePath.split(
       separator: "/",
@@ -66,6 +68,12 @@ public struct PathSandbox {
       return nil
     }
     return resolved
+  }
+
+  private static func isPackageMetadataPath(_ path: String) -> Bool {
+    let components = path.split(separator: "/", omittingEmptySubsequences: false)
+    return components.count >= 2 && components[0].lowercased() == "__gardendless"
+      && components[1].lowercased() == "package"
   }
 
   public func fileProperties(_ file: URL) throws -> (length: Int64, etag: String) {

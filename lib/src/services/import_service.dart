@@ -5,9 +5,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models.dart';
-import 'game_update_check_service.dart';
 import 'manifest_store.dart';
-import 'resource_self_check.dart';
 import 'resource_validator.dart';
 
 class ImportTarget {
@@ -17,24 +15,11 @@ class ImportTarget {
   final Directory directory;
 }
 
-typedef OldSlotCleaner = Future<void> Function(Directory directory);
-
 class ImportService {
-  ImportService({
-    required ResourceValidator validator,
-    ResourceSelfCheck? selfCheck,
-    GameUpdateCheckService? gameUpdateCheckService,
-    OldSlotCleaner? oldSlotCleaner,
-  })  : _validator = validator,
-        _selfCheck = selfCheck ?? FileResourceSelfCheck(),
-        _gameUpdateCheckService =
-            gameUpdateCheckService ?? GameUpdateCheckService(),
-        _oldSlotCleaner = oldSlotCleaner;
+  ImportService({required ResourceValidator validator})
+      : _validator = validator;
 
   final ResourceValidator _validator;
-  final ResourceSelfCheck _selfCheck;
-  final GameUpdateCheckService _gameUpdateCheckService;
-  final OldSlotCleaner? _oldSlotCleaner;
 
   Directory? activeDirectory(AppPaths paths, ResourceManifest manifest) {
     final activeSlot = manifest.activeSlot;
@@ -82,10 +67,15 @@ class ImportService {
     return aborted;
   }
 
-  Future<ResourceManifest> completeImport({
+  /// Validates the candidate and makes it the active resource.
+  /// [confirmActivation] sees the validated candidate before it replaces the
+  /// active resource; declining aborts the import and returns null.
+  Future<ResourceManifest?> completeImport({
     required AppPaths paths,
     required ManifestStore manifestStore,
     required ImportTarget target,
+    required Future<bool> Function(ResourceValidationResult candidate)
+        confirmActivation,
     ImportProgressCallback? onProgress,
   }) async {
     var manifest = await manifestStore.read();
@@ -118,13 +108,11 @@ class ImportService {
           validation.errorMessage ?? '导入资源校验失败',
         );
       }
-      final stats = await _validator.scanStats(
-        target.directory,
-        detectedTitle: validation.detectedTitle,
-        buildProfile: validation.buildProfile,
-        gpNextVersion: validation.gpNextVersion,
-        gpNextCompatibilityError: validation.gpNextCompatibilityError,
-      );
+      if (!await confirmActivation(validation)) {
+        await abortImport(paths: paths, manifestStore: manifestStore);
+        return null;
+      }
+      final stats = validation.stats;
 
       manifest = manifest.copyWith(
         generation: manifest.generation + 1,
@@ -141,12 +129,9 @@ class ImportService {
           message: '正在检查原生宿主入口资源',
         ),
       );
-      await _selfCheck.validate(target.directory);
 
       final now = DateTime.now();
-      final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
-        target.directory,
-      );
+      final gameVersion = validation.gameVersion;
       manifest = manifest.copyWith(
         generation: manifest.generation + 1,
         transactionState: TransactionState.readyToActivate,
@@ -157,6 +142,7 @@ class ImportService {
       final activationGeneration = manifest.generation + 1;
       await _writeSlotMetadata(
         directory: target.directory,
+        packageId: validation.packageId,
         generation: activationGeneration,
         gameVersion: gameVersion,
         importedAt: now,
@@ -171,21 +157,24 @@ class ImportService {
         lastImportAt: now,
         fileCount: stats.fileCount,
         totalBytes: stats.totalBytes,
-        detectedTitle: stats.detectedTitle,
-        buildProfile: stats.buildProfile,
-        gpNextVersion: stats.gpNextVersion,
-        gpNextCompatibilityError: stats.gpNextCompatibilityError,
-        clearGpNextVersion: stats.gpNextVersion == null,
-        clearGpNextCompatibilityError: stats.gpNextCompatibilityError == null,
+        detectedTitle: validation.detectedTitle,
+        packageId: validation.packageId,
+        buildProfile: validation.buildProfile,
+        gpNextVersion: validation.gpNextVersion,
+        gpNextCompatibilityError: validation.gpNextCompatibilityError,
+        clearGpNextVersion: validation.gpNextVersion == null,
+        clearGpNextCompatibilityError:
+            validation.gpNextCompatibilityError == null,
         resourceStatus: ResourceStatus.ready,
         lastSelfCheckAt: now,
+        autoCollectSunEnabled: manifest.autoCollectSunEnabled,
         clearError: true,
       );
       await manifestStore.write(manifest);
       activated = true;
 
       if (oldSlot != null) {
-        await _cleanOldSlot(paths.directoryFor(oldSlot));
+        await _resetDirectory(paths.directoryFor(oldSlot));
       }
       manifest = manifest.copyWith(
         generation: manifest.generation + 1,
@@ -239,7 +228,11 @@ class ImportService {
       );
       await manifestStore.write(failed);
       report(
-        ImportProgress(phase: ImportPhase.failed, message: failure.message),
+        ImportProgress(
+          phase: ImportPhase.failed,
+          message: failure.message,
+          errorCode: failure.code,
+        ),
       );
       throw failure;
     }
@@ -331,21 +324,14 @@ class ImportService {
         return manifest;
       }
 
-      final stats = await _validator.scanStats(
-        candidate,
-        detectedTitle: validation.detectedTitle,
-        buildProfile: validation.buildProfile,
-        gpNextVersion: validation.gpNextVersion,
-        gpNextCompatibilityError: validation.gpNextCompatibilityError,
-      );
-      final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
-        candidate,
-      );
+      final stats = validation.stats;
+      final gameVersion = validation.gameVersion;
       final oldSlot = manifest.activeSlot;
       final now = DateTime.now();
       final activationGeneration = manifest.generation + 1;
       await _writeSlotMetadata(
         directory: candidate,
+        packageId: validation.packageId,
         generation: activationGeneration,
         gameVersion: gameVersion,
         importedAt: now,
@@ -360,14 +346,17 @@ class ImportService {
         lastImportAt: now,
         fileCount: stats.fileCount,
         totalBytes: stats.totalBytes,
-        detectedTitle: stats.detectedTitle,
-        buildProfile: stats.buildProfile,
-        gpNextVersion: stats.gpNextVersion,
-        gpNextCompatibilityError: stats.gpNextCompatibilityError,
-        clearGpNextVersion: stats.gpNextVersion == null,
-        clearGpNextCompatibilityError: stats.gpNextCompatibilityError == null,
+        detectedTitle: validation.detectedTitle,
+        packageId: validation.packageId,
+        buildProfile: validation.buildProfile,
+        gpNextVersion: validation.gpNextVersion,
+        gpNextCompatibilityError: validation.gpNextCompatibilityError,
+        clearGpNextVersion: validation.gpNextVersion == null,
+        clearGpNextCompatibilityError:
+            validation.gpNextCompatibilityError == null,
         resourceStatus: ResourceStatus.ready,
         lastSelfCheckAt: now,
+        autoCollectSunEnabled: manifest.autoCollectSunEnabled,
         clearError: true,
       );
       await manifestStore.write(manifest);
@@ -408,7 +397,7 @@ class ImportService {
           slot: slot,
           directory: directory,
           validation: validation,
-          metadata: await _readSlotMetadata(directory),
+          metadata: await _readSlotMetadata(directory, validation),
         ));
       }
     }
@@ -421,16 +410,8 @@ class ImportService {
       ),
     );
     final selected = candidates.first;
-    final stats = await _validator.scanStats(
-      selected.directory,
-      detectedTitle: selected.validation.detectedTitle,
-      buildProfile: selected.validation.buildProfile,
-      gpNextVersion: selected.validation.gpNextVersion,
-      gpNextCompatibilityError: selected.validation.gpNextCompatibilityError,
-    );
-    final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
-      selected.directory,
-    );
+    final stats = selected.validation.stats;
+    final gameVersion = selected.validation.gameVersion;
     final generation = [
       manifest.generation + 1,
       selected.metadata?.generation ?? 0,
@@ -438,6 +419,7 @@ class ImportService {
     final now = DateTime.now();
     await _writeSlotMetadata(
       directory: selected.directory,
+      packageId: selected.validation.packageId,
       generation: generation,
       gameVersion: gameVersion,
       importedAt: selected.metadata?.importedAt ?? now,
@@ -466,12 +448,14 @@ class ImportService {
       lastImportAt: selected.metadata?.importedAt ?? now,
       fileCount: stats.fileCount,
       totalBytes: stats.totalBytes,
-      detectedTitle: stats.detectedTitle,
-      buildProfile: stats.buildProfile,
-      gpNextVersion: stats.gpNextVersion,
-      gpNextCompatibilityError: stats.gpNextCompatibilityError,
-      clearGpNextVersion: stats.gpNextVersion == null,
-      clearGpNextCompatibilityError: stats.gpNextCompatibilityError == null,
+      detectedTitle: selected.validation.detectedTitle,
+      packageId: selected.validation.packageId,
+      buildProfile: selected.validation.buildProfile,
+      gpNextVersion: selected.validation.gpNextVersion,
+      gpNextCompatibilityError: selected.validation.gpNextCompatibilityError,
+      clearGpNextVersion: selected.validation.gpNextVersion == null,
+      clearGpNextCompatibilityError:
+          selected.validation.gpNextCompatibilityError == null,
       resourceStatus: ResourceStatus.ready,
       lastSelfCheckAt: selected.metadata?.lastSelfCheckAt,
       clearError: true,
@@ -495,7 +479,7 @@ class ImportService {
     try {
       final oldSlot = manifest.transactionSlot;
       if (oldSlot != null && oldSlot != manifest.activeSlot) {
-        await _cleanOldSlot(paths.directoryFor(oldSlot));
+        await _resetDirectory(paths.directoryFor(oldSlot));
       }
       final completed = manifest.copyWith(
         generation: manifest.generation + 1,
@@ -562,20 +546,13 @@ class ImportService {
     if (!migratedValidation.isValid) {
       throw ImportFailure('legacy_migration_failed', '旧资源迁移后的校验失败');
     }
-    final stats = await _validator.scanStats(
-      target,
-      detectedTitle: migratedValidation.detectedTitle,
-      buildProfile: migratedValidation.buildProfile,
-      gpNextVersion: migratedValidation.gpNextVersion,
-      gpNextCompatibilityError: migratedValidation.gpNextCompatibilityError,
-    );
-    final gameVersion = await _gameUpdateCheckService.loadCurrentVersion(
-      target,
-    );
+    final stats = migratedValidation.stats;
+    final gameVersion = migratedValidation.gameVersion;
     final now = DateTime.now();
     final activationGeneration = manifest.generation + 1;
     await _writeSlotMetadata(
       directory: target,
+      packageId: migratedValidation.packageId,
       generation: activationGeneration,
       gameVersion: gameVersion,
       importedAt: manifest.lastImportAt ?? now,
@@ -588,15 +565,18 @@ class ImportService {
       lastImportAt: manifest.lastImportAt ?? now,
       fileCount: stats.fileCount,
       totalBytes: stats.totalBytes,
-      detectedTitle: stats.detectedTitle,
-      buildProfile: stats.buildProfile,
-      gpNextVersion: stats.gpNextVersion,
-      gpNextCompatibilityError: stats.gpNextCompatibilityError,
-      clearGpNextVersion: stats.gpNextVersion == null,
-      clearGpNextCompatibilityError: stats.gpNextCompatibilityError == null,
+      detectedTitle: migratedValidation.detectedTitle,
+      packageId: migratedValidation.packageId,
+      buildProfile: migratedValidation.buildProfile,
+      gpNextVersion: migratedValidation.gpNextVersion,
+      gpNextCompatibilityError: migratedValidation.gpNextCompatibilityError,
+      clearGpNextVersion: migratedValidation.gpNextVersion == null,
+      clearGpNextCompatibilityError:
+          migratedValidation.gpNextCompatibilityError == null,
       resourceStatus: ResourceStatus.ready,
       lastSelfCheckAt: manifest.lastSelfCheckAt,
       transactionState: TransactionState.migrating,
+      autoCollectSunEnabled: manifest.autoCollectSunEnabled,
       clearError: true,
     );
     await manifestStore.write(manifest);
@@ -648,19 +628,16 @@ class ImportService {
     }
   }
 
-  Future<void> _cleanOldSlot(Directory directory) {
-    final cleaner = _oldSlotCleaner;
-    return cleaner == null ? _resetDirectory(directory) : cleaner(directory);
-  }
-
   File _slotMetadataFile(Directory directory) {
-    return File(p.join(directory.path, '.slot-metadata.json'));
+    return File(p.join(
+        directory.parent.path, '${p.basename(directory.path)}.metadata.json'));
   }
 
   Future<void> _writeSlotMetadata({
     required Directory directory,
     required int generation,
     required String? gameVersion,
+    required String? packageId,
     required DateTime importedAt,
     required DateTime? lastSelfCheckAt,
   }) async {
@@ -670,6 +647,7 @@ class ImportService {
       '${jsonEncode({
             'generation': generation,
             'gameVersion': gameVersion,
+            'packageId': packageId,
             'importedAt': importedAt.toUtc().toIso8601String(),
             'lastSelfCheckAt': lastSelfCheckAt?.toUtc().toIso8601String()
           })}\n',
@@ -678,11 +656,18 @@ class ImportService {
     await temporary.rename(file.path);
   }
 
-  Future<_SlotMetadata?> _readSlotMetadata(Directory directory) async {
+  Future<_SlotMetadata?> _readSlotMetadata(
+      Directory directory, ResourceValidationResult validation) async {
     try {
+      var file = _slotMetadataFile(directory);
+      // Old standard imports kept their recovery record inside the slot. New
+      // indexed packages never use that legacy location.
+      if (!await file.exists() && validation.packageId == null) {
+        file = File(p.join(directory.path, '.slot-metadata.json'));
+      }
       final decoded =
-          jsonDecode(await _slotMetadataFile(directory).readAsString())
-              as Map<String, dynamic>;
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      if (decoded['packageId'] != validation.packageId) return null;
       final generation = decoded['generation'];
       final importedAt = DateTime.tryParse(
         decoded['importedAt'] as String? ?? '',

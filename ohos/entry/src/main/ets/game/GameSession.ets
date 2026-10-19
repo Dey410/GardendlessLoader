@@ -11,6 +11,12 @@ export interface GameSessionPayload {
   gpNextVersion?: string;
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
+  detailedAudioDiagnosticsEnabled?: boolean;
+  renderScale?: number | null;
+  screenFit?: string;
+  touchDiagnosticsEnabled?: boolean;
+  gestureHint?: string[] | null;
+  packageId?: string;
   allowedRemoteHosts: string[];
   gpNextRoot: string;
   exportTemporaryRoot: string;
@@ -27,6 +33,15 @@ export class GameSession {
   readonly gpNextVersion: string | null;
   readonly watermarkEnabled: boolean;
   readonly autoCollectSunEnabled: boolean;
+  readonly detailedAudioDiagnosticsEnabled: boolean;
+  readonly renderScale: number | null;
+  /** balanced (16:10–17:9), showAll (17:9) or stretch: how the game viewport fits the screen. */
+  readonly screenFit: string;
+  /** Records the touch adapter's trace into the logs. */
+  readonly touchDiagnosticsEnabled: boolean;
+  /** Lines of the one-time gesture hint shown over the game; null shows none. */
+  readonly gestureHint: string[] | null;
+  readonly packageId: string;
   readonly allowedRemoteHosts: Set<string>;
   readonly gpNextRoot: string;
   readonly exportTemporaryRoot: string;
@@ -51,6 +66,19 @@ export class GameSession {
     this.gpNextVersion = value.gpNextVersion ?? null;
     this.watermarkEnabled = value.watermarkEnabled;
     this.autoCollectSunEnabled = value.autoCollectSunEnabled;
+    this.detailedAudioDiagnosticsEnabled = value.detailedAudioDiagnosticsEnabled === true;
+    this.renderScale = value.renderScale ?? null;
+    if (this.renderScale !== null && !(this.renderScale > 0)) {
+      throw new Error('Invalid render scale');
+    }
+    this.screenFit = value.screenFit ?? 'balanced';
+    if (!['balanced', 'showAll', 'stretch'].includes(this.screenFit)) {
+      throw new Error('Invalid screen fit');
+    }
+    this.touchDiagnosticsEnabled = value.touchDiagnosticsEnabled === true;
+    this.gestureHint = value.gestureHint ?? null;
+    this.packageId = value.packageId ?? 'unknown';
+    if (this.packageId !== 'unknown' && !/^sha256:[a-f0-9]{64}$/.test(this.packageId)) throw new Error('Invalid package identity');
     this.allowedRemoteHosts = new Set<string>();
     for (const host of value.allowedRemoteHosts) {
       const normalized = host.toLowerCase();

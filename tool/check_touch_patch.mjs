@@ -10,24 +10,6 @@ const touchStateMachineSource = fs.readFileSync(
   new URL('../assets/game_bridge/touch_state_machine.js', import.meta.url),
   'utf8',
 );
-const androidGameActivitySource = fs.readFileSync(
-  new URL(
-    '../android/app/src/main/kotlin/io/github/dey410/gardendlessloader/game/GameActivity.kt',
-    import.meta.url,
-  ),
-  'utf8',
-);
-
-assert.match(
-  androidGameActivitySource,
-  /webView = WebView\(this\)\.apply/,
-  'Android must use a plain WebView without native touch-to-mouse injection',
-);
-assert.match(
-  androidGameActivitySource,
-  /\.put\("touchAdapter", "javascript"\)/,
-  'Android must select the shared JavaScript touch adapter',
-);
 assert.doesNotMatch(
   touchAdapterSource,
   /android-reference/,
@@ -116,6 +98,7 @@ function createTouchHarness({
 } = {}) {
   const appendedElements = [];
   const frames = new Map();
+  const intervals = [];
   const mutationObservers = [];
   let nextFrame = 1;
   let now = 0;
@@ -152,7 +135,12 @@ function createTouchHarness({
     hidden: false,
   });
   const window = new EventTarget();
-  window.devicePixelRatio = devicePixelRatio;
+  // Browsers expose the ratio as an accessor on window.
+  Object.defineProperty(window, 'devicePixelRatio', {
+    configurable: true,
+    enumerable: true,
+    get: () => devicePixelRatio,
+  });
   window.__gardendlessHostConfig = hostConfig;
   const context = {
     Event,
@@ -177,6 +165,10 @@ function createTouchHarness({
       const id = nextFrame++;
       frames.set(id, callback);
       return id;
+    },
+    setInterval(callback) {
+      intervals.push(callback);
+      return intervals.length;
     },
     window,
   };
@@ -205,6 +197,11 @@ function createTouchHarness({
     document,
     advanceTime(milliseconds) {
       now += milliseconds;
+    },
+    runIntervals() {
+      for (const callback of intervals) {
+        callback();
+      }
     },
     flushAnimationFrame() {
       const pending = Array.from(frames.values());
@@ -334,7 +331,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
   const firstLawnTile = {clientX: 180, clientY: 90};
   const dragLawnTile = {clientX: 240, clientY: 130};
   const tapHarness = createTouchHarness({
-    hostConfig: {platform, touchAdapter: 'javascript'},
+    hostConfig: {platform},
   });
   const tapGame = attachPvzGePlacementModel(tapHarness, {
     seedCard,
@@ -364,7 +361,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
   );
 
   const dragHarness = createTouchHarness({
-    hostConfig: {platform, touchAdapter: 'javascript'},
+    hostConfig: {platform},
   });
   const dragGame = attachPvzGePlacementModel(dragHarness, {
     seedCard,
@@ -395,7 +392,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
   );
 
   const sparseDragHarness = createTouchHarness({
-    hostConfig: {platform, touchAdapter: 'javascript'},
+    hostConfig: {platform},
   });
   const sparseDragGame = attachPvzGePlacementModel(sparseDragHarness, {
     seedCard,
@@ -425,7 +422,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
 
   const mixedRateHarness = createTouchHarness({
     animationFrameMilliseconds: 16,
-    hostConfig: {platform, touchAdapter: 'javascript'},
+    hostConfig: {platform},
   });
   const mixedRateGame = attachPvzGePlacementModel(mixedRateHarness, {
     seedCard,
@@ -464,7 +461,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
 for (const platform of ['android', 'ios', 'ohos']) {
   const harness = createTouchHarness({
     devicePixelRatio: 2,
-    hostConfig: {platform, touchAdapter: 'javascript'},
+    hostConfig: {platform},
   });
   const primaryEvents = [];
   for (const type of ['mousedown', 'mouseup']) {
@@ -496,7 +493,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
 
 for (const platform of ['android', 'ios', 'ohos']) {
   const harness = createTouchHarness({
-    hostConfig: {platform, touchAdapter: 'javascript'},
+    hostConfig: {platform},
   });
   const primaryEvents = [];
   for (const type of ['mousedown', 'mouseup']) {
@@ -530,7 +527,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
 
 for (const platform of ['android', 'ios', 'ohos']) {
   const harness = createTouchHarness({
-    hostConfig: {platform, touchAdapter: 'javascript'},
+    hostConfig: {platform},
   });
   const primaryEvents = [];
   for (const type of ['mousedown', 'mouseup']) {
@@ -638,7 +635,6 @@ for (const platform of ['android', 'ios', 'ohos']) {
   const harness = createTouchHarness({
     hostConfig: {
       platform: 'ios',
-      touchAdapter: 'javascript',
       touchDiagnosticsEnabled: true,
     },
   });
@@ -661,6 +657,34 @@ for (const platform of ['android', 'ios', 'ohos']) {
     false,
     'touch diagnostics must not capture page or form content',
   );
+
+  const logs = [];
+  harness.window.__gardendlessHost = {
+    invoke(command, payload) {
+      logs.push({command, args: payload.args});
+      return Promise.resolve(null);
+    },
+  };
+  harness.runIntervals();
+  assert.ok(logs.length > 0, 'the trace must reach the host logs');
+  const sent = [];
+  for (const {command, args} of logs) {
+    assert.equal(command, 'host:log');
+    assert.equal(args.event, 'touch_trace');
+    assert.equal(args.outcome, 'observed');
+    assert.ok(args.message.length <= 1900, 'each batch fits a log message');
+    const batch = JSON.parse(args.message);
+    assert.equal(args.context.count, batch.length);
+    sent.push(...batch);
+  }
+  assert.deepEqual(
+    sent.map((entry) => entry.sequence),
+    [...trace].map((entry) => entry.sequence),
+    'every recorded entry is sent once, in order',
+  );
+  logs.length = 0;
+  harness.runIntervals();
+  assert.equal(logs.length, 0, 'sent entries are not sent again');
 }
 
 {
@@ -669,182 +693,6 @@ for (const platform of ['android', 'ios', 'ohos']) {
     harness.stateMachineCreations,
     1,
     'the DOM adapter must delegate game gestures to the shared state machine',
-  );
-}
-
-{
-  const harness = createTouchHarness();
-  const gameTimeline = [];
-  for (const type of ['mousemove', 'mousedown', 'mouseup', 'click']) {
-    harness.canvas.addEventListener(type, (event) => {
-      gameTimeline.push(`mouse:${type}:${event.buttons}`);
-    });
-  }
-  for (const type of ['touchstart', 'touchmove', 'touchend']) {
-    harness.document.addEventListener(type, () => {
-      gameTimeline.push(`touch:${type}`);
-    });
-  }
-
-  const start = createTouch(6, harness.canvas, 60, 50);
-  const end = createTouch(6, harness.canvas, 240, 130);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [start],
-    changedTouches: [start],
-  }));
-  harness.advanceTime(3000);
-  harness.document.dispatchEvent(createTouchEvent('touchmove', {
-    touches: [end],
-    changedTouches: [end],
-  }));
-  harness.advanceTime(3000);
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [end],
-  }));
-  harness.flushAnimationFrame();
-  harness.flushAnimationFrame();
-
-  assert.deepEqual(gameTimeline, [
-    'mouse:mousedown:1',
-    'mouse:mousemove:1',
-    'mouse:mouseup:1',
-  ], 'non-Android hosts retain the immediate mouse gesture fallback');
-}
-
-{
-  const harness = createTouchHarness();
-  const mouseEvents = [];
-  let leakedTouches = 0;
-  for (const type of ['mousemove', 'mousedown', 'mouseup']) {
-    harness.canvas.addEventListener(type, (event) => {
-      mouseEvents.push({
-        type: event.type,
-        button: event.button,
-        buttons: event.buttons,
-        clientX: event.clientX,
-        clientY: event.clientY,
-      });
-    });
-  }
-  harness.document.addEventListener('touchstart', () => {
-    leakedTouches += 1;
-  });
-  harness.document.addEventListener('touchend', () => {
-    leakedTouches += 1;
-  });
-
-  const touch = createTouch(7, harness.canvas, 120, 80);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [touch],
-    changedTouches: [touch],
-  }));
-  assert.deepEqual(mouseEvents, [
-    {
-      type: 'mousedown',
-      button: 0,
-      buttons: 1,
-      clientX: 120,
-      clientY: 80,
-    },
-  ], 'single touch must immediately expose the APK mouse-down');
-  harness.flushAnimationFrame();
-  assert.deepEqual(mouseEvents, [
-    {
-      type: 'mousedown',
-      button: 0,
-      buttons: 1,
-      clientX: 120,
-      clientY: 80,
-    },
-  ], 'single-touch mapping must not defer the APK mouse-down');
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [touch],
-  }));
-
-  assert.deepEqual(mouseEvents, [
-    {
-      type: 'mousedown',
-      button: 0,
-      buttons: 1,
-      clientX: 120,
-      clientY: 80,
-    },
-    {
-      type: 'mouseup',
-      button: 0,
-      buttons: 1,
-      clientX: 120,
-      clientY: 80,
-    },
-  ]);
-  assert.equal(
-    leakedTouches,
-    0,
-    'original game touches must be hidden from Cocos like the APK extension',
-  );
-}
-
-{
-  const plantedTiles = [];
-  let cocosPointer = {clientX: 0, clientY: 0};
-  let leftPressed = false;
-  const harness = createTouchHarness();
-  harness.canvas.addEventListener('mousemove', (event) => {
-    cocosPointer = {clientX: event.clientX, clientY: event.clientY};
-  });
-  harness.canvas.addEventListener('mousedown', (event) => {
-    if (event.button === 0 && event.buttons === 1) {
-      leftPressed = true;
-      cocosPointer = {clientX: event.clientX, clientY: event.clientY};
-    }
-  });
-  harness.canvas.addEventListener('mouseup', (event) => {
-    if (event.button === 0 && leftPressed) {
-      plantedTiles.push(cocosPointer);
-    }
-    leftPressed = false;
-  });
-
-  const tap = createTouch(9, harness.canvas, 180, 90);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [tap],
-    changedTouches: [tap],
-  }));
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [tap],
-  }));
-  assert.deepEqual(
-    plantedTiles,
-    [{clientX: 180, clientY: 90}],
-    'tap planting requires the APK mouse-down and mouse-up sequence',
-  );
-
-  const dragStart = createTouch(10, harness.canvas, 60, 50);
-  const dragEnd = createTouch(10, harness.canvas, 240, 130);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [dragStart],
-    changedTouches: [dragStart],
-  }));
-  harness.advanceTime(6000);
-  harness.document.dispatchEvent(createTouchEvent('touchmove', {
-    touches: [dragEnd],
-    changedTouches: [dragEnd],
-  }));
-  harness.advanceTime(6000);
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [dragEnd],
-  }));
-  assert.deepEqual(
-    plantedTiles,
-    [
-      {clientX: 180, clientY: 90},
-      {clientX: 240, clientY: 130},
-    ],
-    'the fallback mouse stream releases at the final pointer position',
   );
 }
 
@@ -873,6 +721,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
     changedTouches: [start],
   }));
   harness.flushAnimationFrame();
+  harness.flushAnimationFrame();
   harness.document.dispatchEvent(createTouchEvent('touchmove', {
     touches: [end],
     changedTouches: [end],
@@ -882,11 +731,13 @@ for (const platform of ['android', 'ios', 'ohos']) {
     changedTouches: [end],
   }));
 
+  harness.flushAnimationFrame();
   assert.deepEqual(canvasEvents, [
+    {type: 'mousemove', clientX: 60, clientY: 50},
     {type: 'mousedown', clientX: 60, clientY: 50},
     {type: 'mousemove', clientX: 240, clientY: 130},
     {type: 'mouseup', clientX: 240, clientY: 130},
-  ], 'the fallback drag must stay on GameCanvas');
+  ], 'the frame-synchronized drag must stay on GameCanvas');
   harness.flushAnimationFrame();
   assert.deepEqual(
     coveringEvents,
@@ -916,6 +767,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
     changedTouches: [start],
   }));
   harness.flushAnimationFrame();
+  harness.flushAnimationFrame();
   harness.document.dispatchEvent(createTouchEvent('touchmove', {
     touches: [end],
     changedTouches: [end],
@@ -928,6 +780,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
   harness.flushAnimationFrame();
 
   assert.deepEqual(canvasEvents, [
+    'mousemove',
     'mousedown',
     'mousemove',
     'mouseup',
@@ -940,116 +793,8 @@ for (const platform of ['android', 'ios', 'ohos']) {
 }
 
 {
-  const harness = createTouchHarness();
-  const leftEvents = [];
-  let syntheticClicks = 0;
-  for (const type of ['mousemove', 'mousedown', 'mouseup']) {
-    harness.canvas.addEventListener(type, (event) => {
-      leftEvents.push({
-        type: event.type,
-        buttons: event.buttons,
-        clientX: event.clientX,
-        clientY: event.clientY,
-      });
-    });
-  }
-  harness.canvas.addEventListener('click', () => {
-    syntheticClicks += 1;
-  });
-
-  const start = createTouch(12, harness.canvas, 70, 60);
-  const end = createTouch(12, harness.canvas, 230, 140);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [start],
-    changedTouches: [start],
-  }));
-  harness.flushAnimationFrame();
-  harness.document.dispatchEvent(createTouchEvent('touchmove', {
-    touches: [end],
-    changedTouches: [end],
-  }));
-  harness.document.dispatchEvent(createTouchEvent('touchend', {
-    touches: [],
-    changedTouches: [end],
-  }));
-
-  assert.deepEqual(leftEvents, [
-    {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
-    {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
-    {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
-  ], 'the fallback drag release must remain immediate');
-
-  harness.flushAnimationFrame();
-  harness.flushAnimationFrame();
-  assert.deepEqual(leftEvents, [
-    {type: 'mousedown', buttons: 1, clientX: 70, clientY: 60},
-    {type: 'mousemove', buttons: 1, clientX: 230, clientY: 140},
-    {type: 'mouseup', buttons: 1, clientX: 230, clientY: 140},
-  ], 'the fallback must not schedule a replay');
-  assert.equal(
-    syntheticClicks,
-    0,
-    'the browser-owned touch path must not receive a synthetic click replay',
-  );
-}
-
-{
-  const harness = createTouchHarness();
-  const draggedMoves = [];
-  let leakedMoves = 0;
-  harness.canvas.addEventListener('mousemove', (event) => {
-    if (event.buttons === 1) {
-      draggedMoves.push({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        target: event.target,
-      });
-    }
-  });
-  harness.document.addEventListener('touchmove', () => {
-    leakedMoves += 1;
-  });
-
-  const start = createTouch(11, harness.canvas, 40, 30);
-  harness.document.dispatchEvent(createTouchEvent('touchstart', {
-    touches: [start],
-    changedTouches: [start],
-  }));
-  harness.flushAnimationFrame();
-
-  const firstMove = createTouch(11, harness.canvas, 70, 50);
-  const lastMove = createTouch(11, harness.canvas, 100, 80);
-  harness.document.dispatchEvent(createTouchEvent('touchmove', {
-    touches: [firstMove],
-    changedTouches: [firstMove],
-  }));
-  harness.document.dispatchEvent(createTouchEvent('touchmove', {
-    touches: [lastMove],
-    changedTouches: [lastMove],
-  }));
-
-  assert.deepEqual(draggedMoves, [
-    {
-      clientX: 70,
-      clientY: 50,
-      target: harness.canvas,
-    },
-    {
-      clientX: 100,
-      clientY: 80,
-      target: harness.canvas,
-    },
-  ], 'every single-touch move must dispatch immediately');
-  assert.equal(
-    leakedMoves,
-    0,
-    'original game touch moves must be hidden like the APK extension',
-  );
-}
-
-{
   const harness = createTouchHarness({
-    hostConfig: {platform: 'ios', touchAdapter: 'javascript'},
+    hostConfig: {platform: 'ios'},
   });
   const draggedMoves = [];
   harness.canvas.addEventListener('mousemove', (event) => {
@@ -1349,12 +1094,14 @@ for (const platform of ['android', 'ios', 'ohos']) {
     changedTouches: [active],
   }));
   harness.flushAnimationFrame();
+  harness.flushAnimationFrame();
 
   const unrelated = createTouch(54, harness.canvas, 150, 90);
   harness.document.dispatchEvent(createTouchEvent('touchmove', {
     touches: [unrelated],
     changedTouches: [unrelated],
   }));
+  harness.flushAnimationFrame();
   assert.deepEqual(
     dragMoves,
     [{clientX: 150, clientY: 90}],
@@ -1365,6 +1112,7 @@ for (const platform of ['android', 'ios', 'ohos']) {
     touches: [],
     changedTouches: [unrelated],
   }));
+  harness.flushAnimationFrame();
   assert.deepEqual(
     mouseUps,
     [{clientX: 150, clientY: 90}],
@@ -1419,6 +1167,7 @@ for (const interruption of [
     touches: [touch],
     changedTouches: [touch],
   }));
+  harness.flushAnimationFrame();
   harness.flushAnimationFrame();
   interruption.trigger(harness, touch);
   interruption.trigger(harness, touch);
@@ -1656,6 +1405,7 @@ for (const gameGesture of [
     touches: [touch],
     changedTouches: [touch],
   }));
+  harness.flushAnimationFrame();
   harness.flushAnimationFrame();
   harness.document.dispatchEvent(createTouchEvent('touchend', {
     touches: [],

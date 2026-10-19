@@ -3,6 +3,21 @@ package io.github.dey410.gardendlessloader.game
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * How the game viewport fits the screen. The game shows 16:10 to 17:9 without
+ * distortion and its whole picture at 17:9.
+ */
+enum class GameScreenFit(val wireName: String) {
+    /** Clamps the viewport to 16:10–17:9: trims some of the picture for smaller black bars. */
+    BALANCED("balanced"),
+
+    /** Keeps the viewport at 17:9 so the whole picture shows, with larger black bars. */
+    SHOW_ALL("showAll"),
+
+    /** Stretches the balanced viewport over the whole screen. */
+    STRETCH("stretch"),
+}
+
 data class NativeGameSession(
     val sessionId: String,
     val resourceRoot: String,
@@ -14,6 +29,14 @@ data class NativeGameSession(
     val gpNextVersion: String?,
     val watermarkEnabled: Boolean,
     val autoCollectSunEnabled: Boolean,
+    val detailedAudioDiagnosticsEnabled: Boolean = false,
+    val renderScale: Double? = null,
+    val screenFit: GameScreenFit = GameScreenFit.BALANCED,
+    /** Records the touch adapter's trace into the logs. */
+    val touchDiagnosticsEnabled: Boolean = false,
+    /** Lines of the one-time gesture hint shown over the game; null shows none. */
+    val gestureHint: List<String>? = null,
+    val packageId: String = "unknown",
     val allowedRemoteHosts: Set<String>,
     val gpNextRoot: String,
     val exportTemporaryRoot: String,
@@ -35,6 +58,8 @@ object GameSessionCodec {
         val entryUrl = json.getString("entryUrl")
         require(entryUrl.startsWith("$ORIGIN/")) { "Entry URL escaped the game origin" }
         val remoteHosts = json.optJSONArray("allowedRemoteHosts") ?: JSONArray()
+        val packageId = json.optString("packageId", "unknown")
+        require(packageId == "unknown" || packageId.matches(Regex("sha256:[a-f0-9]{64}"))) { "Invalid package identity" }
         return NativeGameSession(
             sessionId = json.requiredString("sessionId"),
             resourceRoot = json.requiredString("resourceRoot"),
@@ -46,6 +71,20 @@ object GameSessionCodec {
             gpNextVersion = json.optString("gpNextVersion").takeIf { it.isNotBlank() },
             watermarkEnabled = json.getBoolean("watermarkEnabled"),
             autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled"),
+            detailedAudioDiagnosticsEnabled = json.optBoolean("detailedAudioDiagnosticsEnabled", false),
+            renderScale = if (json.isNull("renderScale")) null else {
+                json.getDouble("renderScale").also {
+                    require(it > 0) { "Invalid render scale" }
+                }
+            },
+            screenFit = json.optString("screenFit", GameScreenFit.BALANCED.wireName).let { name ->
+                requireNotNull(GameScreenFit.entries.firstOrNull { it.wireName == name }) { "Invalid screen fit" }
+            },
+            touchDiagnosticsEnabled = json.optBoolean("touchDiagnosticsEnabled", false),
+            gestureHint = json.optJSONArray("gestureHint")?.let { lines ->
+                List(lines.length()) { lines.getString(it) }
+            },
+            packageId = packageId,
             allowedRemoteHosts = buildSet {
                 for (index in 0 until remoteHosts.length()) {
                     val host = remoteHosts.getString(index).lowercase()

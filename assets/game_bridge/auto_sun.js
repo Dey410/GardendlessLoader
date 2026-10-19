@@ -156,50 +156,27 @@
     return null;
   }
 
-  function isRegisteredForImport(system, moduleId) {
-    if (typeof system.has === "function" && system.has(moduleId)) {
-      return true;
-    }
-    return Boolean(
-      system.registerRegistry && system.registerRegistry[moduleId]
-    );
-  }
-
   function scheduleModuleCheck() {
     if (stopped || moduleCheckTimer !== null) return;
     moduleCheckTimer = setTimeout(findGameModules, checkIntervalMs);
   }
 
-  async function findGameModules() {
+  function findGameModules() {
     moduleCheckTimer = null;
     try {
+      // Only read modules Cocos has already executed. Importing them here runs
+      // the game's circular module graph from another entry point, so e.g.
+      // Mouse.ts executes before CharacterManager.ts and project load fails.
       const system = window.System;
-      if (!system) {
-        scheduleModuleCheck();
-        return;
-      }
-
-      let levelControllerModule = typeof system.get === "function"
+      const levelControllerModule = system && typeof system.get === "function"
         ? system.get(levelControllerModuleId)
         : null;
-      let uiModule = typeof system.get === "function"
+      const uiModule = system && typeof system.get === "function"
         ? system.get(uiModuleId)
         : null;
       if (!levelControllerModule || !uiModule) {
-        const canImport = typeof system.import === "function" &&
-          isRegisteredForImport(system, levelControllerModuleId) &&
-          isRegisteredForImport(system, uiModuleId);
-        if (!canImport) {
-          scheduleModuleCheck();
-          return;
-        }
-        const modules = await Promise.all([
-          system.import(levelControllerModuleId),
-          system.import(uiModuleId)
-        ]);
-        if (stopped) return;
-        levelControllerModule = modules[0];
-        uiModule = modules[1];
+        scheduleModuleCheck();
+        return;
       }
 
       levelController = moduleValue(levelControllerModule, [

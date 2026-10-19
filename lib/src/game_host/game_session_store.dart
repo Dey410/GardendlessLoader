@@ -24,6 +24,8 @@ class GameExitResult {
     required this.reason,
     required this.finishedAt,
     this.message,
+    this.code,
+    this.playedMs = 0,
   });
 
   factory GameExitResult.fromJson(Map<String, Object?> json) {
@@ -40,6 +42,8 @@ class GameExitResult {
       reason: GameExitReason.fromWireName(json['reason']),
       finishedAt: finishedAt.toUtc(),
       message: json['message'] as String?,
+      code: json['code'] as String?,
+      playedMs: (json['playedMs'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -47,6 +51,13 @@ class GameExitResult {
   final GameExitReason reason;
   final DateTime finishedAt;
   final String? message;
+
+  /// Error code naming a known launch failure cause; absent for other exits.
+  final String? code;
+
+  /// Time the game spent in the foreground; time in the background is not
+  /// play time.
+  final int playedMs;
 }
 
 class GameSessionStore {

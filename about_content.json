@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentVersion": 1,
-  "content": "GardendlessLoader 本地资源加载器，完全免费，开源"
+  "contentVersion": 2,
+  "content": "GardendlessLoader 本地资源加载器，完全免费，开源",
+  "contentEn": "GardendlessLoader is a local resource loader. It is completely free and open source."
 }

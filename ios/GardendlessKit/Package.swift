@@ -29,7 +29,7 @@ let package = Package(
     ),
     .target(
       name: "GardendlessBridge",
-      dependencies: ["GardendlessCore"],
+      dependencies: ["GardendlessCore", "GardendlessGPNext"],
       path: "Sources/GardendlessBridge"
     ),
     .target(

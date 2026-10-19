@@ -24,11 +24,20 @@ import UIKit
   private var launcherEngine: FlutterEngine?
   private var gameHostChannel: FlutterMethodChannel?
   private var resourceZipImporterChannel: FlutterMethodChannel?
+  private var displayChannel: FlutterMethodChannel?
+  private var orientationObserver: NSObjectProtocol?
+  private var reportedSensorHousingEdge: String?
   private var lastImportProgressReportAt: UInt64 = 0
   private var pendingImportResult: FlutterResult?
   private var pendingImportTargetDirectory: String?
   private var zipImportInProgress = false
   private var gameLaunchInProgress = false
+  /// A ZIP another app opened or shared with the loader. It waits here while
+  /// the game runs and until the launcher imports or discards it.
+  private var incomingZip: IncomingZip?
+  private var shortcutChannel: FlutterMethodChannel?
+  /// The home-screen shortcut that started the app, until the launcher takes it.
+  var pendingShortcut: String?
 
   override func application(
     _ application: UIApplication,
@@ -39,7 +48,6 @@ import UIKit
       didFinishLaunchingWithOptions: launchOptions
     )
     logStore.initialize()
-    showLauncher()
     return launched
   }
 
@@ -48,10 +56,7 @@ import UIKit
     super.applicationWillTerminate(application)
   }
 
-  private func showLauncher() {
-    if window == nil {
-      window = UIWindow(frame: UIScreen.main.bounds)
-    }
+  func showLauncher() {
     let engine = FlutterEngine(name: "gardendless-launcher-\(UUID().uuidString)")
     guard engine.run() else { return }
     GeneratedPluginRegistrant.register(with: engine)
@@ -67,6 +72,115 @@ import UIKit
     registerGameHost(on: messenger)
     registerResourceZipImporter(on: messenger)
     registerAppLogger(on: messenger)
+    registerDisplay(on: messenger)
+    registerShortcuts(on: messenger)
+  }
+
+  private func registerShortcuts(on messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "io.github.dey410.gardendlessloader/shortcuts",
+      binaryMessenger: messenger
+    )
+    shortcutChannel = channel
+    channel.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "take":
+        result(self?.pendingShortcut)
+        self?.pendingShortcut = nil
+      case "setItems":
+        guard let titles = call.arguments as? [String: String] else {
+          result(
+            FlutterError(
+              code: "invalid_shortcuts",
+              message: "Shortcut titles must be a string map",
+              details: nil
+            )
+          )
+          return
+        }
+        let symbols = ["startGame": "play.fill", "importResources": "square.and.arrow.down"]
+        UIApplication.shared.shortcutItems = ["startGame", "importResources"].compactMap { type in
+          titles[type].map { title in
+            UIApplicationShortcutItem(
+              type: type,
+              localizedTitle: title,
+              localizedSubtitle: nil,
+              icon: symbols[type].map { UIApplicationShortcutIcon(systemImageName: $0) },
+              userInfo: nil
+            )
+          }
+        }
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  /// A shortcut used while the app runs. During play it only brings the game
+  /// back, so it never restarts the game or swaps resources under it.
+  func performShortcut(_ type: String) {
+    guard launcherEngine != nil else { return }
+    shortcutChannel?.invokeMethod("perform", arguments: type)
+  }
+
+  // iOS reports equal left and right safe-area insets in landscape, so
+  // Flutter cannot tell which long edge holds the notch or Dynamic Island.
+  // Report it from the interface orientation and push changes, including
+  // 180° flips that leave the screen size and insets unchanged.
+  private func registerDisplay(on messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "io.github.dey410.gardendlessloader/display",
+      binaryMessenger: messenger
+    )
+    displayChannel = channel
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "sensorHousingEdge" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let edge = self?.currentSensorHousingEdge()
+      self?.reportedSensorHousingEdge = edge
+      result(edge)
+    }
+    UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+    orientationObserver = NotificationCenter.default.addObserver(
+      forName: UIDevice.orientationDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      // The interface finishes rotating after the device notification.
+      for delay in [0.05, 0.6] {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+          self?.reportSensorHousingEdgeIfChanged()
+        }
+      }
+    }
+  }
+
+  private func reportSensorHousingEdgeIfChanged() {
+    let edge = currentSensorHousingEdge()
+    guard edge != reportedSensorHousingEdge else { return }
+    reportedSensorHousingEdge = edge
+    displayChannel?.invokeMethod("sensorHousingEdgeChanged", arguments: edge)
+  }
+
+  /// "left" or "right" for the edge holding the sensor housing in
+  /// landscape, nil otherwise. Interface `.landscapeRight` puts the home
+  /// side on the right, so the top of the device faces left.
+  private func currentSensorHousingEdge() -> String? {
+    let scene = window?.windowScene
+      ?? UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .first
+    switch scene?.interfaceOrientation {
+    case .landscapeRight:
+      return "left"
+    case .landscapeLeft:
+      return "right"
+    default:
+      return nil
+    }
   }
 
   private func registerExternalBrowser(on messenger: FlutterBinaryMessenger) {
@@ -204,11 +318,78 @@ import UIKit
     )
     resourceZipImporterChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "pickAndExtractDocsZip" else {
-        result(FlutterMethodNotImplemented)
+      guard let self else {
+        result(nil)
         return
       }
-      self?.pickAndExtractDocsZip(call: call, result: result)
+      switch call.method {
+      case "pickAndExtractDocsZip":
+        self.pickAndExtractDocsZip(call: call, result: result)
+      case "incomingZip":
+        result(self.incomingZip?.url.lastPathComponent)
+      case "discardIncomingZip":
+        self.incomingZip?.discard()
+        self.incomingZip = nil
+        result(nil)
+      case "extractIncomingDocsZip":
+        self.extractIncomingDocsZip(call: call, result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  /// Keeps the latest ZIP opened or shared with the loader; a running
+  /// launcher is told at once, otherwise it asks when it starts.
+  func receiveIncomingZip(_ context: UIOpenURLContext) {
+    incomingZip?.discard()
+    let zip = IncomingZip(url: context.url, isCopy: !context.options.openInPlace)
+    incomingZip = zip
+    guard launcherEngine != nil else { return }
+    resourceZipImporterChannel?.invokeMethod(
+      "incomingZipReceived",
+      arguments: zip.url.lastPathComponent
+    )
+  }
+
+  private func extractIncomingDocsZip(
+    call: FlutterMethodCall,
+    result: @escaping FlutterResult
+  ) {
+    guard let args = call.arguments as? [String: Any],
+          let targetDirectory = args["targetDirectory"] as? String,
+          !targetDirectory.isEmpty else {
+      result(
+        FlutterError(
+          code: "invalid_target_directory",
+          message: "缺少导入目标目录",
+          details: nil
+        )
+      )
+      return
+    }
+    guard !zipImportInProgress, pendingImportResult == nil else {
+      result(
+        FlutterError(
+          code: "zip_import_busy",
+          message: "已有 ZIP 导入选择正在进行",
+          details: nil
+        )
+      )
+      return
+    }
+    guard let zip = incomingZip else {
+      result(nil)
+      return
+    }
+    incomingZip = nil
+    zipImportInProgress = true
+    finishPickedZipImport(
+      zipURL: zip.url,
+      targetDirectory: targetDirectory
+    ) { value in
+      zip.discard()
+      result(value)
     }
   }
 
@@ -277,7 +458,7 @@ import UIKit
       guard let self else {
         result(
           FlutterError(
-            code: "missing_app_delegate",
+            code: "zip_picker_failed",
             message: "无法获取 iOS 应用代理",
             details: nil
           )
@@ -287,7 +468,7 @@ import UIKit
       guard let rootController = self.topViewController() else {
         result(
           FlutterError(
-            code: "missing_view_controller",
+            code: "zip_picker_failed",
             message: "Unable to present ZIP picker",
             details: nil
           )
@@ -328,7 +509,7 @@ import UIKit
         DispatchQueue.main.async {
           result(
             FlutterError(
-              code: "missing_app_delegate",
+              code: "zip_picker_failed",
               message: "无法获取 iOS 应用代理",
               details: nil
             )
@@ -362,13 +543,26 @@ import UIKit
           self.zipImportInProgress = false
           result(
             FlutterError(
-              code: "zip_import_failed",
+              code: Self.zipImportErrorCode(error),
               message: "无法导入选择的 ZIP：\(error.localizedDescription)",
               details: nil
             )
           )
         }
       }
+    }
+  }
+
+  /// Flutter error code naming the failure cause; it selects the launcher's fix hint.
+  private static func zipImportErrorCode(_ error: Error) -> String {
+    switch (error as? GameError)?.code {
+    case .zipDocsMissing: return "zip_docs_missing"
+    case .zipInvalid: return "zip_invalid"
+    case .zipEncrypted: return "zip_encrypted"
+    case .zipUnsupported: return "zip_unsupported"
+    case .zipSymbolicLink, .zipPathUnsafe: return "zip_path_unsafe"
+    case .zipWriteFailed: return "zip_write_failed"
+    default: return "zip_import_failed"
     }
   }
 
@@ -400,6 +594,53 @@ import UIKit
       controller = presented
     }
     return controller
+  }
+}
+
+/// A ZIP handed over by another app. A copy the system placed in the app's
+/// Inbox belongs to the loader and is removed once used; a file opened in
+/// place stays where it is.
+private struct IncomingZip {
+  let url: URL
+  let isCopy: Bool
+
+  func discard() {
+    if isCopy {
+      try? FileManager.default.removeItem(at: url)
+    }
+  }
+}
+
+// iOS 27 terminates apps built with its SDK unless they adopt the UIScene lifecycle.
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard let scene = scene as? UIWindowScene,
+          let app = UIApplication.shared.delegate as? AppDelegate else { return }
+    if let context = connectionOptions.urlContexts.first {
+      app.receiveIncomingZip(context)
+    }
+    app.pendingShortcut = connectionOptions.shortcutItem?.type
+    app.window = UIWindow(windowScene: scene)
+    app.showLauncher()
+  }
+
+  func windowScene(
+    _ windowScene: UIWindowScene,
+    performActionFor shortcutItem: UIApplicationShortcutItem,
+    completionHandler: @escaping (Bool) -> Void
+  ) {
+    (UIApplication.shared.delegate as? AppDelegate)?.performShortcut(shortcutItem.type)
+    completionHandler(true)
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    guard let context = URLContexts.first,
+          let app = UIApplication.shared.delegate as? AppDelegate else { return }
+    app.receiveIncomingZip(context)
   }
 }
 

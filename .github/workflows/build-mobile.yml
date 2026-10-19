@@ -7,8 +7,74 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
+env:
+  HOST_ABI: "1"
+
 jobs:
+  quality:
+    name: Runtime quality gate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.runtime_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.9"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: npm
+          cache-dependency-path: ohos/test/package-lock.json
+
+      - name: Install quality dependencies
+        run: |
+          if [ -f pubspec_overrides.yaml ]; then
+            mv pubspec_overrides.yaml "$RUNNER_TEMP/pubspec_overrides.yaml.disabled"
+          fi
+          flutter pub get
+          npm ci --ignore-scripts --prefix ohos/test
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test shared game bridge
+        run: |
+          node tool/check_game_bridge.mjs
+          node tool/check_export_download_patch.mjs
+          node tool/check_audio_diagnostic.mjs
+          node tool/check_auto_sun.mjs
+          node tool/check_touch_state_machine.mjs
+          node tool/check_touch_patch.mjs
+          node tool/check_render_scale.mjs
+          node tool/check_audio_lifecycle.mjs
+
+      - name: Test OHOS file protocol in memory
+        run: npm test --prefix ohos/test
+
+      - name: Record runtime version
+        id: runtime_version
+        run: |
+          VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
   android:
+    needs: quality
+    outputs:
+      version: ${{ steps.android_artifact.outputs.version }}
+      sha256: ${{ steps.android_artifact.outputs.sha256 }}
+      host_abi: ${{ steps.android_artifact.outputs.host_abi }}
     name: Build Android APK
     runs-on: ubuntu-latest
 
@@ -34,15 +100,6 @@ jobs:
             mv pubspec_overrides.yaml "$RUNNER_TEMP/pubspec_overrides.yaml.disabled"
           fi
           flutter pub get
-
-      - name: Test
-        run: |
-          TEST_FILES="$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)"
-          if [ -n "$TEST_FILES" ]; then
-            flutter test $TEST_FILES
-          else
-            echo "No Flutter tests found."
-          fi
 
       - name: Configure Android signing
         env:
@@ -77,6 +134,20 @@ jobs:
           flutter build apk --release \
             --build-number "${{ steps.android_version.outputs.version_code }}"
 
+      - name: Test retained and pure Android behavior
+        working-directory: android
+        run: |
+          test -x ./gradlew
+          ./gradlew :app:testReleaseUnitTest \
+            --tests io.github.dey410.gardendlessloader.game.FileTransferCursorTest \
+            --tests io.github.dey410.gardendlessloader.game.FileCommitGateTest \
+            --tests io.github.dey410.gardendlessloader.game.FileTransferRetainedFixtureTest \
+            --tests io.github.dey410.gardendlessloader.game.GameResourceRetainedFixtureTest \
+            --tests io.github.dey410.gardendlessloader.game.ExportDocumentSpecTest \
+            --tests io.github.dey410.gardendlessloader.game.GpNextPathContractTest \
+            --tests io.github.dey410.gardendlessloader.game.GameViewportSizeTest \
+            --tests io.github.dey410.gardendlessloader.DocumentPickerOrientationPolicyTest
+
       - name: Verify APK version
         run: |
           EXPECTED_VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
@@ -97,6 +168,26 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk \
             build/app/outputs/flutter-apk/GardendlessLoader-android.apk
 
+      - name: Summarize APK
+        id: android_artifact
+        run: |
+          ARTIFACT="build/app/outputs/flutter-apk/GardendlessLoader-android.apk"
+          test -s "$ARTIFACT"
+          VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
+          SHA256="$(sha256sum "$ARTIFACT" | cut -d' ' -f1)"
+          test -n "$VERSION"
+          test "${#SHA256}" -eq 64
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "host_abi=$HOST_ABI" >> "$GITHUB_OUTPUT"
+          {
+            echo "### APK"
+            echo "- version: $VERSION"
+            echo "- hostAbi: $HOST_ABI"
+            echo "- SHA-256: $SHA256"
+            echo "- artifact: $ARTIFACT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
@@ -105,6 +196,11 @@ jobs:
           archive: false
 
   ios:
+    needs: quality
+    outputs:
+      version: ${{ steps.ios_artifact.outputs.version }}
+      sha256: ${{ steps.ios_artifact.outputs.sha256 }}
+      host_abi: ${{ steps.ios_artifact.outputs.host_abi }}
     name: Build unsigned iOS IPA
     runs-on: macos-latest
 
@@ -126,21 +222,18 @@ jobs:
           flutter pub get
 
       - name: Test native GardendlessKit
-        working-directory: ios/GardendlessKit
-        run: swift test
+        run: |
+          CLANG_MODULE_CACHE_PATH="$RUNNER_TEMP/gardendless-clang" \
+          SWIFTPM_MODULECACHE_OVERRIDE="$RUNNER_TEMP/gardendless-clang" \
+          swift test --disable-sandbox \
+            --package-path ios/GardendlessKit \
+            --scratch-path "$RUNNER_TEMP/gardendless-swift" \
+            --cache-path "$RUNNER_TEMP/gardendless-spm" \
+            --filter 'FileTaskCoordinatorTests|TaskCallbackGateTests|BridgeRequestTests|GameConfigurationTests|GameSessionTests|ConstantsTests|ReservedMetadataPathsTests|ResourceMIMETests'
 
       - name: Install CocoaPods dependencies
         run: pod install
         working-directory: ios
-
-      - name: Test
-        run: |
-          TEST_FILES="$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)"
-          if [ -n "$TEST_FILES" ]; then
-            flutter test $TEST_FILES
-          else
-            echo "No Flutter tests found."
-          fi
 
       - name: Build unsigned iOS app
         run: flutter build ios --release --no-codesign
@@ -160,6 +253,26 @@ jobs:
           cd build/ios/ipa
           zip -r GardendlessLoader-unsigned.ipa Payload
 
+      - name: Summarize unsigned IPA
+        id: ios_artifact
+        run: |
+          ARTIFACT="build/ios/ipa/GardendlessLoader-unsigned.ipa"
+          test -s "$ARTIFACT"
+          VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
+          SHA256="$(shasum -a 256 "$ARTIFACT" | cut -d' ' -f1)"
+          test -n "$VERSION"
+          test "${#SHA256}" -eq 64
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "host_abi=$HOST_ABI" >> "$GITHUB_OUTPUT"
+          {
+            echo "### unsigned IPA"
+            echo "- version: $VERSION"
+            echo "- hostAbi: $HOST_ABI"
+            echo "- SHA-256: $SHA256"
+            echo "- artifact: $ARTIFACT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v7
         with:
@@ -168,6 +281,11 @@ jobs:
           archive: false
 
   harmonyos:
+    needs: quality
+    outputs:
+      version: ${{ steps.harmonyos_artifact.outputs.version }}
+      sha256: ${{ steps.harmonyos_artifact.outputs.sha256 }}
+      host_abi: ${{ steps.harmonyos_artifact.outputs.host_abi }}
     name: Build unsigned HarmonyOS HAP (ohos-arm64)
     runs-on: ubuntu-latest
 
@@ -183,24 +301,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check OpenHarmony tools configuration
-        id: ohos-tools
         run: |
           if [ -z "$OHOS_COMMANDLINE_TOOLS_URL" ]; then
-            echo "::notice title=HarmonyOS HAP skipped::Set the OHOS_COMMANDLINE_TOOLS_URL repository secret to build and upload the HAP artifact."
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "::error::OHOS_COMMANDLINE_TOOLS_URL secret is required for the maintained HarmonyOS build."
+            exit 1
           fi
 
       - name: Set up Java
-        if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up OpenHarmony Flutter SDK
-        if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           FLUTTER_OHOS_DIR="$RUNNER_TEMP/flutter_ohos_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
 
@@ -226,7 +339,6 @@ jobs:
           "$FLUTTER_OHOS_DIR/bin/dart" --version
 
       - name: Verify OpenHarmony Dart SDK compatibility
-        if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           flutter --version
           dart --version
@@ -250,13 +362,12 @@ jobs:
           fi
 
       - name: Set up OpenHarmony command-line tools
-        if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           DEVECO_DIR="$RUNNER_TEMP/deveco_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
 
           mkdir -p "$DEVECO_DIR"
 
-          curl -L \
+          curl -fL \
             "$OHOS_COMMANDLINE_TOOLS_URL" \
             -o "$RUNNER_TEMP/deveco-commandline-tools.zip"
 
@@ -322,12 +433,13 @@ jobs:
           HVIGOR_DIR="$(dirname "$HVIGOR_BIN")"
           NODE_DIR="$(dirname "$NODE_BIN")"
 
-          chmod +x "$OHPM_BIN" "$HVIGOR_BIN" || true
+          chmod +x "$OHPM_BIN" "$HVIGOR_BIN"
 
           mkdir -p "$RUNNER_TEMP/ohos-bin"
 
           if [ "$(basename "$HVIGOR_BIN")" = "hvigorw" ]; then
-            ln -sf "$HVIGOR_BIN" "$RUNNER_TEMP/ohos-bin/hvigor"
+            printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$HVIGOR_BIN" > "$RUNNER_TEMP/ohos-bin/hvigor"
+            chmod +x "$RUNNER_TEMP/ohos-bin/hvigor"
           fi
 
           echo "$RUNNER_TEMP/ohos-bin" >> "$GITHUB_PATH"
@@ -345,11 +457,10 @@ jobs:
           echo "@ohos:registry=https://repo.harmonyos.com/npm/" >> ~/.npmrc
 
           ohpm --version
-          hvigor --version || hvigorw --version
+          hvigor --version
           node --version
 
       - name: Install dependencies
-        if: steps.ohos-tools.outputs.enabled == 'true'
         env:
           GIT_LFS_SKIP_SMUDGE: "1"
         run: |
@@ -365,67 +476,27 @@ jobs:
           dart --version
           flutter pub get
 
-      - name: Test
-        if: steps.ohos-tools.outputs.enabled == 'true'
-        run: |
-          TEST_FILES="$(find test -name '*_test.dart' ! -name 'harmony_build_config_test.dart' -print)"
-          if [ -n "$TEST_FILES" ]; then
-            flutter test $TEST_FILES
-          else
-            echo "No Flutter tests found."
-          fi
-
       - name: Build unsigned HAP
-        if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
+          set -euo pipefail
           mkdir -p build/ohos/unsigned
-
-          echo "Building unsigned HAP for ohos-arm64"
-
           BUILD_MARKER="$RUNNER_TEMP/hap-build-ohos-arm64.marker"
           touch "$BUILD_MARKER"
-
-          set +e
-          flutter build hap --release --target-platform ohos-arm64
-          FLUTTER_BUILD_STATUS="$?"
-          set -e
-
-          UNSIGNED_HAP="$(
-            find ohos/entry/build \
-              -type f \
-              -name '*unsigned*.hap' \
-              -newer "$BUILD_MARKER" \
-              -printf '%T@ %p\n' |
-              sort -nr |
-              head -n 1 |
-              cut -d' ' -f2- ||
-              true
+          flutter build hap --release --no-codesign --target-platform ohos-arm64
+          UNSIGNED_HAP="$(python3 - "$BUILD_MARKER" <<'PYHAP'
+          import pathlib
+          import sys
+          marker = pathlib.Path(sys.argv[1]).stat().st_mtime_ns
+          outputs = [p for p in pathlib.Path('ohos/entry/build').rglob('*unsigned*.hap')
+                     if p.is_file() and p.stat().st_mtime_ns > marker]
+          if len(outputs) != 1:
+              raise SystemExit(f'Expected exactly one fresh unsigned arm64 HAP, found {len(outputs)}')
+          print(outputs[0])
+          PYHAP
           )"
-
-          if [ -z "$UNSIGNED_HAP" ]; then
-            echo "Unsigned HAP was not generated for ohos-arm64."
-            echo "Available HAP outputs:"
-            find ohos/entry/build -type f -name '*.hap' -print || true
-
-            if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
-              exit "$FLUTTER_BUILD_STATUS"
-            fi
-
-            exit 1
-          fi
-
-          if [ "$FLUTTER_BUILD_STATUS" -ne 0 ]; then
-            echo "::notice title=Unsigned HAP recovered::Flutter exited with status $FLUTTER_BUILD_STATUS because no signing configuration is available; the generated unsigned HAP will be uploaded."
-          fi
-
-          cp \
-            "$UNSIGNED_HAP" \
-            "build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap"
-
-          echo "Unsigned HAP (ohos-arm64): $UNSIGNED_HAP"
+          cp "$UNSIGNED_HAP" build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap
 
       - name: Verify HAP version
-        if: steps.ohos-tools.outputs.enabled == 'true'
         run: |
           EXPECTED_VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
           HAP_PATH="build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap"
@@ -437,10 +508,75 @@ jobs:
           echo "Actual HAP version: $ACTUAL_VERSION"
           test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
 
+      - name: Summarize unsigned HarmonyOS HAP
+        id: harmonyos_artifact
+        run: |
+          ARTIFACT="build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap"
+          test -s "$ARTIFACT"
+          VERSION="$(sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*/\1/p' pubspec.yaml)"
+          SHA256="$(sha256sum "$ARTIFACT" | cut -d' ' -f1)"
+          test -n "$VERSION"
+          test "${#SHA256}" -eq 64
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "host_abi=$HOST_ABI" >> "$GITHUB_OUTPUT"
+          {
+            echo "### unsigned HarmonyOS HAP"
+            echo "- version: $VERSION"
+            echo "- hostAbi: $HOST_ABI"
+            echo "- SHA-256: $SHA256"
+            echo "- artifact: $ARTIFACT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload unsigned HarmonyOS HAP
-        if: steps.ohos-tools.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
           path: build/ohos/unsigned/GardendlessLoader-unsigned-ohos-arm64.hap
           if-no-files-found: error
           archive: false
+
+  artifacts:
+    name: Require three successful artifacts
+    if: always()
+    needs: [quality, android, ios, harmonyos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify complete release evidence
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          EXPECTED_VERSION: ${{ needs.quality.outputs.version }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+          ANDROID_VERSION: ${{ needs.android.outputs.version }}
+          ANDROID_SHA256: ${{ needs.android.outputs.sha256 }}
+          ANDROID_HOST_ABI: ${{ needs.android.outputs.host_abi }}
+          IOS_RESULT: ${{ needs.ios.result }}
+          IOS_VERSION: ${{ needs.ios.outputs.version }}
+          IOS_SHA256: ${{ needs.ios.outputs.sha256 }}
+          IOS_HOST_ABI: ${{ needs.ios.outputs.host_abi }}
+          HARMONYOS_RESULT: ${{ needs.harmonyos.result }}
+          HARMONYOS_VERSION: ${{ needs.harmonyos.outputs.version }}
+          HARMONYOS_SHA256: ${{ needs.harmonyos.outputs.sha256 }}
+          HARMONYOS_HOST_ABI: ${{ needs.harmonyos.outputs.host_abi }}
+        run: |
+          python3 - <<'PYRELEASE'
+          import os
+          import re
+          errors = []
+          version = os.environ['EXPECTED_VERSION']
+          if os.environ['QUALITY_RESULT'] != 'success' or not version:
+              errors.append('Runtime quality gate did not succeed')
+          rows = ['| Platform | Result | Version | hostAbi | SHA-256 |',
+                  '| --- | --- | --- | --- | --- |']
+          for platform in ['ANDROID', 'IOS', 'HARMONYOS']:
+              result = os.environ[f'{platform}_RESULT']
+              actual = os.environ[f'{platform}_VERSION']
+              abi = os.environ[f'{platform}_HOST_ABI']
+              digest = os.environ[f'{platform}_SHA256']
+              rows.append(f'| {platform} | {result} | {actual} | {abi} | {digest} |')
+              if result != 'success' or actual != version or abi != '1' or not re.fullmatch(r'[a-f0-9]{64}', digest):
+                  errors.append(f'{platform} is missing a successful matching artifact')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('\n'.join(rows) + '\n')
+          if errors:
+              raise SystemExit('; '.join(errors))
+          PYRELEASE

@@ -26,17 +26,9 @@
     node.style.display = enabled ? "block" : "none";
   }
 
-  function setEnabled(enabled) {
-    const node = document.getElementById(id);
-    if (node) node.style.display = enabled ? "block" : "none";
-  }
-
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", render, { once: true });
   } else {
     render();
   }
-  window.addEventListener("gardendless:watermark", function (event) {
-    setEnabled(event.detail !== false);
-  });
 })();

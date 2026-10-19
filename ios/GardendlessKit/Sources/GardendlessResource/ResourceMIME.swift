@@ -1,6 +1,10 @@
 import Foundation
 
 public enum ResourceMIME {
+  /// Cocos binary payloads (ASTC textures, `.cconb` assets, `effect.bin` and
+  /// asm.js memory files) that are correctly served as application/octet-stream.
+  public static let binaryExtensions: Set<String> = ["astc", "bin", "cconb"]
+
   public static func type(for path: String) -> String {
     switch (path as NSString).pathExtension.lowercased() {
     case "html", "htm":
@@ -25,6 +29,8 @@ public enum ResourceMIME {
       return "image/webp"
     case "mp3":
       return "audio/mpeg"
+    case "aac":
+      return "audio/aac"
     case "m4a":
       return "audio/mp4"
     case "ogg":
@@ -46,7 +52,7 @@ public enum ResourceMIME {
     }
   }
 
-  /// Some Gardendless builds disguise M4A containers as `.mp3`; sniff the
+  /// Some Gardendless builds disguise M4A or ADTS AAC as `.mp3`; sniff the
   /// header so WebKit receives the correct audio MIME type.
   public static func detectAudioType(
     path: String,
@@ -58,6 +64,10 @@ public enum ResourceMIME {
     let brands = ["ftypM4A", "ftypisom", "ftypmp42"]
     if brands.contains(where: { header.range(of: Data($0.utf8)) != nil }) {
       return "audio/mp4"
+    }
+    if header.first == 0xff, let second = header.dropFirst().first,
+       second & 0xf6 == 0xf0 {
+      return "audio/aac"
     }
     return "audio/mpeg"
   }

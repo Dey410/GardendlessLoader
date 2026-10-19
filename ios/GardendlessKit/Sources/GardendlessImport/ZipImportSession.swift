@@ -67,7 +67,7 @@ public final class ZipImportSession {
     )
     guard let docsPrefix = try DocsDirectoryFinder.find(in: entries) else {
       throw GameError.failed(
-        .zipInvalid,
+        .zipDocsMissing,
         "选择的 ZIP 中没有找到有效的 docs 资源目录"
       )
     }
@@ -134,7 +134,7 @@ public final class ZipImportSession {
         withIntermediateDirectories: true
       )
       guard let output = OutputStream(url: outputURL, append: false) else {
-        throw GameError.failed(.zipInvalid, "无法写入导入文件：\(relativePath)")
+        throw GameError.failed(.zipWriteFailed, "无法写入导入文件：\(relativePath)")
       }
       output.open()
       defer { output.close() }
@@ -317,7 +317,7 @@ public final class ZipImportSession {
       )
       if written <= 0 {
         throw GameError.failed(
-          .zipInvalid,
+          .zipWriteFailed,
           output.streamError?.localizedDescription ?? "无法写入导入文件"
         )
       }

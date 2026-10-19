@@ -3,12 +3,16 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'src/app_controller.dart';
+import 'src/l10n/app_strings.dart';
 import 'src/logging/app_logger.dart';
 import 'src/logging/log_event_catalog.dart';
 import 'src/logging/native_app_logger.dart';
+import 'src/services/app_settings_store.dart';
 import 'src/ui/home_page.dart';
+import 'src/ui/theme/garden_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -92,6 +96,11 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
   }
 
   @override
+  void didChangeLocales(List<Locale>? locales) {
+    _controller.systemLocalesChanged();
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     widget.logger.emit(
       level: LogLevel.info,
@@ -104,21 +113,41 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'GardendlessLoader',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff0a84ff)),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xff0a84ff),
-          brightness: Brightness.dark,
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, home) => MaterialApp(
+        title: 'GardendlessLoader',
+        debugShowCheckedModeBanner: false,
+        theme: buildGardenTheme(
+          Brightness.light,
+          accent: switch (_controller.seasonalTheme) {
+            final theme? => Color(theme.accent),
+            null => null,
+          },
         ),
-        useMaterial3: true,
+        darkTheme: buildGardenTheme(
+          Brightness.dark,
+          accent: switch (_controller.seasonalTheme) {
+            final theme? => Color(theme.accentDark ?? theme.accent),
+            null => null,
+          },
+        ),
+        themeMode: switch (_controller.themePreference) {
+          ThemePreference.system => ThemeMode.system,
+          ThemePreference.light => ThemeMode.light,
+          ThemePreference.dark => ThemeMode.dark,
+        },
+        locale: AppStrings.current.locale,
+        supportedLocales: AppStrings.supportedLocales,
+        localizationsDelegates: const [
+          AppStrings.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: home,
       ),
-      home: HomePage(controller: _controller),
+      child: HomePage(controller: _controller),
     );
   }
 }

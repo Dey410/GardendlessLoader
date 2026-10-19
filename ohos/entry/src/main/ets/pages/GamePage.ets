@@ -22,8 +22,13 @@ struct GamePage {
   private bridge: GameBridge | null = null;
   private documentStartScripts: Array<ScriptItem> = [];
   private exiting: boolean = false;
+  // Foreground play time; shownAt is the clock while the page shows, else 0.
+  private playedMs: number = 0;
+  private shownAt: number = 0;
   @State private viewportWidth: string = '100%';
   @State private viewportHeight: string = '100%';
+  @State private viewportScaleX: number = 1;
+  @State private viewportScaleY: number = 1;
 
   aboutToAppear(): void {
     try {
@@ -74,6 +79,7 @@ struct GamePage {
       Web({ src: '', controller: this.controller })
         .width(this.viewportWidth)
         .height(this.viewportHeight)
+        .scale({ x: this.viewportScaleX, y: this.viewportScaleY })
         .backgroundColor(Color.Black)
         .javaScriptAccess(true)
         .domStorageAccess(true)
@@ -182,6 +188,17 @@ struct GamePage {
     });
   }
 
+  onPageShow(): void {
+    this.shownAt = Date.now();
+  }
+
+  onPageHide(): void {
+    if (this.shownAt !== 0) {
+      this.playedMs += Date.now() - this.shownAt;
+    }
+    this.shownAt = 0;
+  }
+
   onBackPress(): boolean {
     this.returnToLauncher('userReturned', null);
     return true;
@@ -191,8 +208,10 @@ struct GamePage {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
       return;
     }
-    const minimumAspectRatio = 16 / 10;
+    const screenFit = this.session?.screenFit ?? 'balanced';
+    // Show all keeps the whole 17:9 picture; the other fits allow 16:10–17:9.
     const maximumAspectRatio = 17 / 9;
+    const minimumAspectRatio = screenFit === 'showAll' ? maximumAspectRatio : 16 / 10;
     const aspectRatio = width / height;
     let viewportWidth = width;
     let viewportHeight = height;
@@ -203,14 +222,20 @@ struct GamePage {
     }
     this.viewportWidth = `${viewportWidth}vp`;
     this.viewportHeight = `${viewportHeight}vp`;
+    // The page keeps the balanced viewport; scaling around the centre
+    // stretches it over the whole window.
+    if (screenFit === 'stretch') {
+      this.viewportScaleX = width / viewportWidth;
+      this.viewportScaleY = height / viewportHeight;
+    }
   }
 
   private buildDocumentStartScript(session: GameSession): string {
     const config = JSON.stringify({
+      hostAbi: 1,
       platform: 'ohos',
-      touchAdapter: 'javascript',
       touchWheelCssMultiplier: -4.5,
-      touchDiagnosticsEnabled: false,
+      touchDiagnosticsEnabled: session.touchDiagnosticsEnabled,
       origin: GameSession.ORIGIN,
       activationGeneration: session.activationGeneration,
       hasGpNext: session.hasGpNext,
@@ -218,22 +243,23 @@ struct GamePage {
       gpNextVersion: session.gpNextVersion,
       watermarkEnabled: session.watermarkEnabled,
       autoCollectSunEnabled: session.autoCollectSunEnabled,
+      detailedAudioDiagnosticsEnabled: session.detailedAudioDiagnosticsEnabled,
+      renderScale: session.renderScale,
+      gestureHint: session.gestureHint,
       gpNextBaseDirectory: this.gpNextBaseDirectory(session),
     });
     const names: string[] = [
       'transport.js',
-      'bootstrap.js',
       'logging.js',
+      'audio_diagnostic.js',
       'auto_sun.js',
       'touch_state_machine.js',
       'touch_input_adapter.js',
+      'render_scale.js',
       'export_download_patch.js',
     ];
-    if (session.hasGpNext && session.gpNextCompatible) {
-      names.push('gp_next_core.js');
-      names.push('gp_next_compat_bridge.js');
-    }
     names.push('watermark.js');
+    names.push('gesture_hint.js');
     let source = `window.__gardendlessHostConfig=${config};`;
     for (const name of names) {
       const bytes = this.context.resourceManager.getRawFileContentSync(
@@ -250,17 +276,18 @@ struct GamePage {
   }
 
   private writeLaunchFailure(message: string): void {
+    let exitResult: Promise<void> = Promise.resolve();
     try {
       const raw = JSON.parse(this.sessionJson) as Record<string, Object>;
       const root = raw['resourceRoot'] as string;
       const sessionId = raw['sessionId'] as string;
       const slash = root.lastIndexOf('/');
       if (slash > 0) {
-        this.writeExitResult(root.substring(0, slash), sessionId, 'launchFailed', message);
+        exitResult = this.writeExitResult(root.substring(0, slash), sessionId, 'launchFailed', message);
       }
     } catch (_error) {
     }
-    appLogStore.flush().finally((): void => this.startLauncher());
+    Promise.all([exitResult, appLogStore.flush()]).finally((): void => this.startLauncher());
   }
 
   private returnToLauncher(reason: string, message: string | null): void {
@@ -268,9 +295,10 @@ struct GamePage {
       return;
     }
     this.exiting = true;
+    let exitResult: Promise<void> = Promise.resolve();
     const session = this.session;
     if (session != null) {
-      const context: AppLogContext = { reason: reason };
+      const context: AppLogContext = { reason: reason, packageId: session.packageId };
       const finishedEvent: AppLogEvent = {
         source: 'ohos',
         level: reason === 'rendererGone' || reason === 'launchFailed' ? 'ERROR' : 'INFO',
@@ -281,45 +309,52 @@ struct GamePage {
       };
       if (message != null) finishedEvent.message = message;
       appLogStore.emit(finishedEvent);
-      this.writeExitResult(session.appRoot, session.sessionId, reason, message);
+      const playedMs = this.playedMs + (this.shownAt !== 0 ? Date.now() - this.shownAt : 0);
+      exitResult = this.writeExitResult(session.appRoot, session.sessionId, reason, message, session.packageId, playedMs);
     }
     this.bridge?.destroy();
-    appLogStore.flush().finally((): void => this.startLauncher());
+    Promise.all([exitResult, appLogStore.flush()]).finally((): void => this.startLauncher());
   }
 
-  private writeExitResult(
+  private async writeExitResult(
     appRoot: string,
     sessionId: string,
     reason: string,
     message: string | null,
-  ): void {
+    packageId: string = 'unknown',
+    playedMs: number = 0,
+  ): Promise<void> {
     const output = `${appRoot}/game_exit_result.json`;
     const temporary = `${output}.tmp`;
     const value = JSON.stringify({
       schemaVersion: 1,
+      packageId: packageId,
       sessionId: sessionId,
       reason: reason,
       finishedAt: new Date().toISOString(),
       message: message,
+      playedMs: Math.round(playedMs),
     }, null, 2);
     try {
-      this.writeTextFile(temporary, `${value}\n`);
-      fs.renameSync(temporary, output);
+      await this.writeTextFile(temporary, `${value}\n`);
+      await fs.rename(temporary, output);
     } catch (_error) {
     }
   }
 
-  private writeTextFile(path: string, value: string): void {
+  private async writeTextFile(path: string, value: string): Promise<void> {
     let file: fs.File | null = null;
     try {
-      file = fs.openSync(
+      file = await fs.open(
         path,
-        fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC,
+        fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC | fs.OpenMode.NOFOLLOW,
       );
-      fs.writeSync(file.fd, value);
+      const count = await fs.write(file.fd, value);
+      if (count !== new util.TextEncoder().encodeInto(value).byteLength) throw new Error('Exit record write was incomplete');
+      await fs.fsync(file.fd);
     } finally {
       if (file != null) {
-        fs.closeSync(file.fd);
+        await fs.close(file.fd);
       }
     }
   }

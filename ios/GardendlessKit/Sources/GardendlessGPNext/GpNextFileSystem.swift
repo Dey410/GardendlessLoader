@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import GardendlessCore
 
@@ -7,18 +8,6 @@ public final class GpNextFileSystem {
 
   public init(session: GameSession) throws {
     let root = session.gpNextRoot
-    try FileManager.default.createDirectory(
-      at: root,
-      withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-      at: root.appendingPathComponent("packs", isDirectory: true),
-      withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-      at: root.appendingPathComponent("patches", isDirectory: true),
-      withIntermediateDirectories: true
-    )
     resolver = try GpNextPathResolver(gpNextRoot: root)
     gpNextRoot = root.standardizedFileURL
   }
@@ -68,10 +57,14 @@ public final class GpNextFileSystem {
     }
   }
 
-  public func readFile(path: String, options: [String: Any]) throws -> [UInt8] {
+  public func resolveReadPath(path: String, options: [String: Any]) throws -> URL {
     let url = try resolver.resolve(path, options: options)
     try resolver.assertNoSymlink(url)
-    return Array(try Data(contentsOf: url))
+    let values = try url.resourceValues(forKeys: [.isRegularFileKey])
+    guard values.isRegularFile == true else {
+      throw GameError.failed(.gpNextForbidden, "GP-Next path is not a regular file")
+    }
+    return url
   }
 
   public func lstat(
@@ -87,6 +80,7 @@ public final class GpNextFileSystem {
         .isSymbolicLinkKey,
         .fileSizeKey,
         .isWritableKey,
+        .contentModificationDateKey,
       ]
     )
     return [
@@ -94,7 +88,10 @@ public final class GpNextFileSystem {
       "isDirectory": values.isDirectory == true,
       "isSymlink": values.isSymbolicLink == true,
       "size": values.fileSize ?? 0,
-      "mtime": NSNull(),
+      // Tauri FileInfo times are milliseconds since the Unix epoch.
+      "mtime": values.contentModificationDate.map {
+        Int64(($0.timeIntervalSince1970 * 1000).rounded()) as Any
+      } ?? NSNull(),
       "atime": NSNull(),
       "birthtime": NSNull(),
       "readonly": values.isWritable == false,
@@ -160,51 +157,24 @@ public final class GpNextFileSystem {
     let destination = try resolver.resolve(newPath, options: newOptions)
     try resolver.assertNoSymlink(source)
     try resolver.assertNoSymlink(destination)
-    guard source != gpNextRoot else {
+    guard source != gpNextRoot, destination != gpNextRoot else {
       throw GameError.failed(.gpNextForbidden, "不允许移动 GP-Next 根目录")
     }
     guard FileManager.default.fileExists(atPath: source.path) else {
       throw GameError.failed(.gpNextForbidden, "源路径不存在：\(source.path)")
     }
-    guard !FileManager.default.fileExists(atPath: destination.path) else {
-      throw GameError.failed(.gpNextForbidden, "目标路径已存在：\(destination.path)")
-    }
     try FileManager.default.createDirectory(
       at: destination.deletingLastPathComponent(),
       withIntermediateDirectories: true
     )
-    try FileManager.default.moveItem(at: source, to: destination)
-  }
-
-  public func writeFile(
-    path: String,
-    bytes: [UInt8],
-    options: [String: Any]
-  ) throws {
-    let url = try resolver.resolve(path, options: options)
-    try FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
-    try resolver.assertNoSymlink(url)
-    try Data(bytes).write(to: url, options: .atomic)
-  }
-
-  /// Mirrors the GP-Next bridge write shape: the effective path can arrive in
-  /// `headers.path` (percent-encoded) with Tauri options carried in
-  /// `headers.options` as an encoded JSON string.
-  @discardableResult
-  public func writeFileAndReturnPath(
-    rawPath: String?,
-    bytes: [NSNumber],
-    options: [String: Any]
-  ) throws -> URL {
-    let url = try resolveWritePath(rawPath: rawPath, options: options)
-    try Data(bytes.map { UInt8(truncating: $0) }).write(
-      to: url,
-      options: .atomic
-    )
-    return url
+    // Tauri's rename is std::fs::rename: an existing destination file is
+    // replaced atomically, which GP-Next relies on for `.pending` commits.
+    guard Darwin.rename(source.path, destination.path) == 0 else {
+      throw GameError.failed(
+        .gpNextForbidden,
+        "无法移动 GP-Next 路径：\(String(cString: strerror(errno)))"
+      )
+    }
   }
 
   public func resolveWritePath(
@@ -220,7 +190,7 @@ public final class GpNextFileSystem {
          as? [String: Any] {
       headerOptions = decoded
     } else {
-      headerOptions = [:]
+      headerOptions = options
     }
     let resolvedPath = (headers["path"] as? String)?.removingPercentEncoding
       ?? rawPath
@@ -228,6 +198,15 @@ public final class GpNextFileSystem {
       throw GameError.failed(.gpNextForbidden, "GP-Next 写入路径为空")
     }
     let url = try resolver.resolve(resolvedPath, options: headerOptions)
+    guard url != gpNextRoot else {
+      throw GameError.failed(.gpNextForbidden, "Cannot write the GP-Next root")
+    }
+    try resolver.assertNoSymlink(url)
+    if FileManager.default.fileExists(atPath: url.path) {
+      guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+        throw GameError.failed(.gpNextForbidden, "Write destination is not a regular file")
+      }
+    }
     try FileManager.default.createDirectory(
       at: url.deletingLastPathComponent(),
       withIntermediateDirectories: true

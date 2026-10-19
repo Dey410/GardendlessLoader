@@ -8,7 +8,6 @@
 - `lib/src/game_host/` defines the durable native GameSession and platform-channel launch contract.
 - `lib/src/ui/` contains the Flutter launcher screen in `home_page.dart`.
 - `assets/game_bridge/` contains the shared document-start scripts injected by every native GameHost.
-- `test/` contains unit and widget tests named `*_test.dart`.
 - Maintained platform folders are `android/`, `ios/`, and `ohos/`.
 - `announcements.json` is the remote announcement payload; `docs/acceptance-checklist.md` records manual release checks.
 - `docs/research/native_gamehost_local_resource_loading.md` records the native GameHost security constraints and device-validation limits.
@@ -17,8 +16,6 @@
 
 - `flutter pub get` installs Dart and Flutter dependencies.
 - `flutter analyze` runs static analysis with the repository lint rules.
-- `flutter test` runs the full test suite.
-- `flutter test test/resource_validator_test.dart` runs one focused test file.
 - `flutter run` starts the app on a connected supported device.
 - `flutter build apk --release` builds Android.
 - `flutter build ios --release --no-codesign` builds unsigned iOS artifacts.
@@ -27,11 +24,11 @@ For HarmonyOS/OpenHarmony, copy `pubspec_overrides.ohos.yaml` to `pubspec_overri
 
 ## Coding Style & Naming Conventions
 
-This project uses `package:flutter_lints/flutter.yaml` plus `prefer_single_quotes`. Use two-space Dart indentation, `UpperCamelCase` for classes/widgets, `lowerCamelCase` for methods and variables, and `snake_case.dart` filenames. Keep service logic in `lib/src/services/` and UI code in `lib/src/ui/`. Run `dart format lib test` before submitting.
+This project uses `package:flutter_lints/flutter.yaml` plus `prefer_single_quotes`. Use two-space Dart indentation, `UpperCamelCase` for classes/widgets, `lowerCamelCase` for methods and variables, and `snake_case.dart` filenames. Keep service logic in `lib/src/services/` and UI code in `lib/src/ui/`. Run `dart format lib` before submitting.
 
-## Testing Guidelines
+## Validation Guidelines
 
-Use `flutter_test`. Add or update tests for resource import, validation, manifest state, native resource-handler contracts, update checks, and UI workflows when touched. Keep files in `test/` with the `*_test.dart` suffix. Prefer service tests for domain logic and widget tests for visible UI behavior.
+The Flutter unit and widget test suite was removed at the user's request. Do not recreate per-feature Flutter test files automatically. Validate Dart changes with `flutter analyze`, build the affected maintained platforms, and verify relevant workflows on devices. Existing native and shared JavaScript checks remain available.
 
 ## Commit & Pull Request Guidelines
 

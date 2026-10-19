@@ -43,10 +43,14 @@ final class GpNextTests: XCTestCase {
 
   func testFileSystemConfinesEveryPathToGpNextRoot() throws {
     let fs = try GpNextFileSystem(session: session)
+    // GP-Next's fresh-install check must not find a host-created gp-next.
+    XCTAssertFalse(
+      FileManager.default.fileExists(atPath: session.gpNextRoot.path)
+    )
+    XCTAssertFalse(try fs.exists(path: "gp-next", options: ["baseDir": 14]))
+    try fs.mkdir(path: "gp-next/packs", options: ["baseDir": 14])
     let packs = session.gpNextRoot.appendingPathComponent("packs").path
-    let patches = session.gpNextRoot.appendingPathComponent("patches").path
     XCTAssertTrue(try fs.exists(path: packs, options: [:]))
-    XCTAssertTrue(try fs.exists(path: patches, options: [:]))
 
     // Relative AppData paths must start at the gp-next namespace; unrelated
     // relative paths and absolute paths outside the explicit root stay blocked.
@@ -175,13 +179,13 @@ final class GpNextTests: XCTestCase {
       .appendingPathComponent("patches/sub/a.json")
       .path
     try fs.mkdir(path: sub, options: [:])
-    try fs.writeFile(
+    try writeFixture(fs,
       path: file,
       bytes: Array("hello".utf8),
       options: [:]
     )
     XCTAssertEqual(
-      try fs.readFile(path: file, options: [:]),
+      try readFixture(fs,path: file, options: [:]),
       Array("hello".utf8)
     )
     let entries = try fs.readDirectory(path: sub, options: [:])
@@ -211,7 +215,7 @@ final class GpNextTests: XCTestCase {
       .path
 
     try fs.mkdir(path: pending, options: ["baseDir": 14])
-    try fs.writeFile(
+    try writeFixture(fs,
       path: payload,
       bytes: Array("export {}".utf8),
       options: ["baseDir": 14]
@@ -222,6 +226,7 @@ final class GpNextTests: XCTestCase {
     XCTAssertEqual(metadata["isDirectory"] as? Bool, false)
     XCTAssertEqual(metadata["isSymlink"] as? Bool, false)
     XCTAssertEqual(metadata["size"] as? NSNumber, 9)
+    XCTAssertNotNil(metadata["mtime"] as? Int64)
 
     try fs.rename(
       oldPath: pending,
@@ -230,6 +235,53 @@ final class GpNextTests: XCTestCase {
     )
     XCTAssertFalse(try fs.exists(path: pending, options: [:]))
     XCTAssertTrue(try fs.exists(path: installed, options: [:]))
+  }
+
+  func testRenameReplacesAnExistingFileLikeTauri() throws {
+    let fs = try GpNextFileSystem(session: session)
+    let target = "gp-next/configuration-state.json"
+    let pending = "\(target).pending"
+    for revision in ["{\"revision\":0}", "{\"revision\":1}"] {
+      try writeFixture(fs, path: pending, bytes: Array(revision.utf8),
+                       options: ["baseDir": 14])
+      try fs.rename(
+        oldPath: pending,
+        newPath: target,
+        options: ["oldPathBaseDir": 14, "newPathBaseDir": 14]
+      )
+    }
+    XCTAssertEqual(
+      try readFixture(fs, path: target, options: ["baseDir": 14]),
+      Array("{\"revision\":1}".utf8)
+    )
+    XCTAssertFalse(try fs.exists(path: pending, options: ["baseDir": 14]))
+    XCTAssertThrowsError(
+      try fs.rename(
+        oldPath: target,
+        newPath: "gp-next",
+        options: ["oldPathBaseDir": 14, "newPathBaseDir": 14]
+      )
+    )
+  }
+
+  func testRouterServesStatWithModificationTime() throws {
+    let fs = try GpNextFileSystem(session: session)
+    let path = "gp-next/save-backups/native-player/backup.json"
+    try writeFixture(fs, path: path, bytes: Array("[]".utf8),
+                     options: ["baseDir": 14])
+    let router = try GpNextCommandRouter(session: session, fileSystem: fs)
+    let action = try router.dispatch([
+      "command": "plugin:fs|stat",
+      "args": ["path": path, "options": ["baseDir": 14]],
+      "options": [:] as [String: Any],
+    ])
+    guard case .value(let value) = action,
+          let info = value as? [String: Any],
+          let mtime = info["mtime"] as? Int64 else {
+      return XCTFail("expected stat metadata with mtime")
+    }
+    XCTAssertEqual(info["isFile"] as? Bool, true)
+    XCTAssertLessThan(abs(Double(mtime) - Date().timeIntervalSince1970 * 1000), 60_000)
   }
 
   func testRemoveRejectsRootAndSymbolicLinks() throws {
@@ -245,6 +297,7 @@ final class GpNextTests: XCTestCase {
     )
     let outside = root.appendingPathComponent("outside.txt")
     try Data("x".utf8).write(to: outside)
+    try fs.mkdir(path: "gp-next/patches", options: ["baseDir": 14])
     let link = session.gpNextRoot
       .appendingPathComponent("patches/link")
       .path
@@ -253,7 +306,7 @@ final class GpNextTests: XCTestCase {
       withDestinationURL: outside
     )
     XCTAssertThrowsError(
-      try fs.readFile(path: link, options: [:])
+      try readFixture(fs,path: link, options: [:])
     )
     XCTAssertThrowsError(
       try fs.remove(path: link, options: [:])
@@ -330,6 +383,32 @@ final class GpNextTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     try stager.clear()
     XCTAssertFalse(FileManager.default.fileExists(atPath: archive.path))
+  }
+
+  func testPackageImporterRejectsZipPacksOnceTheModPlatformIsActive() throws {
+    let packURL = root.appendingPathComponent("pack.zip")
+    try TestZipWriter.write(
+      [.file("pack.json", data: Data(#"{"name":"test"}"#.utf8))],
+      to: packURL
+    )
+    let patchURL = root.appendingPathComponent("patch.json")
+    try Data("{}".utf8).write(to: patchURL)
+    try FileManager.default.createDirectory(
+      at: session.gpNextRoot,
+      withIntermediateDirectories: true
+    )
+    try Data("{}".utf8).write(
+      to: session.gpNextRoot.appendingPathComponent("configuration-state.json")
+    )
+    let importer = GpNextPackageImporter(gpNextRoot: session.gpNextRoot)
+
+    XCTAssertThrowsError(try importer.importPackage(packURL) { _ in true })
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: session.gpNextRoot.appendingPathComponent("packs/pack.zip").path
+      )
+    )
+    XCTAssertEqual(try importer.importPackage(patchURL) { _ in true }, "patch.json")
   }
 
   func testPackageImporterNormalizesOneWrapperDirectory() throws {
@@ -436,112 +515,11 @@ final class GpNextTests: XCTestCase {
     )
   }
 
-  func testRouterExportFlowProducesExportFile() throws {
-    let router = try GpNextCommandRouter(session: session)
-    let save = try router.dispatch([
-      "command": "plugin:dialog|save",
-      "args": ["options": ["defaultPath": "save.json"]],
-      "options": [:] as [String: Any],
-    ])
-    guard case .value(let rawPath) = save, let path = rawPath as? String else {
-      return XCTFail("expected save path")
-    }
-    let action = try router.dispatch([
-      "command": "plugin:fs|write_text_file",
-      "args": [
-        "path": path,
-        "__gardendlessBytes": Array("{}".utf8).map { NSNumber(value: $0) },
-      ],
-      "options": [
-        "headers": [
-          "path": path,
-          "options": "{\"baseDir\":14}",
-        ],
-      ] as [String: Any],
-    ])
-    guard case .exportFile(let file) = action else {
-      return XCTFail("expected exportFile action")
-    }
-    XCTAssertEqual(
-      try Data(contentsOf: file),
-      Data("{}".utf8)
-    )
-  }
 
-  func testRouterSupports015OpenAndBinaryInstallCommands() throws {
-    let router = try GpNextCommandRouter(session: session)
 
-    let directory = try router.dispatch([
-      "command": "plugin:dialog|open",
-      "args": [
-        "options": ["directory": true, "recursive": true, "multiple": false]
-      ],
-      "options": [:] as [String: Any],
-    ])
-    guard case .openSelection(let isDirectory) = directory else {
-      return XCTFail("expected openSelection action")
-    }
-    XCTAssertTrue(isDirectory)
 
-    let path = session.gpNextRoot
-      .appendingPathComponent("installed/pending-test/mod.js")
-      .path
-    _ = try router.dispatch([
-      "command": "plugin:fs|write_file",
-      "args": [
-        "__gardendlessBytes": Array("x".utf8).map { NSNumber(value: $0) },
-      ],
-      "options": [
-        "headers": [
-          "path": path.addingPercentEncoding(
-            withAllowedCharacters: .alphanumerics
-          )!,
-          "options": "{\"baseDir\":14}",
-        ],
-      ] as [String: Any],
-    ])
-    XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: path)), Data("x".utf8))
-  }
 
-  func testRouterStreamsLarge015BinaryWritesInBoundedChunks() throws {
-    let router = try GpNextCommandRouter(session: session)
-    let path = session.gpNextRoot
-      .appendingPathComponent("installed/pending-test/large.bin")
-      .path
-    let payload = [UInt8](repeating: 255, count: 220 * 1024)
-    let chunkSize = 96 * 1024
-    var index = 0
-    for offset in stride(from: 0, to: payload.count, by: chunkSize) {
-      let end = min(payload.count, offset + chunkSize)
-      _ = try router.dispatch([
-        "command": "plugin:fs|write_file",
-        "args": [
-          "__gardendlessBytes": payload[offset..<end].map {
-            NSNumber(value: $0)
-          },
-          "__gardendlessTransfer": [
-            "token": "gp-write-test",
-            "index": index,
-            "totalBytes": payload.count,
-            "final": end == payload.count,
-          ],
-        ],
-        "options": [
-          "headers": [
-            "path": path.addingPercentEncoding(
-              withAllowedCharacters: .alphanumerics
-            )!,
-            "options": "{\"baseDir\":14}",
-          ],
-        ] as [String: Any],
-      ])
-      index += 1
-    }
-    XCTAssertEqual(
-      try Data(contentsOf: URL(fileURLWithPath: path)),
-      Data(payload)
-    )
-  }
+
 
   func testRouterRejectsUnknownCommands() throws {
     let router = try GpNextCommandRouter(session: session)
@@ -553,4 +531,15 @@ final class GpNextTests: XCTestCase {
       ])
     )
   }
+  private func writeFixture(_ fs: GpNextFileSystem, path: String,
+                            bytes: [UInt8], options: [String: Any]) throws {
+    let url = try fs.resolveWritePath(rawPath: path, options: options)
+    try Data(bytes).write(to: url)
+  }
+
+  private func readFixture(_ fs: GpNextFileSystem, path: String,
+                           options: [String: Any]) throws -> [UInt8] {
+    Array(try Data(contentsOf: fs.resolveReadPath(path: path, options: options)))
+  }
+
 }

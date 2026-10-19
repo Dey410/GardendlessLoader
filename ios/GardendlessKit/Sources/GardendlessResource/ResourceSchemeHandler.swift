@@ -5,12 +5,6 @@ import WebKit
 /// Serves files from one resource slot over `gardendless-game://localhost`
 /// with Range/ETag/MIME/streaming semantics and strict cancellation safety.
 public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
-  private enum TaskState {
-    case active
-    case cancelled
-    case finished
-  }
-
   private struct CachedAudio {
     let entry: CachedAudioEntry
     var lastAccess: UInt64
@@ -29,9 +23,7 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   private let resourceQueue: OperationQueue
   private let audioQueue: OperationQueue
 
-  private let stateLock = NSLock()
-  private var taskStates: [ObjectIdentifier: TaskState] = [:]
-  private var callbackReservations: [ObjectIdentifier: Int] = [:]
+  private let callbacks = TaskCallbackGate()
 
   private let audioCacheCondition = NSCondition()
   private var audioCache: [String: CachedAudio] = [:]
@@ -61,9 +53,7 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
 
   public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
     let identifier = ObjectIdentifier(urlSchemeTask as AnyObject)
-    stateLock.synchronized {
-      taskStates[identifier] = .active
-    }
+    callbacks.start(identifier)
     let queue = isAudioPath(urlSchemeTask.request.url?.path) ? audioQueue : resourceQueue
     queue.addOperation { [weak self] in
       self?.serve(urlSchemeTask, identifier: identifier)
@@ -72,11 +62,7 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
 
   public func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
     let identifier = ObjectIdentifier(urlSchemeTask as AnyObject)
-    stateLock.synchronized {
-      if taskStates[identifier] == .active {
-        taskStates[identifier] = .cancelled
-      }
-    }
+    callbacks.cancel(identifier)
     audioCacheCondition.lock()
     audioCacheCondition.broadcast()
     audioCacheCondition.unlock()
@@ -84,10 +70,7 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
 
   private func serve(_ task: WKURLSchemeTask, identifier: ObjectIdentifier) {
     defer {
-      stateLock.synchronized {
-        taskStates.removeValue(forKey: identifier)
-        callbackReservations.removeValue(forKey: identifier)
-      }
+      callbacks.remove(identifier)
     }
     guard isActive(identifier) else { return }
     guard let url = task.request.url,
@@ -239,7 +222,10 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
       let end = range?.upperBound ?? max(0, length - 1)
       let responseLength = length == 0 ? 0 : end - start + 1
       headers["Content-Type"] = metadata.mimeType
-      if metadata.mimeType == "application/octet-stream" {
+      if metadata.mimeType == "application/octet-stream",
+         !ResourceMIME.binaryExtensions.contains(
+           (relativePath as NSString).pathExtension.lowercased()
+         ) {
         diagnose(
           "resource_mime_mismatch",
           path: relativePath,
@@ -522,58 +508,19 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
   }
 
   private func finishTask(_ task: WKURLSchemeTask, identifier: ObjectIdentifier) {
-    guard reserveCallback(identifier, finishing: true) else { return }
-    defer { releaseCallback(identifier) }
-    task.didFinish()
+    _ = callbacks.perform(identifier, finishing: true) { task.didFinish() }
   }
 
-  private func failTask(
-    _ task: WKURLSchemeTask,
-    identifier: ObjectIdentifier,
-    error: Error
-  ) {
-    guard reserveCallback(identifier, finishing: true) else { return }
-    defer { releaseCallback(identifier) }
-    task.didFailWithError(error)
+  private func failTask(_ task: WKURLSchemeTask, identifier: ObjectIdentifier, error: Error) {
+    _ = callbacks.perform(identifier, finishing: true) { task.didFailWithError(error) }
   }
 
-  private func performCallback(
-    _ identifier: ObjectIdentifier,
-    action: () -> Void
-  ) -> Bool {
-    guard reserveCallback(identifier) else { return false }
-    defer { releaseCallback(identifier) }
-    action()
-    return true
-  }
-
-  private func reserveCallback(
-    _ identifier: ObjectIdentifier,
-    finishing: Bool = false
-  ) -> Bool {
-    stateLock.synchronized {
-      guard taskStates[identifier] == .active else { return false }
-      callbackReservations[identifier, default: 0] += 1
-      if finishing { taskStates[identifier] = .finished }
-      return true
-    }
-  }
-
-  private func releaseCallback(_ identifier: ObjectIdentifier) {
-    stateLock.synchronized {
-      let remaining = (callbackReservations[identifier] ?? 1) - 1
-      if remaining > 0 {
-        callbackReservations[identifier] = remaining
-      } else {
-        callbackReservations.removeValue(forKey: identifier)
-      }
-    }
+  private func performCallback(_ identifier: ObjectIdentifier, action: () -> Void) -> Bool {
+    callbacks.perform(identifier, action: action)
   }
 
   private func isActive(_ identifier: ObjectIdentifier) -> Bool {
-    stateLock.synchronized {
-      taskStates[identifier] == .active
-    }
+    callbacks.isActive(identifier)
   }
 
   private func diagnose(
@@ -583,13 +530,5 @@ public final class ResourceSchemeHandler: NSObject, WKURLSchemeHandler {
     details: [String: String] = [:]
   ) {
     onDiagnostic?(code, path, status, details)
-  }
-}
-
-private extension NSLock {
-  func synchronized<T>(_ body: () throws -> T) rethrows -> T {
-    lock()
-    defer { unlock() }
-    return try body()
   }
 }

@@ -43,6 +43,9 @@ class AppPaths {
   File get appSettingsFile =>
       File('${root.path}${Platform.pathSeparator}app_settings.json');
 
+  File get journalFile =>
+      File('${root.path}${Platform.pathSeparator}journal.json');
+
   Directory get slotADir =>
       Directory('${root.path}${Platform.pathSeparator}slot-a');
   Directory get slotBDir =>
@@ -50,15 +53,9 @@ class AppPaths {
 
   Directory get gpNextDir =>
       Directory('${root.path}${Platform.pathSeparator}gp-next');
-  Directory get gpNextPacksDir =>
-      Directory('${gpNextDir.path}${Platform.pathSeparator}packs');
-  Directory get gpNextPatchesDir =>
-      Directory('${gpNextDir.path}${Platform.pathSeparator}patches');
 
   Directory get legacyImportDir =>
       Directory('${root.path}${Platform.pathSeparator}import');
-  Directory get legacyImportDocsDir =>
-      Directory('${legacyImportDir.path}${Platform.pathSeparator}docs');
   Directory get legacyCurrentDir =>
       Directory('${root.path}${Platform.pathSeparator}current');
   Directory get legacyPreviousDir =>
@@ -75,23 +72,32 @@ class ResourceValidationResult {
     required this.status,
     required this.errorCode,
     required this.errorMessage,
+    this.stats = const ResourceStats(fileCount: 0, totalBytes: 0),
     this.detectedTitle,
+    this.gameVersion,
+    this.packageId,
     this.buildProfile = ResourceBuildProfile.standardWeb,
     this.gpNextVersion,
     this.gpNextCompatibilityError,
   });
 
   factory ResourceValidationResult.valid({
+    required ResourceStats stats,
     String? detectedTitle,
+    String? gameVersion,
+    String? packageId,
     ResourceBuildProfile buildProfile = ResourceBuildProfile.standardWeb,
     String? gpNextVersion,
     String? gpNextCompatibilityError,
   }) {
     return ResourceValidationResult(
       status: ResourceStatus.valid,
+      stats: stats,
       errorCode: null,
       errorMessage: null,
       detectedTitle: detectedTitle,
+      gameVersion: gameVersion,
+      packageId: packageId,
       buildProfile: buildProfile,
       gpNextVersion: gpNextVersion,
       gpNextCompatibilityError: gpNextCompatibilityError,
@@ -114,10 +120,13 @@ class ResourceValidationResult {
     );
   }
 
+  final ResourceStats stats;
   final ResourceStatus status;
   final String? errorCode;
   final String? errorMessage;
   final String? detectedTitle;
+  final String? gameVersion;
+  final String? packageId;
   final ResourceBuildProfile buildProfile;
   final String? gpNextVersion;
   final String? gpNextCompatibilityError;
@@ -130,9 +139,12 @@ class ResourceValidationResult {
   ResourceValidationResult asReady() {
     return ResourceValidationResult(
       status: ResourceStatus.ready,
+      stats: stats,
       errorCode: errorCode,
       errorMessage: errorMessage,
       detectedTitle: detectedTitle,
+      gameVersion: gameVersion,
+      packageId: packageId,
       buildProfile: buildProfile,
       gpNextVersion: gpNextVersion,
       gpNextCompatibilityError: gpNextCompatibilityError,
@@ -141,21 +153,10 @@ class ResourceValidationResult {
 }
 
 class ResourceStats {
-  const ResourceStats({
-    required this.fileCount,
-    required this.totalBytes,
-    required this.detectedTitle,
-    this.buildProfile = ResourceBuildProfile.standardWeb,
-    this.gpNextVersion,
-    this.gpNextCompatibilityError,
-  });
+  const ResourceStats({required this.fileCount, required this.totalBytes});
 
   final int fileCount;
   final int totalBytes;
-  final String? detectedTitle;
-  final ResourceBuildProfile buildProfile;
-  final String? gpNextVersion;
-  final String? gpNextCompatibilityError;
 }
 
 class AnnouncementLink {
@@ -234,8 +235,86 @@ class Announcement {
   final List<AnnouncementLink> links;
 }
 
+/// A dated accent colour and badge for the launcher, sent with the remote
+/// announcement so a festival needs no app release.
+class SeasonalTheme {
+  const SeasonalTheme({
+    required this.from,
+    required this.to,
+    required this.accent,
+    this.accentDark,
+    this.badge,
+  });
+
+  factory SeasonalTheme.fromJson(Object? value) {
+    if (value is! Map<String, dynamic>) {
+      throw const FormatException('theme must be an object');
+    }
+    final from = _date(value['from']);
+    final to = _date(value['to']);
+    if (to.isBefore(from)) {
+      throw const FormatException('theme ends before it starts');
+    }
+    final badge = value['badge'];
+    if (badge != null &&
+        (badge is! String || badge.trim().isEmpty || badge.length > 8)) {
+      throw const FormatException('theme badge is invalid');
+    }
+    return SeasonalTheme(
+      from: from,
+      to: to,
+      accent: _color(value['accent']),
+      accentDark:
+          value['accentDark'] == null ? null : _color(value['accentDark']),
+      badge: (badge as String?)?.trim(),
+    );
+  }
+
+  /// First and last local day the theme shows, both inclusive.
+  final DateTime from;
+  final DateTime to;
+
+  /// Opaque ARGB colours; [accentDark] replaces [accent] in the dark theme.
+  final int accent;
+  final int? accentDark;
+  final String? badge;
+
+  bool isActiveOn(DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    return !today.isBefore(from) && !today.isAfter(to);
+  }
+
+  static DateTime _date(Object? value) {
+    final match = value is String
+        ? RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value)
+        : null;
+    if (match == null) {
+      throw const FormatException('theme date must be YYYY-MM-DD');
+    }
+    return DateTime(
+      int.parse(match[1]!),
+      int.parse(match[2]!),
+      int.parse(match[3]!),
+    );
+  }
+
+  static int _color(Object? value) {
+    final match = value is String
+        ? RegExp(r'^#([0-9a-fA-F]{6})$').firstMatch(value)
+        : null;
+    if (match == null) {
+      throw const FormatException('theme colour must be #RRGGBB');
+    }
+    return 0xff000000 | int.parse(match[1]!, radix: 16);
+  }
+}
+
 class AboutContent {
-  const AboutContent({required this.contentVersion, required this.content});
+  const AboutContent({
+    required this.contentVersion,
+    required this.content,
+    this.contentEn,
+  });
 
   factory AboutContent.fromJson(Object? value) {
     if (value is! Map<String, dynamic>) {
@@ -245,6 +324,7 @@ class AboutContent {
     final schemaVersion = value['schemaVersion'];
     final contentVersion = value['contentVersion'];
     final content = value['content'];
+    final contentEn = value['contentEn'];
     if (schemaVersion != 1) {
       throw const FormatException('about content schema is unsupported');
     }
@@ -254,18 +334,30 @@ class AboutContent {
     if (content is! String || content.trim().isEmpty) {
       throw const FormatException('about content is missing');
     }
+    if (contentEn != null &&
+        (contentEn is! String || contentEn.trim().isEmpty)) {
+      throw const FormatException('about content English text is invalid');
+    }
 
-    return AboutContent(contentVersion: contentVersion, content: content);
+    return AboutContent(
+      contentVersion: contentVersion,
+      content: content,
+      contentEn: contentEn as String?,
+    );
   }
 
   final int contentVersion;
   final String content;
+
+  /// English text for the English launcher; absent in older payloads.
+  final String? contentEn;
 
   Map<String, Object> toJson() {
     return {
       'schemaVersion': 1,
       'contentVersion': contentVersion,
       'content': content,
+      if (contentEn != null) 'contentEn': contentEn!,
     };
   }
 }
@@ -280,6 +372,7 @@ class ImportProgress {
     this.elapsed = Duration.zero,
     this.bytesPerSecond = 0,
     this.message,
+    this.errorCode,
   });
 
   final ImportPhase phase;
@@ -290,6 +383,9 @@ class ImportProgress {
   final Duration elapsed;
   final double bytesPerSecond;
   final String? message;
+
+  /// Code of the failure that ended a [ImportPhase.failed] import.
+  final String? errorCode;
 
   static const idle = ImportProgress(phase: ImportPhase.idle);
 
@@ -335,8 +431,24 @@ class ImportProgress {
       elapsed: elapsed ?? this.elapsed,
       bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
       message: message ?? this.message,
+      errorCode: errorCode,
     );
   }
+}
+
+/// A launcher notice; an error notice carries the code that selects its fix hint.
+class LauncherMessage {
+  const LauncherMessage(this.text, [this.code]);
+
+  final String text;
+  final String? code;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LauncherMessage && other.text == text && other.code == code;
+
+  @override
+  int get hashCode => Object.hash(text, code);
 }
 
 class ResourceManifest {
@@ -357,6 +469,7 @@ class ResourceManifest {
     required this.transactionState,
     this.buildProfile = ResourceBuildProfile.standardWeb,
     this.gpNextVersion,
+    this.packageId,
     this.gpNextCompatibilityError,
     this.autoCollectSunEnabled = false,
   });
@@ -400,6 +513,7 @@ class ResourceManifest {
   final TransactionState transactionState;
   final ResourceBuildProfile buildProfile;
   final String? gpNextVersion;
+  final String? packageId;
   final String? gpNextCompatibilityError;
   final bool autoCollectSunEnabled;
 
@@ -422,6 +536,7 @@ class ResourceManifest {
     TransactionState? transactionState,
     ResourceBuildProfile? buildProfile,
     String? gpNextVersion,
+    String? packageId,
     String? gpNextCompatibilityError,
     bool? autoCollectSunEnabled,
     bool clearError = false,
@@ -429,6 +544,7 @@ class ResourceManifest {
     bool clearActiveSlot = false,
     bool clearTransactionSlot = false,
     bool clearGpNextVersion = false,
+    bool clearPackageId = false,
     bool clearGpNextCompatibilityError = false,
   }) {
     return ResourceManifest(
@@ -449,6 +565,7 @@ class ResourceManifest {
           clearError ? null : lastErrorMessage ?? this.lastErrorMessage,
       transactionState: transactionState ?? this.transactionState,
       buildProfile: buildProfile ?? this.buildProfile,
+      packageId: clearPackageId ? null : packageId ?? this.packageId,
       gpNextVersion:
           clearGpNextVersion ? null : gpNextVersion ?? this.gpNextVersion,
       gpNextCompatibilityError: clearGpNextCompatibilityError
@@ -471,6 +588,7 @@ class ResourceManifest {
       'detectedTitle': detectedTitle,
       'buildProfile': buildProfile.name,
       'gpNextVersion': gpNextVersion,
+      'packageId': packageId,
       'gpNextCompatibilityError': gpNextCompatibilityError,
       'autoCollectSunEnabled': autoCollectSunEnabled,
       'resourceStatus': resourceStatus.name,

@@ -1,158 +1,250 @@
-<h1 align="center">GardendlessLoader</h1>
+<div align="center">
 
-<img src="tool/generated_icons/app_icon_master.png" align="left" width="150" height="150" style="border-radius: 17%" alt="GardendlessLoader 图标">
+<img src="tool/generated_icons/app_icon_readme.png" width="128" height="128" alt="GardendlessLoader 图标">
+
+# GardendlessLoader
+
+**在手机和平板上畅玩 PvZ2 Gardendless**
+
+Android · iOS / iPadOS · HarmonyOS
 
 [![Build Artifacts](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml/badge.svg)](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/Dey410/GardendlessLoader?include_prereleases&sort=semver)](https://github.com/Dey410/GardendlessLoader/releases)
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/Dey410/GardendlessLoader)](https://github.com/Dey410/GardendlessLoader/commits/main)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-*让无花园在移动设备上继续生长。*
+[**下载应用**](https://github.com/Dey410/GardendlessLoader/releases) · [快速开始](#快速开始) · [使用指南](#使用指南) · [常见问题](#常见问题) · [问题反馈](https://github.com/Dey410/GardendlessLoader/issues)
 
-GardendlessLoader 是一款适用于 Android、iOS 和 HarmonyOS/OpenHarmony 的 `PvZ2 Gardendless` 本地资源加载器。
+**简体中文** · [English](README.en.md)
 
-想了解更多，请查看下方的[简介](#简介)；也可以直接前往[下载](https://github.com/Dey410/GardendlessLoader/releases)或[问题反馈](https://github.com/Dey410/GardendlessLoader/issues)。
+</div>
 
-[English](README.EN.md) | 中文
+---
 
-<br clear="left">
+[PvZ2 Gardendless](https://github.com/Gzh0821/pvzge_web) 是一款完全使用 Web 技术（包括 Cocos 引擎）重写的《植物大战僵尸 2》。**GardendlessLoader** 把它带到了移动设备上：导入一份游戏资源 ZIP，就能在系统原生 WebView 中直接从本地运行游戏，无需搭建服务器，也不用开着浏览器。
 
-## 简介
+## 功能亮点
 
-GardendlessLoader 是一个使用 Flutter 开发的本地资源加载器，可用于加载 [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web)，适用于 Android、iOS 和 HarmonyOS/OpenHarmony。
-
-该加载器支持符合 Gardendless Web 资源结构、且能够通过应用资源校验的标准 Cocos 构建与 GP-Next 构建。
-
-应用也支持导入面向移动设备优化的资源包，例如降低贴图分辨率、调整音频质量或修改部分加载逻辑的轻量版本。
-
-## 获取 GardendlessLoader
-
-你可以通过以下方式获取应用：
-
-1. **发布版本：** 前往 [GitHub Releases](https://github.com/Dey410/GardendlessLoader/releases) 下载最新发布版本。
-2. **自动构建：** 在 [GitHub Actions](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml) 中选择一次成功运行并下载对应平台产物。
-3. **从源代码构建：** 按照下方的 [构建说明](#构建) 操作。
-
-> [!NOTE]
-> iOS 自动构建产物未签名，需要自行签名后才能安装。
-> HarmonyOS/OpenHarmony HAP 仅在 CI 已配置对应命令行工具时生成，产物同样未签名，需要签名后才能安装。
-
-## 获取 Gardendless 资源包
-
-你可以通过以下方式获得可导入的资源包：
-
-- 使用面向移动设备优化的资源包：
-
-  1. 通过[夸克网盘](https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU)下载（提取码：`qLBU`，推荐）。通过此链接下载时，我可能获得少量网盘推广收益，用于支持开发。
-
-  2. 在 [extract-pvzge-gpnext](https://github.com/Dey410/extract-pvzge-gpnext) 中通过 GitHub Actions 自动构建 ZIP。该方式生成的资源包包含 GP-Next 和移动端优化内容。
-
-- 使用上游原版资源：前往 [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web)，点击 `Code` → `Download ZIP` 下载仓库压缩包。
+- 📦 **一键导入**：选好 ZIP，自动完成解压、校验和自检；也能在其他应用里直接用加载器打开 ZIP。
+- 🛡️ **安全更新**：A/B 双槽更新，新资源通过校验才会替换旧资源；导入失败或取消都不会影响当前版本。
+- 👆 **触屏适配**：单指、双指手势映射为鼠标操作，同时支持实体键盘和鼠标。
+- 🧩 **支持 GP-Next**：兼容 GP-Next 构建的补丁、Mod 安装与 JS Modding。
+- 🎛️ **画面可调**：自由调整渲染分辨率和画面比例，还能开启自动收集阳光、快速启动。
+- ⚡ **原生运行**：三个平台分别使用 WebView、WKWebView 和 ArkWeb，直接读取本地资源。
 
 ## 快速开始
 
-1. 从 [`PvZ2 Gardendless` 上游项目](https://github.com/Gzh0821/pvzge_web) 或其他可信来源获取 Web 资源 ZIP。
-2. 打开 GardendlessLoader，点击“选择 ZIP 导入”。
-3. 等待应用完成解压、校验和资源槽切换。
-4. 点击“开始游戏”，进入平台原生 GameHost。
+### 第一步：安装加载器
 
-更新资源时再次选择 ZIP 即可。新资源会写入空闲槽，只有通过校验和自检后才会成为激活资源。
+从 [GitHub Releases](https://github.com/Dey410/GardendlessLoader/releases) 下载对应平台的安装包：
 
-“开始游戏”右侧的独立箭头用于展开启动控件。标准资源只显示“自动收集”；检测到 JS Mod 加载器的兼容 GP-Next 资源还会显示“JS Modding”。每次进入 Loader 主页时面板默认收起，两项设置都从下一次启动游戏开始生效。
+| 平台 | 文件 | 系统要求 | 安装方式 |
+| --- | --- | --- | --- |
+| Android | `.apk` | Android 7.0+ | 直接安装，可能需要允许“安装未知应用” |
+| iOS / iPadOS | `.ipa` | iOS 15.0+ | 未签名，需用 AltStore 等侧载工具或自己的开发者证书签名后安装 |
+| HarmonyOS | `.hap` | HarmonyOS 5.0+ | 未签名，需自行签名后安装 |
 
-### 游戏内触摸操作
+想抢先体验开发中的版本？在 [GitHub Actions](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml) 中打开任意一次成功的运行，即可下载最新构建。
 
-| 操作 | 映射 |
+### 第二步：获取游戏资源
+
+加载器本身不包含任何游戏资源，请从以下任一渠道获取 ZIP：
+
+| 渠道 | 内容 | 获取方式 |
+| --- | --- | --- |
+| **夸克网盘**（推荐） | 移动端优化包 | [打开链接](https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU)，提取码 `qLBU` |
+| **extract-pvzge-gpnext** | 自动打包的 GP-Next 移动端优化包 | 在 [该仓库](https://github.com/Dey410/extract-pvzge-gpnext) 中运行 GitHub Actions |
+| **上游原版** | 官方原版 Web 资源 | 在 [PvZ2 Gardendless 仓库](https://github.com/Gzh0821/pvzge_web) 点击 `Code` → `Download ZIP` |
+
+> [!NOTE]
+> 网盘中的资源由加载器作者上传，与 PvZ2 Gardendless 官方无关，更新可能略晚于官方；如果迟迟没有更新，欢迎到 [B 站](https://space.bilibili.com/523667580)提醒。通过网盘链接下载时，作者可能获得少量推广收益，用于支持项目开发。
+
+### 第三步：导入并开始游戏
+
+1. 打开 GardendlessLoader，切换到 **资源** 页，点击 **选择 ZIP 导入**。
+2. 等待 **读取 → 解压 → 校验 → 自检** 四个步骤完成。
+3. 切换到 **游戏** 页，点击 **开始游戏**。🌻
+
+## 使用指南
+
+### 启动偏好
+
+在 **设置 → 启动偏好** 中调整，下次启动游戏时生效：
+
+| 选项 | 作用 |
+| --- | --- |
+| **快速启动** | 打开应用后直接进入游戏 |
+| **自动收集** | 游戏进行中约每 3 秒模拟按一次 `A` 键收集阳光；暂停、切到后台或正在输入文字时不会触发 |
+| **渲染分辨率** | 以屏幕原生分辨率的 100% / 75% / 50% 渲染；比例越低越省显存，画面也越模糊 |
+| **画面比例** | **均衡比例**（默认）裁掉少量画面以缩小黑边；**完整显示**保留全部画面，黑边更大；**强制拉伸**铺满屏幕，但画面可能变形 |
+| **游戏水印** | 在游戏画面角落显示加载器标识 |
+
+### 触摸操作
+
+| 手势 | 对应操作 |
 | --- | --- |
 | 单指轻点或拖动 | 鼠标左键点击或拖动 |
-| 双指轻点 | 在双指中心执行鼠标右键点击 |
-| 双指滑动 | 模拟鼠标滚轮 |
-| 三指及以上 | 取消当前触摸映射 |
-| 实体鼠标和键盘 | 交由系统 WebView 原生处理 |
+| 双指轻点 | 在两指中点执行鼠标右键点击 |
+| 双指滑动 | 鼠标滚轮 |
+| 三指及以上 | 取消当前触摸 |
+| 实体鼠标和键盘 | 由系统 WebView 原生处理 |
 
-在启动控件中启用“自动收集”后，应用会在游戏进行中约每 3 秒模拟一次 `A` 键；游戏暂停、应用进入后台或输入框获得焦点时不会触发。
+### 实用技巧
 
-“JS Modding”默认关闭，其选择由 Loader 持久化，重启应用或更新游戏资源后仍会保留。下一次启动兼容 GP-Next 资源时，Loader 会在 GP-Next 初始化前仅同步 `gp-next-settings` 中的 `experimental.jsModding`。JS Mod 会在游戏中执行代码，请只导入可信来源的 Mod。
+- **更新资源**：在 **资源** 页点击 **选择 ZIP 更新**。更新前建议先在游戏里导出存档备份。
+- **从其他应用导入**：在文件管理器、聊天软件中选择用 GardendlessLoader 打开 ZIP 即可导入；Android 和 iOS 还支持通过“分享”导入。游戏运行期间收到的 ZIP，会等你回到启动器后再导入。
+- **桌面快捷方式**：长按应用图标，可以直接选择 **开始游戏** 或 **导入资源**。
+- **返回启动器**：Android 和鸿蒙使用系统返回手势，iOS 从屏幕左边缘向右滑动，也可以点击游戏内的退出按钮。
 
-> [!IMPORTANT]
-> 本项目的界面、逻辑和平台适配中有部分内容借助人工智能工具完成，并持续通过代码审查、自动化测试和设备验收改进。
-> 若遇到异常，请附上诊断摘要提交问题反馈。
+### GP-Next 与 Mod
 
-### 本地资源结构
+- 存档导入导出、补丁和 Mod 安装都在游戏内完成，通过系统文件选择器选取文件。
+- ZIP Mod 请在 GP-Next 的模组页安装。模组平台启用后，补丁目录只接受 JSON/JSON5 单文件补丁。
+- ZIP 补丁包的 `pack.json` 可以放在压缩包根目录，也可以放在唯一的一层外层目录中；加载器会自动处理外层目录，并忽略 `.DS_Store` 与 `__MACOSX`。
+- JS Modding 的开关只在游戏内的 GP-Next 中设置，加载器不会读取或修改它，升级加载器后你的选择保持不变。
 
-应用会在平台私有目录中创建以下结构：
+> [!WARNING]
+> JS Mod 会在游戏中执行代码，请只安装来源可信的 Mod。
 
-```text
-GardendlessLoader/
-  slot-a/          # 资源槽 A
-  slot-b/          # 资源槽 B
-  gp-next/
-    packs/         # 持久化的 GP-Next ZIP 补丁包
-    patches/       # 持久化的 JSON/JSON5 单文件补丁
-  manifest.json    # 激活槽、事务状态、资源统计和游戏版本
-```
+## 常见问题
 
-常态下只有激活槽包含游戏文件。更新期间旧资源与候选资源最多各保留一份；候选槽通过校验后，清单才会原子切换，随后旧槽被清理。`gp-next` 位于双槽之外，因此更新游戏资源不会删除已导入的补丁和 Mod。
+<details>
+<summary><b>iOS 安装包为什么需要自己签名？</b></summary>
 
-GP-Next ZIP 补丁包既可以把 `pack.json` 直接放在压缩包根目录，也可以统一放在唯一的一层外壳目录中。对于后一种结构，Loader 会在内部副本中自动去掉这一层，并忽略 `.DS_Store` 与 `__MACOSX` 元数据；用户选择的原始文件不会被修改。存在多个候选目录、外壳之外还有无关文件或嵌套超过一层时会拒绝导入。
+<br>
 
-## 当前状态
+苹果要求 iOS 应用必须经过签名才能安装，而本仓库不包含任何签名文件，所以发布的 IPA 都是未签名的。你可以使用 AltStore 等侧载工具，或用自己的 Apple 开发者证书签名后安装。使用免费 Apple ID 签名的应用每 7 天需要重新签名一次。打包与签名的细节见 [iOS 部署说明](docs/deployment.md)。
 
-| 能力 | Android | iOS | HarmonyOS / OpenHarmony |
+</details>
+
+<details>
+<summary><b>更新资源会丢失存档吗？</b></summary>
+
+<br>
+
+不会。存档保存在游戏内，更新资源不会删除它。但新版本游戏可能会改写存档，出错时也有可能损坏存档，所以更新前最好先在游戏里导出一份备份。已安装的补丁和 Mod 也不会因为更新资源而丢失。
+
+</details>
+
+<details>
+<summary><b>游戏卡顿、发热或者闪退怎么办？</b></summary>
+
+<br>
+
+先尝试在 **设置 → 启动偏好** 中把 **渲染分辨率** 调到 75% 或 50%，这能明显减少显存占用。也推荐改用移动端优化包，它降低了贴图分辨率并调整了音频质量，更适合手机和平板。
+
+</details>
+
+<details>
+<summary><b>画面有黑边，或者边缘被裁掉了？</b></summary>
+
+<br>
+
+在 **设置 → 启动偏好 → 画面比例** 中切换：**均衡比例**在黑边和完整画面之间取得平衡；**完整显示**不裁切任何画面；**强制拉伸**没有黑边，但画面可能变形。
+
+</details>
+
+<details>
+<summary><b>游戏中的图片显示不出来？</b></summary>
+
+<br>
+
+部分 HarmonyOS/ArkWeb 版本无法解码 AVIF 图片。请改用已经把图片转换为兼容格式的移动端优化包。
+
+</details>
+
+<details>
+<summary><b>导入失败了怎么办？</b></summary>
+
+<br>
+
+导入失败或中途取消都不会影响当前已导入的资源。请确认 ZIP 是完整的 Gardendless Web 资源，再根据界面上的错误提示处理。如果问题仍然存在，欢迎[反馈问题](#问题反馈)。
+
+</details>
+
+<details>
+<summary><b>支持哪些资源包和 GP-Next 版本？</b></summary>
+
+<br>
+
+支持符合 Gardendless Web 资源结构、并能通过校验的标准 Cocos 构建、GP-Next 构建，以及各种移动端轻量包。加载器会检测入口脚本及其引用的本地 `gp-next-*.js` 模块中的关键特征来判断 GP-Next 兼容性，而不是硬编码版本号；桥接层实现的是 GP-Next 0.15 所用的命令，如果后续版本修改了通信协议，即使检测通过也不能保证完全兼容。
+
+</details>
+
+<details>
+<summary><b>为什么加载器不直接内置游戏？</b></summary>
+
+<br>
+
+GardendlessLoader 只负责加载和运行，不会代为下载或分发游戏资源。游戏资源属于上游项目，请从上文列出的渠道获取。
+
+</details>
+
+## 平台支持
+
+| 功能 | Android | iOS | HarmonyOS / OpenHarmony |
 | --- | :---: | :---: | :---: |
 | ZIP 导入与资源校验 | ✅ | ✅ | ✅ |
 | 原生 GameHost | ✅ WebView | ✅ WKWebView | ✅ ArkWeb |
 | A/B 双槽更新与恢复 | ✅ | ✅ | ✅ |
-| 触摸、键鼠与游戏桥 | ✅ | ✅ | ✅ |
+| 触摸、键鼠与游戏桥接 | ✅ | ✅ | ✅ |
 | GP-Next 桥接与补丁导入 | ✅ | ✅ | ✅ |
-| GP-Next JS Modding 启动开关 | ✅ | ✅ | ✅ |
-| CI 构建产物 | APK | 未签名 IPA | 未签名 HAP |
+| GP-Next 0.15 ZIP / 文件夹 Mod 安装 | ✅ | ✅ | ✅ |
+| 游戏内管理 JS Modding | ✅ | ✅ | ✅ |
+| CI 构建产物 | APK | 未签名 IPA | 未签名 HAP（视 CI 配置） |
 
-> [!NOTE]
-> 仓库只包含 Android、iOS 和 HarmonyOS/OpenHarmony 三个受维护的平台工程。
-> 部分 HarmonyOS/ArkWeb 版本可能无法解码 AVIF 资源；遇到图片显示异常时，请使用已转换为兼容图片格式的移动端资源包。
+**已知限制**
 
-## 已知限制
+- 不同系统 WebView 在媒体、音频和输入方面的表现可能存在差异。
+- HarmonyOS 的构建与设备兼容性取决于 OpenHarmony Flutter SDK 和 DevEco 工具链。
+- iOS 的高刷新率支持依赖 WebKit 私有 SPI，仅适用于侧载安装，可能随系统更新失效，也无法保证通过 App Store 审核。
 
-- 应用不会代替用户下载或分发游戏资源，使用前必须手动导入 ZIP。
-- GP-Next 兼容性依据所需功能模块的指纹进行检测，不按版本号硬编码；已通过检测不代表所有功能都能兼容后续版本。
-- HarmonyOS 的构建和设备兼容性取决于 OpenHarmony Flutter SDK 与 DevEco 工具链。
-- 不同系统 WebView 的媒体、音频和输入行为可能存在平台差异。
-- iOS 高刷新率兼容使用 WebKit 私有 SPI，仅适合侧载构建，可能随系统更新失效，也可能无法通过 App Store 审核。详情见 [iOS 部署说明](docs/deployment.md)。
+## 问题反馈
 
-如果你发现新的问题，请在提交前搜索 [Issue Tracker](https://github.com/Dey410/GardendlessLoader/issues)，并附上应用中的“诊断摘要”。
+遇到问题时，请先搜索已有的 [Issues](https://github.com/Dey410/GardendlessLoader/issues)，没有找到再提交新问题，并附上以下信息：
 
-## 构建
+- [ ] 设备型号与系统版本
+- [ ] 加载器版本与游戏资源版本
+- [ ] 问题的复现步骤
+- [ ] 诊断信息：在应用 **日志** 页点击 **复制诊断** 后粘贴
 
-### 环境要求
+请不要上传或附带游戏资源包。项目介绍和使用教程可以在作者的 [哔哩哔哩主页](https://space.bilibili.com/523667580) 找到。
 
-- Flutter `3.41.9`（与当前 CI 一致）
+## 参与开发
+
+GardendlessLoader 使用 Flutter 编写启动器界面，并为每个平台实现了原生 GameHost。欢迎提交代码、文档、错误报告和功能建议。
+
+<details>
+<summary><b>构建环境与命令</b></summary>
+
+<br>
+
+**环境要求**
+
+- Flutter `3.41.9`（与 CI 保持一致）
 - Dart `>=3.5.0 <4.0.0`
-- Android 构建需要 JDK 17
-- iOS 构建需要 macOS、Xcode 和 CocoaPods
-- HarmonyOS 构建需要兼容版 Flutter SDK、DevEco 命令行工具和 JDK 17
+- Android：JDK 17
+- iOS：macOS、Xcode 与 CocoaPods
+- HarmonyOS：OpenHarmony 版 Flutter SDK、DevEco 命令行工具与 JDK 17
 
-克隆并运行测试：
+**克隆并检查**
 
-```powershell
+```bash
 git clone https://github.com/Dey410/GardendlessLoader.git
-Set-Location GardendlessLoader
+cd GardendlessLoader
 flutter pub get
 flutter analyze
-flutter test
 ```
 
-### Android
+**Android**
 
-```powershell
+```bash
 flutter build apk --release
 ```
 
-APK 默认输出到 `build/app/outputs/flutter-apk/app-release.apk`。
+产物位于 `build/app/outputs/flutter-apk/app-release.apk`。
 
-### iOS
-
-生成未签名的 Release 构建：
+**iOS**
 
 ```bash
 cd ios
@@ -161,66 +253,89 @@ cd ..
 flutter build ios --release --no-codesign
 ```
 
-默认产物为 `build/ios/iphoneos/Runner.app`。安装或分发前需要自行签名；完整的未签名 IPA 打包流程见 [iOS 部署说明](docs/deployment.md)。如果本机已经配置 Apple 开发者签名，也可以运行 `flutter build ios --release` 生成签名构建。
+产物位于 `build/ios/iphoneos/Runner.app`，安装或分发前需要签名；打包未签名 IPA 的流程见 [iOS 部署说明](docs/deployment.md)。如果本机已配置 Apple 开发者签名，可以直接运行 `flutter build ios --release`。
 
-### HarmonyOS / OpenHarmony
+**HarmonyOS / OpenHarmony**
 
-官方 Flutter stable SDK 不提供 `flutter build hap`。本项目 CI 使用以下 OpenHarmony Flutter SDK：
+官方 Flutter stable SDK 不支持 `flutter build hap`，CI 使用的是 OpenHarmony Flutter SDK：
 
 ```text
 https://gitcode.com/openharmony-tpc/flutter_flutter.git
 ref: oh-3.35.7-release
 ```
 
-本地构建前启用 OpenHarmony 依赖覆盖：
+本地构建前先启用 OpenHarmony 依赖覆盖：
 
-```powershell
-Copy-Item pubspec_overrides.ohos.yaml pubspec_overrides.yaml
+```bash
+cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
 flutter doctor -v
 flutter pub get
-flutter test
 flutter build hap --release --target-platform ohos-arm64
 ```
 
+</details>
+
+<details>
+<summary><b>资源存储与更新机制</b></summary>
+
+<br>
+
+应用会在平台私有目录中创建如下结构：
+
+```text
+GardendlessLoader/
+  slot-a/          # 资源槽 A
+  slot-b/          # 资源槽 B
+  gp-next/         # 由 GP-Next 首次启动时创建
+    configuration-state.json  # GP-Next 模组配置
+    installed/     # 在模组页安装的 Mod，按内容摘要存放
+    patches/       # JSON/JSON5 单文件补丁
+    packs/         # 旧式 ZIP 补丁包，仅在 GP-Next 迁移前读取
+  manifest.json    # 激活槽、事务状态、资源统计与游戏版本
+```
+
+- **双槽更新**：平时只有激活槽中存放游戏文件。更新时，新资源写入空闲槽，通过校验和自检后，`manifest.json` 才会原子地切换到新槽，随后清理旧槽，所以最多同时保留新旧两份资源。
+- **补丁与 Mod 独立存放**：`gp-next/` 位于两个资源槽之外，更新游戏资源不会删除它。
+- **`gp-next/` 由 GP-Next 自行创建**：GP-Next 会把已存在的 `gp-next` 目录视为旧式安装，因此加载器不会预先创建它。全新安装会直接进入 GP-Next 的模组平台，已有的旧式目录则通过 GP-Next 的“更新模组管理”升级。
+- **ZIP 补丁包的外层目录**：加载器只在内部副本中去掉外层目录，你选择的原始文件不会被修改。如果包含多个候选目录、外层目录之外还有其他文件，或嵌套超过一层，导入会被拒绝。
+
+</details>
+
+**贡献流程**
+
+1. Fork 本仓库，并基于最新的 `main` 分支创建功能分支。
+2. Dart 代码使用两空格缩进和单引号。
+3. 修改后运行 `dart format lib` 与 `flutter analyze`，然后构建受影响的平台并在真机上验证。项目目前不包含 Flutter 单元测试和组件测试。
+4. 提交 Pull Request，说明改动内容和验证方式；界面改动请附上截图或录屏。
+
+请保持现有的安全边界：资源路径只能限定在激活槽内、A/B 槽必须原子切换、WebView 默认拦截白名单之外的请求。
+
 ## 路线图
 
-项目目前重点关注：
+- [ ] 提升三个平台原生 GameHost 的一致性、稳定性和性能
+- [ ] 改善大体积资源包的导入进度显示、错误提示和失败恢复
+- [ ] 兼容更新版本的 GP-Next，优化移动端的文件操作流程
+- [ ] 完善自动化检查、发布产物和真机验收流程
 
-- 提升三平台原生 GameHost 的一致性、稳定性和性能；
-- 改善大体积资源包的导入进度、错误说明和恢复体验；
-- 扩展对新版 GP-Next 的兼容与移动端文件工作流；
-- 完善自动化测试、发布产物和设备验收流程。
+欢迎在 [Issues](https://github.com/Dey410/GardendlessLoader/issues) 中提出建议、参与讨论。
 
-欢迎在 [Issue Tracker](https://github.com/Dey410/GardendlessLoader/issues) 中提交建议并参与讨论。
+## 许可证与声明
 
-## 贡献
+GardendlessLoader 基于 [GNU General Public License v3.0](LICENSE) 开源。在遵守许可证条款的前提下，你可以自由使用、研究、修改和再分发本项目。
 
-欢迎提交代码、文档、测试、错误报告和功能建议。
-
-1. Fork 本仓库并从最新主分支创建功能分支。
-2. 保持 Dart 两空格缩进和单引号风格。
-3. 修改后运行 `dart format lib test`、`flutter analyze` 和 `flutter test`。
-4. 提交 Pull Request，说明改动内容、验证方式，并为 UI 变化附上截图或录屏。
-
-提交代码时，请继续遵守资源路径限制、A/B 槽原子切换以及 WebView 非白名单请求默认阻止等安全边界。
-
-## 支持
-
-- 错误报告与功能建议：[GitHub Issues](https://github.com/Dey410/GardendlessLoader/issues)
-- 源代码与版本发布：[GitHub 仓库](https://github.com/Dey410/GardendlessLoader)
-- 项目介绍与教程：[哔哩哔哩主页](https://space.bilibili.com/523667580)
-
-反馈运行问题时，请说明设备型号、系统版本、应用版本和资源版本，并粘贴应用提供的诊断摘要。请勿上传或附带游戏资源包。
-
-## 许可证
-
-GardendlessLoader 使用 [GNU General Public License v3.0](LICENSE) 开源。你可以在遵守许可证条款的前提下使用、研究、修改和再分发本项目。
-
-游戏资源、上游项目以及第三方组件仍分别受其自身许可证约束；本仓库的 GPL-3.0 许可证不代表对这些内容授予额外权利。
+- 游戏资源、上游项目和第三方组件仍受各自许可证约束，本仓库的 GPL-3.0 许可证不对它们授予任何额外权利。
+- 《植物大战僵尸》（Plants vs. Zombies）是 Electronic Arts Inc. 的商标。GardendlessLoader 是非官方项目，与 Electronic Arts 和 PopCap Games 均无关联。
+- 本项目的部分界面、逻辑和平台适配借助 AI 工具完成，并通过代码审查、自动化检查和真机验收持续改进。
 
 ## 致谢
 
-- [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web)：本加载器所服务的上游 Web 项目。
-- [Flutter](https://flutter.dev/) 与 Dart：跨平台启动器界面和业务层。
-- Android WebView、Apple WebKit 与 HarmonyOS ArkWeb：各平台原生 GameHost 基础。
-- 所有提交代码、测试、问题反馈和使用建议的贡献者。
+- [PvZ2 Gardendless](https://github.com/Gzh0821/pvzge_web)：本加载器所服务的上游游戏项目。
+- [Flutter](https://flutter.dev/) 与 Dart：跨平台启动器界面与业务逻辑。
+- Android WebView、Apple WebKit 与 HarmonyOS ArkWeb：各平台原生 GameHost 的基础。
+- 每一位贡献代码、参与测试、反馈问题和提出建议的朋友。
+
+<div align="center">
+
+<sub>如果这个项目对你有帮助，欢迎点一个 ⭐ Star 支持一下！</sub>
+
+</div>

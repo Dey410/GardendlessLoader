@@ -89,3 +89,29 @@ final class PathSandboxTests: XCTestCase {
     XCTAssertTrue(first.etag.hasSuffix("\""))
   }
 }
+
+/// These tests retain any fixtures and never execute directory cleanup.
+final class ReservedMetadataPathsTests: XCTestCase {
+  func testRejectsPackageNamespaceAfterURLDecoding() throws {
+    let sandbox = try PathSandbox(root: URL(fileURLWithPath: "/private/tmp", isDirectory: true))
+    for path in [
+      "/__gardendless/package", "/__gardendless/package/manifest.json",
+      "/__gardendless%2Fpackage%2Ffile-index.json", "/__GARDENDLESS/Package/manifest.json",
+    ] {
+      let url = try XCTUnwrap(URL(string: "gardendless-game://localhost" + path))
+      XCTAssertNil(sandbox.relativePath(for: url), path)
+    }
+    XCTAssertEqual(sandbox.relativePath(for: URL(string: "gardendless-game://localhost/__gardendless/package-image.png")!),
+                   "__gardendless/package-image.png")
+  }
+
+  func testDirectResolutionDoesNotExposeAnExistingManifest() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("gardendless-metadata-retained-\(UUID().uuidString)")
+    let metadata = root.appendingPathComponent("__gardendless/package", isDirectory: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    try Data("{}".utf8).write(to: metadata.appendingPathComponent("manifest.json"))
+    let sandbox = try PathSandbox(root: root)
+    XCTAssertNil(sandbox.resolve("__gardendless/package/manifest.json"))
+  }
+}

@@ -8,20 +8,13 @@ public final class GpNextPackageImporter {
     self.gpNextRoot = gpNextRoot
   }
 
-  public func importPackages(
-    from urls: [URL],
-    confirmReplacement: (String) -> Bool
-  ) throws {
-    for url in urls {
-      _ = try importPackage(url, confirmReplacement: confirmReplacement)
-    }
-  }
-
   @discardableResult
   public func importPackage(
     _ source: URL,
+    isCancelled: () -> Bool = { false },
     confirmReplacement: (String) -> Bool
   ) throws -> String {
+    guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
     let accessed = source.startAccessingSecurityScopedResource()
     defer {
       if accessed {
@@ -33,6 +26,16 @@ public final class GpNextPackageImporter {
     let destinationDirectory: URL
     switch ext {
     case "zip":
+      // Only GP-Next's legacy runtime reads packs/; its mod platform installs
+      // ZIP mods from its own picker once configuration-state.json exists.
+      guard !FileManager.default.fileExists(
+        atPath: gpNextRoot.appendingPathComponent("configuration-state.json").path
+      ) else {
+        throw GameError.failed(
+          .gpNextForbidden,
+          "GP-Next 已启用新版模组管理，请在 GP-Next 模组页安装 ZIP 模组"
+        )
+      }
       destinationDirectory = gpNextRoot.appendingPathComponent(
         "packs",
         isDirectory: true
@@ -88,6 +91,7 @@ public final class GpNextPackageImporter {
         && !confirmReplacement(name) {
       return name
     }
+    guard !isCancelled() else { throw GameError.failed(.gpNextUnavailable, "Game host is destroyed") }
     let backup = destinationDirectory.appendingPathComponent(
       ".\(name).backup-\(UUID().uuidString)"
     )

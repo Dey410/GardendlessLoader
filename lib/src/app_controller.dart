@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -9,96 +10,50 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'constants.dart';
 import 'game_host/game_host.dart';
 import 'game_host/game_session_store.dart';
+import 'l10n/app_strings.dart';
 import 'logging/app_logger.dart';
+import 'logging/log_event_catalog.dart';
 import 'models.dart';
 import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
 import 'services/app_paths_service.dart';
 import 'services/app_settings_store.dart';
 import 'services/diagnostics_service.dart';
+import 'services/garden_journal.dart';
 import 'services/game_update_check_service.dart';
 import 'services/import_service.dart';
 import 'services/import_progress_meter.dart';
 import 'services/manifest_store.dart';
 import 'services/resource_validator.dart';
 import 'services/resource_picker_service.dart';
+import 'services/shortcut_service.dart';
 import 'services/update_check_service.dart';
-
-typedef ImportAwakeModeSetter = Future<void> Function(bool enabled);
-typedef ImportAwakeModeGetter = Future<bool> Function();
-typedef ImportCompletionTimerFactory = Timer Function(
-  Duration duration,
-  void Function() callback,
-);
 
 //AppController 是整个应用的核心控制器，负责管理应用的状态、处理业务逻辑，并与 UI 进行交互。它使用 ChangeNotifier 来通知 UI 更新。
 class AppController extends ChangeNotifier {
-  AppController({
-    AppPathsService? pathsService,
-    ResourceValidator? validator,
-    ImportService? importService,
-    GameHost? gameHost,
-    GameHostPlatform? gameHostPlatform,
-    String Function()? gameSessionIdFactory,
-    AppLogger? appLogger,
-    DiagnosticsService? diagnosticsService,
-    AnnouncementService? announcementService,
-    AboutContentService? aboutContentService,
-    UpdateCheckService? updateCheckService,
-    GameUpdateCheckService? gameUpdateCheckService,
-    ResourcePickerService? resourcePickerService,
-    ImportAwakeModeGetter? importAwakeModeGetter,
-    ImportAwakeModeSetter? importAwakeModeSetter,
-    ImportCompletionTimerFactory? importCompletionTimerFactory,
-    Duration importCompletionVisibilityDuration = const Duration(seconds: 2),
-    Duration importProgressTickInterval = const Duration(seconds: 1),
-  })  : _pathsService = pathsService ?? AppPathsService(),
-        _validator = validator ?? ResourceValidator(),
-        _gameHost = gameHost ?? GameHostRouter.platformChannel(),
-        _gameHostPlatform = gameHostPlatform,
-        _gameSessionIdFactory = gameSessionIdFactory ?? _newGameSessionId,
-        _appLogger = appLogger,
-        _diagnosticsService = diagnosticsService ?? DiagnosticsService(),
-        _announcementService = announcementService ?? AnnouncementService(),
-        _aboutContentService = aboutContentService ?? AboutContentService(),
-        _updateCheckService = updateCheckService ?? UpdateCheckService(),
-        _gameUpdateCheckService =
-            gameUpdateCheckService ?? GameUpdateCheckService(),
-        _resourcePickerService =
-            resourcePickerService ?? ResourcePickerService(),
-        _importAwakeModeGetter =
-            importAwakeModeGetter ?? _defaultImportAwakeModeGetter,
-        _importAwakeModeSetter =
-            importAwakeModeSetter ?? _defaultImportAwakeModeSetter,
-        _importCompletionTimerFactory =
-            importCompletionTimerFactory ?? Timer.new,
-        _importCompletionVisibilityDuration =
-            importCompletionVisibilityDuration,
-        _importProgressTickInterval = importProgressTickInterval {
-    _importService = importService ??
-        ImportService(
-          validator: _validator,
-          gameUpdateCheckService: _gameUpdateCheckService,
-        );
+  AppController({required AppLogger appLogger}) : _appLogger = appLogger {
+    _importService = ImportService(validator: _validator);
+    _resourcePickerService.onIncomingZip = (name) {
+      _incomingZipName = name;
+      notifyListeners();
+    };
+    _shortcutService.onShortcut = (shortcut) {
+      _pendingShortcut = shortcut;
+      notifyListeners();
+    };
   }
 
-  final AppPathsService _pathsService;
-  final ResourceValidator _validator;
-  final GameHost _gameHost;
-  final GameHostPlatform? _gameHostPlatform;
-  final String Function() _gameSessionIdFactory;
-  final AppLogger? _appLogger;
-  final DiagnosticsService _diagnosticsService;
-  final AnnouncementService _announcementService;
-  final AboutContentService _aboutContentService;
-  final UpdateCheckService _updateCheckService;
-  final GameUpdateCheckService _gameUpdateCheckService;
-  final ResourcePickerService _resourcePickerService;
-  final ImportAwakeModeGetter _importAwakeModeGetter;
-  final ImportAwakeModeSetter _importAwakeModeSetter;
-  final ImportCompletionTimerFactory _importCompletionTimerFactory;
-  final Duration _importCompletionVisibilityDuration;
-  final Duration _importProgressTickInterval;
+  final AppPathsService _pathsService = AppPathsService();
+  final ResourceValidator _validator = ResourceValidator();
+  final MethodChannelGameHost _gameHost = const MethodChannelGameHost();
+  final AppLogger _appLogger;
+  final AnnouncementService _announcementService = AnnouncementService();
+  final AboutContentService _aboutContentService = AboutContentService();
+  final UpdateCheckService _updateCheckService = UpdateCheckService();
+  final GameUpdateCheckService _gameUpdateCheckService =
+      GameUpdateCheckService();
+  final ResourcePickerService _resourcePickerService = ResourcePickerService();
+  final ShortcutService _shortcutService = ShortcutService();
   late final ImportService _importService;
   ImportProgressMeter? _importProgressMeter;
   Timer? _importCompletionTimer;
@@ -110,6 +65,8 @@ class AppController extends ChangeNotifier {
 
   AppPaths? _paths;
   AppSettingsStore? _appSettingsStore;
+  GardenJournalStore? _journalStore;
+  GardenJournal _journal = const GardenJournal();
   ManifestStore? _manifestStore;
   GameSessionStore? _gameSessionStore;
   ResourceManifest _manifest = ResourceManifest.initial();
@@ -119,8 +76,10 @@ class AppController extends ChangeNotifier {
     '尚未选择 ZIP',
   );
   ImportProgress _importProgress = ImportProgress.idle;
-  Directory? _selectedImportSource;
   Announcement? _announcement;
+  SeasonalTheme? _seasonalTheme;
+  ({String from, String to})? _versionUpgrade;
+  int _importTipIndex = 0;
   AboutContent _aboutContent = localFallbackAboutContent;
   UpdateInfo? _availableUpdate;
   GameUpdateInfo? _availableGameUpdate;
@@ -128,85 +87,99 @@ class AppController extends ChangeNotifier {
   String? _deferredGameUpdateTagName;
   String _currentAppVersion = appVersion;
   String? _currentGameVersion;
+  String? _latestAppVersion;
   String? _latestGameVersion;
   bool _currentGameVersionIsAhead = false;
   bool _appUpdateDetected = false;
   bool _gameUpdateDetected = false;
   bool _updateCheckInProgress = false;
-  bool _watermarkEnabled = true;
-  bool _detailedAudioDiagnosticsEnabled = false;
+  AppSettings _appSettings = const AppSettings();
   bool _initialized = false;
   bool _busy = false;
-  String? _message;
+  LauncherMessage? _message;
+  String? _incomingZipName;
+  LauncherShortcut? _pendingShortcut;
   AppLogSnapshot? _logSnapshot;
   bool _logSnapshotLoading = false;
 
   bool get initialized => _initialized;
   bool get busy => _busy;
-  String? get message => _message;
+  LauncherMessage? get message => _message;
+
+  /// Name of a ZIP another app opened or shared with the loader, waiting for
+  /// the user to import or dismiss it.
+  String? get incomingZipName => _incomingZipName;
+
+  /// A home-screen shortcut waiting for the launcher to act on it.
+  LauncherShortcut? get pendingShortcut => _pendingShortcut;
+
+  LauncherShortcut? takeShortcut() {
+    final shortcut = _pendingShortcut;
+    _pendingShortcut = null;
+    return shortcut;
+  }
+
   AppLogSnapshot? get logSnapshot => _logSnapshot;
   bool get logSnapshotLoading => _logSnapshotLoading;
-  AppPaths? get paths => _paths;
   ResourceManifest get manifest => _manifest;
-  ResourceValidationResult get currentValidation => _currentValidation;
-  ResourceValidationResult get importValidation => _importValidation;
   ImportProgress get importProgress => _importProgress;
-  Directory? get selectedImportSource => _selectedImportSource;
   Announcement? get announcement => _announcement;
+
+  /// The remote seasonal theme, while today is within its dates.
+  SeasonalTheme? get seasonalTheme =>
+      _seasonalTheme?.isActiveOn(DateTime.now()) == true
+          ? _seasonalTheme
+          : null;
+
+  /// Play time and the version rings, kept on this device only.
+  GardenJournal get journal => _journal;
+
+  /// The game versions of the last import, while its completion shows and
+  /// only when it moved the game to a newer version.
+  ({String from, String to})? get versionUpgrade => _versionUpgrade;
+
+  /// One tip shown while the current import runs.
+  String get importTip => AppStrings.current.importTips[_importTipIndex];
   AboutContent get aboutContent => _aboutContent;
   UpdateInfo? get availableUpdate => _availableUpdate;
   GameUpdateInfo? get availableGameUpdate => _availableGameUpdate;
   String get currentAppVersion => _currentAppVersion;
+  String? get latestAppVersion => _latestAppVersion;
   String? get currentGameVersion => _currentGameVersion;
   String? get latestGameVersion => _latestGameVersion;
   bool get updateCheckInProgress => _updateCheckInProgress;
-  bool get watermarkEnabled => _watermarkEnabled;
-  bool get detailedAudioDiagnosticsEnabled => _detailedAudioDiagnosticsEnabled;
+  bool get watermarkEnabled => _appSettings.watermarkEnabled;
+  bool get quickLaunchEnabled => _appSettings.quickLaunchEnabled;
+  RenderResolution get renderResolution => _appSettings.renderResolution;
+  ScreenFit get screenFit => _appSettings.screenFit;
+  bool get detailedAudioDiagnosticsEnabled =>
+      _appSettings.detailedAudioDiagnosticsEnabled;
+  ThemePreference get themePreference => _appSettings.themePreference;
+  LanguagePreference get languagePreference => _appSettings.languagePreference;
+  bool get reduceMotion => _appSettings.reduceMotion;
+  bool get toolShedUnlocked => _appSettings.toolShedUnlocked;
+  bool get touchDiagnosticsEnabled => _appSettings.touchDiagnosticsEnabled;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
-  GameHostPlatform get gameHostPlatform {
-    final configured = _gameHostPlatform;
-    if (configured != null) {
-      return configured;
-    }
-    try {
-      return GameHostPlatform.current();
-    } on UnsupportedError {
-      GameHostPlatform? testFallback;
-      assert(() {
-        testFallback = GameHostPlatform.android;
-        return true;
-      }());
-      if (testFallback != null) {
-        return testFallback!;
-      }
-      rethrow;
-    }
-  }
+  GameHostPlatform get gameHostPlatform => GameHostPlatform.current();
 
   bool get isImporting =>
       _importProgress.phase != ImportPhase.idle &&
       _importProgress.phase != ImportPhase.completed &&
       _importProgress.phase != ImportPhase.failed;
   bool get hasCurrentResource => _currentValidation.isValid;
-  bool get hasGpNext =>
-      hasCurrentResource &&
-      (_currentValidation.isValid
-          ? _currentValidation.hasGpNext
-          : _manifest.hasGpNext);
-  bool get gpNextCompatible =>
-      hasGpNext &&
-      (_currentValidation.isValid
-          ? _currentValidation.gpNextCompatible
-          : _manifest.gpNextCompatible);
+  bool get hasGpNext => hasCurrentResource && _currentValidation.hasGpNext;
+  bool get gpNextCompatible => hasGpNext && _currentValidation.gpNextCompatible;
   String? get gpNextVersion =>
       _currentValidation.gpNextVersion ?? _manifest.gpNextVersion;
   String? get gpNextCompatibilityError =>
       _currentValidation.gpNextCompatibilityError ??
       _manifest.gpNextCompatibilityError;
-  bool get hasValidImportSource => _importValidation.isValid;
   bool get canStartGame => hasCurrentResource;
+
   String get detectedTitle =>
-      _currentValidation.detectedTitle ?? _manifest.detectedTitle ?? '未检测到标题';
+      _currentValidation.detectedTitle ??
+      _manifest.detectedTitle ??
+      AppStrings.current.noTitleDetected;
   //返回一个适合在 UI 中显示的资源根目录名称。如果路径信息不可用，则返回一个默认的资源文件夹名称。
   String get userVisibleRoot {
     final root = _paths?.root;
@@ -216,18 +189,11 @@ class AppController extends ChangeNotifier {
     return '${root.parent.path}${Platform.pathSeparator}${p.basename(root.path)}';
   }
 
-  String get userVisibleImportDocs {
-    final selected = _selectedImportSource;
-    if (selected != null) {
-      return selected.path;
-    }
-    return '尚未选择 ZIP';
-  }
-
   //initialize 方法负责初始化应用的核心状态，包括加载路径信息、读取资源清单、恢复未完成的导入事务，并刷新公告信息。它会在整个过程中更新 busy 状态和 message，以便 UI 可以显示加载状态和错误信息。
   Future<void> initialize() async {
     _busy = true;
     notifyListeners();
+    var quickLaunch = false;
     try {
       Future<void> initializeCore() async {
         _emitInitializationStage('paths');
@@ -237,10 +203,18 @@ class AppController extends ChangeNotifier {
         final exitResult = await _gameSessionStore!.consumeExitResult();
         _emitInitializationStage('settings');
         _appSettingsStore = AppSettingsStore(_paths!.appSettingsFile);
-        final appSettings = await _appSettingsStore!.read();
-        _watermarkEnabled = appSettings.watermarkEnabled;
-        _detailedAudioDiagnosticsEnabled =
-            appSettings.detailedAudioDiagnosticsEnabled;
+        _appSettings = await _appSettingsStore!.read();
+        _applyLanguage(_appSettings.languagePreference);
+        _journalStore = GardenJournalStore(_paths!.journalFile);
+        _journal = await _journalStore!.read();
+        if (exitResult != null &&
+            exitResult.reason != GameExitReason.launchFailed &&
+            exitResult.playedMs > 0) {
+          await _saveJournal(_journal.recordPlay(
+            finishedAt: exitResult.finishedAt,
+            playedMs: exitResult.playedMs,
+          ));
+        }
         _emitInitializationStage('manifest');
         _manifestStore = ManifestStore(_paths!.manifestFile);
         _manifest = await _manifestStore!.read();
@@ -249,7 +223,7 @@ class AppController extends ChangeNotifier {
         final recoveryOperationId =
             interruptedTransaction ? _newOperationId('import-recovery') : null;
         if (interruptedTransaction) {
-          _appLogger?.emit(
+          _appLogger.emit(
             level: LogLevel.warn,
             category: 'resource.import',
             event: 'import_transaction_recovery_started',
@@ -267,7 +241,7 @@ class AppController extends ChangeNotifier {
             manifestStore: _manifestStore!,
           );
           if (interruptedTransaction) {
-            _appLogger?.emit(
+            _appLogger.emit(
               level: LogLevel.info,
               category: 'resource.import',
               event: 'import_transaction_recovery_finished',
@@ -284,7 +258,7 @@ class AppController extends ChangeNotifier {
             );
           }
         } catch (error, stackTrace) {
-          _appLogger?.emit(
+          _appLogger.emit(
             level: LogLevel.error,
             category: 'resource.import',
             event: 'import_transaction_recovery_finished',
@@ -297,36 +271,56 @@ class AppController extends ChangeNotifier {
           rethrow;
         }
         _emitInitializationStage('diagnostics');
-        await _diagnosticsService.initialize();
         await _loadCurrentAppVersion();
         _emitInitializationStage('resource_validation');
         await refresh();
+        // The rings begin with the resource imported before they existed.
+        if (_journal.imports.isEmpty &&
+            hasCurrentResource &&
+            _manifest.lastImportAt != null) {
+          await _saveJournal(_journal.recordImport(_importRecord()));
+        }
+        _incomingZipName = await _resourcePickerService.incomingZipName();
+        _pendingShortcut = await _shortcutService.take();
+        await _shortcutService.publish(AppStrings.current);
         if (_manifest.transactionState == TransactionState.cleaningOldSlot) {
-          _message = '游戏资源可用，旧槽清理将在下次启动重试';
+          _message = _failureMessage('old_slot_cleanup_failed', null);
         } else if (interruptedTransaction) {
-          _message = '上次导入意外中断，已清理未完成文件';
+          _message = _failureMessage('import_interrupted', null);
         } else if (exitResult?.reason == GameExitReason.rendererGone) {
-          _message = exitResult?.message ?? '游戏渲染进程已退出';
+          _message = _failureMessage(
+            exitResult?.code ?? 'webview_render_process_gone',
+            exitResult?.message,
+          );
         } else if (exitResult?.reason == GameExitReason.launchFailed) {
-          _message = exitResult?.message ?? '原生游戏宿主启动失败';
+          _message = _failureMessage(
+            exitResult?.code ?? 'game_host_launch_failed',
+            exitResult?.message,
+          );
         }
         _initialized = true;
+        // Every game exit leaves an exit result, so only a cold start skips
+        // the launcher; returning from the game always shows it.
+        quickLaunch = exitResult == null &&
+            _incomingZipName == null &&
+            _pendingShortcut == null &&
+            _appSettings.quickLaunchEnabled &&
+            canStartGame;
       }
 
-      final operation = _appLogger?.startOperation(
+      final operation = _appLogger.startOperation(
         operationId: 'app-initialize',
         category: 'app.lifecycle',
         startedEvent: 'app_initialization_started',
         finishedEvent: 'app_initialization_finished',
         failureCode: 'app_initialization_failed',
       );
-      if (operation == null) {
-        await initializeCore();
-      } else {
-        await operation.run(initializeCore);
+      await operation.run(initializeCore);
+      if (quickLaunch) {
+        await startGame();
       }
     } catch (error) {
-      _message = '启动失败：$error';
+      _message = _failureMessage('app_initialization_failed', '$error');
     } finally {
       _busy = false;
       notifyListeners();
@@ -335,75 +329,53 @@ class AppController extends ChangeNotifier {
 
   // 统一从 manifest 指向的激活槽刷新资源状态和游戏版本。
   Future<void> refresh() async {
-    final paths = _requirePaths();
-    final manifestStore = _requireManifestStore();
-    _manifest = await manifestStore.read();
-    final activeDirectory = _importService.activeDirectory(paths, _manifest);
-    _currentValidation = activeDirectory == null
-        ? ResourceValidationResult.missing('尚未导入游戏资源')
-        : await _validator.validate(activeDirectory);
-    final selectedImportSource = _selectedImportSource;
-    _importValidation = selectedImportSource == null
-        ? ResourceValidationResult.missing('尚未选择 ZIP')
-        : await _validator.validate(selectedImportSource);
-
-    if (_currentValidation.isValid &&
-        _manifest.resourceStatus == ResourceStatus.ready) {
-      _currentValidation = _currentValidation.asReady();
-    }
-
-    _currentGameVersion = _currentValidation.isValid
-        ? await _gameUpdateCheckService.loadCurrentVersion(activeDirectory!)
-        : null;
+    _manifest = await _requireManifestStore().read();
+    _currentValidation =
+        _importService.activeDirectory(_requirePaths(), _manifest) == null
+            ? ResourceValidationResult.missing('尚未导入游戏资源')
+            : _manifestValidation();
+    _currentGameVersion = _currentValidation.gameVersion;
     if (_currentGameVersion == null) {
       _availableGameUpdate = null;
       _currentGameVersionIsAhead = false;
       _gameUpdateDetected = false;
     }
-    final compatibilityMetadataChanged = _currentValidation.isValid &&
-        (_manifest.buildProfile != _currentValidation.buildProfile ||
-            _manifest.gpNextVersion != _currentValidation.gpNextVersion ||
-            _manifest.gpNextCompatibilityError !=
-                _currentValidation.gpNextCompatibilityError);
-    if (_manifest.gameVersion != _currentGameVersion ||
-        compatibilityMetadataChanged) {
-      _manifest = _manifest.copyWith(
-        gameVersion: _currentGameVersion,
-        clearGameVersion: _currentGameVersion == null,
-        buildProfile: _currentValidation.isValid
-            ? _currentValidation.buildProfile
-            : _manifest.buildProfile,
-        gpNextVersion: _currentValidation.gpNextVersion,
-        gpNextCompatibilityError: _currentValidation.gpNextCompatibilityError,
-        clearGpNextVersion: _currentValidation.isValid &&
-            _currentValidation.gpNextVersion == null,
-        clearGpNextCompatibilityError: _currentValidation.isValid &&
-            _currentValidation.gpNextCompatibilityError == null,
-      );
-      await manifestStore.write(_manifest);
-    }
-
     notifyListeners();
   }
 
-  Future<void> checkImportDirectory() async {
-    _busy = true;
-    _message = null;
-    notifyListeners();
-    try {
-      await refresh();
-      _message = _importValidation.isValid
-          ? '发现可导入资源：${_importValidation.detectedTitle}'
-          : _importValidation.errorMessage ?? 'docs 无效';
-    } finally {
-      _busy = false;
-      notifyListeners();
-    }
-  }
+  // 导入时已完整校验激活槽并写入 manifest，之后直接沿用该结果。
+  ResourceValidationResult _manifestValidation() =>
+      ResourceValidationResult.valid(
+        stats: ResourceStats(
+            fileCount: _manifest.fileCount, totalBytes: _manifest.totalBytes),
+        detectedTitle: _manifest.detectedTitle,
+        packageId: _manifest.packageId,
+        gameVersion: _manifest.gameVersion,
+        buildProfile: _manifest.buildProfile,
+        gpNextVersion: _manifest.gpNextVersion,
+        gpNextCompatibilityError: _manifest.gpNextCompatibilityError,
+      ).asReady();
 
   Future<void> refreshAnnouncement() async {
-    _announcement = await _announcementService.fetchCurrentAnnouncement();
+    final feed = await _announcementService.fetch();
+    _announcement = feed.announcement;
+    _seasonalTheme = feed.theme;
     notifyListeners();
+  }
+
+  /// True while the current announcement has not been shown to the user.
+  bool get hasUnseenAnnouncement {
+    final announcement = _announcement;
+    return announcement != null &&
+        announcement.id != _appSettings.seenAnnouncementId;
+  }
+
+  Future<void> markAnnouncementSeen() async {
+    final announcement = _announcement;
+    if (announcement == null || _appSettingsStore == null) return;
+    await _updateAppSettings(
+      _appSettings.copyWith(seenAnnouncementId: announcement.id),
+    );
   }
 
   Future<void> refreshAboutContent() async {
@@ -431,24 +403,40 @@ class AppController extends ChangeNotifier {
       if (!silent) {
         final appSucceeded = results[0];
         final gameSucceeded = results[1];
+        final strings = AppStrings.current;
         if (!appSucceeded && !gameSucceeded) {
-          _message = '加载器和游戏更新检查失败，请稍后重试';
+          _message = LauncherMessage(
+            strings.updateCheckFailedBoth,
+            'update_check_failed',
+          );
         } else if (!appSucceeded) {
-          _message = '加载器更新检查失败，请稍后重试';
+          _message = LauncherMessage(
+            strings.updateCheckFailedLoader,
+            'update_check_failed',
+          );
         } else if (!gameSucceeded) {
-          _message = '游戏更新检查失败，请稍后重试';
+          _message = LauncherMessage(
+            strings.updateCheckFailedGame,
+            'update_check_failed',
+          );
         } else if (!_appUpdateDetected && !_gameUpdateDetected) {
           final currentGameVersion = _currentGameVersion;
           if (currentGameVersion == null) {
-            final gameState = hasCurrentResource ? '游戏版本未知' : '游戏资源尚未导入';
-            _message = '加载器 v$_currentAppVersion 已是最新；'
-                '$gameState，当前稳定版 $_latestGameVersion';
+            _message = LauncherMessage(strings.loaderLatestGameUnknown(
+              _currentAppVersion,
+              hasCurrentResource,
+              _latestGameVersion,
+            ));
           } else if (_currentGameVersionIsAhead) {
-            _message = '加载器 v$_currentAppVersion 已是最新；本地游戏 '
-                '$currentGameVersion 高于公开稳定版 $_latestGameVersion';
+            _message = LauncherMessage(strings.loaderLatestGameAhead(
+              _currentAppVersion,
+              currentGameVersion,
+              _latestGameVersion,
+            ));
           } else {
-            _message = '加载器 v$_currentAppVersion 与游戏 '
-                '$currentGameVersion 均为最新版';
+            _message = LauncherMessage(
+              strings.bothUpToDate(_currentAppVersion, currentGameVersion),
+            );
           }
         }
       }
@@ -460,7 +448,9 @@ class AppController extends ChangeNotifier {
 
   Future<bool> _checkAppForUpdate() async {
     try {
-      final update = await _updateCheckService.checkForUpdate();
+      final result = await _updateCheckService.checkForUpdate();
+      final update = result.update;
+      _latestAppVersion = result.latestVersion;
       if (update != null) {
         _currentAppVersion = update.currentVersion;
       }
@@ -522,12 +512,36 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> importResources() async {
+  Future<void> importIncomingZip({
+    required Future<bool> Function(String current, String incoming)
+        confirmDowngrade,
+  }) {
+    _incomingZipName = null;
+    return importResources(incoming: true, confirmDowngrade: confirmDowngrade);
+  }
+
+  Future<void> discardIncomingZip() async {
+    _incomingZipName = null;
+    notifyListeners();
+    await _resourcePickerService.discardIncomingZip();
+  }
+
+  /// Imports a ZIP from the system picker, or with [incoming] the ZIP
+  /// another app handed to the loader. A ZIP with an older game version than
+  /// the active one replaces it only after [confirmDowngrade].
+  Future<void> importResources({
+    bool incoming = false,
+    required Future<bool> Function(String current, String incoming)
+        confirmDowngrade,
+  }) async {
     final paths = _requirePaths();
     final manifestStore = _requireManifestStore();
+    final previousVersion = hasCurrentResource ? _currentGameVersion : null;
     _message = null;
     _busy = true;
     _importCompletionTimer?.cancel();
+    _versionUpgrade = null;
+    _importTipIndex = Random().nextInt(AppStrings.current.importTips.length);
     _importProgress = ImportProgress.idle;
     _importProgressMeter = ImportProgressMeter();
     _startImportProgressTicker();
@@ -537,12 +551,13 @@ class AppController extends ChangeNotifier {
     _activeImportOperationId = operationId;
     _lastImportProgressLogAt = null;
     final importStopwatch = Stopwatch()..start();
-    _appLogger?.emit(
+    _appLogger.emit(
       level: LogLevel.info,
       category: 'resource.import',
       event: 'resource_import_started',
       outcome: LogOutcome.started,
       operationId: operationId,
+      context: <String, Object?>{'source': incoming ? 'incoming' : 'picker'},
     );
 
     var restoreAwakeModeAfterImport = false;
@@ -553,7 +568,7 @@ class AppController extends ChangeNotifier {
         paths: paths,
         manifestStore: manifestStore,
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_import_target_prepared',
@@ -561,21 +576,24 @@ class AppController extends ChangeNotifier {
         operationId: operationId,
         context: <String, Object?>{'targetSlot': importTarget.slot.name},
       );
-      _message = '正在打开系统文件选择器';
-      notifyListeners();
-      _appLogger?.emit(
+      if (!incoming) {
+        _message = LauncherMessage(AppStrings.current.openingFilePicker);
+        notifyListeners();
+      }
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_import_picker_started',
         outcome: LogOutcome.started,
         operationId: operationId,
       );
-      final selectedSource = await _resourcePickerService.pickAndExtractDocsZip(
+      final selectedSource = await _resourcePickerService.extractDocsZip(
+        incoming: incoming,
         targetDirectory: importTarget.directory,
         onProgress: _updateImportProgress,
       );
       if (selectedSource == null) {
-        _appLogger?.emit(
+        _appLogger.emit(
           level: LogLevel.info,
           category: 'resource.import',
           event: 'resource_import_picker_finished',
@@ -588,8 +606,8 @@ class AppController extends ChangeNotifier {
           manifestStore: manifestStore,
         );
         importTarget = null;
-        _message = '已取消选择 ZIP';
-        _appLogger?.emit(
+        _message = LauncherMessage(AppStrings.current.zipSelectionCancelled);
+        _appLogger.emit(
           level: LogLevel.info,
           category: 'resource.import',
           event: 'resource_import_finished',
@@ -601,7 +619,7 @@ class AppController extends ChangeNotifier {
         return;
       }
 
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_import_picker_finished',
@@ -610,12 +628,11 @@ class AppController extends ChangeNotifier {
         context: const <String, Object?>{'stage': 'extracted'},
       );
 
-      _selectedImportSource = selectedSource;
       _importValidation = ResourceValidationResult.missing('正在校验 docs');
       _updateImportProgress(
         const ImportProgress(phase: ImportPhase.validating, message: '正在校验资源'),
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.validation',
         event: 'resource_validation_started',
@@ -623,14 +640,37 @@ class AppController extends ChangeNotifier {
         operationId: operationId,
       );
 
-      _manifest = await _importService.completeImport(
+      final activated = await _importService.completeImport(
         paths: paths,
         manifestStore: manifestStore,
         target: importTarget,
+        confirmActivation: (candidate) async {
+          final incomingVersion = candidate.gameVersion;
+          final order = _versionOrder(incomingVersion, previousVersion);
+          return order == null ||
+              order >= 0 ||
+              await confirmDowngrade(previousVersion!, incomingVersion!);
+        },
         onProgress: _updateImportProgress,
       );
       importTarget = null;
-      _appLogger?.emit(
+      if (activated == null) {
+        _manifest = await manifestStore.read();
+        _importProgress = ImportProgress.idle;
+        _message = LauncherMessage(AppStrings.current.downgradeDeclined);
+        _appLogger.emit(
+          level: LogLevel.info,
+          category: 'resource.import',
+          event: 'resource_import_finished',
+          outcome: LogOutcome.cancelled,
+          operationId: operationId,
+          durationMs: importStopwatch.elapsedMilliseconds,
+          context: const <String, Object?>{'stage': 'downgrade_declined'},
+        );
+        return;
+      }
+      _manifest = activated;
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.validation',
         event: 'resource_validation_finished',
@@ -643,7 +683,7 @@ class AppController extends ChangeNotifier {
           'gpNextVersion': _manifest.gpNextVersion ?? 'none',
         },
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_slot_activated',
@@ -655,18 +695,33 @@ class AppController extends ChangeNotifier {
               _manifest.transactionState == TransactionState.cleaningOldSlot,
         },
       );
-      _message = _manifest.transactionState == TransactionState.cleaningOldSlot
-          ? '导入成功，旧槽清理将在下次启动重试'
-          : '导入成功';
+      _message = LauncherMessage(
+        _manifest.transactionState == TransactionState.cleaningOldSlot
+            ? AppStrings.current.importSucceededCleanupDeferred
+            : AppStrings.current.importSucceeded,
+      );
       _importProgressTickTimer?.cancel();
       if (restoreAwakeModeAfterImport) {
         await _setImportAwakeMode(false);
         restoreAwakeModeAfterImport = false;
       }
-      await refresh();
+      _currentValidation = _importValidation = _manifestValidation();
+      _currentGameVersion = _manifest.gameVersion;
+      if (_currentGameVersion == null) {
+        _availableGameUpdate = null;
+        _currentGameVersionIsAhead = false;
+        _gameUpdateDetected = false;
+      }
       await _checkGameForUpdate(reuseLatestVersion: true);
-      _scheduleCompletedProgressReset();
-      _appLogger?.emit(
+      final newVersion = _manifest.gameVersion;
+      if ((_versionOrder(newVersion, previousVersion) ?? 0) > 0) {
+        // The upgrade stays on screen until the player dismisses it.
+        _versionUpgrade = (from: previousVersion!, to: newVersion!);
+      } else {
+        _scheduleCompletedProgressReset();
+      }
+      await _saveJournal(_journal.recordImport(_importRecord()));
+      _appLogger.emit(
         level: LogLevel.info,
         category: 'resource.import',
         event: 'resource_import_finished',
@@ -681,7 +736,7 @@ class AppController extends ChangeNotifier {
         },
       );
     } on ResourcePickerFailure catch (failure) {
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.import',
         event: 'resource_import_picker_finished',
@@ -698,11 +753,15 @@ class AppController extends ChangeNotifier {
         );
         importTarget = null;
       }
-      _message = failure.message;
+      _message = _failureMessage(failure.code, failure.message);
       _updateImportProgress(
-        ImportProgress(phase: ImportPhase.failed, message: failure.message),
+        ImportProgress(
+          phase: ImportPhase.failed,
+          message: _message!.text,
+          errorCode: failure.code,
+        ),
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.import',
         event: 'resource_import_finished',
@@ -714,9 +773,9 @@ class AppController extends ChangeNotifier {
         stackTrace: StackTrace.current,
       );
     } on ImportFailure catch (failure) {
-      _message = failure.message;
+      _message = _failureMessage(failure.code, failure.message);
       await refresh();
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.validation',
         event: 'resource_validation_finished',
@@ -727,7 +786,7 @@ class AppController extends ChangeNotifier {
         error: failure,
         stackTrace: StackTrace.current,
       );
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.import',
         event: 'resource_import_finished',
@@ -746,12 +805,16 @@ class AppController extends ChangeNotifier {
         );
         importTarget = null;
       }
-      _message = '导入失败：$error';
+      _message = _failureMessage('import_extract_failed', '$error');
       _updateImportProgress(
-        ImportProgress(phase: ImportPhase.failed, message: _message),
+        ImportProgress(
+          phase: ImportPhase.failed,
+          message: _message!.text,
+          errorCode: 'import_extract_failed',
+        ),
       );
       await refresh();
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'resource.import',
         event: 'resource_import_finished',
@@ -781,7 +844,7 @@ class AppController extends ChangeNotifier {
     if (lastLogAt == null ||
         now.difference(lastLogAt) >= const Duration(seconds: 1)) {
       _lastImportProgressLogAt = now;
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.debug,
         category: 'resource.import',
         event: 'resource_import_progress',
@@ -801,7 +864,7 @@ class AppController extends ChangeNotifier {
 
   void _startImportProgressTicker() {
     _importProgressTickTimer?.cancel();
-    _importProgressTickTimer = Timer.periodic(_importProgressTickInterval, (_) {
+    _importProgressTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (isImporting) {
         _updateImportProgress(_importProgress);
       }
@@ -813,13 +876,14 @@ class AppController extends ChangeNotifier {
       return;
     }
     _importCompletionTimer?.cancel();
+    _versionUpgrade = null;
     _importProgress = ImportProgress.idle;
     notifyListeners();
   }
 
   Future<void> _setImportAwakeMode(bool enabled) async {
     try {
-      await _importAwakeModeSetter(enabled);
+      await (enabled ? WakelockPlus.enable() : WakelockPlus.disable());
     } catch (_) {
       // Import progress remains functional when a platform cannot toggle wakelock.
     }
@@ -828,7 +892,7 @@ class AppController extends ChangeNotifier {
   Future<bool> _keepScreenAwakeForImport() async {
     var alreadyEnabled = false;
     try {
-      alreadyEnabled = await _importAwakeModeGetter();
+      alreadyEnabled = await WakelockPlus.enabled;
     } catch (_) {
       // Query failures fall back to the normal enable/disable import lifecycle.
     }
@@ -839,18 +903,10 @@ class AppController extends ChangeNotifier {
     return true;
   }
 
-  static Future<bool> _defaultImportAwakeModeGetter() {
-    return WakelockPlus.enabled;
-  }
-
-  static Future<void> _defaultImportAwakeModeSetter(bool enabled) {
-    return enabled ? WakelockPlus.enable() : WakelockPlus.disable();
-  }
-
   void _scheduleCompletedProgressReset() {
     _importCompletionTimer?.cancel();
-    _importCompletionTimer = _importCompletionTimerFactory(
-      _importCompletionVisibilityDuration,
+    _importCompletionTimer = Timer(
+      const Duration(seconds: 2),
       () {
         if (_importProgress.phase != ImportPhase.completed) {
           return;
@@ -872,26 +928,27 @@ class AppController extends ChangeNotifier {
     final paths = _requirePaths();
     _message = null;
     final activeDirectory = _importService.activeDirectory(paths, _manifest);
-    _currentValidation = activeDirectory == null
-        ? ResourceValidationResult.missing('尚未导入游戏资源')
-        : await _validator.validate(activeDirectory);
     if (!_currentValidation.isValid) {
-      _message = _currentValidation.errorMessage ?? '激活槽资源无效';
+      _message = _failureMessage(
+        _currentValidation.errorCode,
+        _currentValidation.errorMessage,
+      );
       notifyListeners();
-      _appLogger?.emit(
+      _appLogger.emit(
         level: LogLevel.error,
         category: 'game.host',
         event: 'game_host_launch_finished',
         outcome: LogOutcome.failed,
         code: 'resource_validation_failed',
-        message: _message,
+        message: _currentValidation.errorMessage,
       );
-      throw StateError(_message!);
+      throw StateError(_message!.text);
     }
+    // The native host creates it on the first export, after GP-Next startup.
     final exportRoot = Directory(p.join(paths.gpNextDir.path, '.exports'));
-    await exportRoot.create(recursive: true);
     final session = GameSession(
-      sessionId: _gameSessionIdFactory(),
+      sessionId: _newGameSessionId(),
+      packageId: _currentValidation.packageId,
       resourceRoot: activeDirectory!.path,
       platform: gameHostPlatform,
       entryPath: 'index.html',
@@ -899,9 +956,15 @@ class AppController extends ChangeNotifier {
       hasGpNext: hasGpNext,
       gpNextCompatible: gpNextCompatible,
       gpNextVersion: gpNextVersion,
-      watermarkEnabled: _watermarkEnabled,
+      watermarkEnabled: watermarkEnabled,
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
-      detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
+      detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
+      renderScale: renderResolution.scale,
+      screenFit: screenFit,
+      touchDiagnosticsEnabled: toolShedUnlocked && touchDiagnosticsEnabled,
+      gestureHint: _appSettings.gestureHintShown
+          ? null
+          : AppStrings.current.gestureHintLines(gameHostPlatform),
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -913,10 +976,14 @@ class AppController extends ChangeNotifier {
       await store.prepare(session);
       _importCompletionTimer?.cancel();
       _importProgressTickTimer?.cancel();
+      // Saved first: the launcher engine is torn down once the game opens.
+      if (session.gestureHint != null) {
+        await _updateAppSettings(_appSettings.copyWith(gestureHintShown: true));
+      }
       await _gameHost.launch(session);
     }
 
-    final operation = _appLogger?.startOperation(
+    final operation = _appLogger.startOperation(
       operationId: _newOperationId('game-launch'),
       category: 'game.host',
       startedEvent: 'game_host_launch_started',
@@ -924,18 +991,14 @@ class AppController extends ChangeNotifier {
       failureCode: 'game_host_launch_failed',
       gameSessionId: session.sessionId,
     );
-    if (operation == null) {
-      await launch();
-    } else {
-      await operation.run(launch);
-    }
+    await operation.run(launch);
   }
 
   static String _newOperationId(String prefix) =>
       '$prefix-${DateTime.now().toUtc().microsecondsSinceEpoch}';
 
   void _emitInitializationStage(String stage) {
-    _appLogger?.emit(
+    _appLogger.emit(
       level: LogLevel.debug,
       category: 'app.lifecycle',
       event: 'app_initialization_stage_changed',
@@ -946,7 +1009,8 @@ class AppController extends ChangeNotifier {
   }
 
   DiagnosticSnapshot diagnostics({String? webViewEngineVersion}) {
-    return _diagnosticsService.build(
+    return buildDiagnosticSnapshot(
+      appVersion: _currentAppVersion,
       paths: _requirePaths(),
       currentValidation: _currentValidation,
       importValidation: _importValidation,
@@ -957,14 +1021,13 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refreshLogs() async {
-    final logger = _appLogger;
-    if (logger == null || _logSnapshotLoading) {
+    if (_logSnapshotLoading) {
       return;
     }
     _logSnapshotLoading = true;
     notifyListeners();
     try {
-      _logSnapshot = await logger.loadSnapshot();
+      _logSnapshot = await _appLogger.loadSnapshot();
     } finally {
       _logSnapshotLoading = false;
       notifyListeners();
@@ -972,11 +1035,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> deleteLogHistory() async {
-    final logger = _appLogger;
-    if (logger == null) {
-      return;
-    }
-    await logger.deleteHistory();
+    await _appLogger.deleteHistory();
     await refreshLogs();
   }
 
@@ -1036,13 +1095,124 @@ class AppController extends ChangeNotifier {
     return buffer.toString();
   }
 
-  void clearMessage() {
-    _message = null;
-    notifyListeners();
+  Future<void> setWatermarkEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(watermarkEnabled: enabled),
+    );
   }
 
-  Future<void> setWatermarkEnabled(bool enabled) async {
-    if (_watermarkEnabled == enabled) {
+  Future<void> setQuickLaunchEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(quickLaunchEnabled: enabled),
+    );
+  }
+
+  Future<void> setRenderResolution(RenderResolution resolution) {
+    return _updateAppSettings(
+      _appSettings.copyWith(renderResolution: resolution),
+    );
+  }
+
+  Future<void> setScreenFit(ScreenFit fit) {
+    return _updateAppSettings(_appSettings.copyWith(screenFit: fit));
+  }
+
+  Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(detailedAudioDiagnosticsEnabled: enabled),
+    );
+  }
+
+  Future<void> setThemePreference(ThemePreference preference) {
+    return _updateAppSettings(
+      _appSettings.copyWith(themePreference: preference),
+    );
+  }
+
+  Future<void> setToolShedUnlocked(bool unlocked) {
+    return _updateAppSettings(
+      _appSettings.copyWith(toolShedUnlocked: unlocked),
+    );
+  }
+
+  Future<void> setTouchDiagnosticsEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(touchDiagnosticsEnabled: enabled),
+    );
+  }
+
+  /// The launcher's own state files as they are on disk, for the tool shed.
+  String toolShedSnapshot() {
+    const encoder = JsonEncoder.withIndent('  ');
+    return [
+      ('manifest.json', _manifest.toJson()),
+      ('app_settings.json', _appSettings.toJson()),
+      ('journal.json', _journal.toJson()),
+    ].map((file) => '# ${file.$1}\n${encoder.convert(file.$2)}').join('\n\n');
+  }
+
+  ImportRecord _importRecord() => ImportRecord(
+        importedAt: _manifest.lastImportAt ?? DateTime.now(),
+        totalBytes: _manifest.totalBytes,
+        gameVersion: _manifest.gameVersion,
+        gpNextVersion: _manifest.gpNextVersion,
+      );
+
+  /// The journal is a keepsake: failing to save it never fails the import or
+  /// launch that recorded it.
+  Future<void> _saveJournal(GardenJournal journal) async {
+    _journal = journal;
+    try {
+      await _journalStore?.write(journal);
+    } catch (error, stackTrace) {
+      _appLogger.emit(
+        level: LogLevel.warn,
+        category: 'app.journal',
+        event: 'journal_write_failed',
+        outcome: LogOutcome.failed,
+        code: 'journal_write_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<void> setReduceMotion(bool enabled) {
+    return _updateAppSettings(_appSettings.copyWith(reduceMotion: enabled));
+  }
+
+  Future<void> setLanguagePreference(LanguagePreference preference) async {
+    _applyLanguage(preference);
+    await _updateAppSettings(
+      _appSettings.copyWith(languagePreference: preference),
+    );
+    await _shortcutService.publish(AppStrings.current);
+  }
+
+  /// Follows a system language change while the language setting is System.
+  void systemLocalesChanged() {
+    _applyLanguage(_appSettings.languagePreference);
+    notifyListeners();
+    unawaited(_shortcutService.publish(AppStrings.current));
+  }
+
+  void _applyLanguage(LanguagePreference preference) {
+    AppStrings.current = AppStrings.resolve(
+      preference,
+      PlatformDispatcher.instance.locales,
+    );
+  }
+
+  /// A failure notice worded by the error catalog; [detail] is shown only
+  /// for a code the catalog does not know.
+  LauncherMessage _failureMessage(String? code, String? detail) =>
+      LauncherMessage(
+        userErrorTitle(code, detail ?? code ?? 'unknown_error'),
+        code,
+      );
+
+  Future<void> _updateAppSettings(AppSettings settings) async {
+    if (settings.toJson().toString() == _appSettings.toJson().toString()) {
       return;
     }
     final appSettingsStore = _appSettingsStore;
@@ -1050,7 +1220,7 @@ class AppController extends ChangeNotifier {
       throw StateError('AppSettingsStore 尚未初始化');
     }
 
-    _watermarkEnabled = enabled;
+    _appSettings = settings;
     notifyListeners();
     final previousWrite = _appSettingsWrite;
     final currentWrite = () async {
@@ -1059,41 +1229,7 @@ class AppController extends ChangeNotifier {
       } catch (_) {
         // A later choice must still be persisted after an earlier write fails.
       }
-      await appSettingsStore.write(
-        AppSettings(
-          watermarkEnabled: enabled,
-          detailedAudioDiagnosticsEnabled: _detailedAudioDiagnosticsEnabled,
-        ),
-      );
-    }();
-    _appSettingsWrite = currentWrite;
-    await currentWrite;
-  }
-
-  Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) async {
-    if (_detailedAudioDiagnosticsEnabled == enabled) {
-      return;
-    }
-    final appSettingsStore = _appSettingsStore;
-    if (appSettingsStore == null) {
-      throw StateError('AppSettingsStore 尚未初始化');
-    }
-
-    _detailedAudioDiagnosticsEnabled = enabled;
-    notifyListeners();
-    final previousWrite = _appSettingsWrite;
-    final currentWrite = () async {
-      try {
-        await previousWrite;
-      } catch (_) {
-        // A later choice must still be persisted after an earlier write fails.
-      }
-      await appSettingsStore.write(
-        AppSettings(
-          watermarkEnabled: _watermarkEnabled,
-          detailedAudioDiagnosticsEnabled: enabled,
-        ),
-      );
+      await appSettingsStore.write(settings);
     }();
     _appSettingsWrite = currentWrite;
     await currentWrite;
@@ -1136,6 +1272,15 @@ class AppController extends ChangeNotifier {
     return manifestStore;
   }
 }
+
+/// How [incoming] orders against [current]; null when either is missing or
+/// not a version [compareGameVersions] understands.
+int? _versionOrder(String? incoming, String? current) => incoming != null &&
+        current != null &&
+        gameVersionPattern.hasMatch(incoming) &&
+        gameVersionPattern.hasMatch(current)
+    ? compareGameVersions(incoming, current)
+    : null;
 
 String _newGameSessionId() {
   return '${DateTime.now().toUtc().microsecondsSinceEpoch}-${pid.toRadixString(16)}';
