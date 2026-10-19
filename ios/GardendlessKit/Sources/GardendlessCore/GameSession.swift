@@ -1,14 +1,15 @@
 import Foundation
 
-/// How the game fills a screen outside the 16:10 to 17:9 range it is laid
-/// out for.
+/// How the game viewport fits the screen. The game shows 16:10 to 17:9 without
+/// distortion and its whole picture at 17:9.
 public enum GameScreenFit: String, Codable, Equatable {
-  /// Clamps the game viewport to 16:10–17:9 and leaves black bars.
-  case keepAspect
-  /// Gives the game the whole screen; its SHOW_ALL policy reveals area beyond
-  /// the design resolution.
+  /// Clamps the viewport to 16:10–17:9: trims some of the picture for
+  /// smaller black bars.
+  case balanced
+  /// Keeps the viewport at 17:9 so the whole picture shows, with larger
+  /// black bars.
   case showAll
-  /// Stretches the clamped viewport over the whole screen.
+  /// Stretches the balanced viewport over the whole screen.
   case stretch
 }
 
@@ -53,7 +54,7 @@ public struct GameSession: Codable, Equatable {
     autoCollectSunEnabled: Bool,
     detailedAudioDiagnosticsEnabled: Bool = false,
     renderPixelRatioCap: Double? = nil,
-    screenFit: GameScreenFit = .keepAspect,
+    screenFit: GameScreenFit = .balanced,
     allowedRemoteHosts: Set<String>,
     gpNextRoot: URL,
     exportTemporaryRoot: URL
@@ -102,7 +103,7 @@ public enum GameSessionDecoder {
       throw GameError.failed(.invalidSession, "Invalid render pixel ratio cap")
     }
     guard let screenFit = GameScreenFit(
-      rawValue: json["screenFit"] as? String ?? GameScreenFit.keepAspect.rawValue
+      rawValue: json["screenFit"] as? String ?? GameScreenFit.balanced.rawValue
     ) else {
       throw GameError.failed(.invalidSession, "Invalid screen fit")
     }

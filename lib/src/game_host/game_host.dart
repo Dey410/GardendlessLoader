@@ -34,23 +34,25 @@ enum GameHostPlatform {
   }
 }
 
-/// How the game fills a screen outside the 16:10 to 17:9 range it is laid
-/// out for. The names are the native session wire values.
+/// How the game viewport fits the screen. The game shows 16:10 to 17:9 without
+/// distortion and its whole picture at 17:9. The names are the native session
+/// wire values.
 enum ScreenFit {
-  /// Clamps the game viewport to 16:10–17:9 and leaves black bars.
-  keepAspect,
+  /// Clamps the viewport to 16:10–17:9: trims some of the picture for
+  /// smaller black bars.
+  balanced,
 
-  /// Gives the game the whole screen; its SHOW_ALL policy reveals area beyond
-  /// the design resolution.
+  /// Keeps the viewport at 17:9 so the whole picture shows, with larger
+  /// black bars.
   showAll,
 
-  /// Stretches the clamped viewport over the whole screen.
+  /// Stretches the balanced viewport over the whole screen.
   stretch;
 
   static ScreenFit fromName(Object? value) {
     return ScreenFit.values.firstWhere(
       (fit) => fit.name == value,
-      orElse: () => ScreenFit.keepAspect,
+      orElse: () => ScreenFit.balanced,
     );
   }
 }
@@ -70,7 +72,7 @@ class GameSession {
     this.autoCollectSunEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
     this.renderPixelRatioCap,
-    this.screenFit = ScreenFit.keepAspect,
+    this.screenFit = ScreenFit.balanced,
     required this.allowedRemoteHosts,
     required this.gpNextRoot,
     required this.exportTemporaryRoot,

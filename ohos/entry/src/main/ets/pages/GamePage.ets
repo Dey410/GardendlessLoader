@@ -194,23 +194,21 @@ struct GamePage {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
       return;
     }
-    const screenFit = this.session?.screenFit ?? 'keepAspect';
-    const minimumAspectRatio = 16 / 10;
+    const screenFit = this.session?.screenFit ?? 'balanced';
+    // Show all keeps the whole 17:9 picture; the other fits allow 16:10–17:9.
     const maximumAspectRatio = 17 / 9;
+    const minimumAspectRatio = screenFit === 'showAll' ? maximumAspectRatio : 16 / 10;
     const aspectRatio = width / height;
     let viewportWidth = width;
     let viewportHeight = height;
-    // SHOW_ALL gives the game the whole window and lets its own policy adapt.
-    if (screenFit !== 'showAll') {
-      if (aspectRatio > maximumAspectRatio) {
-        viewportWidth = Math.floor(height * maximumAspectRatio);
-      } else if (aspectRatio < minimumAspectRatio) {
-        viewportHeight = Math.floor(width / minimumAspectRatio);
-      }
+    if (aspectRatio > maximumAspectRatio) {
+      viewportWidth = Math.floor(height * maximumAspectRatio);
+    } else if (aspectRatio < minimumAspectRatio) {
+      viewportHeight = Math.floor(width / minimumAspectRatio);
     }
     this.viewportWidth = `${viewportWidth}vp`;
     this.viewportHeight = `${viewportHeight}vp`;
-    // The page keeps the clamped viewport; scaling around the centre
+    // The page keeps the balanced viewport; scaling around the centre
     // stretches it over the whole window.
     if (screenFit === 'stretch') {
       this.viewportScaleX = width / viewportWidth;

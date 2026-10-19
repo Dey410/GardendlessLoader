@@ -6,26 +6,34 @@ import org.junit.Test
 class GameViewportSizeTest {
     @Test
     fun `square-ish windows are limited to 16 by 10`() {
-        assertEquals(1600 to 1000, GameViewportSize.fit(1600, 1200))
-        assertEquals(1400 to 875, GameViewportSize.fit(1400, 1000))
+        assertEquals(1600 to 1000, GameViewportSize.fit(1600, 1200, GameScreenFit.BALANCED))
+        assertEquals(1400 to 875, GameViewportSize.fit(1400, 1000, GameScreenFit.BALANCED))
     }
 
     @Test
     fun `supported aspect ratios fill the window`() {
-        assertEquals(1600 to 1000, GameViewportSize.fit(1600, 1000))
-        assertEquals(1920 to 1080, GameViewportSize.fit(1920, 1080))
-        assertEquals(1700 to 900, GameViewportSize.fit(1700, 900))
+        assertEquals(1600 to 1000, GameViewportSize.fit(1600, 1000, GameScreenFit.BALANCED))
+        assertEquals(1920 to 1080, GameViewportSize.fit(1920, 1080, GameScreenFit.BALANCED))
+        assertEquals(1700 to 900, GameViewportSize.fit(1700, 900, GameScreenFit.BALANCED))
     }
 
     @Test
     fun `ultrawide windows are limited to 17 by 9`() {
-        assertEquals(2040 to 1080, GameViewportSize.fit(2400, 1080))
-        assertEquals(1700 to 900, GameViewportSize.fit(2100, 900))
+        assertEquals(2040 to 1080, GameViewportSize.fit(2400, 1080, GameScreenFit.BALANCED))
+        assertEquals(1700 to 900, GameViewportSize.fit(2100, 900, GameScreenFit.BALANCED))
+    }
+
+    @Test
+    fun `show all keeps the whole 17 by 9 picture`() {
+        assertEquals(1700 to 900, GameViewportSize.fit(1700, 900, GameScreenFit.SHOW_ALL))
+        assertEquals(1920 to 1016, GameViewportSize.fit(1920, 1080, GameScreenFit.SHOW_ALL))
+        assertEquals(1600 to 847, GameViewportSize.fit(1600, 1200, GameScreenFit.SHOW_ALL))
+        assertEquals(2040 to 1080, GameViewportSize.fit(2400, 1080, GameScreenFit.SHOW_ALL))
     }
 
     @Test
     fun `invalid dimensions produce an empty viewport`() {
-        assertEquals(0 to 0, GameViewportSize.fit(0, 1080))
-        assertEquals(0 to 0, GameViewportSize.fit(1920, 0))
+        assertEquals(0 to 0, GameViewportSize.fit(0, 1080, GameScreenFit.BALANCED))
+        assertEquals(0 to 0, GameViewportSize.fit(1920, 0, GameScreenFit.BALANCED))
     }
 }

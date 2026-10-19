@@ -53,7 +53,7 @@ class AppSettings {
     this.watermarkEnabled = true,
     this.quickLaunchEnabled = false,
     this.renderResolution = RenderResolution.full,
-    this.screenFit = ScreenFit.keepAspect,
+    this.screenFit = ScreenFit.balanced,
     this.detailedAudioDiagnosticsEnabled = false,
     this.themePreference = ThemePreference.system,
     this.reduceMotion = false,

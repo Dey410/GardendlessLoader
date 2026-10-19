@@ -250,14 +250,14 @@ class AppStrings {
       };
   String get screenFit => _t('画面比例', 'Screen fit');
   String get screenFitSubtitle => _t(
-        '屏幕超出 16:10–17:9 时：保持比例会留黑边；完整显示会铺满屏幕，但可能露出场景外的区域；'
-            '强制拉伸会铺满屏幕，但可能造成画面变形',
-        'On screens outside 16:10–17:9: Keep ratio adds black bars; Show all '
-            'fills the screen but can show area outside the scene; Stretch '
-            'fills the screen but can distort the picture',
+        '均衡比例裁掉少量画面换取更小的黑边；完整显示显示全部画面，黑边更大；'
+            '强制拉伸铺满屏幕，但可能造成画面变形',
+        'Balanced trims a little of the picture for smaller black bars; Show '
+            'all shows the whole picture with larger bars; Stretch fills the '
+            'screen but can distort the picture',
       );
   String screenFitLabel(ScreenFit fit) => switch (fit) {
-        ScreenFit.keepAspect => _t('保持比例', 'Keep ratio'),
+        ScreenFit.balanced => _t('均衡比例', 'Balanced'),
         ScreenFit.showAll => _t('完整显示', 'Show all'),
         ScreenFit.stretch => _t('强制拉伸', 'Stretch'),
       };

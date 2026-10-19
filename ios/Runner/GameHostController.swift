@@ -13,8 +13,12 @@ enum GameViewportSize {
   static let minimumAspectRatio: CGFloat = 16.0 / 10.0
   static let maximumAspectRatio: CGFloat = 17.0 / 9.0
 
-  static func fit(_ bounds: CGSize) -> CGSize {
+  /// Show all keeps the whole 17:9 picture; the other fits allow 16:10–17:9.
+  static func fit(_ bounds: CGSize, _ screenFit: GameScreenFit) -> CGSize {
     guard bounds.width > 0, bounds.height > 0 else { return .zero }
+    let minimumAspectRatio = screenFit == .showAll
+      ? maximumAspectRatio
+      : minimumAspectRatio
     let aspectRatio = bounds.width / bounds.height
     if aspectRatio > maximumAspectRatio {
       return CGSize(
@@ -51,20 +55,9 @@ private final class GameViewportView: UIView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
-    let size = GameViewportSize.fit(bounds.size)
-    switch screenFit {
-    case .keepAspect:
-      webView.frame = CGRect(
-        x: floor((bounds.width - size.width) / 2),
-        y: floor((bounds.height - size.height) / 2),
-        width: size.width,
-        height: size.height
-      )
-    case .showAll:
-      // The game's own SHOW_ALL policy adapts to the whole screen.
-      webView.frame = bounds
-    case .stretch:
-      // The page keeps the clamped viewport; the transform stretches it over
+    let size = GameViewportSize.fit(bounds.size, screenFit)
+    if screenFit == .stretch {
+      // The page keeps the balanced viewport; the transform stretches it over
       // the whole screen.
       webView.bounds = CGRect(origin: .zero, size: size)
       webView.center = CGPoint(x: bounds.midX, y: bounds.midY)
@@ -74,7 +67,14 @@ private final class GameViewportView: UIView {
           y: bounds.height / size.height
         )
         : .identity
+      return
     }
+    webView.frame = CGRect(
+      x: floor((bounds.width - size.width) / 2),
+      y: floor((bounds.height - size.height) / 2),
+      width: size.width,
+      height: size.height
+    )
   }
 }
 

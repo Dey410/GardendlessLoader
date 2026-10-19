@@ -3,15 +3,18 @@ package io.github.dey410.gardendlessloader.game
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** How the game fills a screen outside the 16:10 to 17:9 range it is laid out for. */
+/**
+ * How the game viewport fits the screen. The game shows 16:10 to 17:9 without
+ * distortion and its whole picture at 17:9.
+ */
 enum class GameScreenFit(val wireName: String) {
-    /** Clamps the game viewport to 16:10–17:9 and leaves black bars. */
-    KEEP_ASPECT("keepAspect"),
+    /** Clamps the viewport to 16:10–17:9: trims some of the picture for smaller black bars. */
+    BALANCED("balanced"),
 
-    /** Gives the game the whole screen; its SHOW_ALL policy reveals area beyond the design resolution. */
+    /** Keeps the viewport at 17:9 so the whole picture shows, with larger black bars. */
     SHOW_ALL("showAll"),
 
-    /** Stretches the clamped viewport over the whole screen. */
+    /** Stretches the balanced viewport over the whole screen. */
     STRETCH("stretch"),
 }
 
@@ -28,7 +31,7 @@ data class NativeGameSession(
     val autoCollectSunEnabled: Boolean,
     val detailedAudioDiagnosticsEnabled: Boolean = false,
     val renderPixelRatioCap: Double? = null,
-    val screenFit: GameScreenFit = GameScreenFit.KEEP_ASPECT,
+    val screenFit: GameScreenFit = GameScreenFit.BALANCED,
     val packageId: String = "unknown",
     val allowedRemoteHosts: Set<String>,
     val gpNextRoot: String,
@@ -70,7 +73,7 @@ object GameSessionCodec {
                     require(it > 0) { "Invalid render pixel ratio cap" }
                 }
             },
-            screenFit = json.optString("screenFit", GameScreenFit.KEEP_ASPECT.wireName).let { name ->
+            screenFit = json.optString("screenFit", GameScreenFit.BALANCED.wireName).let { name ->
                 requireNotNull(GameScreenFit.entries.firstOrNull { it.wireName == name }) { "Invalid screen fit" }
             },
             packageId = packageId,
