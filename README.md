@@ -7,79 +7,92 @@
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/Dey410/GardendlessLoader)](https://github.com/Dey410/GardendlessLoader/commits/main)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-*Let the gardendLess keep growing on mobile devices.*
+*Let the gardendLess keep growing on your phone and tablet.*
 
-GardendlessLoader is a local resource loader for `PvZ2 Gardendless` on Android, iOS, and HarmonyOS/OpenHarmony.
+GardendlessLoader is a mobile resource loader for [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) on Android, iOS, and HarmonyOS/OpenHarmony. Import a game resource ZIP and play on your phone or tablet.
 
-Read the [Introduction](#introduction) below to learn more, or go directly to [Downloads](https://github.com/Dey410/GardendlessLoader/releases) or [Issue Reporting](https://github.com/Dey410/GardendlessLoader/issues).
-
-[中文](README.zh-CN.md)
+[Download](https://github.com/Dey410/GardendlessLoader/releases) · [Get the game](#get-the-game-resources) · [Quick start](#quick-start) · [Report an issue](https://github.com/Dey410/GardendlessLoader/issues) · [中文](README.zh-CN.md)
 
 <br clear="left">
 
-## Introduction
+## Overview
 
-GardendlessLoader is a local resource loader built with Flutter. It loads [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) on Android, iOS, and HarmonyOS/OpenHarmony.
+GardendlessLoader has a Flutter launcher and runs the game in each platform's native system WebView. All game resources stay on the device, so there is no server to set up.
 
-The loader supports standard Cocos and GP-Next builds that follow the Gardendless web resource structure and pass the app's resource validation.
+- **Simple import**: pick a ZIP and the app extracts, validates, and self-checks it for you. You can also open a ZIP in GardendlessLoader straight from another app.
+- **Safe updates**: A/B slot updates replace the old resources only after the new ones pass validation. A failed or cancelled import never touches the version you can already play.
+- **Touch-friendly**: one- and two-finger gestures map to mouse input, and physical keyboards and mice work too.
+- **GP-Next ready**: supports patches, Mod installation, and JS Modding in GP-Next builds.
+- **Adjustable**: tune render resolution and screen fit, and turn on Auto Collect Sun or Quick launch.
 
-It also supports resource packages optimized for mobile devices, such as lightweight builds with lower-resolution textures, adjusted audio quality, or modified loading logic.
+Importable resources include standard Cocos builds and GP-Next builds that follow the Gardendless web resource layout and pass validation, as well as lightweight mobile packages with lower-resolution textures, adjusted audio quality, or modified loading logic.
 
-## Get GardendlessLoader
+## Download
 
-You can obtain the app in the following ways:
-
-1. **Published releases:** Download the latest published version from [GitHub Releases](https://github.com/Dey410/GardendlessLoader/releases).
-2. **Automated builds:** Select a successful run in [GitHub Actions](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml) and download the artifact for your platform.
-3. **Build from source:** Follow the [Build](#build) instructions below.
+1. **Releases (recommended)**: get the latest version from [GitHub Releases](https://github.com/Dey410/GardendlessLoader/releases).
+2. **Development builds**: open any successful run in [GitHub Actions](https://github.com/Dey410/GardendlessLoader/actions/workflows/build-mobile.yml) and download the artifact for your platform.
+3. **Build it yourself**: see [Build from source](#build-from-source) below.
 
 > [!NOTE]
-> The automated iOS artifact is unsigned and must be signed before installation.
-> The HarmonyOS/OpenHarmony HAP is generated only when the required command-line tools are configured in CI. It is also unsigned and must be signed before installation.
+> The iOS and HarmonyOS/OpenHarmony packages are unsigned; sign them yourself before installing.
+> The HAP package is built only when the HarmonyOS command-line tools are configured in CI.
 
-## Get a Gardendless Resource Package
+## Get the game resources
 
-You can obtain an importable resource package in the following ways:
+GardendlessLoader ships without any game resources. Get an importable ZIP from one of these sources:
 
-- Use a package optimized for mobile devices:
+- **Mobile-optimized packages (recommended)**
+  - [Quark Cloud Drive](https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU), extraction code `qLBU`. The author uploads these copies for convenience; they are not affiliated with PvZ2 Gardendless and may lag behind official releases. If an update is overdue, feel free to remind the author on Bilibili. Downloads through this link may earn the author a small referral reward, which helps support development.
+  - Run the GitHub Actions workflow in [extract-pvzge-gpnext](https://github.com/Dey410/extract-pvzge-gpnext) to build a ZIP with GP-Next and mobile optimizations.
+- **Original upstream resources**: open the [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web) repository and select `Code` → `Download ZIP`.
 
-  1. Download it from [Quark Cloud Drive](https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU) using extraction code `qLBU` (recommended). The project maintainer may receive a small referral reward when you download through this link, which helps support development.
+## Quick start
 
-  2. Use GitHub Actions in [extract-pvzge-gpnext](https://github.com/Dey410/extract-pvzge-gpnext) to build a ZIP automatically. The resulting package includes GP-Next and mobile optimizations.
+1. Get a game resource ZIP as described [above](#get-the-game-resources).
+2. Open GardendlessLoader, go to the **Resources** tab, and tap **Select ZIP to import**.
+3. Wait for the four steps to finish: Read, Extract, Validate, and Self-check.
+4. Go back to the **Play** tab and tap **Start Game**.
 
-- Use the original upstream resources: open [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web), then select `Code` → `Download ZIP`.
+A few everyday tips:
 
-## Quick Start
+- **Update resources**: on the **Resources** tab, tap **Select ZIP to update**. Your save lives in the game and updating resources does not delete it, but a new version may rewrite it, so export a backup in the game first.
+- **Import from another app**: open a ZIP with GardendlessLoader from a file manager, chat app, or similar (Android and iOS also accept it through Share). If the game is running, the import waits until you return to the launcher.
+- **Home-screen shortcuts**: long-press the app icon to jump straight to **Start Game** or **Import Resources**.
+- **Back to the launcher**: use system Back on Android and HarmonyOS, swipe right from the left edge on iOS, or use the game's own quit button.
 
-1. Obtain a web resource ZIP from the [`PvZ2 Gardendless` upstream project](https://github.com/Gzh0821/pvzge_web) or another trusted source.
-2. Open GardendlessLoader and select **Select ZIP to import**.
-3. Wait for the app to finish extraction, validation, and resource-slot switching.
-4. Select **Start Game** to enter the platform-native GameHost.
+### Launch preferences
 
-To update the resources, select another ZIP. New resources are written to the inactive slot and become active only after validation and the filesystem self-check succeed.
+These options live under **Settings → Launch Preferences** and take effect the next time the game starts:
 
-The separate arrow on the right side of **Start Game** expands the launch controls and shows **Auto Collect Sun**. The panel starts collapsed whenever the Loader home page is entered, and changing the setting affects the next game launch.
-
-### In-game Touch Controls
-
-| Gesture | Mapping |
+| Option | What it does |
 | --- | --- |
-| Single-finger tap or drag | Left mouse click or drag |
-| Two-finger tap | Right mouse click at the center of both touches |
+| Quick launch | Opens the game directly when the app starts |
+| Auto Collect Sun | Presses `A` about every 3 seconds during play; skipped while the game is paused, the app is in the background, or you are typing |
+| Render resolution | Renders at 100% / 75% / 50% of the screen's native resolution; lower uses less GPU memory but looks softer |
+| Screen fit | **Balanced** (default) trims a little of the picture for smaller black bars; **Show all** keeps the whole picture with larger bars; **Stretch** fills the screen but may distort the picture |
+| Watermark | Shows the loader name in a corner of the game |
+
+### Touch controls
+
+| Gesture | Action |
+| --- | --- |
+| One-finger tap or drag | Left click or drag |
+| Two-finger tap | Right click at the midpoint between your fingers |
 | Two-finger swipe | Mouse wheel |
-| Three or more fingers | Cancel the current touch mapping |
+| Three or more fingers | Cancels the current touch |
 | Physical mouse and keyboard | Handled natively by the system WebView |
 
-When **Auto Collect Sun** is enabled in the launch controls, the app simulates one `A` key press approximately every 3 seconds while gameplay is active. It does not trigger when the game is paused, the app is in the background, or a text input has focus.
+### GP-Next and Mods
 
-JS Modding is controlled entirely by GP-Next in the game. The Loader does not display or persist a second switch, does not place the setting in `GameSession`, and does not read or write `gp-next-settings`. An existing enabled or disabled choice therefore remains unchanged during a Loader update. JS Mods execute code inside the game, so import them only from sources you trust.
+- Save import/export, patches, and Mod installs all happen inside the game through the system file picker.
+- Install ZIP Mods from the GP-Next Mods page. Once the Mod platform is active, the patch folder accepts only single-file JSON/JSON5 patches.
+- A ZIP patch pack may keep `pack.json` at the archive root or inside exactly one top-level wrapper folder. For the wrapped form, the Loader strips that folder from its internal copy and ignores `.DS_Store` and `__MACOSX`; the file you picked is never modified. Archives with several candidate folders, other files outside the wrapper, or deeper nesting are rejected.
+- The JS Modding switch lives only in GP-Next inside the game. The Loader never reads or changes it, so updating the Loader keeps your choice.
+- JS Mods run code inside the game, so only install Mods from sources you trust.
 
-> [!IMPORTANT]
-> Some of the project's UI, logic, and platform adaptation were developed with the assistance of AI tools and are continually improved through code review, automated tests, and device acceptance testing. If you encounter unexpected behavior, include the diagnostic summary when reporting it.
+## How resources are stored and updated
 
-### Local Resource Layout
-
-The app creates the following layout in its platform-specific application directory:
+The app creates this layout in its platform-private directory:
 
 ```text
 GardendlessLoader/
@@ -87,21 +100,19 @@ GardendlessLoader/
   slot-b/          # resource slot B
   gp-next/         # created by GP-Next on its first start
     configuration-state.json  # GP-Next Mod configuration
-    installed/     # content-addressed Mods installed from the GP-Next Mods page
-    patches/       # JSON/JSON5 single-file patches
-    packs/         # legacy ZIP packs, read only before GP-Next migrates them
+    installed/     # Mods installed from the Mods page, stored by content hash
+    patches/       # single-file JSON/JSON5 patches
+    packs/         # legacy ZIP packs, read only until GP-Next migrates them
   manifest.json    # active slot, transaction state, resource stats, and game version
 ```
 
-The Loader never creates `gp-next` itself: GP-Next treats an existing `gp-next` directory as a legacy installation. A fresh install therefore starts directly on GP-Next's Mod platform, while an existing legacy `gp-next` is upgraded with GP-Next's "Update mod management" step. Install ZIP Mods from the GP-Next Mods page; once that platform is active, the Loader's patch-folder import accepts only JSON/JSON5 patches.
+- **A/B updates**: normally only the active slot holds game files. An update writes the new resources to the idle slot, and `manifest.json` switches to it atomically only after validation and the self-check pass; the old slot is then cleaned up. At most two copies, old and new, exist at any time.
+- **Patches and Mods survive updates**: `gp-next/` sits outside both slots, so updating the game resources never removes installed patches or Mods.
+- **GP-Next creates `gp-next/` itself**: GP-Next treats an existing `gp-next` folder as a legacy installation, so the Loader never creates it in advance. A fresh install goes straight to GP-Next's Mod platform, and an existing legacy folder is upgraded through GP-Next's "Update mod management" step.
 
-At rest, only the active slot contains game files. During an update, at most one copy of the old resources and one candidate copy are retained. The manifest switches atomically only after the candidate passes validation; the old slot is then cleaned. Because `gp-next` is outside both slots, updating game resources does not remove imported patches or Mods.
+## Platform support
 
-A GP-Next ZIP pack may place `pack.json` directly at the archive root or inside exactly one top-level wrapper directory. For the wrapped form, the Loader strips that one directory from its internal copy and ignores `.DS_Store` and `__MACOSX` metadata; the selected source file is not modified. Archives with multiple candidates, unrelated files outside the wrapper, or deeper nesting are rejected.
-
-## Current Status
-
-| Capability | Android | iOS | HarmonyOS / OpenHarmony |
+| Feature | Android | iOS | HarmonyOS / OpenHarmony |
 | --- | :---: | :---: | :---: |
 | ZIP import and resource validation | ✅ | ✅ | ✅ |
 | Native GameHost | ✅ WebView | ✅ WKWebView | ✅ ArkWeb |
@@ -109,47 +120,61 @@ A GP-Next ZIP pack may place `pack.json` directly at the archive root or inside 
 | Touch, keyboard/mouse, and game bridge | ✅ | ✅ | ✅ |
 | GP-Next bridge and patch import | ✅ | ✅ | ✅ |
 | GP-Next 0.15 ZIP/folder Mod installation | ✅ | ✅ | ✅ |
-| Game-owned JS Modding control | ✅ | ✅ | ✅ |
-| CI artifacts | APK | Unsigned IPA | Unsigned HAP (conditional) |
+| In-game JS Modding control | ✅ | ✅ | ✅ |
+| CI artifacts | APK | Unsigned IPA | Unsigned HAP (when CI is configured) |
 
 > [!NOTE]
-> The repository contains only the maintained Android, iOS, and HarmonyOS/OpenHarmony platform projects.
-> Some HarmonyOS/ArkWeb versions may not decode AVIF resources. If images fail to display, use a mobile resource package whose images have been converted to a compatible format.
+> Some HarmonyOS/ArkWeb versions cannot decode AVIF images. If images in the game fail to appear, use a mobile resource package whose images have been converted to a compatible format.
 
-## Known Limitations
+## Known limitations
 
-- The app does not download or distribute game resources on the user's behalf. A ZIP must be imported manually before use.
-- GP-Next compatibility is detected from required module fingerprints in the entry bundle and its explicitly referenced local `gp-next-*.js` module, rather than a hard-coded version number. The bridge implements the commands used by GP-Next 0.15; passing detection does not guarantee compatibility with later protocol changes.
-- HarmonyOS build and device compatibility depend on the OpenHarmony Flutter SDK and DevEco toolchain.
-- Media, audio, and input behavior may differ between system WebView implementations.
-- The iOS high-refresh-rate compatibility layer uses private WebKit SPI. It is intended only for sideloaded builds, may stop working after system updates, and may not pass App Store review. See the [iOS deployment guide](docs/deployment.md).
+- The app does not download or distribute game resources for you; import a ZIP manually before first use.
+- GP-Next compatibility is detected from key fingerprints in the entry bundle and the local `gp-next-*.js` module it references, not from a hard-coded version number. The bridge implements the commands GP-Next 0.15 uses, so passing detection does not guarantee compatibility if a later version changes the protocol.
+- HarmonyOS build and device compatibility depend on the OpenHarmony Flutter SDK and the DevEco toolchain.
+- Media, audio, and input behavior can differ between system WebView implementations.
+- High-refresh-rate support on iOS relies on private WebKit SPI. It is meant only for sideloaded builds, may break after system updates, and may not pass App Store review. See the [iOS deployment guide](docs/deployment.md).
 
-Before reporting a new problem, search the [Issue Tracker](https://github.com/Dey410/GardendlessLoader/issues) and include the app's **Diagnostic Summary**.
+## Reporting issues
 
-## Build
+Before opening a new issue, search the existing [Issues](https://github.com/Dey410/GardendlessLoader/issues). When you report a problem, include:
+
+- Device model and OS version
+- Loader version and game resource version
+- Steps to reproduce
+- The diagnostics from **Copy diagnostics** on the app's **Logs** tab
+
+Please do not upload or attach game resource packages.
+
+> [!NOTE]
+> Parts of this project's UI, logic, and platform adaptation were built with the help of AI tools and are continually improved through code review, automated checks, and device testing. If something behaves unexpectedly, attaching the diagnostics helps us track it down faster.
+
+Other channels:
+
+- Source code and releases: [GitHub repository](https://github.com/Dey410/GardendlessLoader)
+- Project introductions and tutorials: [Bilibili profile](https://space.bilibili.com/523667580)
+
+## Build from source
 
 ### Requirements
 
-- Flutter `3.41.9` (matching the current CI configuration)
+- Flutter `3.41.9` (matches CI)
 - Dart `>=3.5.0 <4.0.0`
-- JDK 17 for Android builds
-- macOS, Xcode, and CocoaPods for iOS builds
-- A compatible Flutter SDK, DevEco command-line tools, and JDK 17 for HarmonyOS builds
+- Android: JDK 17
+- iOS: macOS, Xcode, and CocoaPods
+- HarmonyOS: the OpenHarmony Flutter SDK, DevEco command-line tools, and JDK 17
 
-Clone the repository and analyze the code:
+Clone the repository and run static analysis:
 
-```powershell
+```bash
 git clone https://github.com/Dey410/GardendlessLoader.git
-Set-Location GardendlessLoader
+cd GardendlessLoader
 flutter pub get
 flutter analyze
 ```
 
-Validate Dart changes with `dart format lib` and `flutter analyze`, then build the affected platform and perform the relevant device checks. The Flutter unit and widget suite has been removed; do not recreate per-feature test files automatically.
-
 ### Android
 
-```powershell
+```bash
 flutter build apk --release
 ```
 
@@ -157,7 +182,7 @@ The APK is written to `build/app/outputs/flutter-apk/app-release.apk` by default
 
 ### iOS
 
-Generate an unsigned Release build:
+Build an unsigned Release:
 
 ```bash
 cd ios
@@ -166,11 +191,11 @@ cd ..
 flutter build ios --release --no-codesign
 ```
 
-The default output is `build/ios/iphoneos/Runner.app`. It must be signed before installation or distribution. See the [iOS deployment guide](docs/deployment.md) for the complete unsigned IPA packaging process. If Apple developer signing is already configured locally, run `flutter build ios --release` to produce a signed build.
+The output is `build/ios/iphoneos/Runner.app` by default and must be signed before installation or distribution. See the [iOS deployment guide](docs/deployment.md) for the full unsigned IPA packaging steps. If Apple developer signing is already set up on your machine, run `flutter build ios --release` to get a signed build.
 
 ### HarmonyOS / OpenHarmony
 
-The official Flutter stable SDK does not provide `flutter build hap`. This project's CI uses the following OpenHarmony Flutter SDK:
+The official Flutter stable SDK does not support `flutter build hap`. This project's CI uses the following OpenHarmony Flutter SDK:
 
 ```text
 https://gitcode.com/openharmony-tpc/flutter_flutter.git
@@ -179,52 +204,44 @@ ref: oh-3.35.7-release
 
 Enable the OpenHarmony dependency overrides before building locally:
 
-```powershell
-Copy-Item pubspec_overrides.ohos.yaml pubspec_overrides.yaml
+```bash
+cp pubspec_overrides.ohos.yaml pubspec_overrides.yaml
 flutter doctor -v
 flutter pub get
 flutter build hap --release --target-platform ohos-arm64
 ```
 
-## Roadmap
-
-The project currently focuses on:
-
-- Improving consistency, stability, and performance across all three native GameHosts.
-- Improving import progress, error messages, and recovery for large resource packages.
-- Expanding compatibility with newer GP-Next versions and mobile file workflows.
-- Improving automated tests, release artifacts, and device acceptance testing.
-
-Suggestions and discussion are welcome in the [Issue Tracker](https://github.com/Dey410/GardendlessLoader/issues).
-
 ## Contributing
 
-Code, documentation, tests, bug reports, and feature suggestions are welcome.
+Code, documentation, bug reports, and feature ideas are all welcome.
 
-1. Fork the repository and create a feature branch from the latest main branch.
-2. Keep Dart code at two-space indentation and use single quotes.
-3. After making changes, run `dart format lib` and `flutter analyze`, then build and verify the affected platform.
-4. Open a pull request describing the changes and validation performed. Include screenshots or recordings for UI changes.
+1. Fork the repository and create a feature branch from the latest `main`.
+2. Use two-space indentation and single quotes in Dart code.
+3. After your changes, run `dart format lib` and `flutter analyze`, then build the affected platforms and verify on a real device. The project currently has no Flutter unit or widget tests.
+4. Open a pull request that describes the change and how you verified it; include screenshots or recordings for UI changes.
 
-When contributing code, preserve the resource path restrictions, atomic A/B slot switching, and default blocking of non-allowlisted WebView requests.
+Please keep the existing safety boundaries intact: resource paths stay confined to the active slot, A/B slots switch atomically, and the WebView blocks requests outside the allowlist by default.
 
-## Support
+## Roadmap
 
-- Bug reports and feature requests: [GitHub Issues](https://github.com/Dey410/GardendlessLoader/issues)
-- Source code and releases: [GitHub repository](https://github.com/Dey410/GardendlessLoader)
-- Project introductions and tutorials: [Bilibili profile](https://space.bilibili.com/523667580)
+Current priorities:
 
-When reporting a runtime problem, include the device model, operating-system version, app version, resource version, and the diagnostic summary provided by the app. Do not upload or attach game resource packages.
+- Make the three native GameHosts more consistent, stable, and fast.
+- Improve import progress, error messages, and recovery for large resource packages.
+- Support newer GP-Next versions and smooth out mobile file workflows.
+- Strengthen automated checks, release artifacts, and device acceptance testing.
+
+Ideas and discussion are welcome in [Issues](https://github.com/Dey410/GardendlessLoader/issues).
 
 ## License
 
-GardendlessLoader is open source under the [GNU General Public License v3.0](LICENSE). You may use, study, modify, and redistribute this project in accordance with the license terms.
+GardendlessLoader is open source under the [GNU General Public License v3.0](LICENSE). You may use, study, modify, and redistribute it under the terms of that license.
 
-Game resources, the upstream project, and third-party components remain subject to their respective licenses. This repository's GPL-3.0 license does not grant additional rights to those materials.
+Game resources, the upstream project, and third-party components remain under their own licenses; this repository's GPL-3.0 license grants no additional rights to them.
 
 ## Acknowledgements
 
-- [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web), the upstream web project served by this loader.
-- [Flutter](https://flutter.dev/) and Dart, used for the cross-platform launcher UI and application logic.
-- Android WebView, Apple WebKit, and HarmonyOS ArkWeb, which provide the native GameHost foundations on each platform.
-- Everyone who has contributed code, tests, issue reports, and usage feedback.
+- [`PvZ2 Gardendless`](https://github.com/Gzh0821/pvzge_web), the upstream web project this loader serves.
+- [Flutter](https://flutter.dev/) and Dart, which power the cross-platform launcher UI and app logic.
+- Android WebView, Apple WebKit, and HarmonyOS ArkWeb, the foundations of each platform's native GameHost.
+- Everyone who has contributed code, tested builds, reported issues, or shared feedback.
