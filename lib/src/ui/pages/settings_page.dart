@@ -261,44 +261,37 @@ class _SegmentedSettingRow<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    // The control sits under the text: beside it, a phone's narrow column
+    // left the text a few characters wide.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: palette.ink,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: palette.inkMuted,
-                    fontSize: 12.5,
-                    height: 1.4,
-                  ),
-                ),
-              ],
+          Text(
+            title,
+            style: TextStyle(
+              color: palette.ink,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(width: 16),
-          SizedBox(
-            width: 216,
-            child: GardenSegmented<T>(
-              values: values,
-              selected: selected,
-              keyOf: keyOf,
-              labelOf: labelOf,
-              onChanged: onChanged,
+          const SizedBox(height: 3),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: palette.inkMuted,
+              fontSize: 12.5,
+              height: 1.4,
             ),
+          ),
+          const SizedBox(height: 10),
+          GardenSegmented<T>(
+            values: values,
+            selected: selected,
+            keyOf: keyOf,
+            labelOf: labelOf,
+            onChanged: onChanged,
           ),
         ],
       ),
