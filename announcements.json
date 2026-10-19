@@ -7,14 +7,22 @@
     "accentDark": "#fb923c",
     "badge": "🎃"
   },
+  "urls": {
+    "loaderGithub": "https://github.com/Dey410/GardendlessLoader",
+    "gameGithub": "https://github.com/Gzh0821/pvzge_web",
+    "loaderCloudDrive": "https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU",
+    "gameCloudDrive": "https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU",
+    "bilibili": "https://space.bilibili.com/523667580",
+    "gameReleaseNotes": "https://github.com/Gzh0821/pvzg_site/releases/tag/{version}"
+  },
   "announcement": {
-    "id": "2026-10-04-v0.8.2",
-    "title": "v0.8.2 重要更新",
-    "message": "GardendlessLoader v0.8.2 已发布：兼容 GP-Next 0.15，Android、iOS 与 HarmonyOS/OpenHarmony 均可在游戏内选择 ZIP 或文件夹安装 Mod；修复 GP-Next 沙箱路径、patches 探测及游戏版本显示未知，并优化拖拽触控及启动恢复界面。JS Modding 现由游戏内设置管理，Loader 不再显示或修改该开关。重要：JS Mod 会执行游戏代码，请只使用可信来源；升级前建议导出重要存档。",
+    "id": "2026-10-19-v0.9.0",
+    "title": "v0.9.0 启动器焕新",
+    "message": "GardendlessLoader v0.9.0 来了！这次把启动器从里到外重做了一遍。\n\n🌱 全新启动器\n· 横屏重新设计，分为游戏、资源、日志、设置四页\n· 支持中文和 English，可选浅色或深色主题\n· 在设置中打开「快速启动」，点开应用就直接进入游戏\n· 长按桌面图标可以直接开始游戏或导入资源；在其他应用里用本应用打开 ZIP，也能直接导入\n\n🖥 画面设置\n· 「画面比例」：均衡比例 / 完整显示 / 强制拉伸，按喜好选择黑边和裁切\n· 「渲染分辨率」：100% / 75% / 50%，卡顿或闪退时可以调低\n\n🔧 修复与改进\n· 启动和进入游戏明显更快\n· GP-Next 的 Mods 页面可以正常使用，Mod 的启用和排序能保存下来\n· 游戏内的退出按钮会回到启动器\n· 修复部分 Android 设备无法启动游戏、iOS 切换应用后没有声音、每次导入后自动收集被关闭等问题\n· 每条报错下方都会附上解决办法\n\n更新加载器或游戏资源前，建议先在游戏内导出存档。完整更新说明见 GitHub。",
     "links": [
       {
-        "label": "GitHub",
-        "url": "https://github.com/Dey410/GardendlessLoader"
+        "label": "下载新版",
+        "url": "https://github.com/Dey410/GardendlessLoader/releases/latest"
       },
       {
         "label": "B站主页",

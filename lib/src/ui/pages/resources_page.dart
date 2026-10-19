@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../app_controller.dart';
-import '../../constants.dart';
 import '../../l10n/app_strings.dart';
 import '../../logging/log_event_catalog.dart';
 import '../../models.dart';
@@ -101,6 +100,7 @@ class _ImportCard extends StatelessWidget {
                       expanded: detailsExpanded,
                       onToggle: actions.toggleImportDetails,
                       onDismiss: controller.dismissImportProgress,
+                      releaseNotesUrlFor: controller.links.gameReleaseNotesFor,
                       onOpenUrl: actions.openUrl,
                     ),
                   ),
@@ -137,6 +137,7 @@ class _ImportProgressView extends StatelessWidget {
     required this.expanded,
     required this.onToggle,
     required this.onDismiss,
+    required this.releaseNotesUrlFor,
     required this.onOpenUrl,
   });
 
@@ -148,6 +149,7 @@ class _ImportProgressView extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
   final VoidCallback onDismiss;
+  final String Function(String version) releaseNotesUrlFor;
   final Future<void> Function(String url) onOpenUrl;
 
   @override
@@ -285,8 +287,8 @@ class _ImportProgressView extends StatelessWidget {
                               icon: Icons.open_in_new_rounded,
                               tone: GardenButtonTone.ghost,
                               compact: true,
-                              onPressed: () => onOpenUrl(
-                                  '$gameReleaseUrlPrefix${upgrade.to}'),
+                              onPressed: () =>
+                                  onOpenUrl(releaseNotesUrlFor(upgrade.to)),
                             ),
                         ],
                       ),
@@ -412,7 +414,7 @@ class _GameVersionCard extends StatelessWidget {
                 label: strings.githubDownload,
                 leading: const FaIcon(FontAwesomeIcons.github, size: 16),
                 compact: true,
-                onPressed: () => actions.openUrl(githubUrl),
+                onPressed: () => actions.openUrl(controller.links.gameGithub),
               ),
               GardenButton(
                 label: strings.cloudDriveDownload,
@@ -421,7 +423,8 @@ class _GameVersionCard extends StatelessWidget {
                     ? GardenButtonTone.primary
                     : GardenButtonTone.secondary,
                 compact: true,
-                onPressed: () => actions.openUrl(appCloudDriveUpdateUrl),
+                onPressed: () =>
+                    actions.openUrl(controller.links.gameCloudDrive),
               ),
               if (update != null)
                 GardenButton(

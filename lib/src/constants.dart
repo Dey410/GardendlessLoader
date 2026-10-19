@@ -5,13 +5,15 @@ const githubUrl =
     'https://github.com/Gzh0821/pvzge_web'; // GitHub 仓库地址，指向 PvZ2 Gardendless 项目的源代码
 const appGithubUrl =
     'https://github.com/Dey410/GardendlessLoader'; // GardendlessLoader 的 GitHub 仓库地址
-const gameReleaseUrlPrefix =
-    'https://github.com/Gzh0821/pvzg_site/releases/tag/'; // 上游游戏版本的更新说明，后接版本号
-const appCloudDriveUpdateUrl =
-    'https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU'; // App 网盘更新地址
+const gameReleaseNotesUrl =
+    'https://github.com/Gzh0821/pvzg_site/releases/tag/{version}'; // 上游游戏版本的更新说明，{version} 替换为版本号
+const cloudDriveUrl =
+    'https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU'; // 网盘地址，加载器更新与游戏资源下载默认共用
 const bilibiliHomeUrl = 'https://space.bilibili.com/523667580'; // B站主页地址
-const remoteAnnouncementUrl =
-    'https://raw.githubusercontent.com/Dey410/GardendlessLoader/main/announcements.json'; // 远程公告 URL
+const remoteAnnouncementUrls = [
+  'https://raw.githubusercontent.com/Dey410/GardendlessLoader/main/announcements.json',
+  'https://cdn.jsdelivr.net/gh/Dey410/GardendlessLoader@main/announcements.json',
+]; // 远程公告 URL，按顺序尝试；GitHub 无法访问时改用 jsDelivr
 const remoteAboutContentUrl =
     'https://raw.githubusercontent.com/Dey410/GardendlessLoader/main/about_content.json'; // 远程关于内容 URL
 const resourceFolderName = 'GardendlessLoader'; // 资源文件夹名称

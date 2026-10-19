@@ -444,6 +444,7 @@ class _HomePageState extends State<HomePage> {
     await showAnnouncementDialog(
       context,
       announcement: _controller.announcement,
+      launcherLinks: _controller.links,
       openUrl: _openExternalUrl,
     );
   }

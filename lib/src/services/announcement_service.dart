@@ -6,43 +6,89 @@ import '../constants.dart';
 import 'http_text.dart';
 import '../models.dart';
 
-/// What the remote announcement file carries: the announcement and an
-/// optional seasonal theme, each valid on its own.
+/// What the remote announcement file carries: the announcement, an optional
+/// seasonal theme and links for the launcher, each valid on its own.
 class AnnouncementFeed {
-  const AnnouncementFeed({this.announcement, this.theme});
+  const AnnouncementFeed({required this.json, this.announcement, this.theme});
 
+  /// The file as received, saved again for a start without network.
+  final Map<String, dynamic> json;
   final Announcement? announcement;
   final SeasonalTheme? theme;
+
+  /// Read through [LauncherLinks.merge].
+  Object? get urls => json['urls'];
 }
 
 class AnnouncementService {
-  static final Uri _remoteUri = Uri.parse(remoteAnnouncementUrl);
+  static final List<Uri> _remoteUris =
+      remoteAnnouncementUrls.map(Uri.parse).toList(growable: false);
 
-  Future<AnnouncementFeed> fetch() async {
+  /// The feed written by [save], or null without one.
+  Future<AnnouncementFeed?> loadCached(File cacheFile) async {
+    try {
+      return _decode(await cacheFile.readAsString());
+    } on FileSystemException {
+      return null;
+    }
+  }
+
+  /// Tries each source in order; null when no source answers with a valid
+  /// feed.
+  Future<AnnouncementFeed?> fetch() async {
+    for (final uri in _remoteUris) {
+      final body = await _download(uri);
+      final feed = body == null ? null : _decode(body);
+      if (feed != null) return feed;
+    }
+    return null;
+  }
+
+  /// Saves [feed] with [links] as its `urls`, so the next start begins with
+  /// every link fetched so far.
+  Future<void> save(
+    File cacheFile,
+    AnnouncementFeed feed,
+    LauncherLinks links,
+  ) async {
+    try {
+      await cacheFile
+          .writeAsString(jsonEncode({...feed.json, 'urls': links.toJson()}));
+    } on FileSystemException {
+      // The fetched feed still applies; the next start fetches again.
+    }
+  }
+
+  static Future<String?> _download(Uri uri) async {
     try {
       final response = await loadHttpText(
-        _remoteUri,
+        uri,
         announcementTimeout,
         announcementMaxBytes,
       ).timeout(announcementTimeout);
-      if (response.statusCode != HttpStatus.ok) {
-        return const AnnouncementFeed();
-      }
+      return response.statusCode == HttpStatus.ok ? response.body : null;
+    } catch (_) {
+      return null;
+    }
+  }
 
-      final decoded = jsonDecode(response.body);
+  static AnnouncementFeed? _decode(String body) {
+    try {
+      final decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic> || decoded['schemaVersion'] != 1) {
-        return const AnnouncementFeed();
+        return null;
       }
       return AnnouncementFeed(
+        json: decoded,
         announcement: _parse(decoded['announcement'], Announcement.fromJson),
         theme: _parse(decoded['theme'], SeasonalTheme.fromJson),
       );
     } catch (_) {
-      return const AnnouncementFeed();
+      return null;
     }
   }
 
-  /// A malformed part is dropped without discarding the other.
+  /// A malformed part is dropped without discarding the others.
   static T? _parse<T>(Object? value, T Function(Object?) fromJson) {
     if (value == null) return null;
     try {
