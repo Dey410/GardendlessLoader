@@ -235,6 +235,7 @@ struct GamePage {
       hostAbi: 1,
       platform: 'ohos',
       touchWheelCssMultiplier: -4.5,
+      touchGestureMode: session.gestureMode,
       touchDiagnosticsEnabled: session.touchDiagnosticsEnabled,
       origin: GameSession.ORIGIN,
       activationGeneration: session.activationGeneration,
@@ -255,6 +256,7 @@ struct GamePage {
       'auto_sun.js',
       'touch_state_machine.js',
       'touch_input_adapter.js',
+      'native_gestures.js',
       'render_scale.js',
       'export_download_patch.js',
     ];

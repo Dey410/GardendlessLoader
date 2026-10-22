@@ -39,6 +39,13 @@
     };
   }
 
+  function fingerDistance(points) {
+    return Math.hypot(
+      points[0].clientX - points[1].clientX,
+      points[0].clientY - points[1].clientY
+    );
+  }
+
   function positivePixelRatio(value) {
     const ratio = Number(value);
     return Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
@@ -48,16 +55,25 @@
     const trace = options && typeof options.trace === "function"
       ? options.trace
       : null;
+    // Simulated: only vertical center movement leaves the right-click
+    // candidate, and it scrolls. Native: movement in any direction does; the
+    // gesture then locks to a swipe (vertical center movement) or a pinch
+    // (finger distance, spreading counts as moving down).
+    const nativeTwoFinger = options && options.twoFingerGestures === "native";
     let state = "idle";
     let primaryPoint = null;
     let twoFingerStartPoint = null;
     let lastTwoFingerPoint = null;
+    let twoFingerStartDistance = 0;
+    let lastTwoFingerDistance = 0;
 
     function reset(nextState) {
       state = nextState || "idle";
       primaryPoint = null;
       twoFingerStartPoint = null;
       lastTwoFingerPoint = null;
+      twoFingerStartDistance = 0;
+      lastTwoFingerDistance = 0;
     }
 
     function beginTwoFinger(points, commands, hadPrimary) {
@@ -66,6 +82,8 @@
       primaryPoint = null;
       twoFingerStartPoint = center;
       lastTwoFingerPoint = center;
+      twoFingerStartDistance = fingerDistance(points);
+      lastTwoFingerDistance = twoFingerStartDistance;
       if (hadPrimary) {
         commands.push({type: "neutralMove", point: copyPoint(center)});
       }
@@ -101,7 +119,40 @@
         if (state === "primary" && points.length === 1) {
           primaryPoint = copyPoint(points[0]);
           commands.push({type: "primaryMove", point: copyPoint(primaryPoint)});
-        } else if ((state === "secondaryCandidate" ||
+        } else if (nativeTwoFinger && (state === "secondaryCandidate" ||
+            state === "secondaryScroll" || state === "secondaryPinch") &&
+            points.length === 2) {
+          const center = averagePoint(points);
+          const distance = fingerDistance(points);
+          const ratio = positivePixelRatio(input.physicalPixelRatio);
+          if (state === "secondaryCandidate") {
+            const centerTravel = Math.hypot(
+              center.clientX - twoFingerStartPoint.clientX,
+              center.clientY - twoFingerStartPoint.clientY
+            ) * ratio;
+            const spread = Math.abs(distance - twoFingerStartDistance) * ratio;
+            if (Math.max(centerTravel, spread) >
+                twoFingerMoveThresholdPhysicalPixels) {
+              state = spread > centerTravel
+                ? "secondaryPinch"
+                : "secondaryScroll";
+            }
+          }
+          if (state !== "secondaryCandidate") {
+            const physicalDeltaY = state === "secondaryPinch"
+              ? (distance - lastTwoFingerDistance) * ratio
+              : (center.clientY - lastTwoFingerPoint.clientY) * ratio;
+            if (physicalDeltaY !== 0) {
+              commands.push({
+                type: "scroll",
+                point: copyPoint(center),
+                physicalDeltaY
+              });
+            }
+          }
+          lastTwoFingerPoint = center;
+          lastTwoFingerDistance = distance;
+        } else if (!nativeTwoFinger && (state === "secondaryCandidate" ||
             state === "secondaryScroll") && points.length === 2) {
           const center = averagePoint(points);
           const ratio = positivePixelRatio(input.physicalPixelRatio);
@@ -138,7 +189,8 @@
             point: copyPoint(twoFingerStartPoint)
           });
           reset("idle");
-        } else if (state === "secondaryScroll" && points.length === 0) {
+        } else if ((state === "secondaryScroll" ||
+            state === "secondaryPinch") && points.length === 0) {
           reset("idle");
         }
       }

@@ -57,6 +57,24 @@ enum ScreenFit {
   }
 }
 
+/// How touches drive the game. The names are the native session wire values.
+enum GestureMode {
+  /// Maps one finger to the mouse and clicks the release point of a drag so
+  /// it plants; two fingers give the right button and the wheel.
+  simulated,
+
+  /// Experimental. Maps one finger to the mouse one to one and teaches the
+  /// game drag and drop; two fingers tap, swipe or pinch.
+  native;
+
+  static GestureMode fromName(Object? value) {
+    return GestureMode.values.firstWhere(
+      (mode) => mode.name == value,
+      orElse: () => GestureMode.simulated,
+    );
+  }
+}
+
 class GameSession {
   const GameSession({
     required this.sessionId,
@@ -73,6 +91,7 @@ class GameSession {
     this.detailedAudioDiagnosticsEnabled = false,
     this.renderScale,
     this.screenFit = ScreenFit.balanced,
+    this.gestureMode = GestureMode.simulated,
     this.touchDiagnosticsEnabled = false,
     this.gestureHint,
     required this.allowedRemoteHosts,
@@ -121,6 +140,7 @@ class GameSession {
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       renderScale: (renderScale as num?)?.toDouble(),
       screenFit: ScreenFit.fromName(json['screenFit']),
+      gestureMode: GestureMode.fromName(json['touchGestureMode']),
       touchDiagnosticsEnabled:
           json['touchDiagnosticsEnabled'] as bool? ?? false,
       gestureHint: (gestureHint as List?)?.cast<String>(),
@@ -149,6 +169,7 @@ class GameSession {
   /// at the device's own ratio.
   final double? renderScale;
   final ScreenFit screenFit;
+  final GestureMode gestureMode;
 
   /// Records the touch adapter's trace into the logs (tool shed).
   final bool touchDiagnosticsEnabled;
@@ -190,6 +211,7 @@ class GameSession {
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
       'renderScale': renderScale,
       'screenFit': screenFit.name,
+      'touchGestureMode': gestureMode.name,
       'touchDiagnosticsEnabled': touchDiagnosticsEnabled,
       'gestureHint': gestureHint,
       'allowedRemoteHosts': normalizedRemoteHosts,

@@ -1418,4 +1418,194 @@ for (const gameGesture of [
   );
 }
 
+// Native gesture mode (ADR-0003): drag planting is applied by native_gestures.js
+// inside the game, so the adapter only forwards a drag one to one: one press
+// on the seed packet, held moves, and the original release right after the
+// final move.
+for (const platform of ['android', 'ios', 'ohos']) {
+  const hostConfig = {platform, touchGestureMode: 'native'};
+  const seedCard = {clientX: 60, clientY: 50};
+  const lawnTile = {clientX: 240, clientY: 130};
+  function recordPrimary(harness) {
+    const events = [];
+    for (const type of ['mousemove', 'mousedown', 'mouseup']) {
+      harness.canvas.addEventListener(type, (event) => {
+        if (event.button === 0) {
+          events.push([type, event.clientX, event.clientY, event.buttons]);
+        }
+      });
+    }
+    return events;
+  }
+  const dragSequence = [
+    ['mousemove', seedCard.clientX, seedCard.clientY, 0],
+    ['mousedown', seedCard.clientX, seedCard.clientY, 1],
+    ['mousemove', lawnTile.clientX, lawnTile.clientY, 1],
+    ['mouseup', lawnTile.clientX, lawnTile.clientY, 1],
+  ];
+
+  const dragHarness = createTouchHarness({hostConfig});
+  const dragEvents = recordPrimary(dragHarness);
+  dispatchTouchStart(dragHarness, 194, seedCard);
+  dragHarness.flushAnimationFrame();
+  dragHarness.flushAnimationFrame();
+  const dragEnd = createTouch(
+    194,
+    dragHarness.canvas,
+    lawnTile.clientX,
+    lawnTile.clientY,
+  );
+  dragHarness.document.dispatchEvent(createTouchEvent('touchmove', {
+    touches: [dragEnd],
+    changedTouches: [dragEnd],
+  }));
+  dragHarness.flushAnimationFrame();
+  dispatchTouchEnd(dragHarness, dragEnd);
+  assert.deepEqual(
+    dragEvents,
+    dragSequence,
+    `${platform} native drag release must reach Cocos in the touchend task`,
+  );
+  for (let frame = 0; frame < 8; frame += 1) {
+    dragHarness.flushAnimationFrame();
+  }
+  assert.deepEqual(
+    dragEvents,
+    dragSequence,
+    `${platform} native drag must not click the release point`,
+  );
+
+  // A WebView-coalesced drag whose distant release point arrives only with
+  // touchend still moves there before the release.
+  const sparseHarness = createTouchHarness({hostConfig});
+  const sparseEvents = recordPrimary(sparseHarness);
+  dispatchTouchStart(sparseHarness, 199, seedCard);
+  sparseHarness.flushAnimationFrame();
+  sparseHarness.flushAnimationFrame();
+  dispatchTouchEnd(sparseHarness, createTouch(
+    199,
+    sparseHarness.canvas,
+    lawnTile.clientX,
+    lawnTile.clientY,
+  ));
+  for (let frame = 0; frame < 8; frame += 1) {
+    sparseHarness.flushAnimationFrame();
+  }
+  assert.deepEqual(sparseEvents, dragSequence,
+    `${platform} native coalesced drag must move to its release point`);
+
+  // A flick that ends before the delayed press still presses the seed packet
+  // first and releases at the end point.
+  const flickHarness = createTouchHarness({hostConfig});
+  const flickEvents = recordPrimary(flickHarness);
+  dispatchTouchStart(flickHarness, 200, seedCard);
+  dispatchTouchEnd(flickHarness, createTouch(
+    200,
+    flickHarness.canvas,
+    lawnTile.clientX,
+    lawnTile.clientY,
+  ));
+  for (let frame = 0; frame < 8; frame += 1) {
+    flickHarness.flushAnimationFrame();
+  }
+  assert.deepEqual(flickEvents, dragSequence,
+    `${platform} native flick must press before it releases at the end point`);
+}
+
+// Native mode sends two-finger scrolling as whole wheel notches, and a
+// sideways two-finger slide is neither a scroll nor a right click.
+{
+  const hostConfig = {platform: 'ios', touchGestureMode: 'native'};
+  function twoFingerHarness() {
+    const harness = createTouchHarness({devicePixelRatio: 2, hostConfig});
+    const wheel = [];
+    let rightClicks = 0;
+    harness.canvas.addEventListener('wheel', (event) => {
+      wheel.push(event.deltaY);
+    });
+    harness.canvas.addEventListener('mousedown', (event) => {
+      if (event.button === 2) {
+        rightClicks += 1;
+      }
+    });
+    return {harness, wheel, get rightClicks() {
+      return rightClicks;
+    }};
+  }
+  function twoFingers(harness, ids, first, second) {
+    const touches = [
+      createTouch(ids[0], harness.canvas, first[0], first[1]),
+      createTouch(ids[1], harness.canvas, second[0], second[1]),
+    ];
+    return touches;
+  }
+  function startTwo(harness, ids, first, second) {
+    const [a, b] = twoFingers(harness, ids, first, second);
+    harness.document.dispatchEvent(createTouchEvent('touchstart', {
+      touches: [a],
+      changedTouches: [a],
+    }));
+    harness.document.dispatchEvent(createTouchEvent('touchstart', {
+      touches: [a, b],
+      changedTouches: [b],
+    }));
+  }
+  function moveTwo(harness, ids, first, second) {
+    const touches = twoFingers(harness, ids, first, second);
+    harness.document.dispatchEvent(createTouchEvent('touchmove', {
+      touches,
+      changedTouches: touches,
+    }));
+    return touches;
+  }
+  function liftTwo(harness, touches) {
+    harness.document.dispatchEvent(createTouchEvent('touchend', {
+      touches: [touches[1]],
+      changedTouches: [touches[0]],
+    }));
+    harness.document.dispatchEvent(createTouchEvent('touchend', {
+      touches: [],
+      changedTouches: [touches[1]],
+    }));
+  }
+
+  // 100 deltaY at -4.5 per CSS pixel is 22.2 CSS pixels of center movement.
+  const swipe = twoFingerHarness();
+  startTwo(swipe.harness, [301, 302], [80, 100], [120, 100]);
+  moveTwo(swipe.harness, [301, 302], [80, 111], [120, 111]);
+  assert.deepEqual(swipe.wheel, [], 'a partial notch must not scroll');
+  moveTwo(swipe.harness, [301, 302], [80, 124], [120, 124]);
+  assert.deepEqual(swipe.wheel, [-100], 'a full notch sends one wheel event');
+  const last = moveTwo(swipe.harness, [301, 302], [80, 180], [120, 180]);
+  assert.deepEqual(swipe.wheel, [-100, -100, -100],
+    'the remainder carries across moves');
+  liftTwo(swipe.harness, last);
+  assert.equal(swipe.rightClicks, 0);
+
+  const sideways = twoFingerHarness();
+  startTwo(sideways.harness, [303, 304], [80, 100], [120, 100]);
+  const away = moveTwo(sideways.harness, [303, 304], [130, 100], [170, 100]);
+  liftTwo(sideways.harness, away);
+  assert.deepEqual(sideways.wheel, []);
+  assert.equal(sideways.rightClicks, 0,
+    'a sideways two-finger slide must not right click');
+
+  // Spreading the fingers scrolls like moving them down: it zooms in the
+  // Zen Garden.
+  const pinch = twoFingerHarness();
+  startTwo(pinch.harness, [305, 306], [80, 100], [120, 100]);
+  const spread = moveTwo(pinch.harness, [305, 306], [50, 100], [150, 100]);
+  liftTwo(pinch.harness, spread);
+  // 60 CSS pixels of spread is -270 deltaY: two whole notches.
+  assert.deepEqual(pinch.wheel, [-100, -100],
+    'a spread must scroll in the moving-down direction');
+  assert.equal(pinch.rightClicks, 0);
+
+  const tap = twoFingerHarness();
+  startTwo(tap.harness, [307, 308], [80, 100], [120, 100]);
+  const still = moveTwo(tap.harness, [307, 308], [84, 104], [124, 104]);
+  liftTwo(tap.harness, still);
+  assert.equal(tap.rightClicks, 1, 'a still two-finger tap must right click');
+}
+
 console.log('touch input adapter contract passes');

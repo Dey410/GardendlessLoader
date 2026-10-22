@@ -14,6 +14,7 @@ export interface GameSessionPayload {
   detailedAudioDiagnosticsEnabled?: boolean;
   renderScale?: number | null;
   screenFit?: string;
+  touchGestureMode?: string;
   touchDiagnosticsEnabled?: boolean;
   gestureHint?: string[] | null;
   packageId?: string;
@@ -37,6 +38,8 @@ export class GameSession {
   readonly renderScale: number | null;
   /** balanced (16:10–17:9), showAll (17:9) or stretch: how the game viewport fits the screen. */
   readonly screenFit: string;
+  /** simulated (clicks the release point of a drag) or native (experimental drag and drop). */
+  readonly gestureMode: string;
   /** Records the touch adapter's trace into the logs. */
   readonly touchDiagnosticsEnabled: boolean;
   /** Lines of the one-time gesture hint shown over the game; null shows none. */
@@ -74,6 +77,10 @@ export class GameSession {
     this.screenFit = value.screenFit ?? 'balanced';
     if (!['balanced', 'showAll', 'stretch'].includes(this.screenFit)) {
       throw new Error('Invalid screen fit');
+    }
+    this.gestureMode = value.touchGestureMode ?? 'simulated';
+    if (!['simulated', 'native'].includes(this.gestureMode)) {
+      throw new Error('Invalid gesture mode');
     }
     this.touchDiagnosticsEnabled = value.touchDiagnosticsEnabled === true;
     this.gestureHint = value.gestureHint ?? null;

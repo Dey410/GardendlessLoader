@@ -55,6 +55,7 @@ class AppSettings {
     this.quickLaunchEnabled = false,
     this.renderResolution = RenderResolution.full,
     this.screenFit = ScreenFit.balanced,
+    this.gestureMode = GestureMode.simulated,
     this.detailedAudioDiagnosticsEnabled = false,
     this.themePreference = ThemePreference.system,
     this.reduceMotion = false,
@@ -71,6 +72,7 @@ class AppSettings {
       quickLaunchEnabled: json['quickLaunchEnabled'] as bool? ?? false,
       renderResolution: RenderResolution.fromName(json['renderResolution']),
       screenFit: ScreenFit.fromName(json['screenFit']),
+      gestureMode: GestureMode.fromName(json['gestureMode']),
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       themePreference: ThemePreference.fromName(json['themePreference']),
@@ -91,6 +93,9 @@ class AppSettings {
   final bool quickLaunchEnabled;
   final RenderResolution renderResolution;
   final ScreenFit screenFit;
+
+  /// The experimental gesture setting; simulated by default.
+  final GestureMode gestureMode;
   final bool detailedAudioDiagnosticsEnabled;
   final ThemePreference themePreference;
   final bool reduceMotion;
@@ -115,6 +120,7 @@ class AppSettings {
     bool? quickLaunchEnabled,
     RenderResolution? renderResolution,
     ScreenFit? screenFit,
+    GestureMode? gestureMode,
     bool? detailedAudioDiagnosticsEnabled,
     ThemePreference? themePreference,
     bool? reduceMotion,
@@ -129,6 +135,7 @@ class AppSettings {
       quickLaunchEnabled: quickLaunchEnabled ?? this.quickLaunchEnabled,
       renderResolution: renderResolution ?? this.renderResolution,
       screenFit: screenFit ?? this.screenFit,
+      gestureMode: gestureMode ?? this.gestureMode,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled ??
           this.detailedAudioDiagnosticsEnabled,
       themePreference: themePreference ?? this.themePreference,
@@ -147,6 +154,7 @@ class AppSettings {
         'quickLaunchEnabled': quickLaunchEnabled,
         'renderResolution': renderResolution.name,
         'screenFit': screenFit.name,
+        'gestureMode': gestureMode.name,
         'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
         'themePreference': themePreference.name,
         'reduceMotion': reduceMotion,

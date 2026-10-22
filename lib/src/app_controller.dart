@@ -154,6 +154,7 @@ class AppController extends ChangeNotifier {
   bool get quickLaunchEnabled => _appSettings.quickLaunchEnabled;
   RenderResolution get renderResolution => _appSettings.renderResolution;
   ScreenFit get screenFit => _appSettings.screenFit;
+  GestureMode get gestureMode => _appSettings.gestureMode;
   bool get detailedAudioDiagnosticsEnabled =>
       _appSettings.detailedAudioDiagnosticsEnabled;
   ThemePreference get themePreference => _appSettings.themePreference;
@@ -977,10 +978,11 @@ class AppController extends ChangeNotifier {
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
       renderScale: renderResolution.scale,
       screenFit: screenFit,
+      gestureMode: gestureMode,
       touchDiagnosticsEnabled: toolShedUnlocked && touchDiagnosticsEnabled,
       gestureHint: _appSettings.gestureHintShown
           ? null
-          : AppStrings.current.gestureHintLines(gameHostPlatform),
+          : AppStrings.current.gestureHintLines(gameHostPlatform, gestureMode),
       allowedRemoteHosts: hasGpNext
           ? const ['pvzge.com', 'github.com', 'discord.gg']
           : const [],
@@ -1131,6 +1133,16 @@ class AppController extends ChangeNotifier {
 
   Future<void> setScreenFit(ScreenFit fit) {
     return _updateAppSettings(_appSettings.copyWith(screenFit: fit));
+  }
+
+  Future<void> setGestureMode(GestureMode mode) {
+    // The next launch shows the hint for the new mode's gestures.
+    return _updateAppSettings(
+      _appSettings.copyWith(
+        gestureMode: mode,
+        gestureHintShown: _appSettings.gestureHintShown && mode == gestureMode,
+      ),
+    );
   }
 
   Future<void> setDetailedAudioDiagnosticsEnabled(bool enabled) {

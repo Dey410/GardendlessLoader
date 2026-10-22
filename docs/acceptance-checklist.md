@@ -49,6 +49,20 @@
 - With touch diagnostics enabled, the bounded trace contains input coordinates, owners, transitions, and command names, but no DOM text, form value, storage, or game data.
 - On Android Chromium WebView, iOS WKWebView, and OpenHarmony ArkWeb, confirm a fast first tap selects a plant card, the second tap plants on the chosen lawn tile, and a card-to-lawn drag plants on release without another tap.
 - Repeat the complete touch-input matrix on all three WebView engines before release; every adapter must let the game publish the positioning/final move before consuming the placement down/up pair.
+- Settings → Gestures (experimental) defaults to Simulated; the choice applies on the next launch and the items above describe Simulated.
+- Native: a one-finger drag emits exactly one `MOUSE_DOWN`, current-point `MOUSE_MOVE(buttons=1)` events and, in the `touchend` task, a final move and the original `MOUSE_UP`; no click is added at the release point.
+- Native: dragging a seed packet, the shovel, or plant food onto a lawn tile applies it there once; a refused drop or a drop off the lawn puts it back; a tap keeps it in hand; tap planting still plants once.
+- Native: one-finger drags in the almanac, seed chooser, store, and player list scroll with inertia and do not select the item under the finger.
+- Native: in the Zen Garden an empty-handed drag pans and stops on release; holding a shovel, glove, or cart does not pan; a pinch zooms.
+- Native: dragging a sandbox zombie card onto the lawn spawns one zombie; dragging from a sniper plant to a tile fires there, and tapping the sniper still starts aiming.
+- Native: in the decoding minigame, dragging a source card or a filled slot onto another slot places, merges, or swaps it like a second tap; an unused drag releases the card; tapping still picks it.
+- Native: in the Zen Garden, dragging a plant with the glove onto another slot moves it; dragging the shovel, glove, or cart from its button onto a slot applies it; unused drags drop the plant or put the tool back.
+- Native: one finger scrolls the in-game settings window with inertia; dragging a volume or speed slider still moves only the slider.
+- Native: in sandbox, swiping along the seed bank, the zombie cards, or the zombie armor icon steps it once per swipe step and leaves no card in hand; dragging a card toward the lawn still plants.
+- Native: in the sandbox settings window, tapping a shortcut row (Switch Eighties Effects, Push/Spawn Tide, Pull Tide, Switch Music, Time Freeze, Spawn Random Zombies, Switch The Lawn) closes the window and runs it once, honouring rebound keys; tapping outside the window closes it; tapping the toolbar button closes it once; the four toggles still switch; scrolling the list does not run a row.
+- Native: a 500 ms long press opens the editor of a custom card deck (built-in decks do nothing), sets the sandbox seed bank from a lawn plant when nothing is in hand, and clears a filled decoding slot; a moving finger or a shorter press does nothing extra.
+- Native: no action needs two fingers except the cheat sun counter's −1000 and the cosmetic sandbox costume roll; two-finger swipes and pinches still send whole wheel notches, a sideways two-finger slide neither scrolls nor right-clicks, and a still two-finger tap right-clicks.
+- Native: if `native_gestures.js` cannot find a rule's game interface, it logs `原生手势（rule）已停用` once, that rule stays off, and tap planting still works.
 
 ## Automatic sun collection
 

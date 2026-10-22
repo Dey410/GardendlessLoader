@@ -18,6 +18,15 @@ enum class GameScreenFit(val wireName: String) {
     STRETCH("stretch"),
 }
 
+/** How touches drive the game. */
+enum class GameGestureMode(val wireName: String) {
+    /** Clicks the release point of a drag so it plants. */
+    SIMULATED("simulated"),
+
+    /** Experimental: one-to-one mouse mapping with in-game drag and drop. */
+    NATIVE("native"),
+}
+
 data class NativeGameSession(
     val sessionId: String,
     val resourceRoot: String,
@@ -32,6 +41,7 @@ data class NativeGameSession(
     val detailedAudioDiagnosticsEnabled: Boolean = false,
     val renderScale: Double? = null,
     val screenFit: GameScreenFit = GameScreenFit.BALANCED,
+    val gestureMode: GameGestureMode = GameGestureMode.SIMULATED,
     /** Records the touch adapter's trace into the logs. */
     val touchDiagnosticsEnabled: Boolean = false,
     /** Lines of the one-time gesture hint shown over the game; null shows none. */
@@ -79,6 +89,9 @@ object GameSessionCodec {
             },
             screenFit = json.optString("screenFit", GameScreenFit.BALANCED.wireName).let { name ->
                 requireNotNull(GameScreenFit.entries.firstOrNull { it.wireName == name }) { "Invalid screen fit" }
+            },
+            gestureMode = json.optString("touchGestureMode", GameGestureMode.SIMULATED.wireName).let { name ->
+                requireNotNull(GameGestureMode.entries.firstOrNull { it.wireName == name }) { "Invalid gesture mode" }
             },
             touchDiagnosticsEnabled = json.optBoolean("touchDiagnosticsEnabled", false),
             gestureHint = json.optJSONArray("gestureHint")?.let { lines ->

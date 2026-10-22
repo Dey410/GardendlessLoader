@@ -36,7 +36,7 @@ class SettingsPage extends StatelessWidget {
       right: [
         _AboutPanel(controller: controller, actions: actions),
         const SizedBox(height: 16),
-        const _GuidePanel(),
+        _GuidePanel(gestureMode: controller.gestureMode),
       ],
     );
   }
@@ -222,6 +222,18 @@ class _LaunchPreferences extends StatelessWidget {
             labelOf: strings.screenFitLabel,
             onChanged:
                 controller.initialized ? controller.setScreenFit : (_) {},
+          ),
+          Divider(color: palette.border),
+          _SegmentedSettingRow<GestureMode>(
+            key: const ValueKey('gesture-mode'),
+            title: strings.gestureMode,
+            subtitle: strings.gestureModeSubtitle,
+            values: GestureMode.values,
+            selected: controller.gestureMode,
+            keyOf: (value) => ValueKey('gesture-mode-${value.name}'),
+            labelOf: strings.gestureModeLabel,
+            onChanged:
+                controller.initialized ? controller.setGestureMode : (_) {},
           ),
           Divider(color: palette.border),
           SwitchRow(
@@ -420,21 +432,33 @@ class _AboutPanel extends StatelessWidget {
 }
 
 class _GuidePanel extends StatelessWidget {
-  const _GuidePanel();
+  const _GuidePanel({required this.gestureMode});
+
+  final GestureMode gestureMode;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
     final strings = context.strings;
-    const icons = <IconData>[
-      Icons.touch_app_rounded,
-      Icons.ads_click_rounded,
-      Icons.swipe_vertical_rounded,
-      Icons.do_not_touch_rounded,
-      Icons.keyboard_rounded,
-    ];
+    final icons = switch (gestureMode) {
+      GestureMode.simulated => const <IconData>[
+          Icons.touch_app_rounded,
+          Icons.ads_click_rounded,
+          Icons.swipe_vertical_rounded,
+          Icons.do_not_touch_rounded,
+          Icons.keyboard_rounded,
+        ],
+      GestureMode.native => const <IconData>[
+          Icons.touch_app_rounded,
+          Icons.back_hand_rounded,
+          Icons.pinch_rounded,
+          Icons.do_not_touch_rounded,
+          Icons.keyboard_rounded,
+        ],
+    };
     final gestures = [
-      for (final (index, (gesture, mapping)) in strings.gestures.indexed)
+      for (final (index, (gesture, mapping))
+          in strings.gestures(gestureMode).indexed)
         (icons[index], gesture, mapping),
     ];
     final tips = strings.guideTips;

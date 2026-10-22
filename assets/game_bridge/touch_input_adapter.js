@@ -11,11 +11,18 @@
   const backdropTapMaxDuration = 250;
   const backdropDoubleTapMaxDelay = 300;
   const backdropDoubleTapMaxDistance = 24;
+  // The simulated mode clicks the release point of a drag so it plants. The
+  // experimental native mode releases one to one and leaves drag planting to
+  // native_gestures.js (ADR-0003).
+  const nativeGestures = config.touchGestureMode === "native";
   const dragCommitMinimumDelayMilliseconds = 50;
   const dragCommitMinimumFrames = 2;
   const wheelCssMultiplier = Number.isFinite(config.touchWheelCssMultiplier)
     ? config.touchWheelCssMultiplier
     : -4.5;
+  // Native mode sends whole notches, like a mouse wheel: the game steps once
+  // per wheel event in levels whatever its size.
+  const wheelNotchDeltaY = 100;
   // Gesture thresholds are physical pixels. Read before render_scale.js scales
   // the ratio the game engine sees.
   const physicalPixelRatio =
@@ -35,10 +42,12 @@
   let primaryDownFrame = null;
   let primaryMoveFrame = null;
   let pendingPrimaryMovePoint = null;
+  let lastPrimaryPoint = null;
   let primaryDownDispatched = false;
   let primaryMoved = false;
   let pendingPrimaryUpPoint = null;
   let pendingPrimaryUp = null;
+  let wheelRemainder = 0;
 
   function recordTrace(entry) {
     if (!diagnosticsEnabled) {
@@ -134,6 +143,7 @@
   if (module && typeof module.create === "function") {
     try {
       machine = module.create({
+        twoFingerGestures: nativeGestures ? "native" : "simulated",
         trace: function (entry) {
           recordTrace(Object.assign({event: "touch_transition"}, entry));
         }
@@ -273,6 +283,7 @@
     primaryDownFrame = null;
     primaryMoveFrame = null;
     pendingPrimaryMovePoint = null;
+    lastPrimaryPoint = null;
     primaryDownDispatched = false;
     primaryMoved = false;
     pendingPrimaryUpPoint = null;
@@ -329,20 +340,10 @@
     });
   }
 
-  function releaseJavascriptPrimary(point) {
-    if (!primaryCanvas) {
-      return;
-    }
-    if (primaryMoveFrame !== null) {
-      cancelAnimationFrame(primaryMoveFrame);
-      primaryMoveFrame = null;
-      pendingPrimaryMovePoint = null;
-    }
-    if (!primaryDownDispatched) {
-      pendingPrimaryUpPoint = point;
-      return;
-    }
-    const canvas = primaryCanvas;
+  // Simulated mode: PvZGE plants from lawn MOUSE_DOWN, so a drag that moved
+  // more than the slop releases one frame after its final move and then clicks
+  // the release tile once the game has cleared its click cooldown.
+  function releaseSimulatedPrimary(canvas, point) {
     updatePrimaryMoved(point);
     if (!primaryMoved) {
       dispatchMouse(canvas, "mouseup", point, 0, 1);
@@ -371,11 +372,44 @@
     pendingPrimaryUp = pending;
   }
 
+  // Native mode: the original one-to-one mouse up. native_gestures.js reads the
+  // release tile from Mouse.position, which the final move updates
+  // synchronously, so the up does not wait for a game frame.
+  function releaseNativePrimary(canvas, point) {
+    if (point.clientX !== lastPrimaryPoint.clientX ||
+        point.clientY !== lastPrimaryPoint.clientY) {
+      dispatchMouse(canvas, "mousemove", point, 0, 1);
+    }
+    dispatchMouse(canvas, "mouseup", point, 0, 1);
+    clearPrimaryGestureState();
+  }
+
+  function releaseJavascriptPrimary(point) {
+    if (!primaryCanvas) {
+      return;
+    }
+    if (primaryMoveFrame !== null) {
+      cancelAnimationFrame(primaryMoveFrame);
+      primaryMoveFrame = null;
+      pendingPrimaryMovePoint = null;
+    }
+    if (!primaryDownDispatched) {
+      pendingPrimaryUpPoint = point;
+      return;
+    }
+    if (nativeGestures) {
+      releaseNativePrimary(primaryCanvas, point);
+    } else {
+      releaseSimulatedPrimary(primaryCanvas, point);
+    }
+  }
+
   function beginJavascriptPrimary(canvas, point) {
     finishPendingPrimaryUp();
     cancelJavascriptPrimary();
     primaryCanvas = canvas;
     primaryStartPoint = point;
+    lastPrimaryPoint = point;
     primaryMoved = false;
     dispatchMouse(canvas, "mousemove", point, 0, 0);
     primaryDownFrame = requestAnimationFrame(function () {
@@ -385,6 +419,7 @@
           return;
         }
         dispatchMouse(primaryCanvas, "mousedown", point, 0, 1);
+        lastPrimaryPoint = point;
         primaryDownDispatched = true;
         if (pendingPrimaryUpPoint) {
           const upPoint = pendingPrimaryUpPoint;
@@ -418,6 +453,7 @@
         0,
         primaryDownDispatched ? 1 : 0
       );
+      lastPrimaryPoint = pendingPoint;
     });
   }
 
@@ -452,19 +488,32 @@
       } else if (command.type === "scroll") {
         const deltaY = command.physicalDeltaY / pixelRatio() *
           wheelCssMultiplier;
-        canvas.dispatchEvent(new WheelEvent("wheel", {
-          deltaY: deltaY,
-          deltaMode: 0,
-          bubbles: true,
-          cancelable: true,
-          screenX: command.point.screenX,
-          screenY: command.point.screenY,
-          clientX: command.point.clientX,
-          clientY: command.point.clientY,
-          relatedTarget: null
-        }));
+        if (!nativeGestures) {
+          dispatchWheel(canvas, command.point, deltaY);
+          continue;
+        }
+        wheelRemainder += deltaY;
+        while (Math.abs(wheelRemainder) >= wheelNotchDeltaY) {
+          const notch = Math.sign(wheelRemainder) * wheelNotchDeltaY;
+          wheelRemainder -= notch;
+          dispatchWheel(canvas, command.point, notch);
+        }
       }
     }
+  }
+
+  function dispatchWheel(canvas, point, deltaY) {
+    canvas.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: deltaY,
+      deltaMode: 0,
+      bubbles: true,
+      cancelable: true,
+      screenX: point.screenX,
+      screenY: point.screenY,
+      clientX: point.clientX,
+      clientY: point.clientY,
+      relatedTarget: null
+    }));
   }
 
   function handleGameEvent(phase, event) {
@@ -581,6 +630,7 @@
       return;
     }
     owner = "game";
+    wheelRemainder = 0;
     recordTrace({event: "touch_owner", owner: owner});
     handleGameEvent("start", event);
     consume(event);

@@ -261,6 +261,23 @@ class AppStrings {
         ScreenFit.showAll => _t('完整显示', 'Show all'),
         ScreenFit.stretch => _t('强制拉伸', 'Stretch'),
       };
+  String get gestureMode => _t('手势（实验）', 'Gestures (experimental)');
+  String get gestureModeSubtitle => _t(
+        '模拟：拖动种植靠在松手处补一次点击，双指模拟右键和滚轮；'
+            '原生：像手机游戏一样只用一根手指，拖到草坪上松手即种下，没用上会'
+            '自动放回，单指滚动列表和设置页、平移禅境花园、沿卡槽滑动切换沙盒'
+            '卡片，长按编辑卡组，捏合缩放禅境花园',
+        'Simulated plants a drag by clicking where it ends, and two fingers '
+            'stand in for the right button and the wheel. Native plays with '
+            'one finger like a phone game: drop on the lawn to plant, and '
+            'unused drags go back; one finger scrolls lists and settings, pans '
+            'the Zen Garden and swipes the sandbox bank; long press edits a '
+            'deck; pinch zooms the Zen Garden',
+      );
+  String gestureModeLabel(GestureMode mode) => switch (mode) {
+        GestureMode.simulated => _t('模拟', 'Simulated'),
+        GestureMode.native => _t('原生', 'Native'),
+      };
   String get watermark => _t('游戏水印', 'Watermark');
   String get watermarkSubtitle => _t(
         '在游戏画面角落显示加载器标识',
@@ -287,21 +304,50 @@ class AppStrings {
   String get loaderGithub => _t('加载器 GitHub', 'Loader on GitHub');
   String get upstreamGithub => _t('上游游戏 GitHub', 'Upstream game on GitHub');
   String get guide => _t('使用说明', 'How to Play');
-  List<(String, String)> get gestures => isChinese
-      ? const [
-          ('单指轻点或拖动', '鼠标左键点击或拖动'),
-          ('双指轻点', '双指中心执行右键点击'),
-          ('双指滑动', '模拟鼠标滚轮'),
-          ('三指及以上', '取消当前触摸映射'),
-          ('实体鼠标和键盘', '交由系统 WebView 原生处理'),
-        ]
-      : const [
-          ('One-finger tap or drag', 'Left click or drag'),
-          ('Two-finger tap', 'Right click between the fingers'),
-          ('Two-finger swipe', 'Mouse wheel'),
-          ('Three or more fingers', 'Cancel the current touch'),
-          ('Physical mouse and keyboard', 'Handled by the system WebView'),
-        ];
+  List<(String, String)> gestures(GestureMode mode) => switch (mode) {
+        GestureMode.simulated => isChinese
+            ? const [
+                ('单指轻点或拖动', '鼠标左键点击或拖动'),
+                ('双指轻点', '双指中心执行右键点击'),
+                ('双指滑动', '模拟鼠标滚轮'),
+                ('三指及以上', '取消当前触摸映射'),
+                ('实体鼠标和键盘', '交由系统 WebView 原生处理'),
+              ]
+            : const [
+                ('One-finger tap or drag', 'Left click or drag'),
+                ('Two-finger tap', 'Right click between the fingers'),
+                ('Two-finger swipe', 'Mouse wheel'),
+                ('Three or more fingers', 'Cancel the current touch'),
+                (
+                  'Physical mouse and keyboard',
+                  'Handled by the system WebView'
+                ),
+              ],
+        GestureMode.native => isChinese
+            ? const [
+                ('单指轻点或拖动', '拖到目标上松手即使用，没用上会放回；滚动列表'),
+                ('单指长按', '编辑卡组、沙盒取植物、清空解码格子'),
+                ('双指捏合', '缩放禅境花园'),
+                ('三指及以上', '取消当前触摸映射'),
+                ('实体鼠标和键盘', '交由系统 WebView 原生处理'),
+              ]
+            : const [
+                (
+                  'One-finger tap or drag',
+                  'Drop on a target to use it, unused drags go back; scrolls',
+                ),
+                (
+                  'One-finger long press',
+                  'Edit a deck, pick a sandbox plant, clear a decoding slot',
+                ),
+                ('Pinch', 'Zoom the Zen Garden'),
+                ('Three or more fingers', 'Cancel the current touch'),
+                (
+                  'Physical mouse and keyboard',
+                  'Handled by the system WebView'
+                ),
+              ],
+      };
   List<String> get guideTips => isChinese
       ? const [
           '返回启动器：Android / 鸿蒙使用系统返回，iOS 从屏幕左边缘右滑。',
@@ -516,8 +562,12 @@ class AppStrings {
         ];
 
   // Gesture hint shown over the game on the first launch.
-  List<String> gestureHintLines(GameHostPlatform platform) => [
-        for (final (gesture, mapping) in gestures.take(3))
+  List<String> gestureHintLines(
+    GameHostPlatform platform,
+    GestureMode mode,
+  ) =>
+      [
+        for (final (gesture, mapping) in gestures(mode).take(3))
           '$gesture → $mapping',
         platform == GameHostPlatform.ios
             ? _t('从屏幕左边缘右滑 → 返回加载器',

@@ -13,6 +13,14 @@ public enum GameScreenFit: String, Codable, Equatable {
   case stretch
 }
 
+/// How touches drive the game.
+public enum GameGestureMode: String, Codable, Equatable {
+  /// Clicks the release point of a drag so it plants.
+  case simulated
+  /// Experimental: one-to-one mouse mapping with in-game drag and drop.
+  case native
+}
+
 /// Prepared session contract written by the Flutter launcher and consumed by
 /// the native game host. Schema v1 is a frozen public contract.
 public struct GameSession: Codable, Equatable {
@@ -33,6 +41,7 @@ public struct GameSession: Codable, Equatable {
   /// the device's own ratio.
   public let renderScale: Double?
   public let screenFit: GameScreenFit
+  public let gestureMode: GameGestureMode
   /// Records the touch adapter's trace into the logs.
   public let touchDiagnosticsEnabled: Bool
   /// Lines of the one-time gesture hint shown over the game; nil shows none.
@@ -59,6 +68,7 @@ public struct GameSession: Codable, Equatable {
     detailedAudioDiagnosticsEnabled: Bool = false,
     renderScale: Double? = nil,
     screenFit: GameScreenFit = .balanced,
+    gestureMode: GameGestureMode = .simulated,
     touchDiagnosticsEnabled: Bool = false,
     gestureHint: [String]? = nil,
     allowedRemoteHosts: Set<String>,
@@ -78,6 +88,7 @@ public struct GameSession: Codable, Equatable {
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
     self.renderScale = renderScale
     self.screenFit = screenFit
+    self.gestureMode = gestureMode
     self.touchDiagnosticsEnabled = touchDiagnosticsEnabled
     self.gestureHint = gestureHint
     self.allowedRemoteHosts = allowedRemoteHosts
@@ -115,6 +126,12 @@ public enum GameSessionDecoder {
     ) else {
       throw GameError.failed(.invalidSession, "Invalid screen fit")
     }
+    guard let gestureMode = GameGestureMode(
+      rawValue: json["touchGestureMode"] as? String
+        ?? GameGestureMode.simulated.rawValue
+    ) else {
+      throw GameError.failed(.invalidSession, "Invalid gesture mode")
+    }
     let hosts = json["allowedRemoteHosts"] as? [String] ?? []
     guard hosts.allSatisfy(isValidRemoteHost) else {
       throw GameError.failed(.invalidSession, "Invalid remote host")
@@ -134,6 +151,7 @@ public enum GameSessionDecoder {
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
       renderScale: renderScale,
       screenFit: screenFit,
+      gestureMode: gestureMode,
       touchDiagnosticsEnabled: json["touchDiagnosticsEnabled"] as? Bool ?? false,
       gestureHint: json["gestureHint"] as? [String],
       allowedRemoteHosts: Set(hosts.map { $0.lowercased() }),

@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted. This is the default "simulated" gesture mode; ADR-0003 adds an
+experimental native mode that players select in settings.
 
 ## Date
 

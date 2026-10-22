@@ -11,13 +11,13 @@ function point(id, x, y) {
   return {id, screenX: x, screenY: y, clientX: x, clientY: y};
 }
 
-function loadMachine({trace} = {}) {
+function loadMachine({trace, twoFingerGestures} = {}) {
   const window = {};
   const context = {Math, window};
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(source, context);
-  return window.__gardendlessTouchStateMachine.create({trace});
+  return window.__gardendlessTouchStateMachine.create({trace, twoFingerGestures});
 }
 
 function frame(phase, points, changedPoints = points, options = {}) {
@@ -143,6 +143,60 @@ function handle(machine, input) {
     ],
     'diagnostic traces expose transitions without inspecting internals',
   );
+}
+
+// Native two-finger gestures: movement in any direction past the slop leaves
+// the right-click candidate, and the gesture locks to a swipe or a pinch.
+function twoFingerNative(firstStart, secondStart) {
+  const machine = loadMachine({twoFingerGestures: 'native'});
+  handle(machine, frame('start', [firstStart]));
+  handle(machine, frame('start', [firstStart, secondStart], [secondStart]));
+  return machine;
+}
+
+{
+  const sideways = twoFingerNative(point(1, 80, 100), point(2, 120, 100));
+  const a = point(1, 101, 100);
+  const b = point(2, 141, 100);
+  assert.deepEqual(handle(sideways, frame('move', [a, b])), [],
+    'a sideways swipe scrolls nothing');
+  assert.deepEqual(handle(sideways, frame('end', [b], [a])), []);
+  assert.deepEqual(handle(sideways, frame('end', [], [b])), [],
+    'a sideways swipe is not a right click');
+
+  const swipe = twoFingerNative(point(1, 80, 100), point(2, 120, 100));
+  const down1 = point(1, 80, 125);
+  const down2 = point(2, 120, 125);
+  assert.deepEqual(handle(swipe, frame('move', [down1, down2])), [
+    {type: 'scroll', point: point(-1, 100, 125), physicalDeltaY: 25},
+  ]);
+  const further1 = point(1, 60, 130);
+  const further2 = point(2, 140, 130);
+  assert.deepEqual(handle(swipe, frame('move', [further1, further2])), [
+    {type: 'scroll', point: point(-1, 100, 130), physicalDeltaY: 5},
+  ], 'a locked swipe ignores the finger distance');
+
+  const pinch = twoFingerNative(point(1, 80, 100), point(2, 120, 100));
+  const out1 = point(1, 65, 100);
+  const out2 = point(2, 135, 100);
+  assert.deepEqual(handle(pinch, frame('move', [out1, out2])), [
+    {type: 'scroll', point: point(-1, 100, 100), physicalDeltaY: 30},
+  ], 'spreading scrolls like moving down');
+  const in1 = point(1, 75, 110);
+  const in2 = point(2, 125, 110);
+  assert.deepEqual(handle(pinch, frame('move', [in1, in2])), [
+    {type: 'scroll', point: point(-1, 100, 110), physicalDeltaY: -20},
+  ], 'a locked pinch ignores the center movement');
+  assert.deepEqual(handle(pinch, frame('end', [], [in1, in2])), []);
+
+  const tap = twoFingerNative(point(1, 80, 100), point(2, 120, 100));
+  const jitter1 = point(1, 86, 104);
+  const jitter2 = point(2, 130, 108);
+  assert.deepEqual(handle(tap, frame('move', [jitter1, jitter2])), []);
+  assert.deepEqual(handle(tap, frame('end', [], [jitter1, jitter2])), [
+    {type: 'secondaryDown', point: point(-1, 100, 100)},
+    {type: 'secondaryUp', point: point(-1, 100, 100)},
+  ], 'small movement stays a right click at the start center');
 }
 
 console.log('reference touch state machine contract passes');

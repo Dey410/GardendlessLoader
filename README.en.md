@@ -77,6 +77,7 @@ Adjust these under **Settings → Launch Preferences**; changes apply the next t
 | **Auto Collect Sun** | Presses `A` about every 3 seconds during play to collect sun; skipped while paused, in the background, or while you are typing |
 | **Render resolution** | Renders at 100% / 75% / 50% of the screen's native resolution; lower uses less GPU memory but looks softer |
 | **Screen fit** | **Balanced** (default) trims a little of the picture for smaller black bars; **Show all** keeps the whole picture with larger bars; **Stretch** fills the screen but may distort the picture |
+| **Gestures (experimental)** | **Simulated** (default) uses the gestures below; **Native** is described after them |
 | **Watermark** | Shows the loader name in a corner of the game |
 
 ### Touch controls
@@ -88,6 +89,13 @@ Adjust these under **Settings → Launch Preferences**; changes apply the next t
 | Two-finger swipe | Mouse wheel |
 | Three or more fingers | Cancels the current touch |
 | Physical mouse and keyboard | Handled natively by the system WebView |
+
+With **Gestures (experimental) → Native**, one finger does everything, like a phone game:
+- Drop a seed packet, the shovel, plant food or a sandbox zombie card on the lawn to use it; a drag that isn't used puts it back. Decoding cards and the Zen Garden glove and tools drag onto their slots too.
+- One finger scrolls lists and the in-game settings, and pans the Zen Garden when nothing is in hand; dragging a volume slider doesn't move the list.
+- In sandbox, swipe along the seed bank, zombie cards or armor icon to cycle them; in the sandbox settings, tap a row to run its shortcut (tides, summoning zombies, time freeze and more), and tap outside the window to close it.
+- Long-press a custom card deck to edit it; in sandbox, long-press a plant with nothing in hand to switch the seed bank to it; in the decoding minigame, long-press a filled slot to clear it.
+- Pinch to zoom the Zen Garden.
 
 ### Tips
 
