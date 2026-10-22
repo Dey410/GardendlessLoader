@@ -58,7 +58,7 @@ object GameSessionCodec {
         val entryUrl = json.getString("entryUrl")
         require(entryUrl.startsWith("$ORIGIN/")) { "Entry URL escaped the game origin" }
         val remoteHosts = json.optJSONArray("allowedRemoteHosts") ?: JSONArray()
-        val packageId = json.optString("packageId", "unknown")
+        val packageId = json.optionalString("packageId") ?: "unknown"
         require(packageId == "unknown" || packageId.matches(Regex("sha256:[a-f0-9]{64}"))) { "Invalid package identity" }
         return NativeGameSession(
             sessionId = json.requiredString("sessionId"),
@@ -68,7 +68,7 @@ object GameSessionCodec {
             activationGeneration = json.getLong("activationGeneration"),
             hasGpNext = json.getBoolean("hasGpNext"),
             gpNextCompatible = json.getBoolean("gpNextCompatible"),
-            gpNextVersion = json.optString("gpNextVersion").takeIf { it.isNotBlank() },
+            gpNextVersion = json.optionalString("gpNextVersion")?.takeIf { it.isNotBlank() },
             watermarkEnabled = json.getBoolean("watermarkEnabled"),
             autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled"),
             detailedAudioDiagnosticsEnabled = json.optBoolean("detailedAudioDiagnosticsEnabled", false),
@@ -99,6 +99,11 @@ object GameSessionCodec {
 
     private fun JSONObject.requiredString(key: String): String {
         return getString(key).also { require(it.isNotBlank()) { "$key is empty" } }
+    }
+
+    /** Dart sends null for absent values, and Android's optString reads a JSON null as "null". */
+    private fun JSONObject.optionalString(key: String): String? {
+        return if (isNull(key)) null else getString(key)
     }
 }
 
