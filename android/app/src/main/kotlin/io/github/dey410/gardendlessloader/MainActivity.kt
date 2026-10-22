@@ -2,6 +2,7 @@ package io.github.dey410.gardendlessloader
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ContentResolver
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
@@ -9,6 +10,7 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import android.text.format.Formatter
 import io.github.dey410.gardendlessloader.game.GameActivity
 import io.github.dey410.gardendlessloader.logging.AppLogStore
 import io.flutter.embedding.android.FlutterActivity
@@ -166,8 +168,12 @@ class MainActivity : FlutterActivity() {
         shortcutOf(intent)?.let { shortcutChannel?.invokeMethod("perform", it) }
     }
 
+    // Every route to an import ends here, and MainActivity is exported: other apps
+    // share documents as content URIs, never as paths this app could read for them.
     private fun incomingZipOf(intent: Intent?): Uri? =
-        intent?.data?.takeIf { intent.action == ACTION_IMPORT_ZIP }
+        intent?.data?.takeIf {
+            intent.action == ACTION_IMPORT_ZIP && it.scheme == ContentResolver.SCHEME_CONTENT
+        }
 
     private fun shortcutOf(intent: Intent?): String? =
         intent?.getStringExtra(EXTRA_SHORTCUT)?.takeIf { intent.action == ACTION_SHORTCUT }
@@ -318,6 +324,15 @@ class MainActivity : FlutterActivity() {
         val scan = findDocsPrefix(uri, sourceBytes)
             ?: throw ZipImportException("zip_docs_missing", "选择的 ZIP 中没有找到有效的 docs 资源目录")
         resetDirectory(targetDirectory)
+        // ZipInputStream holds each entry to its recorded size and CRC-32, so the
+        // scanned total bounds what extraction writes.
+        if (scan.totalBytes > targetDirectory.usableSpace) {
+            throw ZipImportException(
+                "zip_write_failed",
+                "设备剩余空间不足：解压需要 ${Formatter.formatFileSize(this, scan.totalBytes)}，" +
+                    "剩余 ${Formatter.formatFileSize(this, targetDirectory.usableSpace)}",
+            )
+        }
         var processedBytes = 0L
         var processedFiles = 0
         reportImportProgress(
@@ -360,6 +375,9 @@ class MainActivity : FlutterActivity() {
                                 if (count < 0) {
                                     break
                                 }
+                                if (count > scan.totalBytes - processedBytes) {
+                                    throw ZipImportException("zip_invalid", "选择的 ZIP 在导入期间发生了变化")
+                                }
                                 output.write(buffer, 0, count)
                                 processedBytes += count
                                 reportImportProgress(
@@ -388,7 +406,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun findDocsPrefix(uri: Uri, sourceBytes: Long): DocsScan? {
-        val filePaths = linkedSetOf<String>()
+        val fileSizes = linkedMapOf<String, Long>()
+        val filePaths = fileSizes.keys
         val directoryPaths = linkedSetOf<String>()
         var bytesRead = 0L
 
@@ -405,13 +424,18 @@ class MainActivity : FlutterActivity() {
             ZipInputStream(progressInput).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
+                    if (fileSizes.size + directoryPaths.size >= maxZipEntries) {
+                        throw ZipImportException("zip_unsupported", "选择的 ZIP 超过 $maxZipEntries 个文件")
+                    }
                     val archivePath = safeArchivePath(entry.name)
+                    // Reading to the entry's end records its size, also behind a data descriptor.
+                    zip.closeEntry()
                     if (entry.isDirectory) {
                         directoryPaths.add(archivePath)
                     } else {
-                        filePaths.add(archivePath)
+                        // A repeated path is extracted again, so its bytes count twice.
+                        fileSizes[archivePath] = (fileSizes[archivePath] ?: 0L) + entry.size
                     }
-                    zip.closeEntry()
                 }
             }
         } ?: throw IllegalArgumentException("无法打开选择的 ZIP")
@@ -459,10 +483,8 @@ class MainActivity : FlutterActivity() {
                 else -> a.length.compareTo(b.length)
             }
         }.firstOrNull() ?: return null
-        val totalFiles = filePaths.count { path ->
-            isWithinArchivePrefix(path, prefix)
-        }
-        return DocsScan(prefix, totalFiles)
+        val files = fileSizes.filterKeys { path -> isWithinArchivePrefix(path, prefix) }
+        return DocsScan(prefix, files.size, files.values.sum())
     }
 
     private fun reportImportProgress(
@@ -554,9 +576,12 @@ class MainActivity : FlutterActivity() {
         private const val pickZipRequestCode = 26410
         private const val zipCopyBufferSize = 64 * 1024
         private const val progressReportIntervalMs = 100L
+
+        /** The classic ZIP entry limit; iOS rejects the ZIP64 archives that exceed it. */
+        private const val maxZipEntries = 65_535
     }
 
-    private data class DocsScan(val prefix: String, val totalFiles: Int)
+    private data class DocsScan(val prefix: String, val totalFiles: Int, val totalBytes: Long)
 
     private class ProgressInputStream(
         private val source: InputStream,

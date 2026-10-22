@@ -118,7 +118,8 @@ jobs:
               echo "keyPassword=$ANDROID_KEY_PASSWORD"
             } > android/key.properties
           else
-            echo "No Android signing secrets configured; using debug signing."
+            echo "::error::Android signing secrets are not configured; release APKs are never debug-signed."
+            exit 1
           fi
 
       - name: Compute Android version code

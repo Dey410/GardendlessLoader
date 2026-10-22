@@ -131,8 +131,11 @@ struct GamePage {
           if (url === GameSession.ORIGIN || url.startsWith(`${GameSession.ORIGIN}/`)) {
             return false;
           }
-          if (url.startsWith('https://')) {
-            this.context.startAbility({ action: 'ohos.want.action.viewData', uri: url })
+          const external = request.isMainFrame() && this.session != null
+            ? this.session.allowedRemoteUrl(url, ['https:'])
+            : null;
+          if (external != null) {
+            this.context.startAbility({ action: 'ohos.want.action.viewData', uri: external })
               .catch((_error: Error): void => {});
           }
           if (this.session != null) {

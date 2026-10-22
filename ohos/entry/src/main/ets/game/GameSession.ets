@@ -1,3 +1,5 @@
+import { url } from '@kit.ArkTS';
+
 export interface GameSessionPayload {
   schemaVersion: number;
   sessionId: string;
@@ -104,6 +106,29 @@ export class GameSession {
       throw new Error('resourceRoot has no parent');
     }
     return this.resourceRoot.substring(0, index);
+  }
+
+  /**
+   * The parsed form of [raw] when it uses one of [protocols] (such as 'https:')
+   * and an allowlisted host, else null. Callers open the returned URL, so the
+   * host they act on is the host that was checked.
+   */
+  allowedRemoteUrl(raw: string, protocols: string[]): string | null {
+    let parsed: url.URL;
+    try {
+      parsed = url.URL.parseURL(raw);
+    } catch (_error) {
+      return null;
+    }
+    if (!protocols.includes(parsed.protocol)) {
+      return null;
+    }
+    for (const allowed of this.allowedRemoteHosts) {
+      if (parsed.hostname === allowed || parsed.hostname.endsWith(`.${allowed}`)) {
+        return parsed.href;
+      }
+    }
+    return null;
   }
 
   private required(value: string, name: string): string {

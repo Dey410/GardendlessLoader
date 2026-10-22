@@ -3,6 +3,7 @@ import Foundation
 import GardendlessCore
 import GardendlessImport
 import XCTest
+import zlib
 
 struct ZipTestEntry {
   let name: String
@@ -10,6 +11,7 @@ struct ZipTestEntry {
   let deflate: Bool
   let rawDeflatePayload: Data?
   let rawDeflateUncompressedSize: UInt32?
+  let rawDeflateCRC32: UInt32?
   let flags: UInt16
   let externalAttributes: UInt32
 
@@ -26,6 +28,7 @@ struct ZipTestEntry {
       deflate: deflate,
       rawDeflatePayload: nil,
       rawDeflateUncompressedSize: nil,
+      rawDeflateCRC32: nil,
       flags: flags,
       externalAttributes: externalAttributes
     )
@@ -35,6 +38,7 @@ struct ZipTestEntry {
     _ name: String,
     compressed: Data,
     uncompressedSize: UInt32,
+    crc32: UInt32,
     flags: UInt16 = 0x0800,
     externalAttributes: UInt32 = 0
   ) -> ZipTestEntry {
@@ -44,6 +48,7 @@ struct ZipTestEntry {
       deflate: true,
       rawDeflatePayload: compressed,
       rawDeflateUncompressedSize: uncompressedSize,
+      rawDeflateCRC32: crc32,
       flags: flags,
       externalAttributes: externalAttributes
     )
@@ -60,6 +65,7 @@ struct ZipTestEntry {
       deflate: false,
       rawDeflatePayload: nil,
       rawDeflateUncompressedSize: nil,
+      rawDeflateCRC32: nil,
       flags: flags,
       externalAttributes: externalAttributes
     )
@@ -80,9 +86,13 @@ enum TestZipWriter {
       var payload = entry.data ?? Data()
       var uncompressedSize = (entry.data ?? Data()).count
       var method: UInt16 = 0
+      var checksum = (entry.data ?? Data()).withUnsafeBytes { bytes in
+        UInt32(zlib.crc32(0, bytes.bindMemory(to: Bytef.self).baseAddress, uInt(bytes.count)))
+      }
       if let rawDeflatePayload = entry.rawDeflatePayload {
         payload = rawDeflatePayload
         uncompressedSize = Int(entry.rawDeflateUncompressedSize ?? 0)
+        checksum = entry.rawDeflateCRC32 ?? 0
         method = 8
       } else if let source = entry.data, entry.deflate {
         payload = try deflate(source)
@@ -92,6 +102,7 @@ enum TestZipWriter {
       let local = localHeader(
         nameData: nameData,
         method: method,
+        crc32: checksum,
         compressedSize: UInt32(payload.count),
         uncompressedSize: UInt32(uncompressedSize),
         flags: entry.flags
@@ -103,6 +114,7 @@ enum TestZipWriter {
         centralHeader(
           nameData: nameData,
           method: method,
+          crc32: checksum,
           compressedSize: UInt32(payload.count),
           uncompressedSize: UInt32(uncompressedSize),
           flags: entry.flags,
@@ -130,6 +142,7 @@ enum TestZipWriter {
   private static func localHeader(
     nameData: Data,
     method: UInt16,
+    crc32: UInt32,
     compressedSize: UInt32,
     uncompressedSize: UInt32,
     flags: UInt16
@@ -141,7 +154,7 @@ enum TestZipWriter {
     data.append(le16(method))
     data.append(le16(0))
     data.append(le16(0))
-    data.append(le32(0))
+    data.append(le32(crc32))
     data.append(le32(compressedSize))
     data.append(le32(uncompressedSize))
     data.append(le16(UInt16(nameData.count)))
@@ -153,6 +166,7 @@ enum TestZipWriter {
   private static func centralHeader(
     nameData: Data,
     method: UInt16,
+    crc32: UInt32,
     compressedSize: UInt32,
     uncompressedSize: UInt32,
     flags: UInt16,
@@ -167,7 +181,7 @@ enum TestZipWriter {
     data.append(le16(method))
     data.append(le16(0))
     data.append(le16(0))
-    data.append(le32(0))
+    data.append(le32(crc32))
     data.append(le32(compressedSize))
     data.append(le32(uncompressedSize))
     data.append(le16(UInt16(nameData.count)))
@@ -341,7 +355,8 @@ final class ZipImportSessionTests: XCTestCase {
       .rawDeflateFile(
         "release/docs/assets/boundary.bin",
         compressed: compressed,
-        uncompressedSize: 131088
+        uncompressedSize: 131088,
+        crc32: 0xf2a93a33
       )
     )
     try TestZipWriter.write(entries, to: zipURL)
@@ -353,6 +368,36 @@ final class ZipImportSessionTests: XCTestCase {
       atPath: target.appendingPathComponent("assets/boundary.bin").path
     )
     XCTAssertEqual((attributes[.size] as? NSNumber)?.uint64Value, 131088)
+  }
+
+  func testRejectsEntryLargerThanDeclared() throws {
+    try assertBoundaryEntryRejected(uncompressedSize: 1000, crc32: 0xf2a93a33)
+  }
+
+  func testRejectsChecksumMismatch() throws {
+    try assertBoundaryEntryRejected(uncompressedSize: 131088, crc32: 0)
+  }
+
+  private func assertBoundaryEntryRejected(uncompressedSize: UInt32, crc32: UInt32) throws {
+    var entries = docsEntries()
+    let fixtureURL = Bundle.module.url(
+      forResource: "boundary-64k.astc.deflate",
+      withExtension: nil,
+      subdirectory: "Fixtures"
+    )!
+    entries.append(
+      .rawDeflateFile(
+        "release/docs/assets/boundary.bin",
+        compressed: try Data(contentsOf: fixtureURL),
+        uncompressedSize: uncompressedSize,
+        crc32: crc32
+      )
+    )
+    try TestZipWriter.write(entries, to: zipURL)
+    let session = ZipImportSession(zipURL: zipURL, targetDirectory: target)
+    XCTAssertThrowsError(try session.run { _ in }) { error in
+      XCTAssertEqual((error as? GameError)?.code, .zipInvalid)
+    }
   }
 
   func testRejectsTraversalPaths() throws {

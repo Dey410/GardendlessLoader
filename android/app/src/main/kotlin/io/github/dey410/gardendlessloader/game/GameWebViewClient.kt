@@ -105,7 +105,7 @@ class GameWebViewClient(
         if (url.scheme == origin.scheme && url.host == origin.host) return false
         if (!request.isForMainFrame) return !isAllowedRemoteHost(url.host)
         if (url.scheme == "https" && isAllowedRemoteHost(url.host)) {
-            view.context.startActivity(Intent(Intent.ACTION_VIEW, url))
+            runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, url)) }
         }
         AppLogStore.emit(
             source = "android",

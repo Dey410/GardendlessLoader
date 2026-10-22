@@ -65,6 +65,19 @@ final class GpNextTests: XCTestCase {
     )
   }
 
+  func testResolverRejectsDanglingSymbolicLink() throws {
+    let gpNextRoot = root.appendingPathComponent("gp-next")
+    try FileManager.default.createDirectory(at: gpNextRoot, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      at: gpNextRoot.appendingPathComponent("dangling"),
+      withDestinationURL: root.appendingPathComponent("missing-outside")
+    )
+    let resolver = try GpNextPathResolver(gpNextRoot: gpNextRoot)
+
+    XCTAssertThrowsError(try resolver.resolve("gp-next/dangling/escape.bin", options: [:]))
+    XCTAssertThrowsError(try resolver.resolve("gp-next/dangling", options: [:]))
+  }
+
   func testAppDataGpNextPathUsesTheExplicitSandboxRoot() throws {
     let detachedRoot = root
       .appendingPathComponent("detached")

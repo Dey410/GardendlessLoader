@@ -205,15 +205,9 @@ export class GameBridge {
     }
   }
 
-  private openGpNextUrl(id: string, url: string): void {
-    let host = '';
-    if (url.startsWith('https://')) host = url.substring(8).split('/')[0].split(':')[0].toLowerCase();
-    if (url.startsWith('http://')) host = url.substring(7).split('/')[0].split(':')[0].toLowerCase();
-    let allowed = false;
-    for (const candidate of this.session.allowedRemoteHosts) {
-      if (host === candidate || host.endsWith(`.${candidate}`)) allowed = true;
-    }
-    if (!allowed) {
+  private openGpNextUrl(id: string, raw: string): void {
+    const url = this.session.allowedRemoteUrl(raw, ['https:', 'http:']);
+    if (url == null) {
       this.fail(id, 'external_url_blocked', 'GP-Next 请求打开了未授权网址');
       return;
     }
@@ -452,12 +446,13 @@ export class GameBridge {
   }
 
   private async exportFile(id: string, args: BridgeArguments): Promise<void> {
-    if (args.url == null || !this.isAllowedRemoteUrl(args.url)) {
+    const url = args.url == null ? null : this.session.allowedRemoteUrl(args.url, ['https:']);
+    if (url == null) {
       this.fail(id, 'unsupported_export', 'Export URL is not authorized');
       return;
     }
     try {
-      await this.context.startAbility({ action: 'ohos.want.action.viewData', uri: args.url });
+      await this.context.startAbility({ action: 'ohos.want.action.viewData', uri: url });
       this.complete(id, null);
     } catch (error) {
       this.fail(id, 'external_open_failed', (error as Error).message);
@@ -480,15 +475,6 @@ export class GameBridge {
       context: context,
     };
     appLogStore.emit(event);
-  }
-
-  private isAllowedRemoteUrl(url: string): boolean {
-    if (!url.startsWith('https://')) return false;
-    const host = url.substring(8).split('/')[0].split(':')[0].toLowerCase();
-    for (const allowed of this.session.allowedRemoteHosts) {
-      if (host === allowed || host.endsWith(`.${allowed}`)) return true;
-    }
-    return false;
   }
 
   private async fileExists(path: string): Promise<boolean> { return fs.access(path); }

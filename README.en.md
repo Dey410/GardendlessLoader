@@ -250,7 +250,7 @@ flutter analyze
 flutter build apk --release
 ```
 
-The APK is written to `build/app/outputs/flutter-apk/app-release.apk`.
+The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. A release build requires signing in `android/key.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) and fails without it; without a signing key, use `flutter build apk --debug`.
 
 **iOS**
 

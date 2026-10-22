@@ -114,7 +114,7 @@ function harness(hasGpNext = true) {
     }).outputText;
     const localRequire = (name) => {
       if (name === '@ohos.file.fs') return { default: memoryFs };
-      if (name === '@kit.ArkTS') return { util };
+      if (name === '@kit.ArkTS') return { util, url: { URL: { parseURL: (value) => new URL(value) } } };
       if (name === '@kit.ArkWeb') return { WebNetErrorList: { NET_OK: 0, ERR_FAILED: -1 }, webview: {
         WebSchemeHandler: class { onRequestStart(callback) { this.start = callback; } onRequestStop(callback) { this.stop = callback; } },
         WebSchemeHandlerResponse: class {
@@ -405,6 +405,23 @@ test('resource resolver refuses literal and encoded reserved package metadata pa
       assert.equal(responses[0].status, 404); assert.equal(bodyReceived, false);
     }
   } finally { resolver.destroy(); h.core.destroy(); }
+});
+
+test('remote allowlist checks the parsed host and returns the URL it checked', () => {
+  const h = harness();
+  try {
+    const { GameSession } = h.load('game/GameSession');
+    const session = new GameSession(JSON.stringify({ schemaVersion: 1, sessionId: 'session-hosts', platform: 'ohos', origin: GameSession.ORIGIN,
+      resourceRoot: '/sandbox/docs', entryUrl: GameSession.ORIGIN + '/index.html', activationGeneration: 1,
+      hasGpNext: true, gpNextCompatible: true, watermarkEnabled: true, autoCollectSunEnabled: false,
+      allowedRemoteHosts: ['pvzge.com', 'github.com'], gpNextRoot: '/sandbox/gp-next', exportTemporaryRoot: '/sandbox/gp-next/.exports' }));
+    for (const raw of ['https://pvzge.com:x@evil.example/', 'https://evil.example?.pvzge.com', 'https://evil.example#.github.com',
+      'https://evil.example\\.github.com', 'https://notpvzge.com/', 'http://pvzge.com/', 'not a url']) {
+      assert.equal(session.allowedRemoteUrl(raw, ['https:']), null, raw);
+    }
+    assert.equal(session.allowedRemoteUrl('https://www.pvzge.com/mods', ['https:']), 'https://www.pvzge.com/mods');
+    assert.equal(session.allowedRemoteUrl('http://github.com', ['https:', 'http:']), 'http://github.com/');
+  } finally { h.core.destroy(); }
 });
 
 test('resource stop and host destruction close active readers before blocked IO returns', async () => {

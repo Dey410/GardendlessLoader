@@ -1,6 +1,7 @@
 import common from '@ohos.app.ability.common';
 import fs from '@ohos.file.fs';
 import picker from '@ohos.file.picker';
+import statvfs from '@ohos.file.statvfs';
 import zlib from '@ohos.zlib';
 import {
   FlutterPlugin,
@@ -180,6 +181,16 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
         totalFiles: 0,
       }, true);
       this.resetDirectory(targetDirectory);
+      // The sizes the archive declares for its entries, against the space left.
+      const originalBytes = await zlib.getOriginalSize(zipPath);
+      const freeBytes = await statvfs.getFreeSize(targetDirectory);
+      if (originalBytes > freeBytes) {
+        const mebibytes = (bytes: number): string => `${Math.ceil(bytes / (1024 * 1024))} MiB`;
+        throw new ZipImportError(
+          'zip_write_failed',
+          `设备剩余空间不足：解压需要 ${mebibytes(originalBytes)}，剩余 ${mebibytes(freeBytes)}`,
+        );
+      }
       await zlib.decompressFile(zipPath, targetDirectory);
 
       const docsDirectory = this.findDocsDirectory(targetDirectory);

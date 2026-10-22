@@ -70,8 +70,7 @@ export class NativeGameResourceHandler {
     if (this.destroyed) return true;
     const url = request.getRequestUrl();
     if (!url.startsWith(`${GameSession.ORIGIN}/`) && url !== GameSession.ORIGIN) {
-      const host = this.hostFromHttpsUrl(url);
-      if (host != null && this.isAllowedRemoteHost(host)) {
+      if (this.session.allowedRemoteUrl(url, ['https:']) != null) {
         return false;
       }
       this.logFailure('resource_path_forbidden', url, 403);
@@ -321,22 +320,6 @@ export class NativeGameResourceHandler {
     const found = request.getHeader().find((header): boolean =>
       header.headerKey.toLowerCase() === name.toLowerCase());
     return found?.headerValue ?? null;
-  }
-
-  private hostFromHttpsUrl(url: string): string | null {
-    if (!url.startsWith('https://')) {
-      return null;
-    }
-    return url.substring(8).split('/')[0].split(':')[0].toLowerCase();
-  }
-
-  private isAllowedRemoteHost(host: string): boolean {
-    for (const allowed of this.session.allowedRemoteHosts) {
-      if (host === allowed || host.endsWith(`.${allowed}`)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private cacheControl(path: string): string {

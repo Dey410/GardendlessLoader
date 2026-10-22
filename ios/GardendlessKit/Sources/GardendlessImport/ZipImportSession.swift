@@ -92,6 +92,16 @@ public final class ZipImportSession {
     let totalBytes = fileEntries.reduce(Int64(0)) {
       $0 + Int64($1.entry.uncompressedSize)
     }
+    // Every entry is held to its declared size, so this bounds the output.
+    if let available = try targetDirectory.resourceValues(
+      forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+    ).volumeAvailableCapacityForImportantUsage, totalBytes > available {
+      let format = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+      throw GameError.failed(
+        .zipWriteFailed,
+        "设备剩余空间不足：解压需要 \(format(totalBytes))，剩余 \(format(available))"
+      )
+    }
     var processedFiles = 0
     var processedBytes: Int64 = 0
     report(
@@ -133,11 +143,12 @@ public final class ZipImportSession {
         at: outputURL.deletingLastPathComponent(),
         withIntermediateDirectories: true
       )
-      guard let output = OutputStream(url: outputURL, append: false) else {
+      guard let stream = OutputStream(url: outputURL, append: false) else {
         throw GameError.failed(.zipWriteFailed, "无法写入导入文件：\(relativePath)")
       }
-      output.open()
-      defer { output.close() }
+      stream.open()
+      defer { stream.close() }
+      let output = EntryOutput(stream: stream, entry: entry)
 
       let dataOffset = try ZipArchiveReader.localFileDataOffset(
         for: entry,
@@ -174,6 +185,7 @@ public final class ZipImportSession {
       default:
         throw GameError.failed(.zipUnsupported, "选择的 ZIP 包含不支持的压缩方式")
       }
+      try output.finish()
       processedFiles += 1
       report(
         onProgress,
@@ -192,7 +204,7 @@ public final class ZipImportSession {
   private func copyStoredEntry(
     from zipFile: FileHandle,
     compressedSize: UInt64,
-    to output: OutputStream,
+    to output: EntryOutput,
     onBytesWritten: (Int) -> Void
   ) throws {
     var remaining = compressedSize
@@ -208,7 +220,7 @@ public final class ZipImportSession {
         guard let baseAddress = rawBuffer.bindMemory(to: UInt8.self).baseAddress else {
           return
         }
-        try write(baseAddress, count: data.count, to: output)
+        try output.write(baseAddress, count: data.count)
       }
       onBytesWritten(data.count)
       remaining -= UInt64(data.count)
@@ -218,7 +230,7 @@ public final class ZipImportSession {
   private func inflateDeflatedEntry(
     from zipFile: FileHandle,
     compressedSize: UInt64,
-    to output: OutputStream,
+    to output: EntryOutput,
     onBytesWritten: (Int) -> Void
   ) throws {
     var stream = z_stream()
@@ -254,7 +266,7 @@ public final class ZipImportSession {
             .baseAddress else {
             return
           }
-          try write(outputBaseAddress, count: produced, to: output)
+          try output.write(outputBaseAddress, count: produced)
         }
         onBytesWritten(produced)
       }
@@ -301,27 +313,6 @@ public final class ZipImportSession {
       if produced == 0 || status != Z_OK {
         throw GameError.failed(.zipInvalid, "ZIP 文件内容不完整")
       }
-    }
-  }
-
-  private func write(
-    _ pointer: UnsafePointer<UInt8>,
-    count: Int,
-    to output: OutputStream
-  ) throws {
-    var totalWritten = 0
-    while totalWritten < count {
-      let written = output.write(
-        pointer.advanced(by: totalWritten),
-        maxLength: count - totalWritten
-      )
-      if written <= 0 {
-        throw GameError.failed(
-          .zipWriteFailed,
-          output.streamError?.localizedDescription ?? "无法写入导入文件"
-        )
-      }
-      totalWritten += written
     }
   }
 
@@ -387,5 +378,47 @@ public final class ZipImportSession {
         message: message
       )
     )
+  }
+}
+
+/// Writes one entry, refusing bytes past its declared size, and checks the
+/// declared size and CRC-32 once the entry ends.
+private final class EntryOutput {
+  private let stream: OutputStream
+  private let entry: ZipEntry
+  private var written: UInt64 = 0
+  private var checksum = crc32(0, nil, 0)
+
+  init(stream: OutputStream, entry: ZipEntry) {
+    self.stream = stream
+    self.entry = entry
+  }
+
+  func write(_ pointer: UnsafePointer<UInt8>, count: Int) throws {
+    guard UInt64(count) <= entry.uncompressedSize - written else {
+      throw GameError.failed(.zipInvalid, "ZIP 条目超过声明的大小：\(entry.name)")
+    }
+    var totalWritten = 0
+    while totalWritten < count {
+      let written = stream.write(
+        pointer.advanced(by: totalWritten),
+        maxLength: count - totalWritten
+      )
+      if written <= 0 {
+        throw GameError.failed(
+          .zipWriteFailed,
+          stream.streamError?.localizedDescription ?? "无法写入导入文件"
+        )
+      }
+      totalWritten += written
+    }
+    checksum = crc32(checksum, pointer, uInt(count))
+    written += UInt64(count)
+  }
+
+  func finish() throws {
+    guard written == entry.uncompressedSize, UInt32(checksum) == entry.crc32 else {
+      throw GameError.failed(.zipInvalid, "ZIP 条目校验失败：\(entry.name)")
+    }
   }
 }

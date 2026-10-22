@@ -50,7 +50,21 @@ android {
 
     buildTypes {
         release {
-            signingConfig = hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.release
+            }
+        }
+    }
+}
+
+// A release APK or bundle is signed only with the release key, never the
+// throwaway debug key; compiling and unit tests still run without one.
+tasks.matching { it.name in ["packageRelease", "signReleaseBundle"] }.configureEach {
+    doFirst {
+        if (!hasReleaseSigning) {
+            throw new GradleException(
+                "Release signing is not configured: add android/key.properties, or build with --debug."
+            )
         }
     }
 }

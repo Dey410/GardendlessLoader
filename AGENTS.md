@@ -17,7 +17,7 @@
 - `flutter pub get` installs Dart and Flutter dependencies.
 - `flutter analyze` runs static analysis with the repository lint rules.
 - `flutter run` starts the app on a connected supported device.
-- `flutter build apk --release` builds Android.
+- `flutter build apk --release` builds Android; it needs signing in `android/key.properties`, so use `--debug` without a key.
 - `flutter build ios --release --no-codesign` builds unsigned iOS artifacts.
 
 For HarmonyOS/OpenHarmony, copy `pubspec_overrides.ohos.yaml` to `pubspec_overrides.yaml`, use the OpenHarmony Flutter SDK, and follow `README.md`.

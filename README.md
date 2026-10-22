@@ -250,7 +250,7 @@ flutter analyze
 flutter build apk --release
 ```
 
-产物位于 `build/app/outputs/flutter-apk/app-release.apk`。
+产物位于 `build/app/outputs/flutter-apk/app-release.apk`。Release 构建必须在 `android/key.properties` 中配置签名（`storeFile`、`storePassword`、`keyAlias`、`keyPassword`），否则构建会报错；没有签名密钥时请改用 `flutter build apk --debug`。
 
 **iOS**
 

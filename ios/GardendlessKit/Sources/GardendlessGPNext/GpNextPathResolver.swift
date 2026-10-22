@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import GardendlessCore
 
@@ -53,25 +54,25 @@ public final class GpNextPathResolver {
   }
 
   public func assertNoSymlink(_ target: URL) throws {
-    if FileManager.default.fileExists(atPath: gpNextRoot.path),
-       try gpNextRoot.resourceValues(forKeys: [.isSymbolicLinkKey])
-      .isSymbolicLink == true {
-      throw GameError.failed(
-        .gpNextForbidden,
-        "GP-Next 根目录不能是符号链接"
-      )
-    }
     let relative = target.standardizedFileURL.path.dropFirst(gpNextRoot.path.count)
+    var components = relative.split(separator: "/").makeIterator()
     var current = gpNextRoot
-    for component in relative.split(separator: "/") {
-      current.appendPathComponent(String(component))
-      guard FileManager.default.fileExists(atPath: current.path) else {
+    while true {
+      // lstat does not follow links, so a link whose target is missing still counts.
+      var status = stat()
+      guard lstat(current.path, &status) == 0 else {
         return
       }
-      if try current.resourceValues(forKeys: [.isSymbolicLinkKey])
-        .isSymbolicLink == true {
-        throw GameError.failed(.gpNextForbidden, "不允许通过符号链接访问文件")
+      if status.st_mode & S_IFMT == S_IFLNK {
+        throw GameError.failed(
+          .gpNextForbidden,
+          current == gpNextRoot ? "GP-Next 根目录不能是符号链接" : "不允许通过符号链接访问文件"
+        )
       }
+      guard let component = components.next() else {
+        return
+      }
+      current.appendPathComponent(String(component))
     }
   }
 }
