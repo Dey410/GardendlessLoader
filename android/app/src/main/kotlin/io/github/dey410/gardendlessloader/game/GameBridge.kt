@@ -1,6 +1,7 @@
 package io.github.dey410.gardendlessloader.game
 
 import android.net.Uri
+import android.view.HapticFeedbackConstants
 import android.webkit.WebView
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
@@ -68,6 +69,16 @@ class GameBridge(
                 "host:returnHome", "host:return_home" -> {
                     respond(id, true, JSONObject.NULL)
                     activity.returnToLauncher(GameExitReason.USER_RETURNED, null)
+                }
+                "host:haptic" -> {
+                    respond(id, true, JSONObject.NULL)
+                    webView.performHapticFeedback(
+                        if (request.optJSONObject("args")?.optString("kind") == "selection") {
+                            HapticFeedbackConstants.CLOCK_TICK
+                        } else {
+                            HapticFeedbackConstants.VIRTUAL_KEY
+                        },
+                    )
                 }
                 "host:log" -> {
                     val args = request.optJSONObject("args") ?: JSONObject()

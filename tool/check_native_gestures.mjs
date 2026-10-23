@@ -270,7 +270,16 @@ function createHarness({
   const wheel = [];
   canvas.addEventListener('wheel', (event) => wheel.push(event.deltaY));
   const window = new EventTarget();
+  const haptics = [];
   window.__gardendlessHostConfig = {platform: 'ios', touchGestureMode: mode};
+  window.__gardendlessHost = {
+    config: window.__gardendlessHostConfig,
+    invoke(command, payload) {
+      assert.equal(command, 'host:haptic');
+      haptics.push(payload.kind);
+      return Promise.resolve(null);
+    },
+  };
   window.System = {
     get: (id) => {
       if (!registered) return null;
@@ -355,6 +364,7 @@ function createHarness({
     errors,
     timers,
     wheel,
+    haptics,
     window,
     document,
     advance,
@@ -409,6 +419,7 @@ for (const index of [0, 8, -2, -3]) {
     `a drag must apply tool ${index} to the release tile`);
   assert.equal(h.game.ui.index, -1);
   assert.equal(cancels(h), 0, 'a used drop must not also put the tool back');
+  assert.deepEqual(h.haptics, ['impact'], 'a drop taps the device once');
   assert.equal(h.errors.length, 0);
 }
 
@@ -795,6 +806,8 @@ for (const index of [0, 8, -2, -3]) {
   h.move(340, -50);
   assert.deepEqual(h.wheel, [100, -100, -100],
     'swiping back shows the previous cards, one step per 40 pixels');
+  assert.deepEqual(h.haptics, ['selection', 'selection', 'selection'],
+    'every swipe step ticks the device');
   h.move(450, 250);
   h.release();
   assert.equal(h.game.tile(2, 3).downs.length, 0, 'a cycling swipe must not plant');
@@ -852,6 +865,7 @@ for (const index of [0, 8, -2, -3]) {
   deckH.advance(1);
   assert.deepEqual(deckNode.emitted, [['mouse-down', 2]],
     'a long press on a custom deck must right-click it');
+  assert.deepEqual(deckH.haptics, ['impact'], 'a long press taps the device');
   deckH.release();
 
   const {h: shortH, deckNode: shortDeck} = deckHarness();
@@ -861,6 +875,7 @@ for (const index of [0, 8, -2, -3]) {
   shortH.release();
   shortH.advance(500);
   assert.deepEqual(shortDeck.emitted, [], 'a tap must not become a long press');
+  assert.deepEqual(shortH.haptics, [], 'a tap does not tap the device');
 
   const {h: movedH, deckNode: movedDeck} = deckHarness();
   movedH.game.pointAt(150, 120);

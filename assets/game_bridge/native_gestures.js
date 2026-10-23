@@ -27,6 +27,8 @@
   // - Sandbox menu: the sandbox settings window lists keyboard shortcuts and
   //   closes only by key or by its toolbar button. A tap on a shortcut row
   //   closes it and sends that key; a tap outside the window closes it.
+  // - Haptics: a drop and a long press tap the device; each sandbox swipe
+  //   step ticks it.
   const checkIntervalMs = 250;
   const moduleIds = {
     ui: "chunks:///_virtual/UI.ts",
@@ -87,6 +89,13 @@
 
   function ruleOn(rule) {
     return !stopped && !failedRules.has(rule);
+  }
+
+  // "impact" is a light tap, "selection" the tick of a step through a list.
+  function haptic(kind) {
+    if (!host) return;
+    // A missed tap is not worth a log entry.
+    host.invoke("host:haptic", {kind: kind}).catch(function () {});
   }
 
   // Square.update derives Mouse.mouseInLnC the same way, but only on the
@@ -169,6 +178,7 @@
       try {
         if (tile && tile !== current.tile) {
           tile.onMouseDown(event, true);
+          haptic("impact");
         } else if (tile || !dragged) {
           // Released where it was picked up: a tap keeps the tool in hand.
           return result;
@@ -228,6 +238,7 @@
     for (const slot of decoding.MergedCards || []) {
       if (slot !== card && pointerIn(slot.node)) {
         slot.node.emit(game.cc.Node.EventType.MOUSE_DOWN, buttonDown(0));
+        haptic("impact");
         return;
       }
     }
@@ -270,6 +281,7 @@
     const target = zenSlotUnderPointer(garden);
     if (target && !(pickedPlant && target.slot === after.plant)) {
       target.zen.MouseDown(target.slot);
+      haptic("impact");
     } else if (!target && draggedFrom(current.origin)) {
       if (pickedTool) {
         garden.indexTo_1();
@@ -464,6 +476,7 @@
       const direction = Math.sign(along - swipe.stepped);
       swipe.stepped += direction * swipeStep;
       dispatchWheel(direction < 0 ? wheelNotchDeltaY : -wheelNotchDeltaY);
+      haptic("selection");
     }
   }
 
@@ -527,15 +540,20 @@
       const deck = customDeckUnderPointer();
       if (deck) {
         deck.emit(game.cc.Node.EventType.MOUSE_DOWN, rightButtonDown());
+        haptic("impact");
         return;
       }
       const slot = decodingSlotUnderPointer();
       if (slot) {
         slot.emit(game.cc.Node.EventType.MOUSE_DOWN, rightButtonDown());
+        haptic("impact");
         return;
       }
       const tile = sandboxPlantTileUnderPointer();
-      if (tile) tile.plantMouseReact(rightButtonDown());
+      if (tile) {
+        tile.plantMouseReact(rightButtonDown());
+        haptic("impact");
+      }
     } catch (error) {
       stopRule("longPress", error);
     }

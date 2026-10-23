@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
+import '../../game_host/game_session_store.dart';
 import '../../l10n/app_strings.dart';
+import '../../services/app_settings_store.dart';
 import '../launcher_actions.dart';
 import '../theme/garden_theme.dart';
 import '../widgets/garden_widgets.dart';
@@ -35,12 +37,31 @@ class _PlayPageState extends State<PlayPage> {
     }
   }
 
+  Future<void> _launchAtLowerResolution() async {
+    if (_launching) return;
+    final controller = widget.controller;
+    await controller.setRenderResolution(controller.renderResolution.lower!);
+    await _launch();
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
     final gap = widget.compact ? 20.0 : 32.0;
     final ready = controller.canStartGame;
-    final hero = _Hero(controller: controller, compact: widget.compact);
+    final hero = _Hero(
+      controller: controller,
+      compact: widget.compact,
+      onViewLogs: () => widget.actions.navigate(LauncherDestination.logs),
+    );
+    final report = controller.lastGameReport;
+    final recovery = ready && report != null && report.crashed
+        ? _RecoveryCard(
+            report: report,
+            lower: controller.renderResolution.lower,
+            onLowerAndPlay: _launching ? null : _launchAtLowerResolution,
+          )
+        : null;
     final actionBar = _ActionBar(
       ready: ready,
       launching: _launching,
@@ -51,7 +72,12 @@ class _PlayPageState extends State<PlayPage> {
       builder: (context, constraints) {
         if (constraints.maxWidth < 560) {
           return ListView(
-            children: [hero, SizedBox(height: gap), actionBar],
+            children: [
+              if (recovery != null) ...[recovery, SizedBox(height: gap)],
+              hero,
+              SizedBox(height: gap),
+              actionBar,
+            ],
           );
         }
         // Launcher composition: the key art owns the open area, the title
@@ -60,6 +86,16 @@ class _PlayPageState extends State<PlayPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Spacer(),
+            if (recovery != null) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: recovery,
+                ),
+              ),
+              SizedBox(height: gap),
+            ],
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -76,10 +112,15 @@ class _PlayPageState extends State<PlayPage> {
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.controller, required this.compact});
+  const _Hero({
+    required this.controller,
+    required this.compact,
+    required this.onViewLogs,
+  });
 
   final AppController controller;
   final bool compact;
+  final VoidCallback onViewLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +129,7 @@ class _Hero extends StatelessWidget {
     final ready = controller.canStartGame;
     final journal = controller.journal;
     final lastPlayedAt = journal.lastPlayedAt;
+    final report = controller.lastGameReport;
     final details = <String>[
       if (ready) strings.gameVersionLabel(controller.currentGameVersion),
       if (ready)
@@ -129,7 +171,108 @@ class _Hero extends StatelessWidget {
             style:
                 TextStyle(color: palette.inkFaint, fontSize: 13, height: 1.5),
           ),
+        // A crash has its own card; this line is for errors in a game the
+        // player left.
+        if (ready &&
+            report != null &&
+            !report.crashed &&
+            report.errorCount > 0) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Text(
+                strings.lastGameErrors(report.errorCount),
+                key: const ValueKey('last-game-errors'),
+                style: TextStyle(color: palette.warning, fontSize: 13),
+              ),
+              GardenButton(
+                label: strings.viewLogs,
+                tone: GardenButtonTone.ghost,
+                compact: true,
+                onPressed: onViewLogs,
+              ),
+            ],
+          ),
+        ],
       ],
+    );
+  }
+}
+
+/// What ended the last game, and the one remedy the launcher can apply.
+class _RecoveryCard extends StatelessWidget {
+  const _RecoveryCard({
+    required this.report,
+    required this.lower,
+    required this.onLowerAndPlay,
+  });
+
+  final GameSessionReport report;
+
+  /// The next lower render resolution; null at the lowest.
+  final RenderResolution? lower;
+  final VoidCallback? onLowerAndPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final rendererGone = report.reason == GameExitReason.rendererGone;
+    final lower = this.lower;
+    final body = [
+      rendererGone
+          ? strings.gameRendererGoneCause
+          : strings.gameInterruptedCause,
+      if (report.memoryWarnings > 0)
+        strings.memoryWarnings(report.memoryWarnings),
+      lower == null
+          ? strings.lowestResolutionHint
+          : strings.lowerResolutionHint,
+    ].join(strings.isChinese ? '' : ' ');
+    return SurfaceCard(
+      key: const ValueKey('game-recovery-card'),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  size: 18, color: palette.warning),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  rendererGone
+                      ? strings.gameRendererGoneTitle
+                      : strings.gameInterruptedTitle,
+                  style: GardenType.title(15, color: palette.ink),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style:
+                TextStyle(color: palette.inkMuted, fontSize: 13.5, height: 1.5),
+          ),
+          if (lower != null) ...[
+            const SizedBox(height: 12),
+            GardenButton(
+              key: const ValueKey('lower-resolution-button'),
+              label: strings.lowerResolutionAndPlay(
+                strings.renderResolutionLabel(lower),
+              ),
+              icon: Icons.play_arrow_rounded,
+              compact: true,
+              onPressed: onLowerAndPlay,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

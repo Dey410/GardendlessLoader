@@ -403,6 +403,11 @@ class AppStrings {
             'corrupt it, so export your save in the game before updating.',
       );
   String get continueImport => _t('继续选择 ZIP', 'Continue');
+  String lastSaveExport(DateTime? at) => at == null
+      ? _t('还没有在加载器里导出过存档。', 'You have not exported a save in the loader yet.')
+      : _t('上次导出存档：${relativeTime(at)}。',
+          'Last save export: ${relativeTime(at)}.');
+  String get exportSaveFirst => _t('先进游戏导出', 'Export in the game first');
   String importZipTitle(String name) => _t('导入 $name？', 'Import $name?');
   String updateWithZipTitle(String name) =>
       _t('用 $name 更新资源？', 'Update resources with $name?');
@@ -459,6 +464,40 @@ class AppStrings {
         '加载器 v$appVersion 与游戏 $game 均为最新版',
         'Loader v$appVersion and game $game are both up to date',
       );
+
+  // The last game, on the Play page.
+  String get gameInterruptedTitle =>
+      _t('上次游戏意外结束', 'The last game ended unexpectedly');
+  String get gameInterruptedCause =>
+      _t('可能是内存不足。', 'Low memory is a likely cause.');
+  String get gameRendererGoneTitle =>
+      _t('上次游戏的渲染进程退出了', "The last game's renderer quit");
+  String get gameRendererGoneCause =>
+      _t('通常是内存不足。', 'This is usually low memory.');
+  String memoryWarnings(int count) => _t(
+        '结束前系统发出了 $count 次内存警告。',
+        count == 1
+            ? 'The system sent a memory warning before it ended.'
+            : 'The system sent $count memory warnings before it ended.',
+      );
+  String get lowerResolutionHint => _t(
+        '降低渲染分辨率能减少内存占用。',
+        'A lower render resolution uses less memory.',
+      );
+  String get lowestResolutionHint => _t(
+        '渲染分辨率已经是最低档，可以关闭其他应用后再试。',
+        'The render resolution is already at its lowest; close other apps '
+            'and try again.',
+      );
+  String lowerResolutionAndPlay(String resolution) =>
+      _t('降到 $resolution 并开始', 'Lower to $resolution and play');
+  String lastGameErrors(int count) => _t(
+        '上一局记录到 $count 个错误',
+        count == 1
+            ? 'The last game logged an error'
+            : 'The last game logged $count errors',
+      );
+  String get viewLogs => _t('查看日志', 'View logs');
 
   // Garden journal: play time and version rings.
   String lastPlayed(DateTime at, Duration duration) => _t(

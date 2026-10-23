@@ -2,6 +2,7 @@ package io.github.dey410.gardendlessloader.game
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
@@ -53,6 +54,8 @@ class GameActivity : Activity() {
     /** Foreground play time; [resumedAt] is the elapsed-realtime clock while resumed, else 0. */
     private var playedMs = 0L
     private var resumedAt = 0L
+    /** Files the player exported, reported to the launcher in the exit result. */
+    private val exports = mutableListOf<JSONObject>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -292,7 +295,7 @@ class GameActivity : Activity() {
             }
             return
         }
-        pendingExport = PendingExport(requestId, handle, file)
+        pendingExport = PendingExport(requestId, handle, file, fileName)
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = exportMimeType(fileName, mimeType)
@@ -420,7 +423,10 @@ class GameActivity : Activity() {
                                 destination.flush()
                             }
                         }
-                    }.onSuccess { gpNextCore.exportFinished(export.handle) }
+                    }.onSuccess {
+                        gpNextCore.exportFinished(export.handle)
+                        gpNextCore.postIfActive { recordExport(export.fileName) }
+                    }
                         .onFailure { gpNextCore.exportFinished(export.handle, "export_failed", it.message) }
                     gpNextCore.postIfActive { if (pendingExport === export) pendingExport = null }
                 }
@@ -434,15 +440,41 @@ class GameActivity : Activity() {
         if (intent.action == MainActivity.ACTION_IMPORT_ZIP) incomingZip = intent.data
     }
 
+    // While paused, a provisional exit result tells the launcher that a
+    // system that ends the process ended it in the background, not during play.
     override fun onResume() {
         super.onResume()
         resumedAt = SystemClock.elapsedRealtime()
+        File(File(session.resourceRoot).parentFile, EXIT_RESULT_FILE).delete()
     }
 
     override fun onPause() {
         super.onPause()
         if (resumedAt != 0L) playedMs += SystemClock.elapsedRealtime() - resumedAt
         resumedAt = 0L
+        if (!returning) {
+            writeExitResult(
+                session.sessionId, GameExitReason.SYSTEM_TERMINATED, null, session.resourceRoot,
+                session.packageId, playedMs = playedMs,
+            )
+        }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // Hiding the UI only lets the app release it; it is not memory pressure.
+        if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN || !::session.isInitialized) return
+        AppLogStore.emit(
+            source = "android", level = "WARN", category = "game.host",
+            event = "memory_pressure", outcome = "observed",
+            gameSessionId = session.sessionId,
+            context = mapOf("trimLevel" to level),
+        )
+    }
+
+    private fun recordExport(fileName: String) {
+        exports.add(JSONObject().put("name", fileName).put("at", timestamp()))
+        if (exports.size > MAX_EXPORT_RECORDS) exports.removeAt(0)
     }
 
     @Deprecated("Invoked by the Android framework")
@@ -738,26 +770,35 @@ class GameActivity : Activity() {
         playedMs: Long = 0,
     ) {
         val root = resourceRoot?.let { File(it).parentFile } ?: return
-        val output = File(root, "game_exit_result.json")
+        val output = File(root, EXIT_RESULT_FILE)
         val temporary = File(output.path + ".tmp")
         val json = JSONObject()
             .put("schemaVersion", 1)
             .put("packageId", packageId)
             .put("sessionId", sessionId)
             .put("reason", reason.wireName)
-            .put("finishedAt", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                timeZone = TimeZone.getTimeZone("UTC")
-            }.format(Date()))
+            .put("finishedAt", timestamp())
             .put("message", message ?: JSONObject.NULL)
             .put("code", code)
             .put("playedMs", playedMs)
+            .put("exports", JSONArray(exports))
         runCatching {
             temporary.writeText(json.toString(2) + "\n")
             check(temporary.renameTo(output)) { "Cannot commit exit result" }
         }
     }
 
-    private data class PendingExport(val requestId: String, val handle: String, val file: File)
+    private fun timestamp(): String =
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date())
+
+    private data class PendingExport(
+        val requestId: String,
+        val handle: String,
+        val file: File,
+        val fileName: String,
+    )
 
     private data class PendingGpSelection(val requestId: String, val directory: Boolean)
 
@@ -788,6 +829,8 @@ class GameActivity : Activity() {
         private const val REQUEST_GP_NEXT_IMPORT = 4103
         private const val REQUEST_GP_NEXT_SELECTION = 4104
         private const val USER_INTERACTION_TIMEOUT_MINUTES = 5L
+        private const val EXIT_RESULT_FILE = "game_exit_result.json"
+        private const val MAX_EXPORT_RECORDS = 16
         private const val MAX_SELECTION_ENTRIES = 10_000
         private const val MAX_SELECTION_BYTES = 512L * 1024 * 1024
     }

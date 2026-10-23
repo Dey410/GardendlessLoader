@@ -41,6 +41,10 @@ enum RenderResolution {
   /// Share of the device pixel ratio the game renders at; null is native.
   final double? scale;
 
+  /// The next lower resolution; null at the lowest.
+  RenderResolution? get lower =>
+      index + 1 < values.length ? values[index + 1] : null;
+
   static RenderResolution fromName(Object? value) {
     return RenderResolution.values.firstWhere(
       (resolution) => resolution.name == value,

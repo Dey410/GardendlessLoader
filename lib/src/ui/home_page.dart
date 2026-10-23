@@ -265,6 +265,7 @@ class _HomePageState extends State<HomePage> {
     if (destination == _destination) return;
     setState(() => _destination = destination);
     if (destination == LauncherDestination.logs) {
+      _controller.markGameErrorsSeen();
       unawaited(_controller.refreshLogs());
     }
   }
@@ -322,8 +323,10 @@ class _HomePageState extends State<HomePage> {
         title: hasResource
             ? strings.updateWithZipTitle(name)
             : strings.importZipTitle(name),
-        message:
-            hasResource ? strings.backUpSaveMessage : strings.importZipMessage,
+        message: hasResource
+            ? '${strings.backUpSaveMessage}\n\n'
+                '${strings.lastSaveExport(_controller.journal.lastSaveExportAt)}'
+            : strings.importZipMessage,
         confirmLabel: strings.import,
       );
       _incomingZipDialogScheduled = false;
@@ -365,12 +368,45 @@ class _HomePageState extends State<HomePage> {
   Future<void> _importResources() async {
     if (_controller.hasCurrentResource) {
       final strings = context.strings;
-      final confirmed = await _confirm(
-        title: strings.backUpSaveTitle,
-        message: strings.backUpSaveMessage,
-        confirmLabel: strings.continueImport,
+      final choice = await showDialog<_UpdateChoice>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(strings.backUpSaveTitle),
+          content: Text(
+            '${strings.backUpSaveMessage}\n\n'
+            '${strings.lastSaveExport(_controller.journal.lastSaveExportAt)}',
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          actions: [
+            GardenButton(
+              label: strings.cancel,
+              compact: true,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            GardenButton(
+              label: strings.exportSaveFirst,
+              compact: true,
+              icon: Icons.play_arrow_rounded,
+              onPressed: () =>
+                  Navigator.of(context).pop(_UpdateChoice.exportFirst),
+            ),
+            GardenButton(
+              label: strings.continueImport,
+              compact: true,
+              tone: GardenButtonTone.primary,
+              onPressed: () => Navigator.of(context).pop(_UpdateChoice.update),
+            ),
+          ],
+        ),
       );
-      if (!confirmed) return;
+      switch (choice) {
+        case null:
+          return;
+        case _UpdateChoice.exportFirst:
+          await _startGame();
+          return;
+        case _UpdateChoice.update:
+      }
     }
     await _controller.importResources(confirmDowngrade: _confirmDowngrade);
   }
@@ -671,8 +707,11 @@ class _Sidebar extends StatelessWidget {
         return controller.availableUpdate == null
             ? null
             : const _Dot(key: ValueKey('app-update-dot'));
-      case LauncherDestination.game:
       case LauncherDestination.logs:
+        return controller.hasUnseenGameErrors
+            ? const _Dot(key: ValueKey('game-errors-dot'))
+            : null;
+      case LauncherDestination.game:
         return null;
     }
   }
@@ -741,6 +780,8 @@ class _SidebarItem extends StatelessWidget {
     );
   }
 }
+
+enum _UpdateChoice { exportFirst, update }
 
 class _Dot extends StatelessWidget {
   const _Dot({super.key});

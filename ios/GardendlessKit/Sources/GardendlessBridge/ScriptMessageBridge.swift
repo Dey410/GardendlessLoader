@@ -4,6 +4,7 @@ import WebKit
 
 public protocol ScriptBridgeDelegate: AnyObject {
   func bridgeRequestedReturnHome()
+  func bridgeRequestedHaptic(selection: Bool)
   func bridgeRequestedLog(id: String, arguments: [String: Any])
   func bridgeRequestedExport(command: String, id: String, arguments: [String: Any])
   func bridgeRequestedFile(command: String, id: String, arguments: [String: Any])
@@ -71,6 +72,9 @@ public final class ScriptMessageBridge: NSObject, WKScriptMessageHandlerWithRepl
       case _ where BridgeCommand.isReturnHome(request.command):
         complete(id: request.id, value: NSNull())
         delegate?.bridgeRequestedReturnHome()
+      case BridgeCommand.haptic.rawValue:
+        complete(id: request.id, value: NSNull())
+        delegate?.bridgeRequestedHaptic(selection: request.args["kind"] as? String == "selection")
       case BridgeCommand.log.rawValue:
         delegate?.bridgeRequestedLog(id: request.id, arguments: request.args)
       case _ where BridgeCommand.isFile(request.command):

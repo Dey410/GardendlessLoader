@@ -44,7 +44,7 @@
 - A two-finger gesture whose center exceeds 20 physical pixels vertically scrolls and does not emit a right click; calibrate each platform for the same in-game direction and distance rather than the same raw constant.
 - A stationary two-finger gesture emits one right click to `GameCanvas` after both fingers are lifted, even when held longer than 250 ms.
 - Text inputs, selects, editable content, and GP-Next controls retain native touch behavior on every platform.
-- Real mouse and trackpad input remain native and are never mapped a second time; stylus input follows the one-finger path.
+- Real mouse and trackpad input remain native and are never mapped a second time; stylus input follows the one-finger path. The iOS GameHost makes the web view first responder when it appears, because the adapter's prevented touches cancel WebKit's tap gesture, the only gesture that would.
 - Removing `GameCanvas` or withholding the state-machine asset consumes game touches, emits no mouse events, records the failure, and never guesses another target.
 - With touch diagnostics enabled, the bounded trace contains input coordinates, owners, transitions, and command names, but no DOM text, form value, storage, or game data.
 - On Android Chromium WebView, iOS WKWebView, and OpenHarmony ArkWeb, confirm a fast first tap selects a plant card, the second tap plants on the chosen lawn tile, and a card-to-lawn drag plants on release without another tap.
@@ -117,6 +117,22 @@
 - `urls` in the remote `announcements.json` replaces the launcher's links: `loaderGithub` and `bilibili` (About panel and announcement dialog), `gameGithub` (About panel and the resources page GitHub download), `loaderCloudDrive` (Settings 网盘更新), `gameCloudDrive` (resources page 网盘下载) and `gameReleaseNotes` (the upgrade's 更新说明, which must contain `{version}`). A fetched link replaces the built-in one for good: a later file that leaves the entry out or makes it non-https keeps the last fetched link, and only a newer valid entry replaces it.
 - After a successful fetch the feed is saved as `announcements.json` in the app root with every link fetched so far, so an offline start keeps those links and the last announcement and theme; before the first successful fetch the built-in links apply. When `raw.githubusercontent.com` fails the loader reads the same file from jsDelivr, which can lag behind GitHub; purge it at `https://purge.jsdelivr.net/gh/Dey410/GardendlessLoader@main/announcements.json` after an urgent change.
 - The first game launch after install shows the gesture hint at the bottom of the game: three touch mappings and the platform's way back. The first touch or click fades it; later launches never show it.
+
+## Crash recovery, diagnostics and saves
+
+- On iPad with a hardware keyboard, keys reach the game as soon as it opens, before any tap: `A` collects sun and the sandbox shortcuts work. Returning from a document picker (export, Mod install) keeps the keyboard working.
+- Native gestures: a drop onto the lawn, a Zen Garden or decoding drop, and a long press each give one light tap; every sandbox swipe step gives one tick; a plain tap gives none. Turning off system haptics silences them. Simulated gestures give none.
+- While the game is in the background, `game_exit_result.json` holds a provisional `systemTerminated` result; it is gone again once the game is back in the foreground.
+- Killing the app from the app switcher (or recents) during a game, then reopening it, starts like a cold start: quick launch still opens the game and no recovery card appears.
+- Ending the app while the game is in the foreground (a crash, or stopping it from Xcode/adb) leaves no exit result; the next start skips quick launch and the Play page shows 上次游戏意外结束 with 可能是内存不足。
+- A renderer exit shows 上次游戏的渲染进程退出了 on the Play page instead of a toast. Memory warnings that the session logged appear as 结束前系统发出了 N 次内存警告。
+- The recovery card offers 降到 75% 并开始 from 100% and 降到 50% 并开始 from 75%; the button saves the lower resolution and starts the game. At 50% the card shows no button and suggests closing other apps.
+- iOS memory warnings, Android `onTrimMemory` (except `TRIM_MEMORY_UI_HIDDEN`) and HarmonyOS `onMemoryLevel` log `game.host` / `memory_pressure` WARN with the game session id.
+- A failed launch never leaves a prepared session behind, so the next start shows no recovery card.
+- After a game that logged errors but did not crash, the Play page shows 上一局记录到 N 个错误 with 查看日志, and the Logs destination shows a dot until the Logs page is opened.
+- 复制诊断 includes `Device:` (model), `Memory:` (bytes; unavailable on HarmonyOS) and `WebView engine version:` (iOS WebKit build and iOS version, Android WebView package and version, HarmonyOS ArkWeb with the OS build).
+- Exporting a save in the game (`<player>(v<version>).json`) records the time; exporting key bindings or other files does not. 选择 ZIP 更新 then shows 上次导出存档：<time>, or 还没有在加载器里导出过存档 before the first export.
+- The update dialog's 先进游戏导出 starts the game without importing; 继续选择 ZIP imports as before; 取消 does nothing. A ZIP opened from another app shows the same last-export line but no 先进游戏导出.
 
 ## Failure paths
 

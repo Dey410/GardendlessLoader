@@ -104,6 +104,10 @@ final class GameHostController: UIViewController,
   private var sceneActivityObservers: [NSObjectProtocol] = []
   private var playedTime: TimeInterval = 0
   private var activeSince: Date?
+  /// Files the player exported, reported to the launcher in the exit result.
+  private var exports: [[String: String]] = []
+  private let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+  private let selectionFeedback = UISelectionFeedbackGenerator()
 
   init(
     session: GameSession,
@@ -233,7 +237,9 @@ final class GameHostController: UIViewController,
     )
     // The page suspends its audio while the scene is inactive and resumes it
     // only once the scene is active again (audio_lifecycle.js). Only time with
-    // the scene active counts as play time.
+    // the scene active counts as play time. While inactive, a provisional exit
+    // result tells the launcher that a system that ends the app ended it in
+    // the background, not during play.
     activeSince = Date()
     for (name, active) in [
       (UIScene.willDeactivateNotification, false),
@@ -246,9 +252,13 @@ final class GameHostController: UIViewController,
           else { return }
           if active {
             self.activeSince = self.activeSince ?? Date()
-          } else if let since = self.activeSince {
-            self.playedTime += Date().timeIntervalSince(since)
-            self.activeSince = nil
+            try? FileManager.default.removeItem(at: self.exitResultURL)
+          } else {
+            if let since = self.activeSince {
+              self.playedTime += Date().timeIntervalSince(since)
+              self.activeSince = nil
+            }
+            self.writeExitResult(reason: "systemTerminated", message: nil)
           }
           self.webView.evaluateJavaScript(
             "window.__gardendlessSetSceneActive&&window.__gardendlessSetSceneActive(\(active))"
@@ -256,6 +266,26 @@ final class GameHostController: UIViewController,
         }
       )
     }
+  }
+
+  // WebKit makes the page first responder only from its tap gesture, and the
+  // touch adapter cancels that gesture by preventing every game touch, so a
+  // hardware keyboard would have no responder.
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    webView.becomeFirstResponder()
+  }
+
+  override func didReceiveMemoryWarning() {
+    super.didReceiveMemoryWarning()
+    logStore.emit([
+      "source": "ios",
+      "level": "WARN",
+      "category": "game.host",
+      "event": "memory_pressure",
+      "outcome": "observed",
+      "gameSessionId": session.sessionId,
+    ])
   }
 
   override var prefersStatusBarHidden: Bool { true }
@@ -276,6 +306,14 @@ final class GameHostController: UIViewController,
 
   func bridgeRequestedReturnHome() {
     exit(reason: "userReturned", message: nil)
+  }
+
+  func bridgeRequestedHaptic(selection: Bool) {
+    if selection {
+      selectionFeedback.selectionChanged()
+    } else {
+      impactFeedback.impactOccurred()
+    }
   }
 
   func bridgeRequestedLog(id: String, arguments: [String: Any]) {
@@ -616,6 +654,7 @@ final class GameHostController: UIViewController,
     fileTasks.finishExport(handle: export.handle, cancelled: false) { [weak self] result in
       switch result {
       case .success:
+        self?.recordExport(name: export.file.lastPathComponent)
         self?.scriptBridge.complete(id: export.id, value: NSNull())
       case .failure(let error):
         self?.scriptBridge.fail(id: export.id, code: "export_failed", message: error.localizedDescription)
@@ -740,24 +779,36 @@ final class GameHostController: UIViewController,
     webView.removeFromSuperview()
   }
 
-  private func writeExitResult(reason: String, message: String?) {
-    let output = session.appRoot.appendingPathComponent("game_exit_result.json")
+  private var exitResultURL: URL {
+    session.appRoot.appendingPathComponent("game_exit_result.json")
+  }
+
+  private func recordExport(name: String) {
+    exports = Array((exports + [["name": name, "at": Self.timestamp(Date())]]).suffix(16))
+  }
+
+  private static func timestamp(_ date: Date) -> String {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter.string(from: date)
+  }
+
+  private func writeExitResult(reason: String, message: String?) {
     let json: [String: Any] = [
       "schemaVersion": 1,
       "sessionId": session.sessionId,
       "reason": reason,
       "packageId": session.packageId ?? NSNull(),
-      "finishedAt": formatter.string(from: Date()),
+      "finishedAt": Self.timestamp(Date()),
       "message": message ?? NSNull(),
       "playedMs": Int((playedTime + (activeSince.map { Date().timeIntervalSince($0) } ?? 0)) * 1000),
+      "exports": exports,
     ]
     if let data = try? JSONSerialization.data(
       withJSONObject: json,
       options: [.prettyPrinted]
     ) {
-      try? data.write(to: output, options: .atomic)
+      try? data.write(to: exitResultURL, options: .atomic)
     }
   }
 

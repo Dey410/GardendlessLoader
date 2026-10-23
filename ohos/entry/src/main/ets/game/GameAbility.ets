@@ -62,6 +62,24 @@ export default class GameAbility extends UIAbility {
     }
   }
 
+  onMemoryLevel(level: AbilityConstant.MemoryLevel): void {
+    const context: AppLogContext = { memoryLevel: level };
+    const event: AppLogEvent = {
+      source: 'ohos',
+      level: 'WARN',
+      category: 'game.host',
+      event: 'memory_pressure',
+      outcome: 'observed',
+      context: context,
+    };
+    try {
+      event.gameSessionId = (JSON.parse(this.sessionJson) as Record<string, Object>)['sessionId'] as string;
+    } catch (_error) {
+      // GamePage reports a session it cannot read; the warning still counts.
+    }
+    appLogStore.emit(event);
+  }
+
   private logStage(stage: string): void {
     const context: AppLogContext = { stage: stage };
     const event: AppLogEvent = {

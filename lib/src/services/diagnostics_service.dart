@@ -10,13 +10,15 @@ DiagnosticSnapshot buildDiagnosticSnapshot({
   required ResourceValidationResult importValidation,
   required ResourceManifest manifest,
   required GameHostPlatform gameHostPlatform,
-  String? webViewEngineVersion,
+  required HostDevice? hostDevice,
 }) {
   return DiagnosticSnapshot(
     appVersion: appVersion,
     platform: Platform.operatingSystem,
     osVersion: Platform.operatingSystemVersion,
-    webViewEngineVersion: webViewEngineVersion ?? 'unavailable',
+    deviceModel: hostDevice?.model ?? 'unavailable',
+    memoryBytes: hostDevice?.memoryBytes,
+    webViewEngineVersion: hostDevice?.webViewVersion ?? 'unavailable',
     resourceRoot: paths.root.path,
     activeSlot: manifest.activeSlot,
     activeResourcePath: manifest.activeSlot == null

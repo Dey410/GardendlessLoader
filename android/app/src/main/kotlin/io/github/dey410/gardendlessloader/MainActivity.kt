@@ -1,6 +1,7 @@
 package io.github.dey410.gardendlessloader
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.ContentResolver
 import android.content.Intent
@@ -11,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import android.text.format.Formatter
+import androidx.webkit.WebViewCompat
 import io.github.dey410.gardendlessloader.game.GameActivity
 import io.github.dey410.gardendlessloader.logging.AppLogStore
 import io.flutter.embedding.android.FlutterActivity
@@ -45,6 +47,10 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             "io.github.dey410.gardendlessloader/game_host",
         ).setMethodCallHandler { call, result ->
+            if (call.method == "device") {
+                result.success(hostDevice())
+                return@setMethodCallHandler
+            }
             if (call.method != "launch") {
                 result.notImplemented()
                 return@setMethodCallHandler
@@ -228,6 +234,17 @@ class MainActivity : FlutterActivity() {
                 ),
             )
         }
+    }
+
+    private fun hostDevice(): Map<String, Any?> {
+        val memory = ActivityManager.MemoryInfo()
+        (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(memory)
+        val webView = WebViewCompat.getCurrentWebViewPackage(this)
+        return mapOf(
+            "model" to "${Build.MANUFACTURER} ${Build.MODEL}",
+            "webViewVersion" to webView?.let { "${it.packageName} ${it.versionName}" },
+            "memoryBytes" to memory.totalMem,
+        )
     }
 
     private fun launchZipPicker(result: MethodChannel.Result) {

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../game_host/game_session_store.dart';
+
 /// A resource import that became the active game, one ring of the version
 /// rings.
 class ImportRecord {
@@ -45,6 +47,7 @@ class GardenJournal {
     this.longestPlayMs = 0,
     this.lastPlayedAt,
     this.lastPlayMs = 0,
+    this.lastSaveExportAt,
     this.imports = const <ImportRecord>[],
   });
 
@@ -56,6 +59,8 @@ class GardenJournal {
       longestPlayMs: (json['longestPlayMs'] as num?)?.toInt() ?? 0,
       lastPlayedAt: DateTime.tryParse(json['lastPlayedAt'] as String? ?? ''),
       lastPlayMs: (json['lastPlayMs'] as num?)?.toInt() ?? 0,
+      lastSaveExportAt:
+          DateTime.tryParse(json['lastSaveExportAt'] as String? ?? ''),
       imports: imports is List
           ? imports
               .whereType<Map<String, dynamic>>()
@@ -67,11 +72,18 @@ class GardenJournal {
 
   static const maxImports = 30;
 
+  /// The game names a save export `<player>(v<game version>).json`; its
+  /// other exports, such as key bindings, have no version in the name.
+  static final savePattern = RegExp(r'\(v[^()]+\)\.json$');
+
   final int totalPlayMs;
   final int sessionCount;
   final int longestPlayMs;
   final DateTime? lastPlayedAt;
   final int lastPlayMs;
+
+  /// When the player last exported a save from the game in the loader.
+  final DateTime? lastSaveExportAt;
 
   /// Oldest first, at most [maxImports].
   final List<ImportRecord> imports;
@@ -86,6 +98,23 @@ class GardenJournal {
       longestPlayMs: playedMs > longestPlayMs ? playedMs : longestPlayMs,
       lastPlayedAt: finishedAt,
       lastPlayMs: playedMs,
+      lastSaveExportAt: lastSaveExportAt,
+      imports: imports,
+    );
+  }
+
+  /// Keeps the latest save among [exports]; other exported files are not
+  /// saves.
+  GardenJournal recordExports(List<GameExport> exports) {
+    final saves = exports.where((export) => savePattern.hasMatch(export.name));
+    if (saves.isEmpty) return this;
+    return GardenJournal(
+      totalPlayMs: totalPlayMs,
+      sessionCount: sessionCount,
+      longestPlayMs: longestPlayMs,
+      lastPlayedAt: lastPlayedAt,
+      lastPlayMs: lastPlayMs,
+      lastSaveExportAt: saves.last.exportedAt,
       imports: imports,
     );
   }
@@ -98,6 +127,7 @@ class GardenJournal {
       longestPlayMs: longestPlayMs,
       lastPlayedAt: lastPlayedAt,
       lastPlayMs: lastPlayMs,
+      lastSaveExportAt: lastSaveExportAt,
       imports:
           all.length > maxImports ? all.sublist(all.length - maxImports) : all,
     );
@@ -110,6 +140,7 @@ class GardenJournal {
         'longestPlayMs': longestPlayMs,
         'lastPlayedAt': lastPlayedAt?.toUtc().toIso8601String(),
         'lastPlayMs': lastPlayMs,
+        'lastSaveExportAt': lastSaveExportAt?.toUtc().toIso8601String(),
         'imports': [for (final record in imports) record.toJson()],
       };
 }

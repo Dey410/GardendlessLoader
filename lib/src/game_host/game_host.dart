@@ -231,6 +231,26 @@ class MethodChannelGameHost {
   Future<void> launch(GameSession session) async {
     await _channel.invokeMethod<void>('launch', session.toJson());
   }
+
+  Future<HostDevice> device() async {
+    final map = await _channel.invokeMapMethod<String, Object?>('device');
+    return HostDevice(
+      model: map?['model'] as String?,
+      webViewVersion: map?['webViewVersion'] as String?,
+      memoryBytes: (map?['memoryBytes'] as num?)?.toInt(),
+    );
+  }
+}
+
+/// The device and web engine the game host runs on, for diagnostics.
+class HostDevice {
+  const HostDevice({this.model, this.webViewVersion, this.memoryBytes});
+
+  final String? model;
+  final String? webViewVersion;
+
+  /// Physical memory of the device.
+  final int? memoryBytes;
 }
 
 String _requiredString(Map<String, Object?> json, String key) {

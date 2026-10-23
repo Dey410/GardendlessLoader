@@ -96,10 +96,11 @@ With **Gestures (experimental) → Native**, one finger does everything, like a 
 - In sandbox, swipe along the seed bank, zombie cards or armor icon to cycle them; in the sandbox settings, tap a row to run its shortcut (tides, summoning zombies, time freeze and more), and tap outside the window to close it.
 - Long-press a custom card deck to edit it; in sandbox, long-press a plant with nothing in hand to switch the seed bank to it; in the decoding minigame, long-press a filled slot to clear it.
 - Pinch to zoom the Zen Garden.
+- Dropping a card or tool and a long press that takes effect give a light tap, and each step of a sandbox swipe gives a tick; they follow the system haptics setting.
 
 ### Tips
 
-- **Update resources**: on the **Resources** tab, tap **Select ZIP to update**. Export a save backup in the game first.
+- **Update resources**: on the **Resources** tab, tap **Select ZIP to update**. Export a save backup in the game first; the confirmation shows when you last exported a save in the loader and offers **Export in the game first**.
 - **Import from another app**: open a ZIP with GardendlessLoader from a file manager or chat app (Android and iOS also accept it through Share). A ZIP received during play is imported once you return to the launcher.
 - **Home-screen shortcuts**: long-press the app icon to jump straight to **Start Game** or **Import Resources**.
 - **Back to the launcher**: use system Back on Android and HarmonyOS, swipe right from the left edge on iOS, or use the game's own quit button.
@@ -139,7 +140,7 @@ No. Your save lives in the game, and updating resources does not delete it. A ne
 
 <br>
 
-Lower **Render resolution** to 75% or 50% under **Settings → Launch Preferences**; this noticeably reduces GPU memory use. A mobile-optimized package also helps, since it uses lower-resolution textures and adjusted audio quality.
+Lower **Render resolution** to 75% or 50% under **Settings → Launch Preferences**; this noticeably reduces GPU memory use. After a crash, the **Play** tab explains what ended the game and offers to lower the resolution and start again in one tap. A mobile-optimized package also helps, since it uses lower-resolution textures and adjusted audio quality.
 
 </details>
 

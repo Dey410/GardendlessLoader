@@ -5,6 +5,7 @@ import GardendlessImport
 import GardendlessLogging
 import UniformTypeIdentifiers
 import UIKit
+import WebKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -229,6 +230,10 @@ import UIKit
     )
     gameHostChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
+      if call.method == "device" {
+        result(Self.hostDevice())
+        return
+      }
       guard call.method == "launch" else {
         result(FlutterMethodNotImplemented)
         return
@@ -309,6 +314,21 @@ import UIKit
         )
       }
     }
+  }
+
+  /// WebKit ships with iOS, so its bundle version names the engine build.
+  private static func hostDevice() -> [String: Any] {
+    var system = utsname()
+    uname(&system)
+    let model = withUnsafeBytes(of: system.machine) {
+      String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
+    }
+    let webKit = Bundle(for: WKWebView.self).infoDictionary?["CFBundleVersion"] as? String
+    return [
+      "model": model,
+      "webViewVersion": "WebKit \(webKit ?? "unknown") (iOS \(UIDevice.current.systemVersion))",
+      "memoryBytes": Int(ProcessInfo.processInfo.physicalMemory),
+    ]
   }
 
   private func registerResourceZipImporter(on messenger: FlutterBinaryMessenger) {

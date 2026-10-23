@@ -102,6 +102,9 @@ class AppController extends ChangeNotifier {
   LauncherShortcut? _pendingShortcut;
   AppLogSnapshot? _logSnapshot;
   bool _logSnapshotLoading = false;
+  HostDevice? _hostDevice;
+  GameSessionReport? _lastGameReport;
+  bool _lastGameErrorsSeen = false;
 
   bool get initialized => _initialized;
   bool get busy => _busy;
@@ -135,6 +138,20 @@ class AppController extends ChangeNotifier {
 
   /// Play time and the version rings, kept on this device only.
   GardenJournal get journal => _journal;
+
+  /// The game the player just returned from; null after a cold start or a
+  /// launch that failed.
+  GameSessionReport? get lastGameReport => _lastGameReport;
+
+  /// The last game logged errors the player has not looked at yet.
+  bool get hasUnseenGameErrors =>
+      !_lastGameErrorsSeen && (_lastGameReport?.errorCount ?? 0) > 0;
+
+  void markGameErrorsSeen() {
+    if (!hasUnseenGameErrors) return;
+    _lastGameErrorsSeen = true;
+    notifyListeners();
+  }
 
   /// The game versions of the last import, while its completion shows and
   /// only when it moved the game to a newer version.
@@ -210,13 +227,16 @@ class AppController extends ChangeNotifier {
         _applyLanguage(_appSettings.languagePreference);
         _journalStore = GardenJournalStore(_paths!.journalFile);
         _journal = await _journalStore!.read();
-        if (exitResult != null &&
-            exitResult.reason != GameExitReason.launchFailed &&
-            exitResult.playedMs > 0) {
-          await _saveJournal(_journal.recordPlay(
-            finishedAt: exitResult.finishedAt,
-            playedMs: exitResult.playedMs,
-          ));
+        if (exitResult != null) {
+          var journal = _journal.recordExports(exitResult.exports);
+          if (exitResult.reason != GameExitReason.launchFailed &&
+              exitResult.playedMs > 0) {
+            journal = journal.recordPlay(
+              finishedAt: exitResult.finishedAt,
+              playedMs: exitResult.playedMs,
+            );
+          }
+          if (!identical(journal, _journal)) await _saveJournal(journal);
         }
         _emitInitializationStage('manifest');
         _manifestStore = ManifestStore(_paths!.manifestFile);
@@ -275,6 +295,7 @@ class AppController extends ChangeNotifier {
         }
         _emitInitializationStage('diagnostics');
         await _loadCurrentAppVersion();
+        _hostDevice = await _gameHost.device();
         _emitInitializationStage('resource_validation');
         await refresh();
         // The rings begin with the resource imported before they existed.
@@ -283,6 +304,14 @@ class AppController extends ChangeNotifier {
             _manifest.lastImportAt != null) {
           await _saveJournal(_journal.recordImport(_importRecord()));
         }
+        if (exitResult != null &&
+            exitResult.reason != GameExitReason.launchFailed) {
+          await refreshLogs();
+          _lastGameReport = GameSessionReport.of(
+            exitResult,
+            _logSnapshot?.events ?? const <Map<String, Object?>>[],
+          );
+        }
         _incomingZipName = await _resourcePickerService.incomingZipName();
         _pendingShortcut = await _shortcutService.take();
         await _shortcutService.publish(AppStrings.current);
@@ -290,11 +319,6 @@ class AppController extends ChangeNotifier {
           _message = _failureMessage('old_slot_cleanup_failed', null);
         } else if (interruptedTransaction) {
           _message = _failureMessage('import_interrupted', null);
-        } else if (exitResult?.reason == GameExitReason.rendererGone) {
-          _message = _failureMessage(
-            exitResult?.code ?? 'webview_render_process_gone',
-            exitResult?.message,
-          );
         } else if (exitResult?.reason == GameExitReason.launchFailed) {
           _message = _failureMessage(
             exitResult?.code ?? 'game_host_launch_failed',
@@ -302,9 +326,11 @@ class AppController extends ChangeNotifier {
           );
         }
         _initialized = true;
-        // Every game exit leaves an exit result, so only a cold start skips
-        // the launcher; returning from the game always shows it.
-        quickLaunch = exitResult == null &&
+        // Returning from the game always shows the launcher, and so does a
+        // game the app ended under; one the system ended in the background
+        // starts again like a cold start.
+        quickLaunch = (exitResult == null ||
+                exitResult.reason == GameExitReason.systemTerminated) &&
             _incomingZipName == null &&
             _pendingShortcut == null &&
             _appSettings.quickLaunchEnabled &&
@@ -998,7 +1024,13 @@ class AppController extends ChangeNotifier {
       if (session.gestureHint != null) {
         await _updateAppSettings(_appSettings.copyWith(gestureHintShown: true));
       }
-      await _gameHost.launch(session);
+      try {
+        await _gameHost.launch(session);
+      } catch (_) {
+        // Otherwise the next start would take it for a game that crashed.
+        await store.discardPrepared();
+        rethrow;
+      }
     }
 
     final operation = _appLogger.startOperation(
@@ -1026,7 +1058,7 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  DiagnosticSnapshot diagnostics({String? webViewEngineVersion}) {
+  DiagnosticSnapshot diagnostics() {
     return buildDiagnosticSnapshot(
       appVersion: _currentAppVersion,
       paths: _requirePaths(),
@@ -1034,7 +1066,7 @@ class AppController extends ChangeNotifier {
       importValidation: _importValidation,
       manifest: _manifest,
       gameHostPlatform: gameHostPlatform,
-      webViewEngineVersion: webViewEngineVersion,
+      hostDevice: _hostDevice,
     );
   }
 

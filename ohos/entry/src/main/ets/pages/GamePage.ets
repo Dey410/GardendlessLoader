@@ -3,7 +3,7 @@ import fs from '@ohos.file.fs';
 import picker from '@ohos.file.picker';
 import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
-import { GameBridge } from '../game/GameBridge';
+import { ExportRecord, GameBridge } from '../game/GameBridge';
 import { NativeGameResourceHandler } from '../game/NativeGameResourceHandler';
 import { GameSession } from '../game/GameSession';
 import { appLogStore, AppLogContext, AppLogEvent } from '../logging/AppLogStore';
@@ -25,6 +25,9 @@ struct GamePage {
   // Foreground play time; shownAt is the clock while the page shows, else 0.
   private playedMs: number = 0;
   private shownAt: number = 0;
+  // Exit result writes run in order: the provisional one written while the
+  // page is hidden must never land after its removal or the final result.
+  private exitRecord: Promise<void> = Promise.resolve();
   @State private viewportWidth: string = '100%';
   @State private viewportHeight: string = '100%';
   @State private viewportScaleX: number = 1;
@@ -191,8 +194,15 @@ struct GamePage {
     });
   }
 
+  // While hidden, a provisional exit result tells the launcher that a system
+  // that ends the app ended it in the background, not during play.
   onPageShow(): void {
     this.shownAt = Date.now();
+    const session = this.session;
+    if (session != null && !this.exiting) {
+      this.exitRecord = this.exitRecord.then((): Promise<void> =>
+        fs.unlink(`${session.appRoot}/game_exit_result.json`).catch((_error: Error): void => {}));
+    }
   }
 
   onPageHide(): void {
@@ -200,6 +210,13 @@ struct GamePage {
       this.playedMs += Date.now() - this.shownAt;
     }
     this.shownAt = 0;
+    const session = this.session;
+    if (session != null && !this.exiting) {
+      const playedMs = this.playedMs;
+      this.exitRecord = this.exitRecord.then((): Promise<void> => this.writeExitResult(
+        session.appRoot, session.sessionId, 'systemTerminated', null, session.packageId, playedMs,
+        this.bridge?.exports ?? []));
+    }
   }
 
   onBackPress(): boolean {
@@ -315,7 +332,9 @@ struct GamePage {
       if (message != null) finishedEvent.message = message;
       appLogStore.emit(finishedEvent);
       const playedMs = this.playedMs + (this.shownAt !== 0 ? Date.now() - this.shownAt : 0);
-      exitResult = this.writeExitResult(session.appRoot, session.sessionId, reason, message, session.packageId, playedMs);
+      const exports = this.bridge?.exports ?? [];
+      exitResult = this.exitRecord.then((): Promise<void> => this.writeExitResult(
+        session.appRoot, session.sessionId, reason, message, session.packageId, playedMs, exports));
     }
     this.bridge?.destroy();
     Promise.all([exitResult, appLogStore.flush()]).finally((): void => this.startLauncher());
@@ -328,6 +347,7 @@ struct GamePage {
     message: string | null,
     packageId: string = 'unknown',
     playedMs: number = 0,
+    exports: ExportRecord[] = [],
   ): Promise<void> {
     const output = `${appRoot}/game_exit_result.json`;
     const temporary = `${output}.tmp`;
@@ -339,6 +359,7 @@ struct GamePage {
       finishedAt: new Date().toISOString(),
       message: message,
       playedMs: Math.round(playedMs),
+      exports: exports,
     }, null, 2);
     try {
       await this.writeTextFile(temporary, `${value}\n`);

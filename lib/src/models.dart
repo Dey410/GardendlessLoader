@@ -668,6 +668,8 @@ class DiagnosticSnapshot {
     required this.appVersion,
     required this.platform,
     required this.osVersion,
+    required this.deviceModel,
+    required this.memoryBytes,
     required this.webViewEngineVersion,
     required this.resourceRoot,
     required this.activeSlot,
@@ -693,6 +695,8 @@ class DiagnosticSnapshot {
   final String appVersion;
   final String platform;
   final String osVersion;
+  final String deviceModel;
+  final int? memoryBytes;
   final String webViewEngineVersion;
   final String resourceRoot;
   final ResourceSlot? activeSlot;
@@ -719,6 +723,8 @@ class DiagnosticSnapshot {
       'App version: $appVersion',
       'Platform: $platform',
       'OS version: $osVersion',
+      'Device: $deviceModel',
+      'Memory: ${memoryBytes ?? 'unavailable'}',
       'WebView engine version: $webViewEngineVersion',
       'resourceRoot: $resourceRoot',
       'activeSlot: ${activeSlot?.name}',
@@ -752,6 +758,8 @@ class DiagnosticSnapshot {
         'version="${_logValue(appVersion)}" '
             'platform="${_logValue(platform)}" '
             'os="${_logValue(osVersion)}" '
+            'device="${_logValue(deviceModel)}" '
+            'memoryBytes=${memoryBytes ?? 'unavailable'} '
             'webview="${_logValue(webViewEngineVersion)}"',
       ),
       _logLine('INFO', 'resource.root', 'path="${_logValue(resourceRoot)}"'),

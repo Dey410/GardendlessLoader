@@ -4,6 +4,7 @@ import picker from '@ohos.file.picker';
 import { promptAction } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
 import { webview } from '@kit.ArkWeb';
+import vibrator from '@ohos.vibrator';
 import { appLogStore, AppLogContext, AppLogError, AppLogEvent } from '../logging/AppLogStore';
 import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientation';
 import { ExportDocumentSpec } from './ExportDocumentSpec';
@@ -19,6 +20,7 @@ interface BridgeRequest {
 }
 
 interface BridgeArguments {
+  kind?: string;
   url?: string;
   suggestedFilename?: string;
   mimeType?: string;
@@ -42,6 +44,12 @@ interface BridgeError {
 
 type BridgeValue = GpNextValue;
 
+/** A file the player exported, reported to the launcher in the exit result. */
+export interface ExportRecord {
+  name: string;
+  at: string;
+}
+
 interface BridgeResponse {
   id: string;
   ok: boolean;
@@ -58,6 +66,7 @@ export class GameBridge {
   private readonly activeIds: Set<string> = new Set<string>();
   private destroyed: boolean = false;
   private pickerActive: boolean = false;
+  readonly exports: ExportRecord[] = [];
 
   constructor(
     controller: webview.WebviewController,
@@ -112,6 +121,18 @@ export class GameBridge {
       case 'host:return_home':
         this.complete(request.id, null);
         this.onReturnHome();
+        break;
+      case 'host:haptic':
+        {
+          this.complete(request.id, null);
+          const effect: vibrator.VibrateTime = {
+            type: 'time',
+            duration: request.args?.kind === 'selection' ? 10 : 20,
+          };
+          const attribute: vibrator.VibrateAttribute = { usage: 'touch' };
+          // A missed tap is not worth a log entry.
+          vibrator.startVibration(effect, attribute).catch((_error: Error): void => {});
+        }
         break;
       case 'host:log':
         {
@@ -251,6 +272,8 @@ export class GameBridge {
         if (!this.gpNextCore.isFileActive(handle)) throw new FileFailure('cancelled', 'Export was cancelled');
         await this.gpNextCore.exportFinished(handle, true);
       });
+      this.exports.push({ name: fileName, at: new Date().toISOString() });
+      if (this.exports.length > 16) this.exports.shift();
       this.complete(id, null);
     } catch (error) {
       await this.gpNextCore.exportFinished(handle, false);

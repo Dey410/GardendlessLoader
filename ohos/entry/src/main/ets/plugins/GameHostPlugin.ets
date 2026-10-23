@@ -1,4 +1,5 @@
 import common from '@ohos.app.ability.common';
+import deviceInfo from '@ohos.deviceInfo';
 import {
   FlutterPlugin,
   FlutterPluginBinding,
@@ -37,6 +38,12 @@ interface GameSessionArguments {
   exportTemporaryRoot: string;
 }
 
+interface HostDevice {
+  model: string;
+  webViewVersion: string;
+  memoryBytes: number | null;
+}
+
 export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHandler {
   private channel: MethodChannel | null = null;
   private context: common.UIAbilityContext | null = null;
@@ -65,6 +72,16 @@ export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHa
   }
 
   onMethodCall(call: MethodCall, result: MethodResult): void {
+    if (call.method === 'device') {
+      // ArkWeb ships with the system, so the OS build names the web engine.
+      const device: HostDevice = {
+        model: `${deviceInfo.manufacture} ${deviceInfo.productModel}`,
+        webViewVersion: `ArkWeb (${deviceInfo.osFullName})`,
+        memoryBytes: null,
+      };
+      result.success(device);
+      return;
+    }
     if (call.method !== 'launch') {
       result.notImplemented();
       return;
