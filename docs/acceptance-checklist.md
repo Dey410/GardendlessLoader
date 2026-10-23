@@ -78,6 +78,8 @@
 - Android and HarmonyOS: pressing B never returns to the launcher. Switching apps or disconnecting the controller while A is held releases the button.
 - If `gamepad.js` cannot find the level interfaces, it logs `手柄快捷键已停用` once; the cursor, A, B and the wheel keep working.
 - The first controller input of a session lists the buttons once in the game's tip bar, in the game's language, and the line fits the bar.
+- Rhythm level (Neon Mixtape): while it plays, LB/RB, D-pad up/Y, D-pad left or right/X/B, D-pad down/A and LT/RT each hold one lane from the top, honouring rebound lane keys; a zombie at a Phat Beet when its lane is pressed is bitten; holding keeps the lane active; two rows at once hold both lanes. The cursor hides, A and B do not click, X and Y take no tools, and Start pauses. Paused, won or lost, the controller is the cursor again and every lane is let go. The first rhythm level of a session lists the lanes in the tip bar.
+- Air Raid: on the team screen the controller is a cursor; once flying, the stick and the D-pad (full speed) fly the plane through a hidden cursor. B switches the plane to keys: the cursor shows, the stick past half tilt and the D-pad hold W/A/S/D and move the plane at the game's key speed, and the cursor stays put; B switches back. Pausing, switching apps or disconnecting the controller lets go of every held key.
 
 ## In-game feedback
 

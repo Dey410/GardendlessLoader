@@ -118,6 +118,9 @@ With a Bluetooth controller connected, press any button or move a stick and a cu
 
 X, Y, LB, RB, and Start use the key bindings you set in the game. Use touch for web pages such as the GP-Next panel.
 
+- **Rhythm levels**: the five lanes, top to bottom, take LB/RB, D-pad up/Y, D-pad left or right/X/B, D-pad down/A, and LT/RT, so either hand can play; holding a button holds that lane, and Start still pauses. The tip bar lists them in your first rhythm level.
+- **Air Raid**: the plane follows the cursor, so the stick flies it directly, the D-pad flies at full speed, and the cursor hides like the game's own pointer. After B switches the plane to keys, the stick and D-pad hold W/A/S/D; B switches back.
+
 ### Tips
 
 - **Update resources**: on the **Resources** tab, tap **Select ZIP to update**. Export a save backup in the game first; the confirmation shows when you last exported a save in the loader and offers **Export in the game first**.
