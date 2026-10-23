@@ -6,7 +6,7 @@
 
 | 入口 | 常用输入 | 唯一产物职责 |
 | --- | --- | --- |
-| extract-pvzge-gpnext资源workflow_dispatch | release_tag（必填），publish（默认关） | 同一已验证政策生成完整资源ZIP、基于最新Release的增量ZIP、摘要与诊断报告；publish时发布为Release |
+| extract-pvzge-gpnext资源workflow_dispatch | release_tag（留空取最新），publish（默认关） | 同一已验证政策生成完整资源ZIP、基于最新Release的增量ZIP、摘要与诊断报告；publish时发布为Release |
 | GardendlessLoader应用workflow_dispatch | 已审查的Loader ref | 同一套当前SDK流程生成APK、未签名IPA、未签名HAP与版本摘要 |
 
 游戏内容更新不要求重编三端应用。三端应用是三种系统产物，不是同功能多样式。没有跨仓dispatch/组合调度、PAT或轮询。资源仓库只在勾选publish时创建Release，它是下一次增量包的基础，见[ADR-0004](../adr/0004-delta-resource-packages.md)。成功的一键入口必须明确自己实际产生了什么，缺HAP不能报告完整三端成功。

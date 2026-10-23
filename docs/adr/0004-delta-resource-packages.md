@@ -45,8 +45,9 @@ through the one ZIP import entry.
   `GardendlessResources-<tag>-from-<base tag>.zip`. Publishing a `packageId`
   that already has a Release fails; old Releases are never deleted
   automatically. Runs without `publish` keep both packages as seven-day
-  artifacts. `release_tag` is required and names the run
-  (`0.15.0 · 测试` / `0.15.0 · 发布`).
+  artifacts. An empty `release_tag` takes upstream's newest Release; the run
+  title shows the tag (`0.15.0 · 测试` / `0.15.0 · 发布`), or 最新 when it was
+  left empty, with the package name in the run summary.
 - **CI proof.** Before upload, CI verifies the base and the new full package,
   checks that the delta's metadata equals the full package's, that every
   delta file matches the index, that every omitted file's SHA-256 is in the
