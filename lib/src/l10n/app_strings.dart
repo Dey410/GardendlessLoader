@@ -278,6 +278,12 @@ class AppStrings {
         GestureMode.simulated => _t('模拟', 'Simulated'),
         GestureMode.native => _t('原生', 'Native'),
       };
+  String get hapticEffects => _t('触感音效', 'Haptic effects');
+  String get hapticEffectsSubtitle => _t(
+        '爆炸、一大波僵尸、植物使用肥料等时刻，设备或手柄跟着震动',
+        'The device or controller vibrates with explosions, huge waves, '
+            'plant food and other big moments',
+      );
   String get watermark => _t('游戏水印', 'Watermark');
   String get watermarkSubtitle => _t(
         '在游戏画面角落显示加载器标识',

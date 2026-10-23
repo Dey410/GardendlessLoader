@@ -13,6 +13,7 @@ export interface GameSessionPayload {
   gpNextVersion?: string;
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
+  hapticEffectsEnabled?: boolean;
   detailedAudioDiagnosticsEnabled?: boolean;
   renderScale?: number | null;
   screenFit?: string;
@@ -36,6 +37,8 @@ export class GameSession {
   readonly gpNextVersion: string | null;
   readonly watermarkEnabled: boolean;
   readonly autoCollectSunEnabled: boolean;
+  /** haptic_effects.js vibrates with the game's big sound effects. */
+  readonly hapticEffectsEnabled: boolean;
   readonly detailedAudioDiagnosticsEnabled: boolean;
   readonly renderScale: number | null;
   /** balanced (16:10–17:9), showAll (17:9) or stretch: how the game viewport fits the screen. */
@@ -71,6 +74,7 @@ export class GameSession {
     this.gpNextVersion = value.gpNextVersion ?? null;
     this.watermarkEnabled = value.watermarkEnabled;
     this.autoCollectSunEnabled = value.autoCollectSunEnabled;
+    this.hapticEffectsEnabled = value.hapticEffectsEnabled === true;
     this.detailedAudioDiagnosticsEnabled = value.detailedAudioDiagnosticsEnabled === true;
     this.renderScale = value.renderScale ?? null;
     if (this.renderScale !== null && !(this.renderScale > 0)) {

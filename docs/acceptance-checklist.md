@@ -63,6 +63,30 @@
 - Native: a 500 ms long press opens the editor of a custom card deck (built-in decks do nothing), sets the sandbox seed bank from a lawn plant when nothing is in hand, and clears a filled decoding slot; a moving finger or a shorter press does nothing extra.
 - Native: no action needs two fingers except the cheat sun counter's −1000 and the cosmetic sandbox costume roll; two-finger swipes and pinches still send whole wheel notches, a sideways two-finger slide neither scrolls nor right-clicks, and a still two-finger tap right-clicks.
 - Native: if `native_gestures.js` cannot find a rule's game interface, it logs `原生手势（rule）已停用` once, that rule stays off, and tap planting still works.
+- Native: dragging a seed packet, the shovel or plant food from the bank shows the plant in hand about a fingertip above the finger once the finger has moved; the lawn highlight follows it, and the release plants on that highlighted tile, not the one under the finger. The bottom lawn row stays reachable. A tap, a drag with a mouse or trackpad, a controller drag and a sandbox swipe keep the pointer under the input.
+- Native: in a started sandbox level, a 500 ms long press on a seed packet fills every free tile with that plant, on the shovel removes every plant, on plant food feeds every plant, and on a zombie card defeats every zombie; each puts the picked item back, runs once, taps the device, and names the action in the game's tip bar. Outside sandbox, on the conveyor slot, or with a moving finger nothing extra happens, and the next shovel or card key works normally (Ctrl is not left down).
+- Native: in the Zen Garden, a 500 ms long press on a plant or on open ground with nothing in hand meets every plant's need on the page (the same as the `A` key), and the tip bar says how many plants were cared for, counting the one pressed, or that none needed care. Holding a tool, pressing an empty or locked pot, or having the shovel or medal window open does nothing extra.
+
+## Game controllers
+
+- On each platform, pressing any button or moving a stick on a connected controller shows the cursor at the centre of the game; a touch or a real mouse move hides it, and the next controller input shows it again where it was.
+- The left stick moves the cursor across the whole canvas, slowly for a small tilt and quickly at full tilt; the D-pad nudges it; the cursor never leaves the canvas.
+- A clicks, and holding A while moving drags; B right-clicks (puts back the plant in hand); the right stick scrolls lists and steps sandbox strips.
+- In a level, X takes the shovel, Y the plant food and Start pauses, following rebound keys; LB and RB step through the seed packets, skipping recharging or unaffordable ones without the refusal sound. Outside a level these buttons do nothing.
+- Native gesture mode: a controller drag from a seed packet to the lawn plants on release and is not lifted.
+- With the GP-Next panel open, the controller does nothing and the cursor hides.
+- Android and HarmonyOS: pressing B never returns to the launcher. Switching apps or disconnecting the controller while A is held releases the button.
+- If `gamepad.js` cannot find the level interfaces, it logs `手柄快捷键已停用` once; the cursor, A, B and the wheel keep working.
+- The first controller input of a session lists the buttons once in the game's tip bar, in the game's language, and the line fits the bar.
+
+## In-game feedback
+
+- Loader messages (controller buttons, sandbox shortcuts, Zen Garden care) appear in the game's own tip bar, in the language set in the game, after any tip the game is already showing; switching the game language switches them.
+- Switching to another app, opening Control Center or the app switcher, taking a call, or locking the screen during a level opens the game's pause menu; returning shows it open and the zombies have not moved. The same in the seed chooser, the world map, a won or lost level, or a paused level changes nothing. A tutorial step is not skipped.
+- Rhythm levels: after returning, the pause menu is open and the music resumes with the game.
+- Settings → Haptic effects is on by default and applies on the next launch. With it on, the device ticks for rhythm hits and for "Ready" and "Set", gives a heavy hit for "Plant!", sandstorm warnings and explosions (cherry bomb, potato mine, gargantuar, pirate ship), taps for plant food and "Let's rock", gives two heavy hits for the first zombies, huge waves, the final wave and Zomboss, and a pattern for a level task done or failed. Many explosions at once feel like one. With it off, or with system haptics off, nothing vibrates; native-mode drop and long-press taps are unchanged.
+- With a controller that has rumble motors connected and used, the controller rumbles instead of the device.
+- If `haptic_effects.js` cannot find a sound, it logs `触感音效找不到这些游戏音效` with the names once and the others still vibrate; every sound still plays.
 
 ## Automatic sun collection
 

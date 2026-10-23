@@ -36,6 +36,8 @@ public struct GameSession: Codable, Equatable {
   public let gpNextVersion: String?
   public let watermarkEnabled: Bool
   public let autoCollectSunEnabled: Bool
+  /// haptic_effects.js vibrates with the game's big sound effects.
+  public let hapticEffectsEnabled: Bool
   public let detailedAudioDiagnosticsEnabled: Bool
   /// Share of the device pixel ratio the game canvas renders at; nil keeps
   /// the device's own ratio.
@@ -65,6 +67,7 @@ public struct GameSession: Codable, Equatable {
     gpNextVersion: String?,
     watermarkEnabled: Bool,
     autoCollectSunEnabled: Bool,
+    hapticEffectsEnabled: Bool = false,
     detailedAudioDiagnosticsEnabled: Bool = false,
     renderScale: Double? = nil,
     screenFit: GameScreenFit = .balanced,
@@ -85,6 +88,7 @@ public struct GameSession: Codable, Equatable {
     self.gpNextVersion = gpNextVersion
     self.watermarkEnabled = watermarkEnabled
     self.autoCollectSunEnabled = autoCollectSunEnabled
+    self.hapticEffectsEnabled = hapticEffectsEnabled
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
     self.renderScale = renderScale
     self.screenFit = screenFit
@@ -147,6 +151,7 @@ public enum GameSessionDecoder {
       gpNextVersion: json["gpNextVersion"] as? String,
       watermarkEnabled: try requiredBool(json, "watermarkEnabled"),
       autoCollectSunEnabled: try requiredBool(json, "autoCollectSunEnabled"),
+      hapticEffectsEnabled: json["hapticEffectsEnabled"] as? Bool ?? false,
       detailedAudioDiagnosticsEnabled:
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
       renderScale: renderScale,

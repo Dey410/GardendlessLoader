@@ -27,7 +27,7 @@ Android · iOS / iPadOS · HarmonyOS
 
 - 📦 **One-tap import**: pick a ZIP and the app extracts, validates, and self-checks it. You can also open a ZIP in the loader straight from another app.
 - 🛡️ **Safe updates**: A/B slot updates replace the old resources only after the new ones pass validation. A failed or cancelled import never touches your current version.
-- 👆 **Made for touch**: one- and two-finger gestures map to mouse input, and physical keyboards and mice work too.
+- 👆 **Made for touch**: one- and two-finger gestures map to mouse input, and physical keyboards, mice, and game controllers work too.
 - 🧩 **GP-Next ready**: supports patches, Mod installation, and JS Modding in GP-Next builds.
 - 🎛️ **Adjustable display**: tune render resolution and screen fit, and turn on Auto Collect Sun or Quick launch.
 - ⚡ **Runs natively**: uses WebView, WKWebView, and ArkWeb on each platform to load local resources directly.
@@ -78,6 +78,7 @@ Adjust these under **Settings → Launch Preferences**; changes apply the next t
 | **Render resolution** | Renders at 100% / 75% / 50% of the screen's native resolution; lower uses less GPU memory but looks softer |
 | **Screen fit** | **Balanced** (default) trims a little of the picture for smaller black bars; **Show all** keeps the whole picture with larger bars; **Stretch** fills the screen but may distort the picture |
 | **Gestures (experimental)** | **Simulated** (default) uses the gestures below; **Native** is described after them |
+| **Haptic effects** | The device vibrates with explosions, huge waves, plant food, rhythm hits and other big moments; a controller in use rumbles instead (on by default, follows the system haptics setting) |
 | **Watermark** | Shows the loader name in a corner of the game |
 
 ### Touch controls
@@ -92,11 +93,30 @@ Adjust these under **Settings → Launch Preferences**; changes apply the next t
 
 With **Gestures (experimental) → Native**, one finger does everything, like a phone game:
 - Drop a seed packet, the shovel, plant food or a sandbox zombie card on the lawn to use it; a drag that isn't used puts it back. Decoding cards and the Zen Garden glove and tools drag onto their slots too.
+- While you drag onto the lawn, the plant in hand and its target tile ride above your finger so it doesn't hide them, and the drop lands on the tile shown.
 - One finger scrolls lists and the in-game settings, and pans the Zen Garden when nothing is in hand; dragging a volume slider doesn't move the list.
 - In sandbox, swipe along the seed bank, zombie cards or armor icon to cycle them; in the sandbox settings, tap a row to run its shortcut (tides, summoning zombies, time freeze and more), and tap outside the window to close it.
 - Long-press a custom card deck to edit it; in sandbox, long-press a plant with nothing in hand to switch the seed bank to it; in the decoding minigame, long-press a filled slot to clear it.
+- In sandbox, long-press a seed packet, the shovel, plant food or a zombie card for its Ctrl shortcut: fill the lawn with that plant, remove every plant, feed every plant, or defeat every zombie.
+- In the Zen Garden, long-press any plant or open ground with nothing in hand to meet every plant's need on the page (water, fertilizer and so on), like the `A` key.
 - Pinch to zoom the Zen Garden.
 - Dropping a card or tool and a long press that takes effect give a light tap, and each step of a sandbox swipe gives a tick; they follow the system haptics setting.
+
+### Game controllers
+
+With a Bluetooth controller connected, press any button or move a stick and a cursor appears over the game, and the game's tip bar lists the buttons; the cursor hides again when you touch the screen or use a mouse.
+
+| Control | Action |
+| --- | --- |
+| Left stick / D-pad | Move the cursor (the D-pad fine-tunes it) |
+| A | Left mouse button; hold to drag |
+| B | Right mouse button |
+| Right stick | Mouse wheel |
+| X / Y | In a level, take the shovel / plant food |
+| LB / RB | In a level, switch to the previous / next available seed packet |
+| Start | In a level, pause |
+
+X, Y, LB, RB, and Start use the key bindings you set in the game. Use touch for web pages such as the GP-Next panel.
 
 ### Tips
 
@@ -104,6 +124,7 @@ With **Gestures (experimental) → Native**, one finger does everything, like a 
 - **Import from another app**: open a ZIP with GardendlessLoader from a file manager or chat app (Android and iOS also accept it through Share). A ZIP received during play is imported once you return to the launcher.
 - **Home-screen shortcuts**: long-press the app icon to jump straight to **Start Game** or **Import Resources**.
 - **Back to the launcher**: use system Back on Android and HarmonyOS, swipe right from the left edge on iOS, or use the game's own quit button.
+- **Pause when you leave**: switching apps, taking a call or locking the screen during a level opens the game's pause menu, so the zombies wait for you.
 
 ### GP-Next and Mods
 

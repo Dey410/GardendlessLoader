@@ -26,6 +26,7 @@ interface GameSessionArguments {
   gpNextVersion?: string;
   watermarkEnabled: boolean;
   autoCollectSunEnabled: boolean;
+  hapticEffectsEnabled: boolean;
   detailedAudioDiagnosticsEnabled: boolean;
   renderScale: number | null;
   screenFit: string;
@@ -107,6 +108,7 @@ export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHa
       gpNextCompatible: call.argument('gpNextCompatible') as boolean,
       watermarkEnabled: call.argument('watermarkEnabled') as boolean,
       autoCollectSunEnabled: call.argument('autoCollectSunEnabled') as boolean,
+      hapticEffectsEnabled: (call.argument('hapticEffectsEnabled') as boolean | null) ?? false,
       detailedAudioDiagnosticsEnabled: (call.argument('detailedAudioDiagnosticsEnabled') as boolean | null) ?? false,
       renderScale: (call.argument('renderScale') as number | null) ?? null,
       screenFit: (call.argument('screenFit') as string | null) ?? 'balanced',

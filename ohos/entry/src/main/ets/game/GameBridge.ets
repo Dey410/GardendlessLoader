@@ -125,9 +125,10 @@ export class GameBridge {
       case 'host:haptic':
         {
           this.complete(request.id, null);
+          const kind = request.args?.kind;
           const effect: vibrator.VibrateTime = {
             type: 'time',
-            duration: request.args?.kind === 'selection' ? 10 : 20,
+            duration: kind === 'selection' ? 10 : kind === 'heavy' ? 40 : 20,
           };
           const attribute: vibrator.VibrateAttribute = { usage: 'touch' };
           // A missed tap is not worth a log entry.

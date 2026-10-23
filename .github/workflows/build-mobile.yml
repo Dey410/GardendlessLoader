@@ -57,6 +57,8 @@ jobs:
           node tool/check_touch_state_machine.mjs
           node tool/check_touch_patch.mjs
           node tool/check_native_gestures.mjs
+          node tool/check_gamepad.mjs
+          node tool/check_game_feedback.mjs
           node tool/check_render_scale.mjs
           node tool/check_audio_lifecycle.mjs
 

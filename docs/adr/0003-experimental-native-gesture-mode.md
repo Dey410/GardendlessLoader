@@ -96,6 +96,18 @@ rule reuses the game's own handler for the action it maps.
   the game's `tryChangingIndex(-1)`.
 - A release where the tool was picked up is a tap and keeps it in hand.
 
+**Drag lift.** A finger covers the tile under it, and the plant in hand
+(`plantInHandLayer`) and the lawn highlight both follow `Mouse.position`.
+- While a press that a touch started carries a pickup and has moved more than
+  12 CSS pixels, the capture listeners give each `mousemove` and the
+  `mouseup` a `clientY` 48 CSS pixels higher. Cocos reads the location from
+  `clientX` and `clientY` after them, so the game draws the hand above the
+  finger and the drop lands on the tile shown there.
+- The script marks the press as a touch from a window capture `touchstart`,
+  which runs before `touch_input_adapter.js` consumes the touch on the
+  document. A tap, a mouse, a controller and a sandbox swipe keep the real
+  location.
+
 **Decoding minigame.** The game picks a card on one press (`PickCard`) and
 places, merges or swaps it on the next press on a merged slot. When a press
 picked a card and the release lands on a different merged slot, the script
@@ -152,6 +164,25 @@ The press still reaches the game first, so a long-pressed deck is also used.
 No DOM right click is synthesized: Cocos would turn it into a second touch and
 press a button again.
 
+The same long press also stands in for two keyboard-only actions:
+- **Sandbox shortcuts.** In a started sandbox level, a long press on what the
+  press picked up (a seed packet 0–7, the shovel, plant food or a sandbox
+  zombie card) puts it back with `tryChangingIndex(-1)`. It then sets
+  `KeyListener.ctrlDown` and passes the player's card, shovel or plant food
+  key, or `KEY_K` for a zombie card, to `UIInGame.onKeyDown`, and restores
+  `ctrlDown` even if the handler throws. The level then fills every tile with
+  that packet's plant, removes or feeds every plant, or defeats every zombie.
+- **Zen Garden care.** On a plant or on open ground, with no tool or plant
+  in hand and the shovel and medal windows closed, a long press calls
+  `fulfillRequire()` on every slot of the page. That is what the care-all key
+  (`ZenGarden_DealWithAll`) does. Pots fill almost the whole page, so a plant
+  counts as a target; its press already met its own need, and the count of
+  plants cared for starts from the needs at the press. An empty or locked pot
+  is left to its own press, which plants or buys.
+
+Both say what they did in the game's own tip bar (`game_tip.js`) and tap the
+device.
+
 **Sandbox menu.** The sandbox settings window lists keyboard shortcuts as
 plain rows, and its only buttons are four toggles. It closes by key or by
 the toolbar button that opened it, and while it is open the game ignores
@@ -203,7 +234,8 @@ not yet passed device acceptance, so it ships behind a setting.
 Rejected. The game reacts on button down (picking a card, using a deck,
 planting a tapped tile). A general long press would have to delay every left
 press until the finger moves or lifts. Long press therefore only adds the
-right-button action of the three targets that have no other one-finger path.
+right-button action of the three targets that have no other one-finger path,
+and the keyboard-only sandbox shortcuts and Zen Garden care.
 
 ### Synthesize a right click for long press
 
@@ -223,7 +255,9 @@ it would press a button under the finger a second time.
   - Swiping along the sandbox seed bank, zombie cards or armor slot steps
     them.
   - A long press edits a custom deck, sets the sandbox bank from a plant, or
-    clears a decoding slot.
+    clears a decoding slot. In sandbox it runs the Ctrl shortcut of a seed
+    packet, the shovel, plant food or a zombie card, and in the Zen Garden it
+    cares for every plant on the page.
   - The Zen Garden pans with one finger and zooms with a pinch.
   - The sandbox settings window runs a shortcut when its row is tapped, and
     closes when a finger taps outside it.

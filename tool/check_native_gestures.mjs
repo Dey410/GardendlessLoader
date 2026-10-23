@@ -138,7 +138,8 @@ function createGame({occupied = []} = {}) {
   const cc = {
     Button,
     ScrollView,
-    KeyCode: {TAB: 9, F5: 116, F7: 118},
+    KeyCode: {TAB: 9, F5: 116, F7: 118, DIGIT_1: 49, DIGIT_3: 51, KEY_D: 68, KEY_F: 70,
+      KEY_K: 75},
     EventKeyboard: class {
       constructor(keyCode, type) {
         this.keyCode = keyCode;
@@ -168,11 +169,16 @@ function createGame({occupied = []} = {}) {
     },
   };
   const zenGardenScene = {component: undefined};
-  const KeyListener = {KeyBinds: {Sandbox_TimeFreeze: 'F5', Sandbox_SwitchMusic: 'F7',
-    Sandbox_ChangeJam: 'TAB'}};
+  const KeyListener = {ctrlDown: false, KeyBinds: {Sandbox_TimeFreeze: 'F5',
+    Sandbox_SwitchMusic: 'F7', Sandbox_ChangeJam: 'TAB', Game_Shovel: 'KEY_D',
+    Game_Plantfood: 'KEY_F'}};
+  for (let card = 1; card <= 8; card++) KeyListener.KeyBinds[`Game_Card${card}`] = `DIGIT_${card}`;
   const keys = [];
+  // Keys the level saw while Ctrl was down.
+  const ctrlKeys = [];
   UIInGame.prototype.onKeyDown = function (event) {
     keys.push(['down', event.keyCode, this.sandBoxSettingWindow ? 'open' : 'closed']);
+    if (KeyListener.ctrlDown) ctrlKeys.push(event.keyCode);
   };
   UIInGame.prototype.onKeyUp = function (event) {
     keys.push(['up', event.keyCode]);
@@ -184,6 +190,7 @@ function createGame({occupied = []} = {}) {
   return {
     KeyListener,
     keys,
+    ctrlKeys,
     Mouse,
     Square,
     UIInGame,
@@ -218,6 +225,24 @@ function createGarden() {
     isGloving: false,
     isCarting: false,
     willMovePlantSlot: null,
+    shovelWindow: {active: false},
+    PlantMedalsWindow: {active: false},
+    currentZen: {slots: []},
+  };
+}
+
+// A Zen Garden slot whose plant needs care (true), whose need is being met
+// (false) or that shows no need (null).
+function createZenSlot(needs, {underPointer = false, plant = true} = {}) {
+  return {
+    plant: plant ? {} : null,
+    requirePar: needs === null ? null : {played: !needs},
+    cared: 0,
+    judgeMouse: () => underPointer,
+    fulfillRequire() {
+      this.cared += 1;
+      if (this.requirePar) this.requirePar.played = true;
+    },
   };
 }
 
@@ -271,6 +296,8 @@ function createHarness({
   canvas.addEventListener('wheel', (event) => wheel.push(event.deltaY));
   const window = new EventTarget();
   const haptics = [];
+  const tips = [];
+  window.__gardendlessGameTip = {show: (text) => tips.push(text.zh)};
   window.__gardendlessHostConfig = {platform: 'ios', touchGestureMode: mode};
   window.__gardendlessHost = {
     config: window.__gardendlessHostConfig,
@@ -320,6 +347,9 @@ function createHarness({
     },
   });
   vm.runInContext(source, context);
+  // Cocos moves Mouse.position to each mousemove location after the window
+  // capture listeners have run.
+  window.addEventListener('mousemove', (event) => game.pointAt(event.clientX, event.clientY));
 
   function advance(milliseconds) {
     const until = now + milliseconds;
@@ -359,18 +389,27 @@ function createHarness({
     advance(0);
   }
 
+  // A touch event as the window sees it, with the fingers still down.
+  function touch(type, fingers) {
+    const event = new Event(type);
+    event.touches = {length: fingers};
+    window.dispatchEvent(event);
+  }
+
   return {
     game,
     errors,
     timers,
     wheel,
     haptics,
+    tips,
     window,
     document,
     advance,
     press,
     move,
     release,
+    touch,
     register() {
       registered = true;
     },
@@ -431,6 +470,172 @@ for (const index of [0, 8, -2, -3]) {
   h.game.pointAt(850, 450);
   h.release();
   assert.equal(h.game.tile(4, 7).downs.length, 1);
+}
+
+// Drag lift: a finger dragging what it picked up moves the game's pointer
+// 48 pixels above itself, and the drop lands on the tile shown there. The
+// finger lifts before touch_input_adapter.js releases the mouse.
+{
+  const h = createHarness();
+  h.touch('touchstart', 1);
+  h.game.pointAt(450, -50);
+  pickUp(h, 0);
+  h.move(455, -42);
+  assert.deepEqual(h.game.pointer, {x: 455, y: -42}, 'a press within the slop is not lifted');
+  h.move(450, 310);
+  assert.deepEqual(h.game.pointer, {x: 450, y: 262}, 'a drag lifts the pointer above the finger');
+  h.touch('touchend', 0);
+  h.release();
+  assert.equal(h.game.tile(2, 3).downs.length, 1, 'the drop lands on the lifted tile');
+  assert.equal(h.game.tile(3, 3).downs.length, 0, 'the tile under the finger is left alone');
+
+  const mouse = createHarness();
+  mouse.game.pointAt(450, -50);
+  pickUp(mouse, 0);
+  mouse.move(450, 310);
+  assert.deepEqual(mouse.game.pointer, {x: 450, y: 310}, 'a mouse or controller drag is not lifted');
+  mouse.release();
+  assert.equal(mouse.game.tile(3, 3).downs.length, 1);
+
+  const tap = createHarness();
+  tap.touch('touchstart', 1);
+  tap.game.pointAt(450, -50);
+  pickUp(tap, 0);
+  tap.touch('touchend', 0);
+  tap.release();
+  assert.deepEqual(tap.game.pointer, {x: 450, y: -50}, 'a tap is not lifted');
+  tap.touch('touchstart', 1);
+  tap.game.pointAt(450, 250);
+  tap.press(() => tap.game.tile(2, 3).onMouseDown({getButton: () => 0}, true));
+  tap.move(450, 310);
+  assert.deepEqual(tap.game.pointer, {x: 450, y: 310}, 'an empty-handed drag is not lifted');
+  tap.touch('touchend', 0);
+  tap.release();
+
+  const swipe = createHarness();
+  swipe.game.LevelPlay.sandBoxModeOn = true;
+  swipe.touch('touchstart', 1);
+  swipe.game.pointAt(300, -50);
+  pickUp(swipe, 0);
+  swipe.move(240, -50);
+  assert.deepEqual(swipe.game.pointer, {x: 240, y: -50}, 'a sandbox swipe is not lifted');
+  assert.deepEqual(swipe.wheel, [100]);
+}
+
+// Sandbox shortcuts: a long press on what the press picked up puts it back
+// and runs its Ctrl shortcut once: the player's card, shovel or plant food
+// key, or Ctrl+K for a zombie card.
+for (const [index, keyCode, text] of [
+  [2, 51, '已用这种植物种满草坪'],
+  [-2, 68, '已铲除所有植物'],
+  [-3, 70, '已给所有植物施肥'],
+  [9, 75, '已消灭所有僵尸'],
+]) {
+  const h = createHarness();
+  h.game.LevelPlay.sandBoxModeOn = true;
+  h.game.pointAt(450, 250);
+  pickUp(h, index);
+  h.advance(499);
+  assert.deepEqual(h.game.ctrlKeys, [], 'a shorter press runs nothing');
+  h.advance(1);
+  assert.deepEqual(h.game.ctrlKeys, [keyCode], `tool ${index} runs its shortcut`);
+  assert.equal(h.game.KeyListener.ctrlDown, false, 'Ctrl is let go');
+  assert.equal(h.game.ui.index, -1, 'the picked thing goes back');
+  assert.deepEqual(h.tips, [text]);
+  assert.deepEqual(h.haptics, ['impact']);
+  h.release();
+  assert.equal(h.game.tile(2, 3).downs.length, 0, 'the release drops nothing');
+  assert.equal(h.errors.length, 0);
+}
+
+// Sandbox shortcuts: only in a started sandbox level, only for what this
+// press picked up, and not after the finger moved.
+{
+  const level = createHarness();
+  level.game.pointAt(450, 250);
+  pickUp(level, -2);
+  level.advance(500);
+  assert.deepEqual(level.game.ctrlKeys, [], 'outside sandbox a long press keeps the shovel');
+  assert.equal(level.game.ui.index, -2);
+
+  const conveyor = createHarness();
+  conveyor.game.LevelPlay.sandBoxModeOn = true;
+  conveyor.game.pointAt(450, 250);
+  pickUp(conveyor, 8);
+  conveyor.advance(500);
+  assert.deepEqual(conveyor.game.ctrlKeys, [], 'the conveyor slot has no shortcut');
+
+  const held = createHarness();
+  held.game.LevelPlay.sandBoxModeOn = true;
+  held.game.ui.tryChangingIndex(-2);
+  held.game.pointAt(450, 250);
+  held.press();
+  held.advance(500);
+  assert.deepEqual(held.game.ctrlKeys, [], 'a tool already in hand is not this press\'s pickup');
+
+  const moved = createHarness();
+  moved.game.LevelPlay.sandBoxModeOn = true;
+  moved.game.pointAt(450, 250);
+  pickUp(moved, -2);
+  moved.move(470, 250);
+  moved.advance(500);
+  assert.deepEqual(moved.game.ctrlKeys, [], 'a moving finger runs nothing');
+}
+
+// Zen Garden care: a long press on open ground or a plant with nothing in
+// hand meets every need on the page once and says how many plants it cared
+// for.
+{
+  const h = createHarness();
+  const garden = createGarden();
+  const slots = [createZenSlot(true), createZenSlot(true), createZenSlot(false),
+    createZenSlot(null)];
+  garden.currentZen = {slots};
+  h.game.zenGardenScene.component = garden;
+  h.game.pointAt(450, 250);
+  h.press();
+  h.advance(500);
+  assert.deepEqual(slots.map((slot) => slot.cared), [1, 1, 1, 1]);
+  assert.deepEqual(h.tips, ['已照料 2 株植物']);
+  assert.deepEqual(h.haptics, ['impact']);
+  h.release();
+
+  h.press();
+  h.advance(500);
+  assert.deepEqual(h.tips, ['已照料 2 株植物', '现在没有植物需要照料']);
+  h.release();
+
+  for (const [setup, why] of [
+    [() => { garden.isShoveling = true; }, 'a tool in hand'],
+    [() => { garden.shovelWindow.active = true; }, 'the shovel window'],
+    [() => { garden.PlantMedalsWindow.active = true; }, 'the medal window'],
+    [() => { slots.push(createZenSlot(null, {underPointer: true, plant: false})); },
+      'a press on an empty pot'],
+  ]) {
+    garden.isShoveling = false;
+    garden.shovelWindow.active = false;
+    garden.PlantMedalsWindow.active = false;
+    setup();
+    h.press();
+    h.advance(500);
+    h.release();
+    assert.equal(h.tips.length, 2, `${why} keeps the long press from caring`);
+  }
+  assert.equal(h.errors.length, 0);
+
+  // The game meets a pressed plant's need on the press; it still counts.
+  const plant = createHarness();
+  const pressed = createZenSlot(true, {underPointer: true});
+  const other = createZenSlot(true);
+  const plantGarden = createGarden();
+  plantGarden.currentZen = {slots: [pressed, other]};
+  plant.game.zenGardenScene.component = plantGarden;
+  plant.game.pointAt(450, 250);
+  plant.press(() => { pressed.requirePar.played = true; });
+  plant.advance(500);
+  assert.deepEqual(plant.tips, ['已照料 2 株植物']);
+  assert.deepEqual([pressed.cared, other.cared], [1, 1]);
+  plant.release();
 }
 
 // Drop: a refused drop, or a drop off the lawn, puts the tool back.
@@ -1032,7 +1237,7 @@ for (const index of [0, 8, -2, -3]) {
   assert.equal(noSquare.timers.length, 0, 'a mismatched interface must not be polled');
   assert.deepEqual(
     noSquare.errors.map((args) => String(args[0]).match(/（(\w+)）/)[1]),
-    ['drop', 'swipe', 'longPress', 'decoding', 'sandboxMenu'],
+    ['drop', 'swipe', 'longPress', 'decoding', 'sandboxMenu', 'sandboxShortcut'],
     'every rule that needs Square is reported once',
   );
   const squareGarden = createGarden();
@@ -1042,7 +1247,11 @@ for (const index of [0, 8, -2, -3]) {
   noSquare.release();
 
   const noZen = createHarness({missing: ['zenGarden']});
-  assert.equal(noZen.errors.length, 1, 'each failed rule is reported once');
+  assert.deepEqual(
+    noZen.errors.map((args) => String(args[0]).match(/（(\w+)）/)[1]),
+    ['zen', 'zenCare'],
+    'each failed rule is reported once',
+  );
   noZen.game.pointAt(450, -50);
   pickUp(noZen, 0);
   noZen.game.pointAt(450, 250);
@@ -1060,7 +1269,7 @@ for (const index of [0, 8, -2, -3]) {
   const noCc = createHarness({missing: ['cc']});
   assert.deepEqual(
     noCc.errors.map((args) => String(args[0]).match(/（(\w+)）/)[1]),
-    ['longPress', 'decoding', 'sandboxMenu'],
+    ['longPress', 'decoding', 'sandboxMenu', 'sandboxShortcut'],
     'rules that need the engine are reported once each',
   );
   noCc.game.LevelPlay.sandBoxModeOn = true;

@@ -107,6 +107,7 @@ final class GameHostController: UIViewController,
   /// Files the player exported, reported to the launcher in the exit result.
   private var exports: [[String: String]] = []
   private let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+  private let heavyFeedback = UIImpactFeedbackGenerator(style: .heavy)
   private let selectionFeedback = UISelectionFeedbackGenerator()
 
   init(
@@ -308,10 +309,13 @@ final class GameHostController: UIViewController,
     exit(reason: "userReturned", message: nil)
   }
 
-  func bridgeRequestedHaptic(selection: Bool) {
-    if selection {
+  func bridgeRequestedHaptic(kind: String?) {
+    switch kind {
+    case "selection":
       selectionFeedback.selectionChanged()
-    } else {
+    case "heavy":
+      heavyFeedback.impactOccurred()
+    default:
       impactFeedback.impactOccurred()
     }
   }
@@ -827,6 +831,7 @@ final class GameHostController: UIViewController,
       "gpNextVersion": session.gpNextVersion ?? NSNull(),
       "watermarkEnabled": session.watermarkEnabled,
       "autoCollectSunEnabled": session.autoCollectSunEnabled,
+      "hapticEffectsEnabled": session.hapticEffectsEnabled,
       "detailedAudioDiagnosticsEnabled":
         session.detailedAudioDiagnosticsEnabled,
       "renderScale": session.renderScale ?? NSNull(),
@@ -841,12 +846,16 @@ final class GameHostController: UIViewController,
     var names = [
       "transport.js",
       "logging.js",
+      "game_tip.js",
       "audio_lifecycle.js",
       "audio_diagnostic.js",
       "auto_sun.js",
       "touch_state_machine.js",
       "touch_input_adapter.js",
       "native_gestures.js",
+      "gamepad.js",
+      "pause_on_return.js",
+      "haptic_effects.js",
       "render_scale.js",
       "export_download_patch.js",
     ]

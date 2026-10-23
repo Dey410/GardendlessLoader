@@ -73,10 +73,10 @@ class GameBridge(
                 "host:haptic" -> {
                     respond(id, true, JSONObject.NULL)
                     webView.performHapticFeedback(
-                        if (request.optJSONObject("args")?.optString("kind") == "selection") {
-                            HapticFeedbackConstants.CLOCK_TICK
-                        } else {
-                            HapticFeedbackConstants.VIRTUAL_KEY
+                        when (request.optJSONObject("args")?.optString("kind")) {
+                            "selection" -> HapticFeedbackConstants.CLOCK_TICK
+                            "heavy" -> HapticFeedbackConstants.LONG_PRESS
+                            else -> HapticFeedbackConstants.VIRTUAL_KEY
                         },
                     )
                 }

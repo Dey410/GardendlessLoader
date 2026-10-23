@@ -38,6 +38,8 @@ data class NativeGameSession(
     val gpNextVersion: String?,
     val watermarkEnabled: Boolean,
     val autoCollectSunEnabled: Boolean,
+    /** haptic_effects.js vibrates with the game's big sound effects. */
+    val hapticEffectsEnabled: Boolean = false,
     val detailedAudioDiagnosticsEnabled: Boolean = false,
     val renderScale: Double? = null,
     val screenFit: GameScreenFit = GameScreenFit.BALANCED,
@@ -81,6 +83,7 @@ object GameSessionCodec {
             gpNextVersion = json.optionalString("gpNextVersion")?.takeIf { it.isNotBlank() },
             watermarkEnabled = json.getBoolean("watermarkEnabled"),
             autoCollectSunEnabled = json.getBoolean("autoCollectSunEnabled"),
+            hapticEffectsEnabled = json.optBoolean("hapticEffectsEnabled", false),
             detailedAudioDiagnosticsEnabled = json.optBoolean("detailedAudioDiagnosticsEnabled", false),
             renderScale = if (json.isNull("renderScale")) null else {
                 json.getDouble("renderScale").also {

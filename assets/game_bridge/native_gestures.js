@@ -17,6 +17,9 @@
   //   drag puts the thing back. This covers seed packets, the shovel, plant
   //   food, sandbox zombie cards and sniper aiming on the lawn, cards in the
   //   decoding minigame, and the Zen Garden glove and tools.
+  // - Drag lift: once a finger drags what it picked up for the lawn, the
+  //   pointer the game sees rides above the finger, so the plant in hand and
+  //   its target tile stay in view and the drop lands on that tile.
   // - Zen Garden: an empty-handed drag pans, like the right or middle button.
   // - Settings list: one finger scrolls the list the game made wheel-only,
   //   except when the touch starts on a slider.
@@ -24,6 +27,13 @@
   //   zombie armor icon steps it like the wheel does.
   // - Long press: on a custom card deck, a sandbox lawn plant or a decoding
   //   slot, runs the game's right-button action for that target.
+  // - Sandbox shortcuts: a long press on a seed packet, the shovel, plant
+  //   food or a zombie card runs the Ctrl shortcut for it: fill the lawn
+  //   with the plant, remove every plant, feed every plant, defeat every
+  //   zombie.
+  // - Zen Garden care: a long press on a plant or on open ground with
+  //   nothing in hand meets every plant's need on the page, like the game's
+  //   care-all key.
   // - Sandbox menu: the sandbox settings window lists keyboard shortcuts and
   //   closes only by key or by its toolbar button. A tap on a shortcut row
   //   closes it and sends that key; a tap outside the window closes it.
@@ -49,6 +59,9 @@
   const draggableIndexes = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -2, -3, -4]);
   // Pointer travel, in UI units, that turns a press into a drag.
   const dragDistance = 20;
+  // How far, in CSS pixels, a lifted pointer rides above the finger: about a
+  // fingertip on phones and tablets.
+  const dragLift = 48;
   // Sandbox swipes, in CSS pixels: the travel that starts one and the travel
   // per wheel step.
   const swipeSlop = 16;
@@ -78,6 +91,7 @@
   let pickup = null;
   let zenPan = null;
   let lastPointer = null;
+  let touching = false;
 
   function stopRule(rule, error) {
     if (failedRules.has(rule)) return;
@@ -96,6 +110,12 @@
     if (!host) return;
     // A missed tap is not worth a log entry.
     host.invoke("host:haptic", {kind: kind}).catch(function () {});
+  }
+
+  // The game's own tip bar (game_tip.js).
+  function tip(text) {
+    const tips = window.__gardendlessGameTip;
+    if (tips) tips.show(text, 3);
   }
 
   // Square.update derives Mouse.mouseInLnC the same way, but only on the
@@ -533,30 +553,163 @@
     return tile && tile.getAllPlants().length > 0 ? tile : null;
   }
 
-  function fireLongPress() {
-    if (!press || press.moved || !ruleOn("longPress")) return;
-    press.longPressTimer = null;
-    try {
-      const deck = customDeckUnderPointer();
-      if (deck) {
-        deck.emit(game.cc.Node.EventType.MOUSE_DOWN, rightButtonDown());
-        haptic("impact");
-        return;
-      }
-      const slot = decodingSlotUnderPointer();
-      if (slot) {
-        slot.emit(game.cc.Node.EventType.MOUSE_DOWN, rightButtonDown());
-        haptic("impact");
-        return;
-      }
-      const tile = sandboxPlantTileUnderPointer();
-      if (tile) {
-        tile.plantMouseReact(rightButtonDown());
-        haptic("impact");
-      }
-    } catch (error) {
-      stopRule("longPress", error);
+  function rightButtonLongPress() {
+    const deck = customDeckUnderPointer();
+    if (deck) {
+      deck.emit(game.cc.Node.EventType.MOUSE_DOWN, rightButtonDown());
+      haptic("impact");
+      return;
     }
+    const slot = decodingSlotUnderPointer();
+    if (slot) {
+      slot.emit(game.cc.Node.EventType.MOUSE_DOWN, rightButtonDown());
+      haptic("impact");
+      return;
+    }
+    const tile = sandboxPlantTileUnderPointer();
+    if (tile) {
+      tile.plantMouseReact(rightButtonDown());
+      haptic("impact");
+    }
+  }
+
+  // Sandbox shortcuts ----------------------------------------------------
+
+  // The level's KEY_DOWN listener runs the Ctrl shortcut of a key while
+  // KeyListener.ctrlDown is set: the player's card key fills every tile with
+  // that packet's plant, the shovel key removes every plant, the plant food
+  // key feeds every plant, and Ctrl+K defeats every zombie.
+  const sandboxShortcuts = {
+    card: {zh: "已用这种植物种满草坪", en: "Filled the lawn with this plant"},
+    shovel: {zh: "已铲除所有植物", en: "Removed every plant"},
+    food: {zh: "已给所有植物施肥", en: "Fed every plant"},
+    zombies: {zh: "已消灭所有僵尸", en: "Defeated every zombie"}
+  };
+
+  function sandboxShortcutFor(index) {
+    const binds = game.KeyListener.KeyBinds;
+    if (index >= 0 && index <= 7) {
+      return {key: binds["Game_Card" + (index + 1)], text: sandboxShortcuts.card};
+    }
+    if (index === -2) return {key: binds.Game_Shovel, text: sandboxShortcuts.shovel};
+    if (index === -3) return {key: binds.Game_Plantfood, text: sandboxShortcuts.food};
+    if (index === 9) return {key: "KEY_K", text: sandboxShortcuts.zombies};
+    return null;
+  }
+
+  // The press has picked the thing up; it goes back before the shortcut runs.
+  function runSandboxShortcut() {
+    const ui = game.UIInGame.component;
+    const current = pickup;
+    if (!current || !game.LevelPlay.sandBoxModeOn || !game.LevelPlay.gameStarted ||
+        !ui || ui.paused || ui.index !== current.index) {
+      return false;
+    }
+    const shortcut = sandboxShortcutFor(current.index);
+    if (!shortcut) return false;
+    const keyCode = game.cc.KeyCode[shortcut.key];
+    if (!Number.isFinite(keyCode)) {
+      throw new Error("Sandbox shortcut key is missing: " + shortcut.key);
+    }
+    pickup = null;
+    ui.tryChangingIndex(-1);
+    const types = game.cc.Input.EventType;
+    const ctrlDown = game.KeyListener.ctrlDown;
+    game.KeyListener.ctrlDown = true;
+    try {
+      ui.onKeyDown(new game.cc.EventKeyboard(keyCode, types.KEY_DOWN));
+    } finally {
+      // A stuck Ctrl would turn the next shovel key into removing every plant.
+      game.KeyListener.ctrlDown = ctrlDown;
+    }
+    ui.onKeyUp(new game.cc.EventKeyboard(keyCode, types.KEY_UP));
+    haptic("impact");
+    tip(shortcut.text);
+    return true;
+  }
+
+  // Zen Garden care ------------------------------------------------------
+
+  // The care-all key (ZenGarden_DealWithAll) calls fulfillRequire on every
+  // slot of the page, and the game ignores it while the shovel or medal
+  // window is open. A need still showing has a requirement bubble that has
+  // not played yet.
+  function zenNeeds(garden) {
+    const zen = garden.currentZen;
+    return zen ? zen.slots.filter(function (slot) {
+      return slot.requirePar && !slot.requirePar.played;
+    }) : [];
+  }
+
+  // Pressing a plant meets its own need, so the count starts from the needs
+  // at the press. An empty or locked pot is left to its own press, which
+  // plants or buys.
+  function careForZenGarden(current) {
+    const garden = game.ZenGarden.component;
+    if (!current || !garden || garden !== current.garden || !garden.node ||
+        !garden.node.isValid || !garden.node.activeInHierarchy) {
+      return;
+    }
+    const tools = zenTools(garden);
+    const target = zenSlotUnderPointer(garden);
+    if (tools.shoveling || tools.gloving || tools.carting || tools.plant ||
+        garden.shovelWindow.active || garden.PlantMedalsWindow.active ||
+        (target && !target.slot.plant)) {
+      return;
+    }
+    const slots = garden.currentZen.slots;
+    const needs = slots.filter(function (slot) {
+      return current.needs.indexOf(slot) >= 0 ||
+        (slot.requirePar && !slot.requirePar.played);
+    }).length;
+    for (const slot of slots) slot.fulfillRequire();
+    haptic("impact");
+    tip(needs > 0
+      ? {zh: "已照料 " + needs + " 株植物",
+        en: "Cared for " + needs + (needs === 1 ? " plant" : " plants")}
+      : {zh: "现在没有植物需要照料", en: "No plant needs care right now"});
+  }
+
+  function fireLongPress() {
+    if (!press || press.moved) return;
+    press.longPressTimer = null;
+    if (ruleOn("sandboxShortcut")) {
+      try {
+        if (runSandboxShortcut()) return;
+      } catch (error) {
+        stopRule("sandboxShortcut", error);
+      }
+    }
+    if (ruleOn("longPress")) {
+      try {
+        rightButtonLongPress();
+      } catch (error) {
+        stopRule("longPress", error);
+      }
+    }
+    if (ruleOn("zenCare")) {
+      try {
+        careForZenGarden(press.zen);
+      } catch (error) {
+        stopRule("zenCare", error);
+      }
+    }
+  }
+
+  // Drag lift ------------------------------------------------------------
+
+  // Cocos reads the location from clientX and clientY after this capture
+  // listener. A tap, a mouse or controller press and a sandbox swipe keep
+  // the real location.
+  function liftPointer(event) {
+    if (!press || !press.touch || !press.moved || !pickup || !ruleOn("drop") ||
+        (press.swipe && press.swipe.state !== "drag")) {
+      return;
+    }
+    Object.defineProperty(event, "clientY", {
+      configurable: true,
+      value: event.clientY - dragLift
+    });
   }
 
   // Press tracking -------------------------------------------------------
@@ -590,6 +743,9 @@
     rememberPointer(event);
     const current = {
       start: lastPointer,
+      // touch_input_adapter.js presses a finger down two frames after its
+      // touchstart.
+      touch: touching,
       moved: false,
       longPressTimer: null,
       swipe: null,
@@ -610,7 +766,8 @@
         const garden = game.ZenGarden.component;
         if (garden && garden.node && garden.node.isValid &&
             garden.node.activeInHierarchy) {
-          current.zen = {garden: garden, tools: zenTools(garden), origin: pointerOrigin()};
+          current.zen = {garden: garden, tools: zenTools(garden), origin: pointerOrigin(),
+            needs: zenNeeds(garden)};
         }
       } catch (error) {
         stopRule("zen", error);
@@ -643,7 +800,8 @@
         stopRule("swipe", error);
       }
     }
-    if (game.cc && ruleOn("longPress")) {
+    if (game.cc && (ruleOn("longPress") || ruleOn("sandboxShortcut") ||
+        ruleOn("zenCare"))) {
       current.longPressTimer = setTimeout(fireLongPress, longPressMilliseconds);
     }
     setTimeout(function () {
@@ -677,11 +835,13 @@
       }
     }
     if (ruleOn("swipe")) moveSwipe(event);
+    liftPointer(event);
   }, true);
   // The decoding minigame and the Zen Garden act only on presses, so their
   // drops run before the release reaches the game.
   window.addEventListener("mouseup", function (event) {
     if (event.button !== 0) return;
+    liftPointer(event);
     const current = press;
     if (current && current.decodingPickup && ruleOn("decoding")) {
       try {
@@ -711,6 +871,16 @@
     }
     endPress();
   }, true);
+  // The window sees touches before touch_input_adapter.js consumes them on
+  // the document.
+  window.addEventListener("touchstart", function () {
+    touching = true;
+  }, true);
+  for (const type of ["touchend", "touchcancel"]) {
+    window.addEventListener(type, function (event) {
+      touching = event.touches.length > 0;
+    }, true);
+  }
   window.addEventListener("blur", endPress);
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) endPress();
@@ -786,6 +956,7 @@
     }
     if (!game.ZenGarden || !("component" in game.ZenGarden)) {
       stopRule("zen", new Error("Zen Garden game interface is missing"));
+      stopRule("zenCare", new Error("Zen Garden game interface is missing"));
     }
     try {
       if (!settingsList || !settingsList.prototype) {
@@ -815,6 +986,13 @@
         !game.cc.ScrollView || !game.cc.Button || !game.cc.KeyCode ||
         typeof game.cc.EventKeyboard !== "function" || !game.KeyListener) {
       stopRule("sandboxMenu", new Error("Sandbox menu game interfaces are missing"));
+    }
+    if (failedRules.has("drop") || !game.LevelPlay || !game.cc ||
+        !game.cc.KeyCode || !game.cc.Input ||
+        typeof game.cc.EventKeyboard !== "function" || !game.KeyListener ||
+        typeof uiPrototype.onKeyDown !== "function" ||
+        typeof uiPrototype.onKeyUp !== "function") {
+      stopRule("sandboxShortcut", new Error("Sandbox shortcut game interfaces are missing"));
     }
   }
 

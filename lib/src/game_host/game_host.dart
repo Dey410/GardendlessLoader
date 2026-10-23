@@ -88,6 +88,7 @@ class GameSession {
     required this.gpNextVersion,
     required this.watermarkEnabled,
     this.autoCollectSunEnabled = false,
+    this.hapticEffectsEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
     this.renderScale,
     this.screenFit = ScreenFit.balanced,
@@ -136,6 +137,7 @@ class GameSession {
       gpNextVersion: json['gpNextVersion'] as String?,
       watermarkEnabled: _requiredBool(json, 'watermarkEnabled'),
       autoCollectSunEnabled: json['autoCollectSunEnabled'] as bool? ?? false,
+      hapticEffectsEnabled: json['hapticEffectsEnabled'] as bool? ?? false,
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       renderScale: (renderScale as num?)?.toDouble(),
@@ -163,6 +165,9 @@ class GameSession {
   final String? gpNextVersion;
   final bool watermarkEnabled;
   final bool autoCollectSunEnabled;
+
+  /// haptic_effects.js vibrates with the game's big sound effects.
+  final bool hapticEffectsEnabled;
   final bool detailedAudioDiagnosticsEnabled;
 
   /// Share of the device pixel ratio the game canvas renders at; null renders
@@ -208,6 +213,7 @@ class GameSession {
       'gpNextVersion': gpNextVersion,
       'watermarkEnabled': watermarkEnabled,
       'autoCollectSunEnabled': autoCollectSunEnabled,
+      'hapticEffectsEnabled': hapticEffectsEnabled,
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
       'renderScale': renderScale,
       'screenFit': screenFit.name,

@@ -172,6 +172,7 @@ class AppController extends ChangeNotifier {
   RenderResolution get renderResolution => _appSettings.renderResolution;
   ScreenFit get screenFit => _appSettings.screenFit;
   GestureMode get gestureMode => _appSettings.gestureMode;
+  bool get hapticEffectsEnabled => _appSettings.hapticEffectsEnabled;
   bool get detailedAudioDiagnosticsEnabled =>
       _appSettings.detailedAudioDiagnosticsEnabled;
   ThemePreference get themePreference => _appSettings.themePreference;
@@ -1001,6 +1002,7 @@ class AppController extends ChangeNotifier {
       gpNextVersion: gpNextVersion,
       watermarkEnabled: watermarkEnabled,
       autoCollectSunEnabled: _manifest.autoCollectSunEnabled,
+      hapticEffectsEnabled: hapticEffectsEnabled,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
       renderScale: renderResolution.scale,
       screenFit: screenFit,
@@ -1148,6 +1150,12 @@ class AppController extends ChangeNotifier {
   Future<void> setWatermarkEnabled(bool enabled) {
     return _updateAppSettings(
       _appSettings.copyWith(watermarkEnabled: enabled),
+    );
+  }
+
+  Future<void> setHapticEffectsEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(hapticEffectsEnabled: enabled),
     );
   }
 

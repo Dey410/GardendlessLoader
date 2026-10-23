@@ -60,6 +60,7 @@ class AppSettings {
     this.renderResolution = RenderResolution.full,
     this.screenFit = ScreenFit.balanced,
     this.gestureMode = GestureMode.simulated,
+    this.hapticEffectsEnabled = true,
     this.detailedAudioDiagnosticsEnabled = false,
     this.themePreference = ThemePreference.system,
     this.reduceMotion = false,
@@ -77,6 +78,7 @@ class AppSettings {
       renderResolution: RenderResolution.fromName(json['renderResolution']),
       screenFit: ScreenFit.fromName(json['screenFit']),
       gestureMode: GestureMode.fromName(json['gestureMode']),
+      hapticEffectsEnabled: json['hapticEffectsEnabled'] as bool? ?? true,
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       themePreference: ThemePreference.fromName(json['themePreference']),
@@ -100,6 +102,9 @@ class AppSettings {
 
   /// The experimental gesture setting; simulated by default.
   final GestureMode gestureMode;
+
+  /// The device or controller vibrates with the game's big sound effects.
+  final bool hapticEffectsEnabled;
   final bool detailedAudioDiagnosticsEnabled;
   final ThemePreference themePreference;
   final bool reduceMotion;
@@ -125,6 +130,7 @@ class AppSettings {
     RenderResolution? renderResolution,
     ScreenFit? screenFit,
     GestureMode? gestureMode,
+    bool? hapticEffectsEnabled,
     bool? detailedAudioDiagnosticsEnabled,
     ThemePreference? themePreference,
     bool? reduceMotion,
@@ -140,6 +146,7 @@ class AppSettings {
       renderResolution: renderResolution ?? this.renderResolution,
       screenFit: screenFit ?? this.screenFit,
       gestureMode: gestureMode ?? this.gestureMode,
+      hapticEffectsEnabled: hapticEffectsEnabled ?? this.hapticEffectsEnabled,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled ??
           this.detailedAudioDiagnosticsEnabled,
       themePreference: themePreference ?? this.themePreference,
@@ -159,6 +166,7 @@ class AppSettings {
         'renderResolution': renderResolution.name,
         'screenFit': screenFit.name,
         'gestureMode': gestureMode.name,
+        'hapticEffectsEnabled': hapticEffectsEnabled,
         'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
         'themePreference': themePreference.name,
         'reduceMotion': reduceMotion,

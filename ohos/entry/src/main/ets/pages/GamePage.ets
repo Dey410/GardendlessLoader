@@ -264,6 +264,7 @@ struct GamePage {
       gpNextVersion: session.gpNextVersion,
       watermarkEnabled: session.watermarkEnabled,
       autoCollectSunEnabled: session.autoCollectSunEnabled,
+      hapticEffectsEnabled: session.hapticEffectsEnabled,
       detailedAudioDiagnosticsEnabled: session.detailedAudioDiagnosticsEnabled,
       renderScale: session.renderScale,
       gestureHint: session.gestureHint,
@@ -272,11 +273,15 @@ struct GamePage {
     const names: string[] = [
       'transport.js',
       'logging.js',
+      'game_tip.js',
       'audio_diagnostic.js',
       'auto_sun.js',
       'touch_state_machine.js',
       'touch_input_adapter.js',
       'native_gestures.js',
+      'gamepad.js',
+      'pause_on_return.js',
+      'haptic_effects.js',
       'render_scale.js',
       'export_download_patch.js',
     ];

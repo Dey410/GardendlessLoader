@@ -237,6 +237,17 @@ class _LaunchPreferences extends StatelessWidget {
           ),
           Divider(color: palette.border),
           SwitchRow(
+            key: const ValueKey('haptic-effects'),
+            switchKey: const ValueKey('haptic-effects-switch'),
+            title: strings.hapticEffects,
+            subtitle: strings.hapticEffectsSubtitle,
+            value: controller.hapticEffectsEnabled,
+            onChanged: controller.initialized
+                ? controller.setHapticEffectsEnabled
+                : null,
+          ),
+          Divider(color: palette.border),
+          SwitchRow(
             key: const ValueKey('home-watermark'),
             switchKey: const ValueKey('home-watermark-switch'),
             title: strings.watermark,
