@@ -63,6 +63,9 @@ class AppStrings {
 
   String _t(String zh, String en) => isChinese ? zh : en;
 
+  /// Text the game data gives in both languages.
+  String inGame(({String zh, String en}) text) => _t(text.zh, text.en);
+
   // Navigation and shell.
   String get navGame => _t('游戏', 'Play');
   String get navResources => _t('资源', 'Resources');

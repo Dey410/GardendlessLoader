@@ -130,6 +130,7 @@ class _Hero extends StatelessWidget {
     final journal = controller.journal;
     final lastPlayedAt = journal.lastPlayedAt;
     final report = controller.lastGameReport;
+    final event = controller.gameEvent;
     final details = <String>[
       if (ready) strings.gameVersionLabel(controller.currentGameVersion),
       if (ready)
@@ -170,6 +171,19 @@ class _Hero extends StatelessWidget {
             key: const ValueKey('last-played'),
             style:
                 TextStyle(color: palette.inkFaint, fontSize: 13, height: 1.5),
+          ),
+        // The game's own event today, in its words.
+        if (event != null)
+          Text(
+            [
+              event.look?.badge,
+              strings.inGame(event.title),
+              strings.inGame(event.description),
+            ].nonNulls.join(' '),
+            key: const ValueKey('game-event'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: palette.accent, fontSize: 13, height: 1.5),
           ),
         // A crash has its own card; this line is for errors in a game the
         // player left.

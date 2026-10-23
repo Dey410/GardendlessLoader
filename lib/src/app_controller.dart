@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -19,6 +20,7 @@ import 'services/announcement_service.dart';
 import 'services/app_paths_service.dart';
 import 'services/app_settings_store.dart';
 import 'services/diagnostics_service.dart';
+import 'services/game_events.dart';
 import 'services/garden_journal.dart';
 import 'services/game_update_check_service.dart';
 import 'services/import_service.dart';
@@ -78,6 +80,7 @@ class AppController extends ChangeNotifier {
   ImportProgress _importProgress = ImportProgress.idle;
   Announcement? _announcement;
   SeasonalTheme? _seasonalTheme;
+  GameEventCalendar? _gameEvents;
   LauncherLinks _links = const LauncherLinks();
   ({String from, String to})? _versionUpgrade;
   int _importTipIndex = 0;
@@ -130,11 +133,17 @@ class AppController extends ChangeNotifier {
   Announcement? get announcement => _announcement;
   LauncherLinks get links => _links;
 
-  /// The remote seasonal theme, while today is within its dates.
-  SeasonalTheme? get seasonalTheme =>
-      _seasonalTheme?.isActiveOn(DateTime.now()) == true
-          ? _seasonalTheme
-          : null;
+  /// The remote seasonal theme while today is within its dates; otherwise
+  /// the look of the game's own event today.
+  SeasonalTheme? get seasonalTheme {
+    final now = DateTime.now();
+    final remote = _seasonalTheme;
+    if (remote != null && remote.isActiveOn(now)) return remote;
+    return _gameEvents?.eventOn(now)?.themeOn(now);
+  }
+
+  /// The game's own event today, from the calendar in the active package.
+  GameEvent? get gameEvent => _gameEvents?.eventOn(DateTime.now());
 
   /// Play time and the version rings, kept on this device only.
   GardenJournal get journal => _journal;
@@ -370,6 +379,32 @@ class AppController extends ChangeNotifier {
       _currentGameVersionIsAhead = false;
       _gameUpdateDetected = false;
     }
+    notifyListeners();
+    unawaited(_readGameEvents());
+  }
+
+  /// Reads the game's event calendar from the active package off the UI
+  /// thread; the launcher's festival look and the Play page follow it.
+  Future<void> _readGameEvents() async {
+    final root = hasCurrentResource
+        ? _importService.activeDirectory(_requirePaths(), _manifest)?.path
+        : null;
+    GameEventCalendar? calendar;
+    if (root != null) {
+      try {
+        calendar = await Isolate.run(() => GameEventCalendar.read(root));
+      } catch (error, stackTrace) {
+        _appLogger.emit(
+          level: LogLevel.warn,
+          category: 'resource.validation',
+          event: 'game_event_calendar_unreadable',
+          outcome: LogOutcome.failed,
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+    _gameEvents = calendar;
     notifyListeners();
   }
 
@@ -750,6 +785,7 @@ class AppController extends ChangeNotifier {
         restoreAwakeModeAfterImport = false;
       }
       _currentValidation = _importValidation = _manifestValidation();
+      unawaited(_readGameEvents());
       _currentGameVersion = _manifest.gameVersion;
       if (_currentGameVersion == null) {
         _availableGameUpdate = null;

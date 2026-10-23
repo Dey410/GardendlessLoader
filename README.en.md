@@ -127,6 +127,7 @@ X, Y, LB, RB, and Start use the key bindings you set in the game. Use touch for 
 - **Import from another app**: open a ZIP with GardendlessLoader from a file manager or chat app (Android and iOS also accept it through Share). A ZIP received during play is imported once you return to the launcher.
 - **Home-screen shortcuts**: long-press the app icon to jump straight to **Start Game** or **Import Resources**.
 - **Back to the launcher**: use system Back on Android and HarmonyOS, swipe right from the left edge on iOS, or use the game's own quit button.
+- **Festivals follow the game**: during the game's own events (Halloween, Lunar New Year, Feastivus, Valentine's, PvZ's birthday and more) the launcher takes on matching colours and a small badge, and the Play page shows the event's title and description. The dates come from the imported game resources, with Lunar New Year on the lunar calendar, so no network is needed.
 - **Pause when you leave**: switching apps, taking a call or locking the screen during a level opens the game's pause menu, so the zombies wait for you.
 
 ### GP-Next and Mods
