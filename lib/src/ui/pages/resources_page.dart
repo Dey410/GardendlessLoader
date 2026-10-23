@@ -580,10 +580,17 @@ class _TechnicalDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
+    final strings = context.strings;
     final manifest = controller.manifest;
     // Absent values (no transaction, no error) are omitted rather than shown.
     final rows = <(String, String?)>[
       ('activeSlot', manifest.activeSlot?.name),
+      (
+        'packageId',
+        manifest.activeSlot == null
+            ? null
+            : manifest.packageId ?? strings.notLoaderOptimizedPackage,
+      ),
       ('generation', '${manifest.generation}'),
       ('transaction', manifest.transactionState.name),
       ('transactionSlot', manifest.transactionSlot?.name),

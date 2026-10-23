@@ -23,6 +23,7 @@ const METHOD_PICK_AND_EXTRACT = 'pickAndExtractDocsZip';
 const METHOD_EXTRACT_INCOMING = 'extractIncomingDocsZip';
 const ZIP_COPY_NAME = 'gardendless-resource.zip';
 const PROGRESS_REPORT_INTERVAL_MS = 100;
+const PACKAGE_MANIFEST_PATH = '__gardendless/package/resource-manifest.json';
 
 interface ImportProgressPayload {
   phase: string;
@@ -235,11 +236,13 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
   }
 
   private findDocsDirectory(root: string): string | null {
-    const indexFiles = this.collectFiles(root)
-      .filter((filePath: string) => this.basename(filePath).toLowerCase() === 'index.html');
-
-    const candidates = indexFiles
+    const files = this.collectFiles(root);
+    const candidates = files
+      .filter((filePath: string) => this.basename(filePath).toLowerCase() === 'index.html')
       .map((filePath: string) => this.dirname(filePath))
+      .concat(files
+        .filter((filePath: string) => filePath.endsWith(`/${PACKAGE_MANIFEST_PATH}`))
+        .map((filePath: string) => this.dirname(this.dirname(this.dirname(filePath)))))
       .filter((directory: string) => this.isValidDocsDirectory(directory));
 
     candidates.sort((a: string, b: string): number => {
@@ -255,12 +258,15 @@ export class ResourceZipImporterPlugin implements FlutterPlugin, AbilityAware, M
   }
 
   private isValidDocsDirectory(directory: string): boolean {
-    return this.isFile(this.joinPath(directory, 'index.html')) &&
-      this.isFile(this.joinPath(directory, 'src/settings.json')) &&
-      this.isFile(this.joinPath(directory, 'src/import-map.json')) &&
-      this.isDirectory(this.joinPath(directory, 'assets')) &&
-      this.isDirectory(this.joinPath(directory, 'cocos-js')) &&
-      this.isDirectory(this.joinPath(directory, 'src'));
+    // A package manifest marks the root on its own: a delta package carries
+    // only changed files, so it may lack the runtime layout below.
+    return this.isFile(this.joinPath(directory, PACKAGE_MANIFEST_PATH)) ||
+      (this.isFile(this.joinPath(directory, 'index.html')) &&
+        this.isFile(this.joinPath(directory, 'src/settings.json')) &&
+        this.isFile(this.joinPath(directory, 'src/import-map.json')) &&
+        this.isDirectory(this.joinPath(directory, 'assets')) &&
+        this.isDirectory(this.joinPath(directory, 'cocos-js')) &&
+        this.isDirectory(this.joinPath(directory, 'src')));
   }
 
   private reportExtractedFiles(directory: string): void {

@@ -783,6 +783,19 @@ const userErrorCatalog = <String, UserLogError>{
     ),
     recoverable: true,
   ),
+  'delta_base_mismatch': UserLogError(
+    category: 'resource.import',
+    level: LogLevel.error,
+    title: LocalizedText(
+      '增量包和当前资源不匹配',
+      'The delta package does not match the current resources',
+    ),
+    action: LocalizedText(
+      '请导入完整资源包，或下载文件名 from 后面与「技术详情」中 packageId 前 8 位相同的增量包。',
+      'Import the full package, or download the delta whose name after "from" matches the first 8 characters of packageId in Technical details.',
+    ),
+    recoverable: true,
+  ),
   'resource_path_unsafe': UserLogError(
     category: 'resource.validation',
     level: LogLevel.error,

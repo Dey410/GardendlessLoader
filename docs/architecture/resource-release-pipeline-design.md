@@ -6,14 +6,14 @@
 
 | 入口 | 常用输入 | 唯一产物职责 |
 | --- | --- | --- |
-| extract-pvzge-gpnext资源workflow_dispatch | release_tag，可留空 | 同一已验证政策生成一个资源ZIP、摘要与诊断报告 |
+| extract-pvzge-gpnext资源workflow_dispatch | release_tag（必填），publish（默认关） | 同一已验证政策生成完整资源ZIP、基于最新Release的增量ZIP、摘要与诊断报告；publish时发布为Release |
 | GardendlessLoader应用workflow_dispatch | 已审查的Loader ref | 同一套当前SDK流程生成APK、未签名IPA、未签名HAP与版本摘要 |
 
-游戏内容更新不要求重编三端应用。三端应用是三种系统产物，不是同功能多样式。没有跨仓dispatch/组合调度、PAT、轮询或自动发布。成功的一键入口必须明确自己实际产生了什么，缺HAP不能报告完整三端成功。
+游戏内容更新不要求重编三端应用。三端应用是三种系统产物，不是同功能多样式。没有跨仓dispatch/组合调度、PAT或轮询。资源仓库只在勾选publish时创建Release，它是下一次增量包的基础，见[ADR-0004](../adr/0004-delta-resource-packages.md)。成功的一键入口必须明确自己实际产生了什么，缺HAP不能报告完整三端成功。
 
 ## 一条资源生成链
 
-解析一次并锁定上游release/asset → 下载并hash → 提取到新目录 → 识别支持布局 → 固定音频与单ASTC加工 → 生成manifest/index → 封存ZIP并重开验证 → 上传ZIP及报告。
+解析一次并锁定上游release/asset → 下载并hash → 提取到新目录 → 识别支持布局 → 固定音频与单ASTC加工 → 生成manifest/index → 封存ZIP并重开验证 → 对最新Release生成并验证增量ZIP → 上传ZIP及报告 → 勾选publish时发布Release。
 
 - 新内容版本复用已验证布局；未知引擎/GP协议、ffprobe失败、目标不唯一或行为失败直接给诊断，不再换旧脚本/DOM政策试运行。
 - 默认总是跑音频/桥/包契约测试，不以ASTC开关决定核心测试是否执行。

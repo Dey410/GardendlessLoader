@@ -83,6 +83,8 @@ class AppStrings {
   String get remindLater => _t('稍后提醒', 'Remind me later');
   String get bilibiliHome => _t('B站主页', 'Bilibili');
   String get technicalDetails => _t('技术详情', 'Technical details');
+  String get notLoaderOptimizedPackage =>
+      _t('这不是加载器优化包', 'Not a loader-optimized package');
 
   // Toasts and dialogs owned by the home page.
   String cannotStartGame(String reason) =>

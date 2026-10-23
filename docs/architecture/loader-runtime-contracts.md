@@ -35,6 +35,8 @@ packageId为`sha256:`加manifest原始字节SHA-256，不写回manifest；fileIn
 
 导入只做一条链：取得一次私有输入快照 → 有界扫描 → 路径/格式/元数据检查 → 逐块解压核对实际长度/CRC/摘要 → readiness结果 → 原子激活。最终ZIP在CI封存后重开同样验证。拒绝链接/穿越/重复归一化路径/额外payload/超限展开；不能先无限解压再检查大小。
 
+增量包另带`__gardendless/package/delta.json`（`{"schemaVersion":1,"basePackageId":"sha256:…"}`），只含基础包索引没有的摘要对应文件，manifest/index与同次完整包逐字节相同。三端原生解压把含`__gardendless/package/resource-manifest.json`的目录也认作docs根。ImportService在校验前要求活动packageId等于basePackageId，按SHA-256从活动槽复制缺失文件、删除delta.json，再由同一校验器完整验证；结果与完整包相同。见[ADR-0004](../adr/0004-delta-resource-packages.md)。
+
 无manifest的既有标准包由同一检查函数产生本地描述，未知来源字段明确unknown；有新格式标志但坏/缺元数据就失败，不走legacy降级。旧Loader不认识minHostAbi，真正需要新ABI的资源须在入口明确检查并报告升级，不能仅写manifest就当旧App已受保护。
 
 ## 2. 启动与恢复

@@ -469,6 +469,9 @@ class MainActivity : FlutterActivity() {
             if (basename(path).lowercase(Locale.ROOT) == "index.html") {
                 candidates.add(dirname(path))
             }
+            if (path.endsWith(packageManifestPath)) {
+                candidates.add(dirname(dirname(dirname(path))))
+            }
         }
 
         val prefix = candidates.filter { candidate ->
@@ -486,12 +489,16 @@ class MainActivity : FlutterActivity() {
                     filePaths.any { filePath -> filePath.startsWith("$path/") }
             }
 
-            hasFile("index.html") &&
-                hasFile("src/settings.json") &&
-                hasFile("src/import-map.json") &&
-                hasDirectory("assets") &&
-                hasDirectory("cocos-js") &&
-                hasDirectory("src")
+            // A package manifest marks the root on its own: a delta package carries
+            // only changed files, so it may lack the runtime layout below.
+            hasFile(packageManifestPath) || (
+                hasFile("index.html") &&
+                    hasFile("src/settings.json") &&
+                    hasFile("src/import-map.json") &&
+                    hasDirectory("assets") &&
+                    hasDirectory("cocos-js") &&
+                    hasDirectory("src")
+                )
         }.sortedWith { a, b ->
             val aIsDocs = basename(a) == "docs"
             val bIsDocs = basename(b) == "docs"
@@ -596,6 +603,7 @@ class MainActivity : FlutterActivity() {
 
         /** The classic ZIP entry limit; iOS rejects the ZIP64 archives that exceed it. */
         private const val maxZipEntries = 65_535
+        private const val packageManifestPath = "__gardendless/package/resource-manifest.json"
     }
 
     private data class DocsScan(val prefix: String, val totalFiles: Int, val totalBytes: Long)

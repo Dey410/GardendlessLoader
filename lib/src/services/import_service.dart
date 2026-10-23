@@ -21,6 +21,9 @@ class ImportService {
 
   final ResourceValidator _validator;
 
+  static const _deltaPath = '__gardendless/package/delta.json';
+  static const _indexPath = '__gardendless/package/file-index.json';
+
   Directory? activeDirectory(AppPaths paths, ResourceManifest manifest) {
     final activeSlot = manifest.activeSlot;
     return activeSlot == null ? null : paths.directoryFor(activeSlot);
@@ -97,6 +100,12 @@ class ImportService {
         transactionState: TransactionState.validating,
       );
       await manifestStore.write(manifest);
+      final reused = await _completeDelta(
+        paths: paths,
+        manifest: manifest,
+        target: target.directory,
+        onProgress: onProgress,
+      );
       report(
         const ImportProgress(phase: ImportPhase.validating, message: '正在校验资源'),
       );
@@ -190,7 +199,7 @@ class ImportService {
           copiedBytes: stats.totalBytes,
           totalFiles: stats.fileCount,
           totalBytes: stats.totalBytes,
-          message: '导入成功',
+          message: reused == 0 ? '导入成功' : '导入成功，复用了 $reused 个文件',
         ),
       );
       return manifest;
@@ -235,6 +244,100 @@ class ImportService {
         ),
       );
       throw failure;
+    }
+  }
+
+  /// Completes a delta package in [target] from the active slot, which must
+  /// hold the package the delta names as its base: every indexed file the
+  /// delta left out is copied from an active file with the same SHA-256.
+  /// Returns the number of reused files; a full package carries no delta
+  /// marker and reuses none. The validator still hashes every file afterwards.
+  Future<int> _completeDelta({
+    required AppPaths paths,
+    required ResourceManifest manifest,
+    required Directory target,
+    ImportProgressCallback? onProgress,
+  }) async {
+    final marker = File(p.join(target.path, _deltaPath));
+    if (!await marker.exists()) return 0;
+    final delta = _decodeJson(await marker.readAsString());
+    if (delta is! Map<String, dynamic> ||
+        delta.length != 2 ||
+        delta['schemaVersion'] != 1 ||
+        delta['basePackageId'] is! String) {
+      throw ImportFailure('package_metadata_invalid', '增量包标记格式无效');
+    }
+    final activeSlot = manifest.activeSlot;
+    if (activeSlot == null || manifest.packageId != delta['basePackageId']) {
+      throw ImportFailure(
+        'delta_base_mismatch',
+        '增量包基于 ${delta['basePackageId']}，'
+            '当前资源是 ${manifest.packageId ?? '非加载器优化包'}',
+      );
+    }
+    final active = paths.directoryFor(activeSlot);
+    final reusable = {
+      for (final entry in await _readIndex(active)) entry.sha256: entry.path,
+    };
+    final missing = <({String path, String sha256})>[];
+    for (final entry in await _readIndex(target)) {
+      if (!await File(p.join(target.path, entry.path)).exists()) {
+        missing.add(entry);
+      }
+    }
+    onProgress?.call(
+      ImportProgress(
+        phase: ImportPhase.validating,
+        message: '正在复用当前资源中的 ${missing.length} 个文件',
+      ),
+    );
+    for (final entry in missing) {
+      final source = reusable[entry.sha256];
+      if (source == null) {
+        throw ImportFailure(
+          'delta_base_mismatch',
+          '当前资源中没有增量包需要的 ${entry.path}',
+        );
+      }
+      final file = File(p.join(target.path, entry.path));
+      await file.parent.create(recursive: true);
+      await File(p.join(active.path, source)).copy(file.path);
+    }
+    await marker.delete();
+    return missing.length;
+  }
+
+  /// Index entries of the package at [root]; the validator checks the rest of
+  /// the index later, but a path must stay inside [root] before it is used.
+  Future<List<({String path, String sha256})>> _readIndex(
+    Directory root,
+  ) async {
+    final file = File(p.join(root.path, _indexPath));
+    final index =
+        await file.exists() ? _decodeJson(await file.readAsString()) : null;
+    if (index is! Map<String, dynamic> || index['files'] is! List) {
+      throw ImportFailure('package_metadata_invalid', '资源包索引缺失或格式无效');
+    }
+    final entries = <({String path, String sha256})>[];
+    for (final entry in index['files'] as List) {
+      if (entry is! Map<String, dynamic> ||
+          entry['path'] is! String ||
+          entry['sha256'] is! String ||
+          !p.isWithin(root.path, p.join(root.path, entry['path'] as String))) {
+        throw ImportFailure('package_metadata_invalid', '资源包索引条目无效');
+      }
+      entries.add(
+        (path: entry['path'] as String, sha256: entry['sha256'] as String),
+      );
+    }
+    return entries;
+  }
+
+  Object? _decodeJson(String text) {
+    try {
+      return jsonDecode(text);
+    } on FormatException {
+      return null;
     }
   }
 

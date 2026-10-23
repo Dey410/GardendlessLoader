@@ -324,6 +324,33 @@ final class ZipImportSessionTests: XCTestCase {
     XCTAssertEqual(index, "<html>docs</html>")
   }
 
+  func testExtractsDeltaPackageRootedByItsManifest() throws {
+    try TestZipWriter.write(
+      [
+        .file(
+          "docs/__gardendless/package/resource-manifest.json",
+          data: Data("{}".utf8)
+        ),
+        .file("docs/__gardendless/package/delta.json", data: Data("{}".utf8)),
+        .file("docs/cocos-js/cc.js", data: Data("changed".utf8)),
+        .file("other.txt", data: Data("outside".utf8)),
+      ],
+      to: zipURL
+    )
+    let session = ZipImportSession(zipURL: zipURL, targetDirectory: target)
+    _ = try session.run { _ in }
+
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: target.appendingPathComponent("__gardendless/package/delta.json").path
+    ))
+    XCTAssertTrue(FileManager.default.fileExists(
+      atPath: target.appendingPathComponent("cocos-js/cc.js").path
+    ))
+    XCTAssertFalse(FileManager.default.fileExists(
+      atPath: target.appendingPathComponent("other.txt").path
+    ))
+  }
+
   func testDeflatedEntryExtractsCorrectly() throws {
     var entries = docsEntries()
     entries.append(

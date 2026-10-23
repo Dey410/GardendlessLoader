@@ -157,10 +157,13 @@
 - 复制诊断 includes `Device:` (model), `Memory:` (bytes; unavailable on HarmonyOS) and `WebView engine version:` (iOS WebKit build and iOS version, Android WebView package and version, HarmonyOS ArkWeb with the OS build).
 - Exporting a save in the game (`<player>(v<version>).json`) records the time; exporting key bindings or other files does not. 选择 ZIP 更新 then shows 上次导出存档：<time>, or 还没有在加载器里导出过存档 before the first export.
 - The update dialog's 先进游戏导出 starts the game without importing; 继续选择 ZIP imports as before; 取消 does nothing. A ZIP opened from another app shows the same last-export line but no 先进游戏导出.
+- Technical details on the Resources page shows `packageId`; a package without `__gardendless/package` shows 这不是加载器优化包.
+- With `<base>` active, importing `GardendlessResources-<new>-from-<base>.zip` shows 正在复用当前资源中的 N 个文件, finishes with 导入成功，复用了 N 个文件, and leaves the same `packageId` and file count as importing `GardendlessResources-<new>.zip`; the game then starts.
 
 ## Failure paths
 
-- A ZIP without a valid `docs/index.html` rejects import and leaves the active slot unchanged.
+- A ZIP without a valid `docs/index.html` rejects import and leaves the active slot unchanged; a delta ZIP is recognized by its `__gardendless/package/resource-manifest.json` instead.
+- A delta whose base is not the active `packageId`, or a delta over a package without an index, fails with `delta_base_mismatch` and its fix hint, and leaves the active slot unchanged.
 - Fingerprint mismatch rejects import.
 - Candidate self-check failure clears the candidate slot and leaves the active slot unchanged.
 - A required-file self-check failure rejects the candidate without changing the active slot.

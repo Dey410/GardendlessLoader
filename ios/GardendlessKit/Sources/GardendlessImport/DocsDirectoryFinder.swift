@@ -2,6 +2,8 @@ import Foundation
 import GardendlessCore
 
 public enum DocsDirectoryFinder {
+  private static let manifestPath = "__gardendless/package/resource-manifest.json"
+
   public static func find(in entries: [ZipEntry]) throws -> String? {
     var filePaths = Set<String>()
     var directoryPaths = Set<String>()
@@ -19,8 +21,13 @@ public enum DocsDirectoryFinder {
     }
 
     var candidates = Set<String>()
-    for path in filePaths where basename(path).lowercased() == "index.html" {
-      candidates.insert(dirname(path))
+    for path in filePaths {
+      if basename(path).lowercased() == "index.html" {
+        candidates.insert(dirname(path))
+      }
+      if path.hasSuffix(manifestPath) {
+        candidates.insert(dirname(dirname(dirname(path))))
+      }
     }
 
     return candidates.filter { candidate in
@@ -35,12 +42,15 @@ public enum DocsDirectoryFinder {
         return directoryPaths.contains(path)
           || filePaths.contains { $0.hasPrefix("\(path)/") }
       }
-      return hasFile("index.html")
-        && hasFile("src/settings.json")
-        && hasFile("src/import-map.json")
-        && hasDirectory("assets")
-        && hasDirectory("cocos-js")
-        && hasDirectory("src")
+      // A package manifest marks the root on its own: a delta package carries
+      // only changed files, so it may lack the runtime layout below.
+      return hasFile(manifestPath)
+        || (hasFile("index.html")
+          && hasFile("src/settings.json")
+          && hasFile("src/import-map.json")
+          && hasDirectory("assets")
+          && hasDirectory("cocos-js")
+          && hasDirectory("src"))
     }
     .sorted { first, second in
       let firstIsDocs = basename(first) == "docs"
