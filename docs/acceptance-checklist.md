@@ -157,7 +157,11 @@
 - iOS memory warnings, Android `onTrimMemory` (except `TRIM_MEMORY_UI_HIDDEN`) and HarmonyOS `onMemoryLevel` log `game.host` / `memory_pressure` WARN with the game session id.
 - A failed launch never leaves a prepared session behind, so the next start shows no recovery card.
 - After a game that logged errors but did not crash, the Play page shows 上一局记录到 N 个错误 with 查看日志, and the Logs destination shows a dot until the Logs page is opened.
-- 复制诊断 includes `Device:` (model), `Memory:` (bytes; unavailable on HarmonyOS) and `WebView engine version:` (iOS WebKit build and iOS version, Android WebView package and version, HarmonyOS ArkWeb with the OS build).
+- The Logs page status card reads 本次运行一切正常, 本次运行有 N 个警告 or 本次运行有 N 个错误 (FATAL counts as an error), then 日志已保存在本机 · <size>, or a yellow memory-only line when the log file can't be written; 写入失败 and 丢弃 appear only when non-zero.
+- 最近错误 shows the latest error's catalog title and fix hint; tapping it switches the timeline to 错误 and opens that event at the top.
+- The level filter 调试 / 信息 / 警告 / 错误 shows each level's count and lists the events at that level or above, newest first, in local time. Labels split the timeline into 启动器 and 游戏 · HH:mm–HH:mm runs.
+- Event titles read in the app language: an error code shows its catalog title, a known event its readable name, a script console event its message, and an unknown event its raw name. Tapping an event shows its fix hint, message, fields and stack with 复制 JSON and 只看此操作; the 操作 <id> chip clears that filter.
+- 复制诊断信息 includes `Device:` (model), `Memory:` (bytes; unavailable on HarmonyOS) and `WebView engine version:` (iOS WebKit build and iOS version, Android WebView package and version, HarmonyOS ArkWeb with the OS build).
 - Exporting a save in the game (`<player>(v<version>).json`) records the time; exporting key bindings or other files does not. 选择 ZIP 更新 then shows 上次导出存档：<time>, or 还没有在加载器里导出过存档 before the first export.
 - The update dialog's 先进游戏导出 starts the game without importing; 继续选择 ZIP imports as before; 取消 does nothing. A ZIP opened from another app shows the same last-export line but no 先进游戏导出.
 - Technical details on the Resources page shows `packageId`; a package without `__gardendless/package` shows 这不是加载器优化包.

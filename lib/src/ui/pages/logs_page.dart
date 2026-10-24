@@ -1,30 +1,65 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
 import '../../l10n/app_strings.dart';
-import '../../logging/app_logger.dart';
 import '../../logging/log_event_catalog.dart';
 import '../launcher_actions.dart';
 import '../theme/garden_theme.dart';
 import '../widgets/garden_widgets.dart';
 
-const _levels = ['DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'];
+/// The minimum levels the timeline filters by; FATAL counts as ERROR.
+const _levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
 const _levelRanks = <String, int>{
   'DEBUG': 0,
   'INFO': 1,
   'WARN': 2,
   'ERROR': 3,
-  'FATAL': 4,
+  'FATAL': 3,
 };
+
+String _levelOf(Map<String, Object?> event) =>
+    event['level']?.toString().toUpperCase() ?? 'INFO';
+
+bool _isError(String level) => level == 'ERROR' || level == 'FATAL';
+
+String _levelLabel(AppStrings strings, String level) => switch (level) {
+      'DEBUG' => strings.levelDebug,
+      'INFO' => strings.levelInfo,
+      'WARN' => strings.levelWarn,
+      _ => strings.levelError,
+    };
 
 Color _levelColor(GardenPalette palette, String level) => switch (level) {
       'WARN' => palette.warning,
       'ERROR' || 'FATAL' => palette.danger,
-      'INFO' => palette.inkMuted,
-      _ => palette.inkFaint,
+      'INFO' => palette.inkFaint,
+      _ => palette.border,
     };
+
+/// The catalog title of the event's error code, then the event's readable
+/// name, then its message, then its raw name.
+String _titleOf(AppStrings strings, Map<String, Object?> event) {
+  final name = event['event']?.toString() ?? 'unknown_event';
+  final message = event['message']?.toString() ?? '';
+  return userErrorCatalog[event['code']?.toString()]?.title.of(strings) ??
+      logEventTitles[name]?.of(strings) ??
+      (message.isEmpty ? name : message);
+}
+
+DateTime? _timeOf(Map<String, Object?> event) =>
+    DateTime.tryParse(event['timestampUtc']?.toString() ?? '')?.toLocal();
+
+String _clock(DateTime time, {bool seconds = true}) {
+  String two(int value) => value.toString().padLeft(2, '0');
+  final minutes = '${two(time.hour)}:${two(time.minute)}';
+  return seconds ? '$minutes:${two(time.second)}' : minutes;
+}
+
+String _formatMs(int ms) => ms < 1000
+    ? '$ms ms'
+    : ms < 60000
+        ? '${(ms / 1000).toStringAsFixed(1)} s'
+        : formatDuration(Duration(milliseconds: ms));
 
 class LogsPage extends StatefulWidget {
   const LogsPage({
@@ -43,386 +78,224 @@ class LogsPage extends StatefulWidget {
 }
 
 class _LogsPageState extends State<LogsPage> {
+  final _scroll = ScrollController();
   String _minimumLevel = 'INFO';
-  bool _errorsOnly = false;
-  String _operationFilter = 'all';
+  String? _operation;
 
-  List<Map<String, Object?>> _visibleEvents(AppLogSnapshot snapshot) {
-    final minimumRank = _levelRanks[_minimumLevel] ?? 1;
-    return snapshot.events.where((event) {
-      final level = event['level']?.toString().toUpperCase() ?? 'INFO';
-      if ((_levelRanks[level] ?? 1) < minimumRank) return false;
-      if (_errorsOnly && level != 'ERROR' && level != 'FATAL') return false;
-      return _operationFilter == 'all' ||
-          event['operationId']?.toString() == _operationFilter;
-    }).toList(growable: false);
+  /// Sequences of the expanded events.
+  final _expanded = <Object?>{};
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _toggle(Object? sequence) => setState(() {
+        if (!_expanded.remove(sequence)) _expanded.add(sequence);
+      });
+
+  /// Opens [event] at the top of the errors view.
+  void _showError(Map<String, Object?> event) {
+    setState(() {
+      _minimumLevel = 'ERROR';
+      _operation = null;
+      _expanded.add(event['sequence']);
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
-    final snapshot = controller.logSnapshot;
-    final operations = (snapshot?.events
-                .map((event) => event['operationId']?.toString())
-                .whereType<String>()
-                .where((value) => value.isNotEmpty)
-                .toSet() ??
-            <String>{})
-        .toList(growable: false)
-      ..sort();
-    if (_operationFilter != 'all' && !operations.contains(_operationFilter)) {
-      _operationFilter = 'all';
+    final all =
+        controller.logSnapshot?.events ?? const <Map<String, Object?>>[];
+    final counts = <String, int>{for (final level in _levels) level: 0};
+    Map<String, Object?>? latestError;
+    for (final event in all) {
+      final level = _levelOf(event);
+      counts.update(_isError(level) ? 'ERROR' : level, (count) => count + 1,
+          ifAbsent: () => 1);
+      if (_isError(level)) latestError = event;
     }
-    final events = snapshot == null
-        ? const <Map<String, Object?>>[]
-        : _visibleEvents(snapshot);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Toolbar(
-          controller: controller,
-          actions: widget.actions,
-          minimumLevel: _minimumLevel,
-          errorsOnly: _errorsOnly,
-          operationFilter: _operationFilter,
-          operations: operations,
-          onLevel: (value) => setState(() => _minimumLevel = value),
-          onErrorsOnly: (value) => setState(() => _errorsOnly = value),
-          onOperation: (value) => setState(() => _operationFilter = value),
-          onReset: () => setState(() {
-            _minimumLevel = 'INFO';
-            _errorsOnly = false;
-            _operationFilter = 'all';
-          }),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final overview = _Overview(
-                controller: controller,
-                snapshot: snapshot,
-                minimumLevel: _minimumLevel,
-                errorsOnly: _errorsOnly,
-              );
-              final list = _EventList(
-                snapshot: snapshot,
-                loading: controller.logSnapshotLoading,
-                events: events,
-                onCopy: widget.actions.copyLogEvent,
-              );
-              if (constraints.maxWidth < 560) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(flex: 2, child: overview),
-                    const SizedBox(height: 16),
-                    Expanded(flex: 3, child: list),
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(width: widget.compact ? 260 : 300, child: overview),
-                  const SizedBox(width: 16),
-                  Expanded(child: list),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
+    final minimumRank = _levelRanks[_minimumLevel]!;
+    final events = [
+      for (final event in all.reversed)
+        if ((_levelRanks[_levelOf(event)] ?? 1) >= minimumRank &&
+            (_operation == null || event['operationId'] == _operation))
+          event,
+    ];
+    final status = _StatusPanel(
+      controller: controller,
+      actions: widget.actions,
+      counts: counts,
+      latestError: latestError,
+      minimumLevel: _minimumLevel,
+      onShowError: _showError,
+    );
+    final timeline = _Timeline(
+      controller: controller,
+      counts: counts,
+      events: events,
+      minimumLevel: _minimumLevel,
+      operation: _operation,
+      expanded: _expanded,
+      scroll: _scroll,
+      onLevel: (value) => setState(() => _minimumLevel = value),
+      onOperation: (value) => setState(() => _operation = value),
+      onToggle: _toggle,
+      onCopy: widget.actions.copyLogEvent,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 560) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 2, child: status),
+              const SizedBox(height: 16),
+              Expanded(flex: 3, child: timeline),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: widget.compact ? 260 : 300, child: status),
+            const SizedBox(width: 16),
+            Expanded(child: timeline),
+          ],
+        );
+      },
     );
   }
 }
 
-class _Toolbar extends StatelessWidget {
-  const _Toolbar({
+class _StatusPanel extends StatelessWidget {
+  const _StatusPanel({
     required this.controller,
     required this.actions,
+    required this.counts,
+    required this.latestError,
     required this.minimumLevel,
-    required this.errorsOnly,
-    required this.operationFilter,
-    required this.operations,
-    required this.onLevel,
-    required this.onErrorsOnly,
-    required this.onOperation,
-    required this.onReset,
+    required this.onShowError,
   });
 
   final AppController controller;
   final LauncherActions actions;
+  final Map<String, int> counts;
+  final Map<String, Object?>? latestError;
   final String minimumLevel;
-  final bool errorsOnly;
-  final String operationFilter;
-  final List<String> operations;
-  final ValueChanged<String> onLevel;
-  final ValueChanged<bool> onErrorsOnly;
-  final ValueChanged<String> onOperation;
-  final VoidCallback onReset;
+  final ValueChanged<Map<String, Object?>> onShowError;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
     final strings = context.strings;
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 300),
-          child: GardenSegmented<String>(
-            key: const ValueKey('log-minimum-level-filter'),
-            values: _levels,
-            selected: minimumLevel,
-            labelOf: (value) => value,
-            keyOf: (value) => ValueKey('log-level-$value'),
-            onChanged: onLevel,
-          ),
-        ),
-        _ToggleChip(
-          key: const ValueKey('log-errors-only-filter'),
-          label: strings.errorsOnly,
-          selected: errorsOnly,
-          onChanged: onErrorsOnly,
-        ),
-        if (operations.isNotEmpty)
-          PopupMenuButton<String>(
-            key: const ValueKey('log-operation-filter'),
-            tooltip: strings.filterByOperation,
-            initialValue: operationFilter,
-            onSelected: onOperation,
-            itemBuilder: (context) => [
-              PopupMenuItem(value: 'all', child: Text(strings.allOperations)),
-              for (final operation in operations)
-                PopupMenuItem(
-                  value: operation,
-                  child: Text(
-                    operation,
-                    overflow: TextOverflow.ellipsis,
-                    style: GardenType.mono(12),
-                  ),
-                ),
-            ],
-            child: Container(
-              height: 36,
-              constraints: const BoxConstraints(maxWidth: 220),
-              padding: const EdgeInsets.only(left: 12, right: 6),
-              decoration: BoxDecoration(
-                color: palette.surfaceMuted,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      operationFilter == 'all'
-                          ? strings.allOperations
-                          : operationFilter,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: palette.ink, fontSize: 12.5),
-                    ),
-                  ),
-                  Icon(Icons.arrow_drop_down_rounded, color: palette.inkMuted),
-                ],
-              ),
-            ),
-          ),
-        GardenButton(
-          key: const ValueKey('clear-log-view-filter'),
-          label: strings.clearFilters,
-          tone: GardenButtonTone.ghost,
-          compact: true,
-          onPressed: onReset,
-        ),
-        GardenIconButton(
-          key: const ValueKey('refresh-logs-button'),
-          icon: Icons.refresh_rounded,
-          tooltip: strings.refreshLogs,
-          onPressed:
-              controller.logSnapshotLoading ? null : controller.refreshLogs,
-        ),
-        GardenButton(
-          key: const ValueKey('copy-diagnostics-button'),
-          label: strings.copyDiagnostics,
-          tone: GardenButtonTone.primary,
-          compact: true,
-          onPressed: actions.copyDiagnostics,
-        ),
-        GardenButton(
-          key: const ValueKey('delete-log-history-button'),
-          label: strings.deleteHistory,
-          tone: GardenButtonTone.danger,
-          compact: true,
-          onPressed: actions.deleteLogHistory,
-        ),
-      ],
-    );
-  }
-}
-
-class _ToggleChip extends StatelessWidget {
-  const _ToggleChip({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final String label;
-  final bool selected;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.garden;
-    return Semantics(
-      toggled: selected,
-      child: Pressable(
-        onTap: () => onChanged(!selected),
-        semanticLabel: label,
-        child: AnimatedContainer(
-          duration: GardenMotion.quick,
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: selected ? palette.ink : palette.surfaceMuted,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Center(
-            widthFactor: 1,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: selected ? palette.background : palette.ink,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Overview extends StatelessWidget {
-  const _Overview({
-    required this.controller,
-    required this.snapshot,
-    required this.minimumLevel,
-    required this.errorsOnly,
-  });
-
-  final AppController controller;
-  final AppLogSnapshot? snapshot;
-  final String minimumLevel;
-  final bool errorsOnly;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.garden;
-    final strings = context.strings;
-    final counts = <String, int>{for (final level in _levels) level: 0};
-    String? gameSessionId;
-    Map<String, Object?>? recentError;
-    for (final event in snapshot?.events ?? const <Map<String, Object?>>[]) {
-      final level = event['level']?.toString().toUpperCase() ?? 'INFO';
-      counts[level] = (counts[level] ?? 0) + 1;
-      gameSessionId = event['gameSessionId']?.toString() ?? gameSessionId;
-      if (level == 'ERROR' || level == 'FATAL') recentError = event;
-    }
-    final errorInfo = recentError == null
-        ? null
-        : userErrorCatalog[recentError['code']?.toString()];
-    final (String status, Color? statusColor) = snapshot == null
-        ? (strings.logStatusUnknown, null)
-        : snapshot!.persisting
-            ? (strings.logPersisting, palette.accent)
-            : (strings.logDegraded, palette.warning);
-    final label = TextStyle(color: palette.inkMuted, fontSize: 12);
+    final snapshot = controller.logSnapshot;
+    final errors = counts['ERROR']!;
+    final warnings = counts['WARN']!;
+    final (String headline, Color dot) = snapshot == null
+        ? (
+            controller.logSnapshotLoading
+                ? strings.readingLogs
+                : strings.logsNotLoaded,
+            palette.inkFaint,
+          )
+        : errors > 0
+            ? (strings.runErrors(errors), palette.danger)
+            : warnings > 0
+                ? (strings.runWarnings(warnings), palette.warning)
+                : (strings.runHealthy, palette.accent);
+    final dropped =
+        snapshot?.droppedByLevel.values.fold(0, (sum, count) => sum + count) ??
+            0;
+    final latestError = this.latestError;
     return SurfaceCard(
       padding: EdgeInsets.zero,
       child: ListView(
-        key: const ValueKey('log-overview'),
+        key: const ValueKey('log-status'),
         padding: const EdgeInsets.all(18),
         children: [
-          PanelHeader(
-            title: strings.overview,
-            trailing: StatusLabel(label: status, color: statusColor),
-          ),
-          const SizedBox(height: 14),
-          Text(strings.appSession, style: label),
-          const SizedBox(height: 2),
-          SelectableText(
-            snapshot?.appSessionId ?? '--',
-            style: GardenType.mono(11.5, color: palette.ink),
-          ),
-          const SizedBox(height: 10),
-          Text(strings.gameSession, style: label),
-          const SizedBox(height: 2),
-          SelectableText(
-            gameSessionId ?? strings.none,
-            style: GardenType.mono(11.5, color: palette.ink),
-          ),
-          const SizedBox(height: 14),
-          MetricRow(
-            metrics: [
-              Metric(
-                label: strings.logSize,
-                value: formatBytes(snapshot?.totalBytes ?? 0),
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
               ),
-              Metric(
-                label: strings.writeFailures,
-                value: '${snapshot?.writeFailureCount ?? 0}',
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  headline,
+                  style: GardenType.title(15, color: palette.ink),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            'v${controller.currentAppVersion} · '
-            '${controller.gameHostPlatform.wireName}',
-            style: label,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            [for (final level in _levels) '$level ${counts[level]}']
-                .join(' · '),
-            style: GardenType.mono(11, color: palette.inkMuted),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            strings.dropped(jsonEncode(snapshot?.droppedByLevel ?? const {})),
-            style: GardenType.mono(11, color: palette.inkMuted),
-          ),
-          const SizedBox(height: 16),
-          Text(strings.recentError, style: label),
-          const SizedBox(height: 4),
-          Text(
-            recentError == null
-                ? strings.none
-                : errorInfo?.title.of(strings) ??
-                    '${recentError['code'] ?? recentError['event']}: '
-                        '${recentError['message'] ?? ''}',
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: recentError == null ? palette.ink : palette.danger,
-              fontSize: 13,
-            ),
-          ),
-          if (errorInfo != null) ...[
-            const SizedBox(height: 4),
+          if (snapshot != null) ...[
+            const SizedBox(height: 6),
             Text(
-              errorInfo.action.of(strings),
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: palette.inkMuted, fontSize: 12.5),
+              [
+                snapshot.persisting
+                    ? strings.logsSavedOnDevice(
+                        formatBytes(snapshot.totalBytes),
+                      )
+                    : strings.logsMemoryOnly,
+                if (snapshot.writeFailureCount > 0)
+                  strings.logWriteFailures(snapshot.writeFailureCount),
+                if (dropped > 0) strings.logsDropped(dropped),
+              ].join(' · '),
+              style: TextStyle(
+                color: snapshot.persisting ? palette.inkMuted : palette.warning,
+                fontSize: 12.5,
+                height: 1.4,
+              ),
             ),
           ],
+          if (latestError != null) ...[
+            const SizedBox(height: 14),
+            _LatestError(
+              event: latestError,
+              onTap: () => onShowError(latestError),
+            ),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: GardenButton(
+              key: const ValueKey('copy-diagnostics-button'),
+              label: strings.copyDiagnostics,
+              icon: Icons.copy_rounded,
+              tone: GardenButtonTone.primary,
+              onPressed: actions.copyDiagnostics,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: GardenButton(
+                  key: const ValueKey('refresh-logs-button'),
+                  label: strings.refreshLogs,
+                  icon: Icons.refresh_rounded,
+                  compact: true,
+                  busy: controller.logSnapshotLoading,
+                  onPressed: controller.refreshLogs,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GardenButton(
+                  key: const ValueKey('delete-log-history-button'),
+                  label: strings.deleteHistory,
+                  tone: GardenButtonTone.danger,
+                  compact: true,
+                  onPressed: actions.deleteLogHistory,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           Divider(color: palette.border),
           SwitchRow(
@@ -448,10 +321,7 @@ class _Overview extends StatelessWidget {
                 constraints: const BoxConstraints(maxHeight: 220),
                 child: SingleChildScrollView(
                   child: SelectableText(
-                    controller.buildLogText(
-                      minimumLevel: minimumLevel,
-                      errorsOnly: errorsOnly,
-                    ),
+                    controller.buildLogText(minimumLevel: minimumLevel),
                     style: GardenType.mono(10.5, color: palette.ink),
                   ),
                 ),
@@ -459,6 +329,95 @@ class _Overview extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LatestError extends StatelessWidget {
+  const _LatestError({required this.event, required this.onTap});
+
+  final Map<String, Object?> event;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final info = userErrorCatalog[event['code']?.toString()];
+    final time = _timeOf(event);
+    return Pressable(
+      key: const ValueKey('log-latest-error'),
+      onTap: onTap,
+      semanticLabel: '${strings.recentError}: ${_titleOf(strings, event)}',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: palette.danger.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              strings.recentError,
+              style: TextStyle(
+                color: palette.danger,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _titleOf(strings, event),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.ink,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (info != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                info.action.of(strings),
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: palette.inkMuted,
+                  fontSize: 12.5,
+                  height: 1.4,
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (time != null)
+                  Text(
+                    _clock(time),
+                    style: GardenType.mono(11, color: palette.inkMuted),
+                  ),
+                const Spacer(),
+                Text(
+                  strings.showEvent,
+                  style: TextStyle(
+                    color: palette.danger,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: palette.danger,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -532,151 +491,469 @@ class _ToolShed extends StatelessWidget {
   }
 }
 
-class _EventList extends StatelessWidget {
-  const _EventList({
-    required this.snapshot,
-    required this.loading,
+class _Timeline extends StatelessWidget {
+  const _Timeline({
+    required this.controller,
+    required this.counts,
     required this.events,
+    required this.minimumLevel,
+    required this.operation,
+    required this.expanded,
+    required this.scroll,
+    required this.onLevel,
+    required this.onOperation,
+    required this.onToggle,
     required this.onCopy,
   });
 
-  final AppLogSnapshot? snapshot;
-  final bool loading;
+  final AppController controller;
+  final Map<String, int> counts;
+
+  /// The filtered events, newest first.
   final List<Map<String, Object?>> events;
+  final String minimumLevel;
+  final String? operation;
+  final Set<Object?> expanded;
+  final ScrollController scroll;
+  final ValueChanged<String> onLevel;
+  final ValueChanged<String?> onOperation;
+  final ValueChanged<Object?> onToggle;
   final Future<void> Function(Map<String, Object?> event) onCopy;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
     final strings = context.strings;
+    final snapshot = controller.logSnapshot;
     final String? placeholder = snapshot == null
-        ? (loading ? strings.readingLogs : strings.logsNotLoaded)
+        ? (controller.logSnapshotLoading
+            ? strings.readingLogs
+            : strings.logsNotLoaded)
         : events.isEmpty
             ? strings.noMatchingEvents
             : null;
+    // A game's time span covers all of its events, whatever the filter.
+    final spans = <Object, (DateTime, DateTime)>{};
+    for (final event in snapshot?.events ?? const <Map<String, Object?>>[]) {
+      final id = event['gameSessionId'];
+      final time = _timeOf(event);
+      if (id == null || time == null) continue;
+      spans[id] = (spans[id]?.$1 ?? time, time);
+    }
+    String groupOf(Object? gameSessionId) {
+      if (gameSessionId == null) return strings.launcherEvents;
+      final span = spans[gameSessionId];
+      return strings.gameEvents(
+        span == null
+            ? '--'
+            : '${_clock(span.$1, seconds: false)}–'
+                '${_clock(span.$2, seconds: false)}',
+      );
+    }
+
+    // Group labels and events, with a label wherever the game changes.
+    final items = <Object>[];
+    for (var i = 0; i < events.length; i++) {
+      final gameSessionId = events[i]['gameSessionId'];
+      if (i == 0 || events[i - 1]['gameSessionId'] != gameSessionId) {
+        items.add(groupOf(gameSessionId));
+      }
+      items.add(events[i]);
+    }
+    final operation = this.operation;
     return SurfaceCard(
       padding: EdgeInsets.zero,
-      child: placeholder != null
-          ? Center(
-              child:
-                  Text(placeholder, style: TextStyle(color: palette.inkMuted)),
-            )
-          : ListView.separated(
-              key: const ValueKey('structured-log-events'),
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              itemCount: events.length,
-              separatorBuilder: (context, index) => Divider(
-                color: palette.border,
-                indent: 16,
-                endIndent: 16,
-              ),
-              itemBuilder: (context, index) {
-                final event = events[events.length - index - 1];
-                return _EventRow(
-                  key: ValueKey('log-event-${event['sequence'] ?? index}'),
-                  event: event,
-                  onCopy: () => onCopy(event),
-                );
-              },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 380),
+                  child: GardenSegmented<String>(
+                    key: const ValueKey('log-minimum-level-filter'),
+                    values: _levels,
+                    selected: minimumLevel,
+                    labelOf: (level) =>
+                        '${_levelLabel(strings, level)} ${counts[level]}',
+                    keyOf: (level) => ValueKey('log-level-$level'),
+                    onChanged: onLevel,
+                  ),
+                ),
+                if (operation != null)
+                  _OperationChip(
+                    operation: operation,
+                    onClear: () => onOperation(null),
+                  ),
+              ],
             ),
+          ),
+          Divider(height: 1, color: palette.border),
+          Expanded(
+            child: placeholder != null
+                ? Center(
+                    child: Text(
+                      placeholder,
+                      style: TextStyle(color: palette.inkMuted),
+                    ),
+                  )
+                : ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(15),
+                    ),
+                    child: ListView.builder(
+                      key: const ValueKey('structured-log-events'),
+                      controller: scroll,
+                      padding: const EdgeInsets.only(bottom: 6),
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        if (item is String) return _GroupLabel(label: item);
+                        final event = item as Map<String, Object?>;
+                        final sequence = event['sequence'];
+                        final eventOperation = event['operationId']?.toString();
+                        return _EventRow(
+                          key: ValueKey('log-event-$sequence'),
+                          event: event,
+                          expanded: expanded.contains(sequence),
+                          onToggle: () => onToggle(sequence),
+                          onCopy: () => onCopy(event),
+                          onOperation:
+                              operation == null && eventOperation != null
+                                  ? () => onOperation(eventOperation)
+                                  : null,
+                        );
+                      },
+                    ),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _EventRow extends StatefulWidget {
-  const _EventRow({super.key, required this.event, required this.onCopy});
+class _OperationChip extends StatelessWidget {
+  const _OperationChip({required this.operation, required this.onClear});
 
-  final Map<String, Object?> event;
-  final VoidCallback onCopy;
-
-  @override
-  State<_EventRow> createState() => _EventRowState();
-}
-
-class _EventRowState extends State<_EventRow> {
-  bool _expanded = false;
+  final String operation;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
-    final event = widget.event;
-    final level = event['level']?.toString().toUpperCase() ?? 'INFO';
-    final timestamp = event['timestampUtc']?.toString() ?? '';
-    final time = timestamp.length >= 19 ? timestamp.substring(11, 19) : '';
-    final subtitle = [
-      if (event['code'] != null) event['code'],
-      if (event['operationId'] != null) 'op=${event['operationId']}',
-    ].join(' · ');
+    final strings = context.strings;
+    return Pressable(
+      key: const ValueKey('log-operation-filter'),
+      onTap: onClear,
+      semanticLabel: strings.showAllOperations,
+      tooltip: strings.showAllOperations,
+      child: Container(
+        height: 36,
+        constraints: const BoxConstraints(maxWidth: 260),
+        padding: const EdgeInsets.only(left: 12, right: 8),
+        decoration: BoxDecoration(
+          color: palette.accent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                strings.operationFilter(operation),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: palette.accent,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.close_rounded, size: 16, color: palette.accent),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupLabel extends StatelessWidget {
+  const _GroupLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    return Container(
+      color: palette.surfaceMuted,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: palette.inkMuted,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _EventRow extends StatelessWidget {
+  const _EventRow({
+    super.key,
+    required this.event,
+    required this.expanded,
+    required this.onToggle,
+    required this.onCopy,
+    required this.onOperation,
+  });
+
+  final Map<String, Object?> event;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final VoidCallback onCopy;
+
+  /// Filters the timeline to this event's operation; null when the event has
+  /// none or the timeline already shows one operation.
+  final VoidCallback? onOperation;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final level = _levelOf(event);
+    final time = _timeOf(event);
+    final title = _titleOf(strings, event);
+    final message = event['message']?.toString() ?? '';
+    final durationMs = (event['durationMs'] as num?)?.toInt();
+    final Widget? trailing = switch (event['outcome']) {
+      'failed' => Text(
+          strings.eventFailed,
+          style: TextStyle(
+            color: palette.danger,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      'cancelled' => Text(
+          strings.eventCancelled,
+          style: TextStyle(color: palette.inkMuted, fontSize: 11.5),
+        ),
+      _ when durationMs != null => Text(
+          _formatMs(durationMs),
+          style: GardenType.mono(11, color: palette.inkFaint),
+        ),
+      _ => null,
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Pressable(
-          onTap: () => setState(() => _expanded = !_expanded),
+          onTap: onToggle,
           scale: 1,
-          semanticLabel: event['event']?.toString(),
+          semanticLabel: title,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  width: 50,
-                  child: Text(
-                    level,
-                    style: GardenType.mono(
-                      11,
-                      weight: FontWeight.w600,
-                      color: _levelColor(palette, level),
-                    ),
+                Container(
+                  width: 3,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: _levelColor(palette, level),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                if (time.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 64,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
                     child: Text(
-                      time,
+                      time == null ? '' : _clock(time),
                       style: GardenType.mono(11, color: palette.inkFaint),
                     ),
                   ),
+                ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        event['event']?.toString() ?? 'unknown_event',
-                        maxLines: 1,
+                        title,
+                        maxLines: expanded ? 4 : 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GardenType.mono(12.5, color: palette.ink),
+                        style: TextStyle(
+                          color: _isError(level) ? palette.danger : palette.ink,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                      if (subtitle.isNotEmpty)
+                      const SizedBox(height: 2),
+                      if (message.isNotEmpty && message != title)
                         Text(
-                          subtitle,
+                          message,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GardenType.mono(10.5, color: palette.inkMuted),
+                          style:
+                              TextStyle(color: palette.inkMuted, fontSize: 12),
+                        )
+                      else
+                        Text(
+                          '${event['category'] ?? ''} · '
+                          '${event['event'] ?? ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GardenType.mono(10.5, color: palette.inkFaint),
                         ),
                     ],
                   ),
                 ),
-                GardenIconButton(
-                  icon: Icons.copy_rounded,
-                  tooltip: context.strings.copyEventJson,
-                  onPressed: widget.onCopy,
-                ),
+                if (trailing != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12, top: 2),
+                    child: trailing,
+                  ),
               ],
             ),
           ),
         ),
-        if (_expanded)
+        if (expanded)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: CodeBlock(
-              child: SelectableText(
-                const JsonEncoder.withIndent('  ').convert(event),
-                style: GardenType.mono(11.5, color: palette.ink),
-              ),
+            padding: const EdgeInsets.fromLTRB(31, 0, 16, 12),
+            child: _EventDetail(
+              event: event,
+              onCopy: onCopy,
+              onOperation: onOperation,
             ),
           ),
       ],
+    );
+  }
+}
+
+class _EventDetail extends StatelessWidget {
+  const _EventDetail({
+    required this.event,
+    required this.onCopy,
+    required this.onOperation,
+  });
+
+  final Map<String, Object?> event;
+  final VoidCallback onCopy;
+  final VoidCallback? onOperation;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final info = userErrorCatalog[event['code']?.toString()];
+    final message = event['message']?.toString() ?? '';
+    final eventContext = event['context'];
+    final error = event['error'];
+    final facts = [
+      'event: ${event['event']}',
+      'category: ${event['category']}',
+      'level: ${event['level']} · outcome: ${event['outcome']} · '
+          'source: ${event['source']}',
+      if (event['code'] != null) 'code: ${event['code']}',
+      if (eventContext is Map)
+        for (final entry in eventContext.entries)
+          '${entry.key}: ${entry.value}',
+      if (event['durationMs'] != null) 'durationMs: ${event['durationMs']}',
+      if (event['operationId'] != null) 'operation: ${event['operationId']}',
+      if (event['gameSessionId'] != null)
+        'gameSession: ${event['gameSessionId']}',
+    ];
+    final errorText = error is Map
+        ? [
+            error['type'],
+            if (error['message'] != message) error['message'],
+            error['stackTrace'],
+          ]
+            .map((part) => part?.toString() ?? '')
+            .where((part) => part.isNotEmpty)
+            .join('\n')
+        : '';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: palette.surfaceMuted,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (info != null) ...[
+            Text(
+              info.action.of(strings),
+              style: TextStyle(
+                color: palette.inkMuted,
+                fontSize: 12.5,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (message.isNotEmpty) ...[
+            SelectableText(
+              message,
+              style:
+                  TextStyle(color: palette.ink, fontSize: 12.5, height: 1.45),
+            ),
+            const SizedBox(height: 8),
+          ],
+          SelectableText(
+            facts.join('\n'),
+            style: GardenType.mono(11, color: palette.inkMuted),
+          ),
+          if (errorText.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  errorText,
+                  style: GardenType.mono(10.5, color: palette.ink),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              GardenButton(
+                label: strings.copyEventJson,
+                icon: Icons.copy_rounded,
+                compact: true,
+                onPressed: onCopy,
+              ),
+              if (onOperation != null)
+                GardenButton(
+                  label: strings.onlyThisOperation,
+                  icon: Icons.filter_list_rounded,
+                  tone: GardenButtonTone.ghost,
+                  compact: true,
+                  onPressed: onOperation,
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

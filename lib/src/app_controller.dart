@@ -1127,7 +1127,7 @@ class AppController extends ChangeNotifier {
     await refreshLogs();
   }
 
-  String buildLogText({String minimumLevel = 'INFO', bool errorsOnly = false}) {
+  String buildLogText({String minimumLevel = 'INFO'}) {
     final snapshot = _logSnapshot;
     final buffer = StringBuffer(diagnostics().toLogText());
     if (snapshot == null) {
@@ -1154,9 +1154,6 @@ class AppController extends ChangeNotifier {
     for (final event in snapshot.events) {
       final level = event['level']?.toString().toUpperCase() ?? 'INFO';
       if ((ranks[level] ?? 1) < minimumRank) {
-        continue;
-      }
-      if (errorsOnly && level != 'ERROR' && level != 'FATAL') {
         continue;
       }
       buffer.writeln(jsonEncode(event));

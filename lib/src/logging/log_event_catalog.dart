@@ -954,6 +954,87 @@ const userErrorCatalog = <String, UserLogError>{
   ),
 };
 
+/// Readable names of the events the loader, the native GameHosts and the
+/// game bridge log. Script console and error events are left out: their
+/// message names them better.
+const logEventTitles = <String, LocalizedText>{
+  'app_session_started': LocalizedText('加载器已启动', 'Loader started'),
+  'app_session_ended': LocalizedText('加载器已退出', 'Loader closed'),
+  'app_lifecycle_changed': LocalizedText('应用状态变化', 'App state changed'),
+  'app_initialization_started':
+      LocalizedText('开始初始化', 'Initialization started'),
+  'app_initialization_stage_changed':
+      LocalizedText('初始化阶段', 'Initialization stage'),
+  'app_initialization_finished':
+      LocalizedText('初始化结束', 'Initialization finished'),
+  'previous_run_unclean_shutdown':
+      LocalizedText('上次运行未正常退出', 'Last run did not close cleanly'),
+  'dart_unhandled_error': LocalizedText('加载器未处理的错误', 'Unhandled loader error'),
+  'flutter_framework_error': LocalizedText('界面框架错误', 'UI framework error'),
+  'journal_write_failed':
+      LocalizedText('游戏记录保存失败', "Couldn't save the play history"),
+  'game_event_calendar_unreadable':
+      LocalizedText('无法读取游戏活动日程', "Couldn't read the game's event calendar"),
+  'import_transaction_recovery_started':
+      LocalizedText('开始恢复上次中断的导入', 'Recovering an interrupted import'),
+  'import_transaction_recovery_finished':
+      LocalizedText('上次中断的导入已处理', 'Interrupted import handled'),
+  'resource_import_started': LocalizedText('开始导入资源', 'Resource import started'),
+  'resource_import_picker_started':
+      LocalizedText('打开文件选择器', 'File picker opened'),
+  'resource_import_picker_finished':
+      LocalizedText('文件选择器已关闭', 'File picker closed'),
+  'resource_import_target_prepared':
+      LocalizedText('导入目录已准备好', 'Import folder ready'),
+  'resource_import_progress': LocalizedText('导入进度', 'Import progress'),
+  'resource_validation_started':
+      LocalizedText('开始校验资源', 'Resource check started'),
+  'resource_validation_finished':
+      LocalizedText('资源校验结束', 'Resource check finished'),
+  'resource_slot_activated': LocalizedText('已启用新资源', 'New resources in use'),
+  'resource_import_finished':
+      LocalizedText('资源导入结束', 'Resource import finished'),
+  'game_host_launch_started': LocalizedText('开始启动游戏', 'Game launch started'),
+  'game_host_launch_finished': LocalizedText('游戏启动结束', 'Game launch finished'),
+  'game_host_created': LocalizedText('游戏窗口已创建', 'Game view created'),
+  'game_host_finished': LocalizedText('游戏已关闭', 'Game closed'),
+  'game_ability_stage_changed': LocalizedText('游戏窗口阶段', 'Game window stage'),
+  'game_ability_create_failed':
+      LocalizedText('游戏窗口创建失败', "Couldn't create the game window"),
+  'game_ability_load_content_failed':
+      LocalizedText('游戏页面加载失败', "Couldn't load the game page"),
+  'game_ability_storage_failed':
+      LocalizedText('游戏存储初始化失败', "Couldn't set up game storage"),
+  'game_page_initialization_failed':
+      LocalizedText('游戏页面初始化失败', 'Game page failed to initialize'),
+  'memory_pressure': LocalizedText('系统内存不足警告', 'Low memory warning'),
+  'webview_page_load_started': LocalizedText('开始加载游戏页面', 'Game page loading'),
+  'webview_page_load_finished':
+      LocalizedText('游戏页面加载结束', 'Game page load finished'),
+  'webview_render_process_gone':
+      LocalizedText('游戏渲染进程退出', 'Game renderer exited'),
+  'navigation_blocked': LocalizedText('已拦截页面跳转', 'Navigation blocked'),
+  'network_request_blocked':
+      LocalizedText('已拦截网络请求', 'Network request blocked'),
+  'resource_request_failed':
+      LocalizedText('游戏资源读取失败', 'Game resource request failed'),
+  'bridge_message_invalid':
+      LocalizedText('已拒绝无效的桥接消息', 'Invalid bridge message rejected'),
+  'bridge_call_failed': LocalizedText('桥接调用失败', 'Bridge call failed'),
+  'audio_decode_started': LocalizedText('开始解码音频', 'Audio decoding started'),
+  'audio_decode_succeeded': LocalizedText('音频解码完成', 'Audio decoded'),
+  'audio_decode_failed': LocalizedText('音频解码失败', 'Audio decode failed'),
+  'audio_media_load_started': LocalizedText('开始加载音频', 'Audio loading started'),
+  'audio_media_ready': LocalizedText('音频可以播放', 'Audio ready'),
+  'audio_media_play_requested':
+      LocalizedText('请求播放音频', 'Audio playback requested'),
+  'audio_media_playing': LocalizedText('音频开始播放', 'Audio playing'),
+  'audio_media_ended': LocalizedText('音频播放结束', 'Audio ended'),
+  'audio_media_failed': LocalizedText('音频播放失败', 'Audio playback failed'),
+  'audio_summary': LocalizedText('音频统计', 'Audio summary'),
+  'touch_trace': LocalizedText('触控记录', 'Touch trace'),
+};
+
 /// The user-facing title of [code] in the current language; [fallback] when
 /// the catalog does not know the code.
 String userErrorTitle(String? code, String fallback) =>

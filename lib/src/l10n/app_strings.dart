@@ -375,22 +375,41 @@ class AppStrings {
         ];
 
   // Logs page.
-  String get errorsOnly => _t('只看错误', 'Errors only');
-  String get filterByOperation => _t('按 Operation 筛选', 'Filter by operation');
-  String get allOperations => _t('全部 Operation', 'All operations');
-  String get clearFilters => _t('清空筛选', 'Clear filters');
-  String get refreshLogs => _t('刷新日志', 'Refresh logs');
-  String get copyDiagnostics => _t('复制诊断', 'Copy diagnostics');
+  String get levelDebug => _t('调试', 'Debug');
+  String get levelInfo => _t('信息', 'Info');
+  String get levelWarn => _t('警告', 'Warnings');
+  String get levelError => _t('错误', 'Errors');
+  String runErrors(int count) => _t(
+        '本次运行有 $count 个错误',
+        count == 1 ? '1 error this run' : '$count errors this run',
+      );
+  String runWarnings(int count) => _t(
+        '本次运行有 $count 个警告',
+        count == 1 ? '1 warning this run' : '$count warnings this run',
+      );
+  String get runHealthy => _t('本次运行一切正常', 'No problems this run');
+  String logsSavedOnDevice(String size) =>
+      _t('日志已保存在本机 · $size', 'Saved on this device · $size');
+  String get logsMemoryOnly => _t(
+        '日志写不进文件，只保留在内存中',
+        "Logs can't be written to a file and are kept in memory only",
+      );
+  String logWriteFailures(int count) => _t(
+        '写入失败 $count 次',
+        count == 1 ? '1 failed write' : '$count failed writes',
+      );
+  String logsDropped(int count) => _t('丢弃 $count 条', 'Dropped $count');
+  String get showEvent => _t('查看', 'Show');
+  String get refreshLogs => _t('刷新', 'Refresh');
+  String get copyDiagnostics => _t('复制诊断信息', 'Copy diagnostics');
   String get deleteHistory => _t('删除历史', 'Delete history');
-  String get logStatusUnknown => _t('日志状态未知', 'Log status unknown');
-  String get logPersisting => _t('持久化正常', 'Persisting');
-  String get logDegraded => _t('内存降级', 'Memory only');
-  String get overview => _t('概览', 'Overview');
-  String get appSession => _t('当前会话', 'App session');
-  String get gameSession => _t('游戏会话', 'Game session');
-  String get logSize => _t('日志占用', 'Log size');
-  String get writeFailures => _t('写入失败', 'Write failures');
-  String dropped(String counts) => _t('丢弃 $counts', 'Dropped $counts');
+  String get launcherEvents => _t('启动器', 'Launcher');
+  String gameEvents(String range) => _t('游戏 · $range', 'Game · $range');
+  String operationFilter(String id) => _t('操作 $id', 'Operation $id');
+  String get showAllOperations => _t('显示全部操作', 'Show all operations');
+  String get onlyThisOperation => _t('只看此操作', 'Only this operation');
+  String get eventFailed => _t('失败', 'Failed');
+  String get eventCancelled => _t('已取消', 'Cancelled');
   String get detailedAudioDiagnostics =>
       _t('详细音频诊断', 'Detailed audio diagnostics');
   String get detailedAudioDiagnosticsSubtitle => _t(
@@ -401,7 +420,7 @@ class AppStrings {
   String get logsNotLoaded => _t('日志尚未加载', 'Logs not loaded');
   String get noMatchingEvents =>
       _t('当前筛选条件下没有事件', 'No events match the filters');
-  String get copyEventJson => _t('复制单条事件 JSON', 'Copy event JSON');
+  String get copyEventJson => _t('复制 JSON', 'Copy JSON');
 
   // Import confirmations.
   String get backUpSaveTitle =>
