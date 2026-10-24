@@ -14,7 +14,12 @@ const X = 2;
 const Y = 3;
 const LB = 4;
 const RB = 5;
+const LT = 6;
+const RT = 7;
 const START = 9;
+const UP = 12;
+const DOWN = 13;
+const LEFT = 14;
 const RIGHT = 15;
 
 class TestMouseEvent extends Event {
@@ -45,11 +50,16 @@ function createPad() {
   };
 }
 
-// A level with three seed packets. The card keys select a packet the way
-// UIInGame.onKeyDown does.
+// A level with three seed packets. The engine hands every key event to the
+// level's listeners; the card keys select a packet the way UIInGame.onKeyDown
+// does.
 function createLevel({selectable = [true, true, true]} = {}) {
-  const KeyCode = {KEY_D: 68, KEY_F: 70, KEY_Q: 81, SPACE: 32};
-  const KeyBinds = {Game_Shovel: 'KEY_D', Game_Plantfood: 'KEY_F', Game_Pause: 'SPACE'};
+  const KeyCode = {KEY_A: 65, KEY_D: 68, KEY_F: 70, KEY_Q: 81, KEY_S: 83, KEY_W: 87,
+    KEY_X: 88, SPACE: 32, ALT_LEFT: 18};
+  const KeyBinds = {Game_Shovel: 'KEY_D', Game_Plantfood: 'KEY_F', Game_Pause: 'SPACE',
+    Rhythm_PhatBeet1: 'DIGIT_2', Rhythm_PhatBeet2: 'KEY_W', Rhythm_PhatBeet3: 'KEY_S',
+    Rhythm_PhatBeet4: 'KEY_X', Rhythm_PhatBeet5: 'ALT_LEFT', AirRaid_W: 'KEY_W',
+    AirRaid_S: 'KEY_S', AirRaid_A: 'KEY_A', AirRaid_D: 'KEY_D'};
   for (let card = 1; card <= 8; card++) {
     KeyCode[`DIGIT_${card}`] = 48 + card;
     KeyBinds[`Game_Card${card}`] = `DIGIT_${card}`;
@@ -78,8 +88,17 @@ function createLevel({selectable = [true, true, true]} = {}) {
         this.type = type;
       }
     },
+    input: {
+      _eventKeyboardList: [],
+      _dispatchOrPushEvent(event, list) {
+        assert.equal(list, this._eventKeyboardList);
+        if (event.type === 'keydown') ui.onKeyDown(event);
+        else ui.onKeyUp(event);
+      },
+    },
   };
-  return {ui, cc, KeyBinds, keys};
+  const LevelPlay = {gaming: true, AirRaidProps: null, component: {rhythmGameProps: null}};
+  return {ui, cc, KeyBinds, LevelPlay, keys};
 }
 
 function createHarness({pads = [createPad()], getGamepads = true, level = createLevel(),
@@ -122,6 +141,7 @@ function createHarness({pads = [createPad()], getGamepads = true, level = create
   const modules = new Map([
     ['chunks:///_virtual/UI.ts', {UIInGame: {component: level.ui}}],
     ['chunks:///_virtual/KeyListener.ts', {KeyListener: {KeyBinds: level.KeyBinds}}],
+    ['chunks:///_virtual/levelController.ts', {LevelPlay: level.LevelPlay}],
     ['cc', level.cc],
   ]);
   for (const id of missing) modules.delete(id);
@@ -409,6 +429,105 @@ function createHarness({pads = [createPad()], getGamepads = true, level = create
   const brokeH = createHarness({level: broke});
   brokeH.tap(RB);
   assert.deepEqual(broke.keys, [], 'nothing is sent when no packet can be taken');
+}
+
+// Rhythm: while a rhythm level plays, each row of buttons holds its lane's
+// key through the engine, top to bottom, for as long as any button of the
+// row is down. The cursor hides, A and B no longer click, X and Y take no
+// tools, and Start still pauses.
+{
+  const level = createLevel();
+  level.LevelPlay.component.rhythmGameProps = {};
+  const h = createHarness({level});
+  const lanes = () => level.keys.splice(0).map(([kind, code]) => `${kind} ${code}`);
+  h.button(LB, true);
+  h.frame();
+  h.frame();
+  assert.deepEqual(lanes(), ['down 50'], 'LB holds lane 1 once');
+  assert.equal(h.cursor(), null, 'a rhythm level shows no cursor');
+  h.button(LB, false);
+  h.frame();
+  assert.deepEqual(lanes(), ['up 50']);
+
+  h.button(LEFT, true);
+  h.frame();
+  h.button(B, true);
+  h.frame();
+  h.button(LEFT, false);
+  h.frame();
+  assert.deepEqual(lanes(), ['down 83'], 'lane 3 stays held while B is down');
+  h.button(B, false);
+  h.frame();
+  assert.deepEqual(lanes(), ['up 83']);
+
+  for (const [index, code] of [[RB, 50], [Y, 87], [UP, 87], [X, 83], [RIGHT, 83],
+    [A, 88], [DOWN, 88], [LT, 18], [RT, 18]]) {
+    h.tap(index);
+    assert.deepEqual(lanes(), [`down ${code}`, `up ${code}`], `button ${index}`);
+  }
+  assert.deepEqual(h.take().filter(([type]) => type !== 'mousemove'), [],
+    'no button clicks in a rhythm level');
+
+  h.tap(START);
+  assert.deepEqual(lanes(), ['down 32', 'up 32'], 'Start pauses');
+  assert.deepEqual(h.tips.map(([text]) => text.split('：')[0]), ['手柄', '节奏关从上到下五路'],
+    'the first rhythm level lists the lanes');
+
+  // Pausing hands the controller back to the cursor and lets go of lanes.
+  h.button(DOWN, true);
+  h.frame();
+  level.ui.paused = true;
+  h.frame();
+  assert.deepEqual(lanes(), ['down 88', 'up 88']);
+  assert.notEqual(h.cursor(), null);
+  h.button(DOWN, false);
+  h.tap(A);
+  assert.deepEqual(h.take().filter(([type]) => type !== 'mousemove').map(([type]) => type),
+    ['mousedown', 'mouseup'], 'the pause menu takes clicks');
+  assert.equal(h.errors.length, 0);
+}
+
+// Air Raid: while the plane follows the mouse, the stick flies it through a
+// hidden cursor and the D-pad moves at full speed. Once the plane takes
+// keys, the stick and D-pad hold W/A/S/D and the cursor stays put.
+{
+  const level = createLevel();
+  level.LevelPlay.AirRaidProps = {mouse_binded: true};
+  const h = createHarness({level});
+  h.pads[0].axes[0] = 1;
+  h.frame();
+  h.frame();
+  assert.equal(h.cursor(), null, 'the plane is the pointer');
+  assert.deepEqual(h.take().at(-1), ['mousemove', 600, 300, 0, 0]);
+  h.pads[0].axes[0] = 0;
+  h.button(RIGHT, true);
+  h.frame();
+  h.button(RIGHT, false);
+  assert.deepEqual(h.take().at(-1), ['mousemove', 700, 300, 0, 0], 'the D-pad flies at full speed');
+
+  level.LevelPlay.AirRaidProps.mouse_binded = false;
+  const steer = () => level.keys.splice(0).map(([kind, code]) => `${kind} ${code}`);
+  h.pads[0].axes = [-1, 0, 0, 0];
+  h.frame();
+  h.frame();
+  assert.deepEqual(steer(), ['down 65'], 'the stick holds A');
+  h.pads[0].axes = [0.8, -0.8, 0, 0];
+  h.frame();
+  assert.deepEqual(steer(), ['down 87', 'up 65', 'down 68'], 'a diagonal holds two keys');
+  h.pads[0].axes = [0.3, 0, 0, 0];
+  h.frame();
+  assert.deepEqual(steer(), ['up 87', 'up 68'], 'a small tilt holds nothing');
+  h.button(DOWN, true);
+  h.frame();
+  assert.deepEqual(steer(), ['down 83'], 'the D-pad holds keys too');
+  assert.deepEqual(h.take().filter(([type]) => type === 'mousemove'), [],
+    'the cursor stays put while the plane takes keys');
+  assert.notEqual(h.cursor(), null);
+
+  level.LevelPlay.AirRaidProps.mouse_binded = true;
+  h.frame();
+  assert.deepEqual(steer(), ['up 83'], 'switching back lets go of the keys');
+  assert.equal(h.errors.length, 0);
 }
 
 // Outside a level the shortcut buttons do nothing.
