@@ -8,6 +8,12 @@
   // is still in the foreground, so WebKit deactivates the session itself;
   // resume()/play() calls wait while it is inactive, and everything resumes
   // once it is active, when WebKit activates the session again.
+  // On the session WebKit picks by default ("auto"), the game's audio can run
+  // and still be silent: every package in an app linked against the iOS 27
+  // SDK, and the 0.16 Web Audio engine with older SDKs too. The game
+  // asks for playback, as the <audio> playback it replaced did.
+  const session = window.navigator.audioSession;
+  if (session) session.type = "playback";
   const Base = window.AudioContext;
   const Media = window.HTMLMediaElement;
   if (!Base || !Media) return;

@@ -7,7 +7,7 @@ const source = fs.readFileSync(
   'utf8',
 );
 
-function run() {
+function run(navigator = {audioSession: {type: 'auto'}}) {
   const calls = [];
   class AudioContext {
     constructor(options) {
@@ -25,7 +25,7 @@ function run() {
     play() { calls.push('play'); this.paused = false; return Promise.resolve(); }
     pause() { calls.push('pause'); this.paused = true; }
   }
-  const window = {AudioContext, webkitAudioContext: AudioContext, HTMLMediaElement};
+  const window = {AudioContext, webkitAudioContext: AudioContext, HTMLMediaElement, navigator};
   vm.runInNewContext(source, {window, Promise});
   return {window, calls, Base: AudioContext, Media: HTMLMediaElement};
 }
@@ -34,6 +34,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 {
   const {window, calls, Base, Media} = run();
+  assert.equal(window.navigator.audioSession.type, 'playback', 'the page asks for a playback session');
   const context = new window.AudioContext({sampleRate: 32000});
   assert.ok(context instanceof Base, 'tracked contexts stay AudioContexts');
   assert.deepEqual(context.options, {sampleRate: 32000});
@@ -63,7 +64,8 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 }
 
 {
-  const {window, calls} = run();
+  // WebKit before the Audio Session API has no navigator.audioSession.
+  const {window, calls} = run({});
   const context = new window.AudioContext();
   context.state = 'suspended';
   window.__gardendlessSetSceneActive(false);
