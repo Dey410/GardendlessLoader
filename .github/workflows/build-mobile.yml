@@ -206,11 +206,14 @@ jobs:
       sha256: ${{ steps.ios_artifact.outputs.sha256 }}
       host_abi: ${{ steps.ios_artifact.outputs.host_abi }}
     name: Build unsigned iOS IPA
-    runs-on: macos-latest
+    runs-on: xcode-27
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select Xcode 27.1
+        run: sudo xcode-select -s /Applications/Xcode_27.1.app
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
