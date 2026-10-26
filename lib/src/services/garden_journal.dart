@@ -39,7 +39,8 @@ class ImportRecord {
       };
 }
 
-/// Play time and import history kept on this device only.
+/// Play time, import history and the launcher themes they earned, kept on
+/// this device only.
 class GardenJournal {
   const GardenJournal({
     this.totalPlayMs = 0,
@@ -49,6 +50,7 @@ class GardenJournal {
     this.lastPlayMs = 0,
     this.lastSaveExportAt,
     this.imports = const <ImportRecord>[],
+    this.unlockedThemes = const <String>{},
   });
 
   factory GardenJournal.fromJson(Map<String, dynamic> json) {
@@ -67,6 +69,9 @@ class GardenJournal {
               .map(ImportRecord.fromJson)
               .toList(growable: false)
           : const <ImportRecord>[],
+      unlockedThemes: {
+        ...(json['unlockedThemes'] as List? ?? const []).whereType<String>(),
+      },
     );
   }
 
@@ -88,6 +93,9 @@ class GardenJournal {
   /// Oldest first, at most [maxImports].
   final List<ImportRecord> imports;
 
+  /// Ids of the launcher themes earned so far, kept for good.
+  final Set<String> unlockedThemes;
+
   GardenJournal recordPlay({
     required DateTime finishedAt,
     required int playedMs,
@@ -100,6 +108,7 @@ class GardenJournal {
       lastPlayMs: playedMs,
       lastSaveExportAt: lastSaveExportAt,
       imports: imports,
+      unlockedThemes: unlockedThemes,
     );
   }
 
@@ -116,6 +125,7 @@ class GardenJournal {
       lastPlayMs: lastPlayMs,
       lastSaveExportAt: saves.last.exportedAt,
       imports: imports,
+      unlockedThemes: unlockedThemes,
     );
   }
 
@@ -130,6 +140,20 @@ class GardenJournal {
       lastSaveExportAt: lastSaveExportAt,
       imports:
           all.length > maxImports ? all.sublist(all.length - maxImports) : all,
+      unlockedThemes: unlockedThemes,
+    );
+  }
+
+  GardenJournal unlockThemes(Iterable<String> ids) {
+    return GardenJournal(
+      totalPlayMs: totalPlayMs,
+      sessionCount: sessionCount,
+      longestPlayMs: longestPlayMs,
+      lastPlayedAt: lastPlayedAt,
+      lastPlayMs: lastPlayMs,
+      lastSaveExportAt: lastSaveExportAt,
+      imports: imports,
+      unlockedThemes: {...unlockedThemes, ...ids},
     );
   }
 
@@ -142,6 +166,7 @@ class GardenJournal {
         'lastPlayMs': lastPlayMs,
         'lastSaveExportAt': lastSaveExportAt?.toUtc().toIso8601String(),
         'imports': [for (final record in imports) record.toJson()],
+        'unlockedThemes': unlockedThemes.toList(),
       };
 }
 

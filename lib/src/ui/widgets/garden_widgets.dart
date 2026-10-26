@@ -564,7 +564,12 @@ class SwitchRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 16),
-              Switch(key: switchKey, value: value, onChanged: onChanged),
+              // The row takes focus and toggles; a second stop on the
+              // switch would only repeat it.
+              ExcludeFocus(
+                child:
+                    Switch(key: switchKey, value: value, onChanged: onChanged),
+              ),
             ],
           ),
         ),

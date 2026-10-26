@@ -264,11 +264,22 @@ class _StatusPanel extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: GardenButton(
-              key: const ValueKey('copy-diagnostics-button'),
-              label: strings.copyDiagnostics,
-              icon: Icons.copy_rounded,
+              key: const ValueKey('export-logs-button'),
+              label: strings.exportLogs,
+              icon: Icons.ios_share_rounded,
               tone: GardenButtonTone.primary,
-              onPressed: actions.copyDiagnostics,
+              onPressed: actions.exportLogs,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: GardenButton(
+              key: const ValueKey('copy-summary-button'),
+              label: strings.copySummary,
+              icon: Icons.copy_rounded,
+              compact: true,
+              onPressed: actions.copySummary,
             ),
           ),
           const SizedBox(height: 8),
@@ -320,9 +331,11 @@ class _StatusPanel extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 220),
                 child: SingleChildScrollView(
-                  child: SelectableText(
-                    controller.buildLogText(minimumLevel: minimumLevel),
-                    style: GardenType.mono(10.5, color: palette.ink),
+                  child: ExcludeFocusTraversal(
+                    child: SelectableText(
+                      controller.buildLogText(minimumLevel: minimumLevel),
+                      style: GardenType.mono(10.5, color: palette.ink),
+                    ),
                   ),
                 ),
               ),
@@ -467,9 +480,11 @@ class _ToolShed extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 220),
               child: SingleChildScrollView(
-                child: SelectableText(
-                  controller.toolShedSnapshot(),
-                  style: GardenType.mono(10.5, color: palette.ink),
+                child: ExcludeFocusTraversal(
+                  child: SelectableText(
+                    controller.toolShedSnapshot(),
+                    style: GardenType.mono(10.5, color: palette.ink),
+                  ),
                 ),
               ),
             ),
@@ -908,25 +923,31 @@ class _EventDetail extends StatelessWidget {
             const SizedBox(height: 8),
           ],
           if (message.isNotEmpty) ...[
-            SelectableText(
-              message,
-              style:
-                  TextStyle(color: palette.ink, fontSize: 12.5, height: 1.45),
+            ExcludeFocusTraversal(
+              child: SelectableText(
+                message,
+                style:
+                    TextStyle(color: palette.ink, fontSize: 12.5, height: 1.45),
+              ),
             ),
             const SizedBox(height: 8),
           ],
-          SelectableText(
-            facts.join('\n'),
-            style: GardenType.mono(11, color: palette.inkMuted),
+          ExcludeFocusTraversal(
+            child: SelectableText(
+              facts.join('\n'),
+              style: GardenType.mono(11, color: palette.inkMuted),
+            ),
           ),
           if (errorText.isNotEmpty) ...[
             const SizedBox(height: 8),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 200),
               child: SingleChildScrollView(
-                child: SelectableText(
-                  errorText,
-                  style: GardenType.mono(10.5, color: palette.ink),
+                child: ExcludeFocusTraversal(
+                  child: SelectableText(
+                    errorText,
+                    style: GardenType.mono(10.5, color: palette.ink),
+                  ),
                 ),
               ),
             ),

@@ -2,6 +2,7 @@ import { AbilityConstant, Want } from '@kit.AbilityKit';
 import { FlutterAbility, FlutterEngine } from '@ohos/flutter_ohos';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
 import { ExternalBrowserPlugin } from '../plugins/ExternalBrowserPlugin';
+import { GamepadPlugin } from '../plugins/GamepadPlugin';
 import { AppLoggerPlugin } from '../plugins/AppLoggerPlugin';
 import { GameHostPlugin } from '../plugins/GameHostPlugin';
 import { ResourceZipImporterPlugin } from '../plugins/ResourceZipImporterPlugin';
@@ -39,5 +40,6 @@ export default class EntryAbility extends FlutterAbility {
     this.addPlugin(new GameHostPlugin())
     this.addPlugin(new ResourceZipImporterPlugin())
     this.addPlugin(new ShortcutPlugin())
+    this.addPlugin(new GamepadPlugin())
   }
 }

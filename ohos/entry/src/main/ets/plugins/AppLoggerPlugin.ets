@@ -1,4 +1,8 @@
 import common from '@ohos.app.ability.common';
+import { uniformTypeDescriptor as utd } from '@kit.ArkData';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { fileUri } from '@kit.CoreFileKit';
+import { systemShare } from '@kit.ShareKit';
 import {
   FlutterPlugin,
   FlutterPluginBinding,
@@ -19,6 +23,7 @@ interface AppLoggerInitializeResult {
 
 export class AppLoggerPlugin implements FlutterPlugin, AbilityAware, MethodCallHandler {
   private channel: MethodChannel | null = null;
+  private context: common.UIAbilityContext | null = null;
 
   getUniqueClassName(): string {
     return 'AppLoggerPlugin';
@@ -35,10 +40,13 @@ export class AppLoggerPlugin implements FlutterPlugin, AbilityAware, MethodCallH
   }
 
   onAttachedToAbility(binding: AbilityPluginBinding): void {
-    appLogStore.initialize(binding.getAbility().context as common.Context);
+    this.context = binding.getAbility().context;
+    appLogStore.initialize(this.context);
   }
 
-  onDetachedFromAbility(): void {}
+  onDetachedFromAbility(): void {
+    this.context = null;
+  }
 
   onMethodCall(call: MethodCall, result: MethodResult): void {
     if (call.method === 'initialize') {
@@ -73,6 +81,24 @@ export class AppLoggerPlugin implements FlutterPlugin, AbilityAware, MethodCallH
     }
     if (call.method === 'deleteHistory') {
       appLogStore.deleteHistory().then((): void => result.success(null));
+      return;
+    }
+    if (call.method === 'share') {
+      if (this.context === null) {
+        result.error('log_share_failed', 'The launcher ability is not attached', null);
+        return;
+      }
+      const path = call.argument('path') as string;
+      const data = new systemShare.SharedData({
+        utd: utd.UniformDataType.PLAIN_TEXT,
+        uri: fileUri.getUriFromPath(path),
+        title: path.substring(path.lastIndexOf('/') + 1),
+      });
+      new systemShare.ShareController(data).show(this.context, {
+        previewMode: systemShare.SharePreviewMode.DETAIL,
+        selectionMode: systemShare.SelectionMode.SINGLE,
+      }).then((): void => result.success(null))
+        .catch((error: BusinessError): void => result.error('log_share_failed', error.message, null));
       return;
     }
     if (call.method === 'endSession') {

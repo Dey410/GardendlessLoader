@@ -52,10 +52,19 @@
     keys: "chunks:///_virtual/KeyListener.ts",
     level: "chunks:///_virtual/levelController.ts"
   };
-  const cursorSvg =
-    "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'>" +
-    "<path d='M3 2v17l4.5-4.2 3.1 6.8 3-1.3-3.1-6.7 6.1-.2z' fill='#fff'" +
-    " stroke='#000' stroke-width='1.6' stroke-linejoin='round'/></svg>";
+  // A frosted grey dot like the iPadOS pointer, centred on the pointer: the
+  // controller aims at whole objects, not pixels. A light rim and a soft
+  // shadow keep it visible on bright lawns and dark nights alike.
+  const cursorSize = 20;
+  const cursorStyle =
+    "position:fixed;left:0;top:0;width:" + cursorSize + "px;height:" +
+    cursorSize + "px;box-sizing:border-box;border-radius:50%;" +
+    "background:rgba(99,99,102,.55);border:1px solid rgba(255,255,255,.6);" +
+    "box-shadow:0 1px 6px rgba(0,0,0,.28);" +
+    "-webkit-backdrop-filter:blur(6px) saturate(150%);" +
+    "backdrop-filter:blur(6px) saturate(150%);" +
+    "transition:scale .2s cubic-bezier(.3,1.5,.5,1);" +
+    "pointer-events:none;z-index:2147483647;";
   let frame = null;
   let lastTime = null;
   let pressed = [];
@@ -87,9 +96,9 @@
   // Cursor -------------------------------------------------------------
 
   function placeCursor() {
-    // The arrow's tip is at (3, 2).
+    const offset = cursorSize / 2;
     cursorNode.style.transform =
-      "translate(" + (cursor.x - 3) + "px," + (cursor.y - 2) + "px)";
+      "translate(" + (cursor.x - offset) + "px," + (cursor.y - offset) + "px)";
   }
 
   // A rhythm level and a plane flown by the mouse show no pointer.
@@ -114,10 +123,7 @@
     if (shown) return;
     if (!cursorNode) {
       cursorNode = document.createElement("div");
-      cursorNode.style.cssText =
-        "position:fixed;left:0;top:0;width:24px;height:24px;" +
-        "pointer-events:none;z-index:2147483647;";
-      cursorNode.innerHTML = cursorSvg;
+      cursorNode.style.cssText = cursorStyle;
       (document.body || document.documentElement).appendChild(cursorNode);
     }
     shown = true;
@@ -175,6 +181,8 @@
   function setButton(canvas, side, down) {
     if (held[side] === down) return;
     held[side] = down;
+    // The dot gives a little under a held button, like a pressed pointer.
+    cursorNode.style.scale = held.left || held.right ? "0.8" : "1";
     mouse(canvas, down ? "mousedown" : "mouseup", side === "left" ? 0 : 2);
   }
 

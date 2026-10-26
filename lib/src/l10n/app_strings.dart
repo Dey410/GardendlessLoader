@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import '../game_host/game_host.dart';
 import '../models.dart';
 import '../services/app_settings_store.dart';
+import '../services/garden_journal.dart';
+import '../services/launcher_themes.dart';
 
 /// A text with its Chinese and English wording.
 class LocalizedText {
@@ -92,9 +94,15 @@ class AppStrings {
   // Toasts and dialogs owned by the home page.
   String cannotStartGame(String reason) =>
       _t('无法启动游戏：$reason', 'Cannot start the game: $reason');
+  String withCurrentVersion(String reason, String version) =>
+      _t('$reason（当前 $version）', '$reason (current: $version)');
   String get resourceRootCopied =>
       _t('资源根目录已复制', 'Resource folder path copied');
-  String get diagnosticsCopied => _t('日志信息已复制', 'Diagnostics copied');
+  String get summaryCopied => _t('诊断摘要已复制', 'Summary copied');
+  String cannotCopySummary(String reason) =>
+      _t('无法复制摘要：$reason', 'Cannot copy the summary: $reason');
+  String cannotExportLogs(String reason) =>
+      _t('无法导出日志：$reason', 'Cannot export the logs: $reason');
   String get logEventCopied => _t('单条事件 JSON 已复制', 'Event JSON copied');
   String get deleteLogHistoryTitle => _t('删除历史日志？', 'Delete log history?');
   String get deleteLogHistoryMessage => _t(
@@ -297,10 +305,63 @@ class AppStrings {
 
   // Settings page: appearance.
   String get appearance => _t('外观', 'Appearance');
-  String get theme => _t('主题', 'Theme');
+  String get brightness => _t('深浅色', 'Brightness');
   String get followSystem => _t('跟随系统', 'System');
   String get lightTheme => _t('浅色', 'Light');
   String get darkTheme => _t('深色', 'Dark');
+  String get theme => _t('主题', 'Theme');
+  String get autoTheme => _t('自动', 'Auto');
+  String get autoThemeDetail => _t(
+        '跟随游戏的节日活动，平时用花园配色',
+        "Follows the game's festivals, and Garden the rest of the year",
+      );
+  String get themeUnlocked => _t('已解锁', 'Unlocked');
+
+  /// What unlocks a theme and, for a journal goal, how far the player is.
+  String themeUnlock(ThemeUnlock unlock, GardenJournal journal,
+      {DateTime? nextFestivalDay}) {
+    return switch (unlock) {
+      FromStart() => themeUnlocked,
+      DuringFestival() => [
+          _t('节日活动期间打开启动器解锁', "Open the loader during the game's event"),
+          if (nextFestivalDay != null)
+            _t('下次 ${shortDate(nextFestivalDay)}',
+                'next on ${shortDate(nextFestivalDay)}'),
+        ].join(' · '),
+      JournalGoal(:final measure, :final goal) => switch (measure) {
+          JournalMeasure.totalPlay => _t(
+              '累计游玩 ${playDuration(Duration(milliseconds: goal))}解锁 · '
+                  '已玩 ${playDuration(Duration(milliseconds: measure.of(journal)))}',
+              'Play ${playDuration(Duration(milliseconds: goal))} in total · '
+                  '${playDuration(Duration(milliseconds: measure.of(journal)))} '
+                  'so far',
+            ),
+          JournalMeasure.longestPlay => _t(
+              '单次连续游玩 ${playDuration(Duration(milliseconds: goal))}解锁 · '
+                  '最长一次 ${playDuration(Duration(milliseconds: measure.of(journal)))}',
+              'Play ${playDuration(Duration(milliseconds: goal))} in one go · '
+                  'longest so far '
+                  '${playDuration(Duration(milliseconds: measure.of(journal)))}',
+            ),
+          JournalMeasure.gameVersions => _t(
+              '导入 $goal 个不同的游戏版本解锁 · 已有 ${measure.of(journal)} 个',
+              'Import $goal different game versions · '
+                  '${measure.of(journal)} so far',
+            ),
+        },
+    };
+  }
+
+  String themesUnlocked(List<LauncherTheme> themes) {
+    final names = themes.map((theme) => inGame(theme.name));
+    return _t(
+      '解锁了新主题：${names.join('、')}，可在设置中换上',
+      themes.length == 1
+          ? 'New theme unlocked: ${names.single}. Pick it in Settings'
+          : 'New themes unlocked: ${names.join(', ')}. Pick them in Settings',
+    );
+  }
+
   String get language => _t('语言', 'Language');
   String get reduceMotion => _t('减少动效', 'Reduce motion');
   String get reduceMotionSubtitle => _t(
@@ -401,7 +462,8 @@ class AppStrings {
   String logsDropped(int count) => _t('丢弃 $count 条', 'Dropped $count');
   String get showEvent => _t('查看', 'Show');
   String get refreshLogs => _t('刷新', 'Refresh');
-  String get copyDiagnostics => _t('复制诊断信息', 'Copy diagnostics');
+  String get exportLogs => _t('导出日志', 'Export logs');
+  String get copySummary => _t('复制摘要', 'Copy summary');
   String get deleteHistory => _t('删除历史', 'Delete history');
   String get launcherEvents => _t('启动器', 'Launcher');
   String gameEvents(String range) => _t('游戏 · $range', 'Game · $range');

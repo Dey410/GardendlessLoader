@@ -11,6 +11,7 @@ import 'src/logging/app_logger.dart';
 import 'src/logging/log_event_catalog.dart';
 import 'src/logging/native_app_logger.dart';
 import 'src/services/app_settings_store.dart';
+import 'src/ui/gamepad_navigation.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/theme/garden_theme.dart';
 
@@ -109,6 +110,7 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
       outcome: LogOutcome.observed,
       context: <String, Object?>{'state': state.name},
     );
+    if (state == AppLifecycleState.resumed) _controller.appResumed();
   }
 
   @override
@@ -120,15 +122,15 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
         debugShowCheckedModeBanner: false,
         theme: buildGardenTheme(
           Brightness.light,
-          accent: switch (_controller.seasonalTheme) {
-            final theme? => Color(theme.accent),
+          accent: switch (_controller.launcherTheme.accent) {
+            final accent? => Color(accent),
             null => null,
           },
         ),
         darkTheme: buildGardenTheme(
           Brightness.dark,
-          accent: switch (_controller.seasonalTheme) {
-            final theme? => Color(theme.accentDark ?? theme.accent),
+          accent: switch (_controller.launcherTheme.accentDark) {
+            final accent? => Color(accent),
             null => null,
           },
         ),
@@ -145,6 +147,7 @@ class _GardendlessLoaderAppState extends State<GardendlessLoaderApp>
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
+        builder: (context, navigator) => GamepadNavigation(child: navigator!),
         home: home,
       ),
       child: HomePage(controller: _controller),

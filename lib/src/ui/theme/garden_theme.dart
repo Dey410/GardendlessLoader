@@ -63,14 +63,14 @@ class GardenPalette extends ThemeExtension<GardenPalette> {
 
   bool get isDark => brightness == Brightness.dark;
 
-  /// This palette with a different accent; text on it turns dark or light to
-  /// stay readable.
+  /// This palette with a different accent that also tints the surfaces;
+  /// text on the accent turns dark or light to stay readable.
   GardenPalette withAccent(Color value) => GardenPalette(
         brightness: brightness,
-        background: background,
-        surface: surface,
-        surfaceMuted: surfaceMuted,
-        border: border,
+        background: Color.lerp(background, value, isDark ? 0.09 : 0.1)!,
+        surface: Color.lerp(surface, value, isDark ? 0.07 : 0.035)!,
+        surfaceMuted: Color.lerp(surfaceMuted, value, isDark ? 0.1 : 0.09)!,
+        border: Color.lerp(border, value, isDark ? 0.15 : 0.16)!,
         ink: ink,
         inkMuted: inkMuted,
         inkFaint: inkFaint,
@@ -169,7 +169,8 @@ class GardenType {
       );
 }
 
-/// The launcher theme; [accent], from a seasonal theme, replaces the green.
+/// The launcher theme; [accent], from a launcher theme, replaces the green
+/// and tints the surfaces.
 ThemeData buildGardenTheme(Brightness brightness, {Color? accent}) {
   final standard =
       brightness == Brightness.dark ? GardenPalette.dark : GardenPalette.light;

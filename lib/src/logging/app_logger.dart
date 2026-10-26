@@ -131,6 +131,9 @@ abstract interface class AppLogger {
   Future<void> flush({Duration timeout = const Duration(milliseconds: 500)});
 
   Future<void> deleteHistory();
+
+  /// Opens the system share sheet with the file at [path].
+  Future<void> share(String path);
 }
 
 class LogSanitizer {

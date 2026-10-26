@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -14,6 +15,7 @@ import 'game_host/game_session_store.dart';
 import 'l10n/app_strings.dart';
 import 'logging/app_logger.dart';
 import 'logging/log_event_catalog.dart';
+import 'logging/log_history.dart';
 import 'models.dart';
 import 'services/about_content_service.dart';
 import 'services/announcement_service.dart';
@@ -25,6 +27,7 @@ import 'services/garden_journal.dart';
 import 'services/game_update_check_service.dart';
 import 'services/import_service.dart';
 import 'services/import_progress_meter.dart';
+import 'services/launcher_themes.dart';
 import 'services/manifest_store.dart';
 import 'services/resource_validator.dart';
 import 'services/resource_picker_service.dart';
@@ -79,7 +82,6 @@ class AppController extends ChangeNotifier {
   );
   ImportProgress _importProgress = ImportProgress.idle;
   Announcement? _announcement;
-  SeasonalTheme? _seasonalTheme;
   GameEventCalendar? _gameEvents;
   LauncherLinks _links = const LauncherLinks();
   ({String from, String to})? _versionUpgrade;
@@ -133,14 +135,21 @@ class AppController extends ChangeNotifier {
   Announcement? get announcement => _announcement;
   LauncherLinks get links => _links;
 
-  /// The remote seasonal theme while today is within its dates; otherwise
-  /// the look of the game's own event today.
-  SeasonalTheme? get seasonalTheme {
-    final now = DateTime.now();
-    final remote = _seasonalTheme;
-    if (remote != null && remote.isActiveOn(now)) return remote;
-    return _gameEvents?.eventOn(now)?.themeOn(now);
+  /// The theme the launcher wears: the one the player picked, or on auto
+  /// the theme of the game's festival today and otherwise the garden.
+  LauncherTheme get launcherTheme {
+    final picked = LauncherTheme.byId(_appSettings.launcherTheme);
+    if (picked != null && picked.unlockedIn(_journal)) return picked;
+    return LauncherTheme.forEvent(gameEvent) ?? LauncherTheme.garden;
   }
+
+  /// Id of the theme the player picked; null follows the festivals.
+  String? get pickedLauncherTheme => _appSettings.launcherTheme;
+
+  /// The next day the game shows a festival of [unlock]; null without a
+  /// readable calendar.
+  DateTime? nextFestivalDay(DuringFestival unlock) =>
+      _gameEvents?.nextDayOf(unlock.events, DateTime.now());
 
   /// The game's own event today, from the calendar in the active package.
   GameEvent? get gameEvent => _gameEvents?.eventOn(DateTime.now());
@@ -356,7 +365,11 @@ class AppController extends ChangeNotifier {
       );
       await operation.run(initializeCore);
       if (quickLaunch) {
-        await startGame();
+        try {
+          await startGame();
+        } on PlatformException catch (error) {
+          _message = launchFailureMessage(error);
+        }
       }
     } catch (error) {
       _message = _failureMessage('app_initialization_failed', '$error');
@@ -405,6 +418,22 @@ class AppController extends ChangeNotifier {
       }
     }
     _gameEvents = calendar;
+    await _unlockThemes();
+    notifyListeners();
+  }
+
+  /// Back in the foreground, possibly on another day: today's festival may
+  /// have begun or ended.
+  void appResumed() {
+    if (!_initialized) return;
+    notifyListeners();
+    unawaited(_unlockThemes());
+  }
+
+  /// Saves the themes the journal or today's festival has earned.
+  Future<void> _unlockThemes() async {
+    if (LauncherTheme.newlyEarned(_journal, gameEvent).isEmpty) return;
+    await _saveJournal(_journal);
     notifyListeners();
   }
 
@@ -437,7 +466,6 @@ class AppController extends ChangeNotifier {
 
   void _applyFeed(AnnouncementFeed feed) {
     _announcement = feed.announcement;
-    _seasonalTheme = feed.theme;
     _links = _links.merge(feed.urls);
     notifyListeners();
   }
@@ -1161,23 +1189,55 @@ class AppController extends ChangeNotifier {
     return buffer.toString();
   }
 
-  String buildDiagnosticSummary() {
-    final buffer = StringBuffer(diagnostics().toCopyText());
-    final snapshot = _logSnapshot;
-    if (snapshot == null) {
-      return buffer.toString();
-    }
-    buffer
-      ..writeln()
-      ..writeln('Structured logs:')
-      ..writeln('appSessionId: ${snapshot.appSessionId}')
-      ..writeln('persisting: ${snapshot.persisting}')
-      ..writeln('degraded: ${snapshot.degraded}')
-      ..writeln('writeFailures: ${snapshot.writeFailureCount}');
-    for (final event in snapshot.events) {
-      buffer.writeln(jsonEncode(event));
-    }
-    return buffer.toString();
+  /// The diagnostics with the newest warnings and errors of every retained
+  /// run, short enough to paste into a GitHub issue.
+  Future<String> buildDiagnosticSummary() async {
+    final (header, logs) = await _logReport();
+    final events = await readLogHistory(logs.logDirectory!);
+    return '$header\n\n'
+        '${summarizeLogIssues(events, logSummaryLimit - header.length)}';
+  }
+
+  /// Writes the diagnostics and every retained run's events to a text file
+  /// and opens the system share sheet with it.
+  Future<void> exportLogs() async {
+    final (header, logs) = await _logReport();
+    final events = await readLogHistory(logs.logDirectory!);
+    final file = await writeLogExport(
+      'gardendless-logs-${logs.appSessionId}.txt',
+      [
+        header,
+        '',
+        'Events (every retained run, oldest first):',
+        ...events,
+        '',
+      ].join('\n'),
+    );
+    await _appLogger.share(file.path);
+  }
+
+  /// The report header, once every queued event is on disk: when it was made,
+  /// the diagnostics and the log store's health.
+  Future<(String, AppLogSnapshot)> _logReport() async {
+    await _appLogger.flush(timeout: const Duration(seconds: 2));
+    final logs = await _appLogger.loadSnapshot(limit: 1);
+    final now = DateTime.now();
+    final offset = now.timeZoneOffset;
+    String two(int value) => value.abs().toString().padLeft(2, '0');
+    final header = [
+      'Generated at: ${now.toIso8601String()}'
+          '${offset.isNegative ? '-' : '+'}'
+          '${two(offset.inHours)}:${two(offset.inMinutes % 60)}',
+      diagnostics().toCopyText(),
+      '',
+      'Structured logs:',
+      'appSessionId: ${logs.appSessionId}',
+      'persisting: ${logs.persisting}',
+      'writeFailures: ${logs.writeFailureCount}',
+      'dropped: ${jsonEncode(logs.droppedByLevel)}',
+      'retainedBytes: ${logs.totalBytes}',
+    ].join('\n');
+    return (header, logs);
   }
 
   Future<void> setWatermarkEnabled(bool enabled) {
@@ -1230,6 +1290,11 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  /// Picks an unlocked theme by id, or null to follow the festivals.
+  Future<void> setLauncherTheme(String? id) {
+    return _updateAppSettings(_appSettings.copyWith(launcherTheme: id));
+  }
+
   Future<void> setToolShedUnlocked(bool unlocked) {
     return _updateAppSettings(
       _appSettings.copyWith(toolShedUnlocked: unlocked),
@@ -1260,8 +1325,13 @@ class AppController extends ChangeNotifier {
       );
 
   /// The journal is a keepsake: failing to save it never fails the import or
-  /// launch that recorded it.
+  /// launch that recorded it. The themes it earns are unlocked with it.
   Future<void> _saveJournal(GardenJournal journal) async {
+    final earned = LauncherTheme.newlyEarned(journal, gameEvent);
+    if (earned.isNotEmpty) {
+      journal = journal.unlockThemes(earned.map((theme) => theme.id));
+      _message = LauncherMessage(AppStrings.current.themesUnlocked(earned));
+    }
     _journal = journal;
     try {
       await _journalStore?.write(journal);
@@ -1311,6 +1381,21 @@ class AppController extends ChangeNotifier {
         userErrorTitle(code, detail ?? code ?? 'unknown_error'),
         code,
       );
+
+  /// Why the platform refused to start the game; an outdated WebView also
+  /// names its current version.
+  LauncherMessage launchFailureMessage(PlatformException error) {
+    final strings = AppStrings.current;
+    final reason = userErrorTitle(error.code, error.message ?? error.code);
+    return LauncherMessage(
+      strings.cannotStartGame(
+        error.code == 'webview_unsupported'
+            ? strings.withCurrentVersion(reason, error.message!)
+            : reason,
+      ),
+      error.code,
+    );
+  }
 
   Future<void> _updateAppSettings(AppSettings settings) async {
     if (settings.toJson().toString() == _appSettings.toJson().toString()) {

@@ -38,7 +38,8 @@ class LauncherActions {
     required this.deferUpdate,
     required this.deferGameUpdate,
     required this.copyResourceRoot,
-    required this.copyDiagnostics,
+    required this.exportLogs,
+    required this.copySummary,
     required this.copyLogEvent,
     required this.deleteLogHistory,
     required this.toggleImportDetails,
@@ -52,7 +53,8 @@ class LauncherActions {
   final void Function(UpdateInfo update) deferUpdate;
   final void Function(GameUpdateInfo update) deferGameUpdate;
   final Future<void> Function() copyResourceRoot;
-  final Future<void> Function() copyDiagnostics;
+  final Future<void> Function() exportLogs;
+  final Future<void> Function() copySummary;
   final Future<void> Function(Map<String, Object?> event) copyLogEvent;
   final Future<void> Function() deleteLogHistory;
   final VoidCallback toggleImportDetails;

@@ -3,34 +3,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import '../models.dart';
-
 /// Text the game gives in both of its languages.
 typedef GameText = ({String zh, String en});
-
-/// The launcher's colours and badge for one of the game's events.
-typedef EventLook = ({int accent, int accentDark, String badge});
-
-/// The looks of the events the game ships; an event missing here still shows
-/// on the Play page, without changing the launcher's colours.
-const _eventLooks = <String, EventLook>{
-  'Halloween': (accent: 0xffea580c, accentDark: 0xfffb923c, badge: '🎃'),
-  'Lunar': (accent: 0xffdc2626, accentDark: 0xfff87171, badge: '🧧'),
-  'Lunar_Eve': (accent: 0xffdc2626, accentDark: 0xfff87171, badge: '🧨'),
-  'Feastivus_Before': (accent: 0xff15803d, accentDark: 0xff4ade80, badge: '🎄'),
-  'Feastivus_Eve': (accent: 0xff15803d, accentDark: 0xff4ade80, badge: '🎄'),
-  'Feastivus': (accent: 0xff15803d, accentDark: 0xff4ade80, badge: '🎄'),
-  'Feastivus_After': (accent: 0xff15803d, accentDark: 0xff4ade80, badge: '🎄'),
-  'Valentines': (accent: 0xffdb2777, accentDark: 0xfff472b6, badge: '💘'),
-  'Birthday': (accent: 0xff7c3aed, accentDark: 0xffa78bfa, badge: '🎂'),
-  'Easter': (accent: 0xff65a30d, accentDark: 0xffa3e635, badge: '🥚'),
-  'AprilFools': (accent: 0xffca8a04, accentDark: 0xfffacc15, badge: '🃏'),
-  'Stpatrick': (accent: 0xff16a34a, accentDark: 0xff4ade80, badge: '☘️'),
-  'Summer': (accent: 0xff0284c7, accentDark: 0xff38bdf8, badge: '🌙'),
-  'Harvest': (accent: 0xffb45309, accentDark: 0xfff59e0b, badge: '🌾'),
-  'Foodfight': (accent: 0xffe11d48, accentDark: 0xfffb7185, badge: '🍕'),
-  'Sportzball': (accent: 0xff2563eb, accentDark: 0xff60a5fa, badge: '🏈'),
-};
 
 /// One dated event of the game's own calendar.
 class GameEvent {
@@ -39,7 +13,6 @@ class GameEvent {
     required this.dates,
     required this.title,
     required this.description,
-    this.look,
   });
 
   final String name;
@@ -48,21 +21,6 @@ class GameEvent {
   final List<({int month, int day, bool lunar})> dates;
   final GameText title;
   final GameText description;
-  final EventLook? look;
-
-  /// The launcher theme for [day], or null for an event without a look.
-  SeasonalTheme? themeOn(DateTime day) {
-    final look = this.look;
-    if (look == null) return null;
-    final date = DateTime(day.year, day.month, day.day);
-    return SeasonalTheme(
-      from: date,
-      to: date,
-      accent: look.accent,
-      accentDark: look.accentDark,
-      badge: look.badge,
-    );
-  }
 }
 
 /// The game's event calendar (`json/Features/EventList`), the one its daily
@@ -125,6 +83,16 @@ class GameEventCalendar {
     return null;
   }
 
+  /// The first day from [now] on, within about a year, that the game shows
+  /// one of [names]; null when none falls in that time.
+  DateTime? nextDayOf(Set<String> names, DateTime now) {
+    for (var offset = 0; offset <= 366; offset++) {
+      final day = DateTime(now.year, now.month, now.day + offset);
+      if (names.contains(eventOn(day)?.name)) return day;
+    }
+    return null;
+  }
+
   static Map<String, dynamic>? _eventList(Object? value) {
     if (value is! List) return null;
     for (var i = 0; i + 1 < value.length; i++) {
@@ -157,7 +125,6 @@ class GameEventCalendar {
       dates: dates,
       title: title,
       description: description,
-      look: _eventLooks[name],
     );
   }
 

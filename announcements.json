@@ -1,12 +1,5 @@
 {
   "schemaVersion": 1,
-  "theme": {
-    "from": "2026-10-24",
-    "to": "2026-11-01",
-    "accent": "#ea580c",
-    "accentDark": "#fb923c",
-    "badge": "🎃"
-  },
   "urls": {
     "loaderGithub": "https://github.com/Dey410/GardendlessLoader",
     "gameGithub": "https://github.com/Gzh0821/pvzge_web",

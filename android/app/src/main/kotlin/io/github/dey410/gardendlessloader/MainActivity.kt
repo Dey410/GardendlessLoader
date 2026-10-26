@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import android.text.format.Formatter
+import android.webkit.WebSettings
 import androidx.webkit.WebViewCompat
 import io.github.dey410.gardendlessloader.game.GameActivity
 import io.github.dey410.gardendlessloader.logging.AppLogStore
@@ -58,6 +59,12 @@ class MainActivity : FlutterActivity() {
             val arguments = call.arguments as? Map<*, *>
             if (arguments == null) {
                 result.error("invalid_game_session", "缺少原生游戏会话", null)
+                return@setMethodCallHandler
+            }
+            val chromium = Regex("""Chrome/((\d+)[.\d]*)""")
+                .find(WebSettings.getDefaultUserAgent(this))
+            if (chromium != null && chromium.groupValues[2].toInt() < minWebViewMajor) {
+                result.error("webview_unsupported", chromium.groupValues[1], null)
                 return@setMethodCallHandler
             }
             try {
@@ -600,6 +607,12 @@ class MainActivity : FlutterActivity() {
         private const val pickZipRequestCode = 26410
         private const val zipCopyBufferSize = 64 * 1024
         private const val progressReportIntervalMs = 100L
+
+        /**
+         * Game packages call `AbortSignal.throwIfAborted()` while Cocos starts, which
+         * Chromium added in 100; an older WebView fails inside the game instead.
+         */
+        private const val minWebViewMajor = 100
 
         /** The classic ZIP entry limit; iOS rejects the ZIP64 archives that exceed it. */
         private const val maxZipEntries = 65_535

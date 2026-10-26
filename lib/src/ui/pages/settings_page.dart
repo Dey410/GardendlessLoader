@@ -6,6 +6,7 @@ import '../../game_host/game_host.dart';
 import '../../l10n/app_strings.dart';
 import '../../models.dart';
 import '../../services/app_settings_store.dart';
+import '../../services/launcher_themes.dart';
 import '../launcher_actions.dart';
 import '../theme/garden_theme.dart';
 import '../widgets/garden_widgets.dart';
@@ -345,6 +346,10 @@ class _AppearancePanel extends StatelessWidget {
           const SizedBox(height: 14),
           Text(strings.theme, style: groupLabel),
           const SizedBox(height: 8),
+          _ThemePicker(controller: controller),
+          const SizedBox(height: 14),
+          Text(strings.brightness, style: groupLabel),
+          const SizedBox(height: 8),
           GardenSegmented<ThemePreference>(
             values: ThemePreference.values,
             selected: controller.themePreference,
@@ -390,6 +395,165 @@ class _AppearancePanel extends StatelessWidget {
   }
 }
 
+/// Auto and the launcher themes as swatches. A tap on Auto or an unlocked
+/// theme wears it; a tap on a locked one only shows what unlocks it.
+class _ThemePicker extends StatefulWidget {
+  const _ThemePicker({required this.controller});
+
+  final AppController controller;
+
+  @override
+  State<_ThemePicker> createState() => _ThemePickerState();
+}
+
+class _ThemePickerState extends State<_ThemePicker> {
+  /// The swatch described below the grid; null is Auto.
+  late LauncherTheme? _shown =
+      LauncherTheme.byId(widget.controller.pickedLauncherTheme);
+
+  void _tap(LauncherTheme? theme) {
+    final controller = widget.controller;
+    setState(() => _shown = theme);
+    if (!controller.initialized) return;
+    if (theme == null || theme.unlockedIn(controller.journal)) {
+      controller.setLauncherTheme(theme?.id);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final palette = context.garden;
+    final strings = context.strings;
+    final journal = controller.journal;
+    final picked = controller.pickedLauncherTheme;
+    final shown = _shown;
+    final detail = switch (shown) {
+      null => '${strings.autoTheme} · ${strings.autoThemeDetail}',
+      _ when shown.unlockedIn(journal) =>
+        '${strings.inGame(shown.name)} · ${strings.themeUnlocked}',
+      _ => '${strings.inGame(shown.name)} · ${strings.themeUnlock(
+          shown.unlock,
+          journal,
+          nextFestivalDay: switch (shown.unlock) {
+            final DuringFestival unlock => controller.nextFestivalDay(unlock),
+            _ => null,
+          },
+        )}',
+    };
+    final garden =
+        palette.isDark ? GardenPalette.dark.accent : GardenPalette.light.accent;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _ThemeSwatch(
+              key: const ValueKey('launcher-theme-auto'),
+              label: strings.autoTheme,
+              color: palette.surfaceMuted,
+              selected: picked == null,
+              onTap: () => _tap(null),
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                size: 18,
+                color: palette.inkMuted,
+              ),
+            ),
+            for (final theme in LauncherTheme.all)
+              if (theme.unlockedIn(journal))
+                _ThemeSwatch(
+                  key: ValueKey('launcher-theme-${theme.id}'),
+                  label: strings.inGame(theme.name),
+                  color: Color(
+                    (palette.isDark ? theme.accentDark : theme.accent) ??
+                        garden.toARGB32(),
+                  ),
+                  selected: picked == theme.id,
+                  onTap: () => _tap(theme),
+                  child: Text(
+                    theme.badge ?? '',
+                    style: const TextStyle(fontSize: 17, height: 1),
+                  ),
+                )
+              else
+                _ThemeSwatch(
+                  key: ValueKey('launcher-theme-${theme.id}'),
+                  label: strings.inGame(theme.name),
+                  color: Color(
+                    (palette.isDark ? theme.accentDark : theme.accent)!,
+                  ).withValues(alpha: 0.22),
+                  selected: false,
+                  onTap: () => _tap(theme),
+                  child: Icon(
+                    Icons.lock_rounded,
+                    size: 15,
+                    color: palette.inkMuted,
+                  ),
+                ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          detail,
+          key: const ValueKey('launcher-theme-detail'),
+          style: TextStyle(
+            color: palette.inkMuted,
+            fontSize: 12.5,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ThemeSwatch extends StatelessWidget {
+  const _ThemeSwatch({
+    super.key,
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String label;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    return Pressable(
+      onTap: onTap,
+      semanticLabel: label,
+      tooltip: label,
+      scale: 0.92,
+      child: Container(
+        width: 42,
+        height: 42,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected ? palette.ink : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          child: Center(child: child),
+        ),
+      ),
+    );
+  }
+}
+
 class _AboutPanel extends StatelessWidget {
   const _AboutPanel({required this.controller, required this.actions});
 
@@ -416,12 +580,14 @@ class _AboutPanel extends StatelessWidget {
         children: [
           PanelHeader(title: strings.aboutTitle),
           const SizedBox(height: 12),
-          SelectableText(
-            strings.isChinese
-                ? controller.aboutContent.content
-                : controller.aboutContent.contentEn ??
-                    controller.aboutContent.content,
-            style: TextStyle(color: palette.ink, fontSize: 13.5, height: 1.6),
+          ExcludeFocusTraversal(
+            child: SelectableText(
+              strings.isChinese
+                  ? controller.aboutContent.content
+                  : controller.aboutContent.contentEn ??
+                      controller.aboutContent.content,
+              style: TextStyle(color: palette.ink, fontSize: 13.5, height: 1.6),
+            ),
           ),
           const SizedBox(height: 14),
           Wrap(

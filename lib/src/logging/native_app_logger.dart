@@ -118,4 +118,8 @@ class NativeAppLogger implements AppLogger {
   Future<void> deleteHistory() => _channel
       .invokeMethod<void>('deleteHistory')
       .timeout(const Duration(seconds: 2));
+
+  @override
+  Future<void> share(String path) =>
+      _channel.invokeMethod<void>('share', <String, Object?>{'path': path});
 }

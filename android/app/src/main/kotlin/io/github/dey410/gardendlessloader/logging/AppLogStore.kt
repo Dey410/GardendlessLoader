@@ -1,8 +1,11 @@
 package io.github.dey410.gardendlessloader.logging
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
+import androidx.core.content.FileProvider
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.io.BufferedWriter
@@ -55,8 +58,8 @@ object AppLogStore {
     private var currentFile: File? = null
     private var writer: BufferedWriter? = null
 
-    fun install(context: Context, messenger: BinaryMessenger) {
-        initialize(context.applicationContext)
+    fun install(activity: Activity, messenger: BinaryMessenger) {
+        initialize(activity.applicationContext)
         MethodChannel(messenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "initialize" -> result.success(mapOf("appSessionId" to appSessionId))
@@ -82,6 +85,17 @@ object AppLogStore {
                     deleteHistory()
                     result.success(null)
                 }
+                "share" -> runCatching {
+                    val file = File(call.argument<String>("path") ?: "")
+                    val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.logs", file)
+                    val send = Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_STREAM, uri)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    activity.startActivity(Intent.createChooser(send, null))
+                }
+                    .onSuccess { result.success(null) }
+                    .onFailure { result.error("log_share_failed", it.message, null) }
                 "endSession" -> {
                     endSession()
                     result.success(null)

@@ -186,7 +186,7 @@ function createHarness({pads = [createPad()], getGamepads = true, level = create
     const node = cursorNodes[0];
     if (!node || node.style.display !== 'block') return null;
     const [, x, y] = /translate\(([-\d.]+)px,([-\d.]+)px\)/.exec(node.style.transform);
-    return {x: Number(x) + 3, y: Number(y) + 2};
+    return {x: Number(x) + 10, y: Number(y) + 10};
   }
 
   function dispatch(type, trusted) {
@@ -207,6 +207,7 @@ function createHarness({pads = [createPad()], getGamepads = true, level = create
     button,
     tap,
     cursor,
+    cursorScale: () => cursorNodes[0].style.scale,
     dispatch,
     tips,
     openGpNext() {
@@ -288,18 +289,21 @@ function createHarness({pads = [createPad()], getGamepads = true, level = create
   assert.deepEqual(h.cursor(), {x: 919, y: 599}, 'the D-pad nudges at a fifth of full tilt');
 }
 
-// A and B hold the left and right buttons; holding A drags.
+// A and B hold the left and right buttons; holding A drags. The dot shrinks
+// while a button is held.
 {
   const h = createHarness();
   h.button(A, true);
   h.frame();
   assert.deepEqual(h.take(), [['mousemove', 500, 300, 0, 0], ['mousedown', 500, 300, 0, 1]]);
+  assert.equal(h.cursorScale(), '0.8');
   h.pads[0].axes[0] = 1;
   h.frame();
   h.pads[0].axes[0] = 0;
   h.button(A, false);
   h.frame();
   assert.deepEqual(h.take(), [['mousemove', 600, 300, 0, 1], ['mouseup', 600, 300, 0, 0]]);
+  assert.equal(h.cursorScale(), '1');
   h.tap(B);
   assert.deepEqual(h.take(), [['mousedown', 600, 300, 2, 2], ['mouseup', 600, 300, 2, 0]]);
 }

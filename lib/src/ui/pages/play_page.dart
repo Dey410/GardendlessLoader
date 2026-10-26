@@ -4,6 +4,7 @@ import '../../app_controller.dart';
 import '../../game_host/game_session_store.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/app_settings_store.dart';
+import '../../services/launcher_themes.dart';
 import '../launcher_actions.dart';
 import '../theme/garden_theme.dart';
 import '../widgets/garden_widgets.dart';
@@ -176,7 +177,7 @@ class _Hero extends StatelessWidget {
         if (event != null)
           Text(
             [
-              event.look?.badge,
+              LauncherTheme.forEvent(event)?.badge,
               strings.inGame(event.title),
               strings.inGame(event.description),
             ].nonNulls.join(' '),

@@ -61,7 +61,8 @@ class _HomePageState extends State<HomePage> {
     deferUpdate: _controller.deferUpdate,
     deferGameUpdate: _controller.deferGameUpdate,
     copyResourceRoot: _copyResourceRoot,
-    copyDiagnostics: _copyDiagnostics,
+    exportLogs: _exportLogs,
+    copySummary: _copySummary,
     copyLogEvent: _copyLogEvent,
     deleteLogHistory: _deleteLogHistory,
     toggleImportDetails: () =>
@@ -538,12 +539,8 @@ class _HomePageState extends State<HomePage> {
     try {
       await _controller.startGame();
     } on PlatformException catch (error) {
-      _toast(
-        strings.cannotStartGame(
-          userErrorTitle(error.code, error.message ?? error.code),
-        ),
-        code: error.code,
-      );
+      final message = _controller.launchFailureMessage(error);
+      _toast(message.text, code: message.code);
     } catch (error) {
       _toast(
         strings.cannotStartGame('$error'),
@@ -558,13 +555,25 @@ class _HomePageState extends State<HomePage> {
     _toast(strings.resourceRootCopied);
   }
 
-  Future<void> _copyDiagnostics() async {
+  Future<void> _exportLogs() async {
     final strings = context.strings;
-    await _controller.refreshLogs();
-    await Clipboard.setData(
-      ClipboardData(text: _controller.buildDiagnosticSummary()),
-    );
-    _toast(strings.diagnosticsCopied);
+    try {
+      await _controller.exportLogs();
+    } catch (error) {
+      _toast(strings.cannotExportLogs('$error'));
+    }
+  }
+
+  Future<void> _copySummary() async {
+    final strings = context.strings;
+    try {
+      await Clipboard.setData(
+        ClipboardData(text: await _controller.buildDiagnosticSummary()),
+      );
+      _toast(strings.summaryCopied);
+    } catch (error) {
+      _toast(strings.cannotCopySummary('$error'));
+    }
   }
 
   Future<void> _copyLogEvent(Map<String, Object?> event) async {
@@ -612,7 +621,7 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
-    final badge = controller.seasonalTheme?.badge;
+    final badge = controller.launcherTheme.badge;
     // Frosted glass: the home art flows underneath instead of stopping at a
     // hard edge; elsewhere it reads as a plain tinted panel.
     return ClipRect(

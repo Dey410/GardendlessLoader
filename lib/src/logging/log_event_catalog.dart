@@ -908,8 +908,8 @@ const userErrorCatalog = <String, UserLogError>{
       'System WebView is too old',
     ),
     action: LocalizedText(
-      '请在应用商店更新 Android System WebView（或 Chrome）后重新开始游戏。',
-      'Update Android System WebView (or Chrome) in the app store, then start the game again.',
+      '请在应用商店把 Android System WebView（或 Chrome）更新到 100 或更高版本后重新开始游戏。',
+      'Update Android System WebView (or Chrome) to version 100 or later in the app store, then start the game again.',
     ),
     recoverable: true,
   ),

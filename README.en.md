@@ -120,6 +120,7 @@ X, Y, LB, RB, and Start use the key bindings you set in the game. Use touch for 
 
 - **Rhythm levels**: the five lanes, top to bottom, take LB/RB, D-pad up/Y, D-pad left or right/X/B, D-pad down/A, and LT/RT, so either hand can play; holding a button holds that lane, and Start still pauses. The tip bar lists them in your first rhythm level.
 - **Air Raid**: the plane follows the cursor, so the stick flies it directly, the D-pad flies at full speed, and the cursor hides like the game's own pointer. After B switches the plane to keys, the stick and D-pad hold W/A/S/D; B switches back.
+- **Launcher**: the D-pad or left stick moves a highlight between controls, A presses the highlighted one, and B closes a dialog. On HarmonyOS the left stick needs API 15 (HarmonyOS 5.0.3) or later; earlier versions move it with the D-pad only.
 
 ### Tips
 
@@ -128,6 +129,7 @@ X, Y, LB, RB, and Start use the key bindings you set in the game. Use touch for 
 - **Home-screen shortcuts**: long-press the app icon to jump straight to **Start Game** or **Import Resources**.
 - **Back to the launcher**: use system Back on Android and HarmonyOS, swipe right from the left edge on iOS, or use the game's own quit button.
 - **Festivals follow the game**: during the game's own events (Halloween, Lunar New Year, Feastivus, Valentine's, PvZ's birthday and more) the launcher takes on matching colours and a small badge, and the Play page shows the event's title and description. The dates come from the imported game resources, with Lunar New Year on the lunar calendar, so no network is needed.
+- **Collect themes**: change the launcher's colours in **Settings → Appearance → Theme**. Opening the launcher during one of the game's events unlocks that festival's theme for good; playing 10, 50 and 100 hours in total, playing 2 hours in one go and importing 5 different game versions unlock one each. Tap a locked theme to see what unlocks it and how far you are. The default, **Auto**, wears the festival's theme during an event.
 - **Pause when you leave**: switching apps, taking a call or locking the screen during a level opens the game's pause menu, so the zombies wait for you.
 
 ### GP-Next and Mods

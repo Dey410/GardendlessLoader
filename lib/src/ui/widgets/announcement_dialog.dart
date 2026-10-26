@@ -39,8 +39,10 @@ Future<void> showAnnouncementDialog(
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: SingleChildScrollView(
-          child: SelectableText(
-            announcement?.message ?? strings.noAnnouncement,
+          child: ExcludeFocusTraversal(
+            child: SelectableText(
+              announcement?.message ?? strings.noAnnouncement,
+            ),
           ),
         ),
       ),

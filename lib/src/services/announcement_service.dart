@@ -6,15 +6,14 @@ import '../constants.dart';
 import 'http_text.dart';
 import '../models.dart';
 
-/// What the remote announcement file carries: the announcement, an optional
-/// seasonal theme and links for the launcher, each valid on its own.
+/// What the remote announcement file carries: the announcement and links
+/// for the launcher, each valid on its own.
 class AnnouncementFeed {
-  const AnnouncementFeed({required this.json, this.announcement, this.theme});
+  const AnnouncementFeed({required this.json, this.announcement});
 
   /// The file as received, saved again for a start without network.
   final Map<String, dynamic> json;
   final Announcement? announcement;
-  final SeasonalTheme? theme;
 
   /// Read through [LauncherLinks.merge].
   Object? get urls => json['urls'];
@@ -81,7 +80,6 @@ class AnnouncementService {
       return AnnouncementFeed(
         json: decoded,
         announcement: _parse(decoded['announcement'], Announcement.fromJson),
-        theme: _parse(decoded['theme'], SeasonalTheme.fromJson),
       );
     } catch (_) {
       return null;

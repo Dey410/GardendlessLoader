@@ -63,6 +63,7 @@ class AppSettings {
     this.hapticEffectsEnabled = true,
     this.detailedAudioDiagnosticsEnabled = false,
     this.themePreference = ThemePreference.system,
+    this.launcherTheme,
     this.reduceMotion = false,
     this.languagePreference = LanguagePreference.system,
     this.seenAnnouncementId,
@@ -82,6 +83,7 @@ class AppSettings {
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       themePreference: ThemePreference.fromName(json['themePreference']),
+      launcherTheme: json['launcherTheme'] as String?,
       reduceMotion: json['reduceMotion'] as bool? ?? false,
       languagePreference:
           LanguagePreference.fromName(json['languagePreference']),
@@ -107,6 +109,10 @@ class AppSettings {
   final bool hapticEffectsEnabled;
   final bool detailedAudioDiagnosticsEnabled;
   final ThemePreference themePreference;
+
+  /// Id of the launcher theme the player picked; null follows the game's
+  /// festivals.
+  final String? launcherTheme;
   final bool reduceMotion;
   final LanguagePreference languagePreference;
 
@@ -124,6 +130,9 @@ class AppSettings {
   /// The gesture hint shows over the game once, on the first launch.
   final bool gestureHintShown;
 
+  static const _unchanged = Object();
+
+  /// [launcherTheme] takes a theme id or null, which follows the festivals.
   AppSettings copyWith({
     bool? watermarkEnabled,
     bool? quickLaunchEnabled,
@@ -133,6 +142,7 @@ class AppSettings {
     bool? hapticEffectsEnabled,
     bool? detailedAudioDiagnosticsEnabled,
     ThemePreference? themePreference,
+    Object? launcherTheme = _unchanged,
     bool? reduceMotion,
     LanguagePreference? languagePreference,
     String? seenAnnouncementId,
@@ -150,6 +160,9 @@ class AppSettings {
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled ??
           this.detailedAudioDiagnosticsEnabled,
       themePreference: themePreference ?? this.themePreference,
+      launcherTheme: identical(launcherTheme, _unchanged)
+          ? this.launcherTheme
+          : launcherTheme as String?,
       reduceMotion: reduceMotion ?? this.reduceMotion,
       languagePreference: languagePreference ?? this.languagePreference,
       seenAnnouncementId: seenAnnouncementId ?? this.seenAnnouncementId,
@@ -169,6 +182,7 @@ class AppSettings {
         'hapticEffectsEnabled': hapticEffectsEnabled,
         'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
         'themePreference': themePreference.name,
+        'launcherTheme': launcherTheme,
         'reduceMotion': reduceMotion,
         'languagePreference': languagePreference.name,
         'seenAnnouncementId': seenAnnouncementId,

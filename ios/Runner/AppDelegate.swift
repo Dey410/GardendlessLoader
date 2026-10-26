@@ -23,6 +23,9 @@ import WebKit
   }()
 
   private var launcherEngine: FlutterEngine?
+  private var launcherGamepad: LauncherGamepad? {
+    didSet { oldValue?.stop() }
+  }
   private var gameHostChannel: FlutterMethodChannel?
   private var resourceZipImporterChannel: FlutterMethodChannel?
   private var displayChannel: FlutterMethodChannel?
@@ -66,6 +69,7 @@ import WebKit
     window?.rootViewController = controller
     window?.makeKeyAndVisible()
     registerChannels(on: controller.binaryMessenger)
+    launcherGamepad = LauncherGamepad(launcher: controller)
   }
 
   private func registerChannels(on messenger: FlutterBinaryMessenger) {
@@ -285,6 +289,7 @@ import WebKit
               }
               let engine = self.launcherEngine
               self.launcherEngine = nil
+              self.launcherGamepad = nil
               self.resourceZipImporterChannel?.setMethodCallHandler(nil)
               self.gameHostChannel?.setMethodCallHandler(nil)
               result(nil)
@@ -448,6 +453,35 @@ import WebKit
         result(nil)
       case "deleteHistory":
         self.logStore.deleteHistory()
+        result(nil)
+      case "share":
+        guard let path = (call.arguments as? [String: Any])?["path"] as? String,
+              let controller = self.topViewController() else {
+          result(
+            FlutterError(
+              code: "log_share_failed",
+              message: "Unable to present the share sheet",
+              details: nil
+            )
+          )
+          return
+        }
+        let sheet = UIActivityViewController(
+          activityItems: [URL(fileURLWithPath: path)],
+          applicationActivities: nil
+        )
+        // iPad shows the sheet as a popover, which needs an anchor.
+        if let popover = sheet.popoverPresentationController {
+          popover.sourceView = controller.view
+          popover.sourceRect = CGRect(
+            x: controller.view.bounds.midX,
+            y: controller.view.bounds.midY,
+            width: 0,
+            height: 0
+          )
+          popover.permittedArrowDirections = []
+        }
+        controller.present(sheet, animated: true)
         result(nil)
       case "endSession":
         self.logStore.endSession()
