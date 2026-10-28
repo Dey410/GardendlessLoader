@@ -2,6 +2,7 @@ package io.github.dey410.gardendlessloader.game
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
@@ -263,10 +264,12 @@ class GameActivity : Activity() {
         } else {
             Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/zip"
+                // EXTRA_MIME_TYPES requires the */* main type; OriginOS may open no
+                // picker otherwise. The display name check rejects non-ZIP picks.
+                type = "*/*"
                 putExtra(
                     Intent.EXTRA_MIME_TYPES,
-                    arrayOf("application/zip", "application/x-zip-compressed"),
+                    arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"),
                 )
             }
         }
@@ -523,7 +526,16 @@ class GameActivity : Activity() {
         onFailure: (Throwable) -> Unit,
     ) {
         prepareForDocumentPicker()
-        runCatching { startActivityForResult(intent, requestCode) }.onFailure {
+        runCatching {
+            try {
+                startActivityForResult(intent, requestCode)
+            } catch (error: ActivityNotFoundException) {
+                // Like the launcher's ZIP picker, fall back to a content picker; the
+                // results only need OpenableColumns and openInputStream.
+                if (intent.action != Intent.ACTION_OPEN_DOCUMENT) throw error
+                startActivityForResult(Intent(intent).setAction(Intent.ACTION_GET_CONTENT), requestCode)
+            }
+        }.onFailure {
             restoreGameOrientation()
             onFailure(it)
         }
