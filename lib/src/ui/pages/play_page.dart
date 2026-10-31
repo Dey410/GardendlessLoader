@@ -50,6 +50,23 @@ class _PlayPageState extends State<PlayPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 560) {
+          // A near-square landscape window leaves the poster's logo across
+          // the upper frame, so the copy and action belong on the bottom
+          // fade rather than stacked from the top over the art. The column
+          // keeps the single-column order and the right-aligned action, and
+          // still scrolls when the content or text scale outgrows the view.
+          if (constraints.maxWidth >= constraints.maxHeight) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [hero, SizedBox(height: gap), actionBar],
+                ),
+              ),
+            );
+          }
           return ListView(
             children: [hero, SizedBox(height: gap), actionBar],
           );
