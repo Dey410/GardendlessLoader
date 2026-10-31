@@ -39,6 +39,7 @@
   let primaryMoved = false;
   let pendingPrimaryUpPoint = null;
   let pendingPrimaryUp = null;
+  let resizeInterruptedGesture = false;
 
   function recordTrace(entry) {
     if (!diagnosticsEnabled) {
@@ -301,6 +302,58 @@
     clearPrimaryGestureState();
   }
 
+  // A resize moves and rescales the canvas underneath fingers that are still
+  // down, so every point of the interrupted gesture belongs to the old
+  // geometry. Releasing it, or placing at its delayed commit point, would
+  // act on a target the user never aimed at, so the gesture is dropped
+  // without synthesizing a compensating mouse release.
+  function cancelGestureForResize() {
+    const previousOwner = owner;
+    cancelJavascriptPrimary();
+    if (previousOwner === "native") {
+      // A software keyboard resizes the window while a form field owns the
+      // touch; that gesture must stay native.
+      resetBackdropCandidate();
+      return;
+    }
+    if (previousOwner === "failed") {
+      return;
+    }
+    if (previousOwner === "game" && machine) {
+      try {
+        machine.handle({
+          phase: "cancel",
+          points: [],
+          changedPoints: [],
+          time: performance.now(),
+          physicalPixelRatio: pixelRatio()
+        });
+      } catch (_) {
+        owner = "failed";
+        reportFailure("touch_adapter_execution_failed");
+        return;
+      }
+    }
+    if (previousOwner === "game" || previousOwner === "backdrop") {
+      // The touches pressed before the resize keep reporting, now against the
+      // new geometry, until they lift. Neither they nor a finger added to
+      // them may start a fresh game gesture.
+      resizeInterruptedGesture = true;
+    }
+    recordTrace({event: "touch_resize", owner: previousOwner});
+    owner = "idle";
+    resetBackdropTouch();
+    resetBackdropCandidate();
+  }
+
+  // While the residual touches of a resized gesture drain, keep game input
+  // away from Cocos but leave native controls and GP-Next surfaces untouched.
+  function swallowAfterResize(event) {
+    if (!isNativeTouchTarget(eventTarget(event))) {
+      consume(event);
+    }
+  }
+
   function updatePrimaryMoved(point) {
     if (!primaryStartPoint) {
       return;
@@ -537,6 +590,16 @@
   }
 
   document.addEventListener("touchstart", function (event) {
+    if (resizeInterruptedGesture) {
+      if (event.touches.length > 1) {
+        // The touches pressed before the resize are still on the glass.
+        swallowAfterResize(event);
+        return;
+      }
+      // The browser reports this new touch as the only active one, so nothing
+      // survives from the old geometry and the gesture may start normally.
+      resizeInterruptedGesture = false;
+    }
     if (owner === "native") {
       return;
     }
@@ -587,6 +650,10 @@
   }, {capture: true, passive: false});
 
   document.addEventListener("touchmove", function (event) {
+    if (resizeInterruptedGesture) {
+      swallowAfterResize(event);
+      return;
+    }
     if (owner === "native" || owner === "idle") {
       return;
     }
@@ -608,6 +675,13 @@
   }, {capture: true, passive: false});
 
   function finishTouch(phase, event) {
+    if (resizeInterruptedGesture) {
+      if (event.touches.length === 0) {
+        resizeInterruptedGesture = false;
+      }
+      swallowAfterResize(event);
+      return;
+    }
     if (owner === "native") {
       if (event.touches.length === 0) {
         owner = "idle";
@@ -671,10 +745,15 @@
       }
     }
     owner = "idle";
+    resizeInterruptedGesture = false;
     resetBackdropTouch();
   }
 
   window.addEventListener("blur", interrupt);
+  // A real resize invalidates the running gesture. Repeated resize events are
+  // idempotent: the adapter is already idle, so nothing is cancelled twice and
+  // no compensating input is sent.
+  window.addEventListener("resize", cancelGestureForResize);
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) {
       interrupt();

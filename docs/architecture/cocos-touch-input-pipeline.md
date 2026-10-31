@@ -67,6 +67,14 @@ restart. Real mouse and trackpad events bypass touch mapping; stylus input uses
 the single-touch path. Android uses a normal WebView and has no native
 touch-to-mouse runtime fallback.
 
+When the window resizes, the adapter cancels the active game gesture and any
+deferred placement based on the old geometry. Residual game touches are consumed
+until they end; native form and GP-Next controls retain their input. No
+compensating mouse up is sent. A fresh gesture can start once the old touches
+have ended or the browser reports only the new touch. The render-scale wrapper
+reads the current physical device pixel ratio and does not multiply the scale
+again if the script is injected twice.
+
 When `touchDiagnosticsEnabled` is true, a bounded in-memory trace records input
 coordinates, owner decisions, state transitions, and output command names. It
 never records DOM text, form values, game data, or storage. The setting is off

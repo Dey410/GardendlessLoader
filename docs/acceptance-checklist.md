@@ -104,6 +104,18 @@
 - After a successful fetch the feed is saved as `announcements.json` in the app root with every link fetched so far, so an offline start keeps those links and the last announcement and theme; before the first successful fetch the built-in links apply. When `raw.githubusercontent.com` fails the loader reads the same file from jsDelivr, which can lag behind GitHub; purge it at `https://purge.jsdelivr.net/gh/Dey410/GardendlessLoader@main/announcements.json` after an urgent change.
 - The first game launch after install shows the gesture hint at the bottom of the game: three touch mappings and the platform's way back. The first touch or click fades it; later launches never show it.
 
+## iOS 27.2 and resizable displays
+
+- The iOS CI job uses Xcode 27.2 RC build `27B48` and iOS SDK `27.2`. It verifies the app version, arm64 executable and iOS 15.0 minimum before uploading the unsigned IPA. An unavailable RC must fail the build rather than select another Xcode.
+- A new iOS installation defaults to Show all (17:9); previously saved screen-fit choices remain unchanged. Balanced and Stretch remain available as explicit choices.
+- On iPhone Duo with iOS 27.2, install a self-signed IPA and record the device and OS build, app commit, IPA SHA-256 and resource version. Installation, launch and fold/unfold are separate checks.
+- On the outer and inner displays, visit all four launcher destinations, import resources, open settings and dialogs, and check that controls avoid asymmetric safe areas and the play-page text remains legible over the artwork. Repeat ten fold/unfold cycles, including while a picker is open and with enlarged system text.
+- Start a game on the outer display, unfold, then fold again ten times. Check that the same session continues without reimporting, restarting audio or losing progress; Show all must keep the full picture without stretching.
+- Resize during a plant drag or sun tap, then lift all fingers and start a new gesture. Check for stuck input, unintended placement and coordinate offsets in Balanced, Show all and Stretch, including the 100%, 75% and 50% render settings.
+- Exercise GP-Next installation and save import/export across a resize. Background, lock and resume the app; check BGM, sound effects and mute behavior.
+- Play for at least 20 minutes with repeated folding. Record WebContent termination, diagnostics, screen-fit mode and render resolution if a failure occurs. Do not publish personal paths, saves or game resources with diagnostics.
+- If available, repeat launcher and game checks on a conventional iPhone or iPad, including the existing landscape behavior. Simulator or build success alone does not establish device compatibility.
+
 ## Failure paths
 
 - A ZIP without a valid `docs/index.html` rejects import and leaves the active slot unchanged.
@@ -121,4 +133,4 @@
 - Every Loader error, in the SnackBar, the failed import panel, the resource card's 最近错误 and GP-Next rows, and the logs page, shows the fix hint that `userErrorCatalog` gives its error code.
 - ZIP import failures report their cause to Flutter on every platform: `zip_docs_missing`, `zip_invalid`, `zip_encrypted`, `zip_unsupported`, `zip_path_unsafe` or `zip_write_failed`, with `zip_import_failed` for anything else. Each cause shows its own hint.
 - An Android System WebView without `WEB_MESSAGE_LISTENER` writes exit-result code `webview_unsupported`, and the launcher tells the user to update the WebView.
-- HarmonyOS CI emits a skip notice instead of failing when `OHOS_COMMANDLINE_TOOLS_URL` is not configured.
+- HarmonyOS CI fails with an explicit error when the required `OHOS_COMMANDLINE_TOOLS_URL` secret is not configured; the three-artifact gate also fails.

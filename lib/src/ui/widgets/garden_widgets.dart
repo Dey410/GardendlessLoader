@@ -97,8 +97,6 @@ class PanelHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: GardenType.title(15, color: palette.ink),
           ),
         ),

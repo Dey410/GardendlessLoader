@@ -24,9 +24,6 @@ import UIKit
   private var launcherEngine: FlutterEngine?
   private var gameHostChannel: FlutterMethodChannel?
   private var resourceZipImporterChannel: FlutterMethodChannel?
-  private var displayChannel: FlutterMethodChannel?
-  private var orientationObserver: NSObjectProtocol?
-  private var reportedSensorHousingEdge: String?
   private var lastImportProgressReportAt: UInt64 = 0
   private var pendingImportResult: FlutterResult?
   private var pendingImportTargetDirectory: String?
@@ -36,6 +33,9 @@ import UIKit
   /// the game runs and until the launcher imports or discards it.
   private var incomingZip: IncomingZip?
   private var shortcutChannel: FlutterMethodChannel?
+  private var displayGeometryChannel: FlutterMethodChannel?
+  private var displayGeometryObserver: DisplayGeometryObserverView?
+  private weak var displayGeometryHostView: UIView?
   /// The home-screen shortcut that started the app, until the launcher takes it.
   var pendingShortcut: String?
 
@@ -57,6 +57,9 @@ import UIKit
   }
 
   func showLauncher() {
+    // A launcher that comes back after the game gets a fresh observer and a
+    // fresh channel; nothing survives from the previous engine.
+    teardownDisplayGeometry()
     let engine = FlutterEngine(name: "gardendless-launcher-\(UUID().uuidString)")
     guard engine.run() else { return }
     GeneratedPluginRegistrant.register(with: engine)
@@ -65,6 +68,7 @@ import UIKit
     window?.rootViewController = controller
     window?.makeKeyAndVisible()
     registerChannels(on: controller.binaryMessenger)
+    installDisplayGeometryObserver(on: controller.view)
   }
 
   private func registerChannels(on messenger: FlutterBinaryMessenger) {
@@ -72,8 +76,8 @@ import UIKit
     registerGameHost(on: messenger)
     registerResourceZipImporter(on: messenger)
     registerAppLogger(on: messenger)
-    registerDisplay(on: messenger)
     registerShortcuts(on: messenger)
+    registerDisplayGeometry(on: messenger)
   }
 
   private func registerShortcuts(on messenger: FlutterBinaryMessenger) {
@@ -124,63 +128,53 @@ import UIKit
     shortcutChannel?.invokeMethod("perform", arguments: type)
   }
 
-  // iOS reports equal left and right safe-area insets in landscape, so
-  // Flutter cannot tell which long edge holds the notch or Dynamic Island.
-  // Report it from the interface orientation and push changes, including
-  // 180° flips that leave the screen size and insets unchanged.
-  private func registerDisplay(on messenger: FlutterBinaryMessenger) {
+  private func registerDisplayGeometry(on messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
-      name: "io.github.dey410.gardendlessloader/display",
+      name: "io.github.dey410.gardendlessloader/display_geometry",
       binaryMessenger: messenger
     )
-    displayChannel = channel
+    displayGeometryChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "sensorHousingEdge" else {
+      guard call.method == "geometry" else {
         result(FlutterMethodNotImplemented)
         return
       }
-      let edge = self?.currentSensorHousingEdge()
-      self?.reportedSensorHousingEdge = edge
-      result(edge)
-    }
-    UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-    orientationObserver = NotificationCenter.default.addObserver(
-      forName: UIDevice.orientationDidChangeNotification,
-      object: nil,
-      queue: .main
-    ) { [weak self] _ in
-      // The interface finishes rotating after the device notification.
-      for delay in [0.05, 0.6] {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-          self?.reportSensorHousingEdgeIfChanged()
-        }
+      guard let self else {
+        result(DisplayGeometryReader.read(from: nil).map)
+        return
+      }
+      if let observer = self.displayGeometryObserver {
+        result(observer.currentPayload())
+      } else {
+        result(DisplayGeometryReader.read(from: self.displayGeometryHostView).map)
       }
     }
   }
 
-  private func reportSensorHousingEdgeIfChanged() {
-    let edge = currentSensorHousingEdge()
-    guard edge != reportedSensorHousingEdge else { return }
-    reportedSensorHousingEdge = edge
-    displayChannel?.invokeMethod("sensorHousingEdgeChanged", arguments: edge)
+  /// Attaches a read-only reporter to the real Flutter root view. Reserved
+  /// regions only exist from iOS 27.1, so older systems get no subview at all.
+  private func installDisplayGeometryObserver(on hostView: UIView) {
+    displayGeometryHostView = hostView
+    guard #available(iOS 27.1, *) else { return }
+    let observer = DisplayGeometryObserverView(hostView: hostView)
+    observer.onChange = { [weak self] payload in
+      self?.displayGeometryChannel?.invokeMethod(
+        "geometryChanged",
+        arguments: payload
+      )
+    }
+    displayGeometryObserver = observer
+    observer.attach()
   }
 
-  /// "left" or "right" for the edge holding the sensor housing in
-  /// landscape, nil otherwise. Interface `.landscapeRight` puts the home
-  /// side on the right, so the top of the device faces left.
-  private func currentSensorHousingEdge() -> String? {
-    let scene = window?.windowScene
-      ?? UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .first
-    switch scene?.interfaceOrientation {
-    case .landscapeRight:
-      return "left"
-    case .landscapeLeft:
-      return "right"
-    default:
-      return nil
-    }
+  /// Removes the reporter and the channel handler when the launcher engine is
+  /// replaced by the game, so no observer outlives the view it belonged to.
+  private func teardownDisplayGeometry() {
+    displayGeometryObserver?.detach()
+    displayGeometryObserver = nil
+    displayGeometryHostView = nil
+    displayGeometryChannel?.setMethodCallHandler(nil)
+    displayGeometryChannel = nil
   }
 
   private func registerExternalBrowser(on messenger: FlutterBinaryMessenger) {
@@ -282,6 +276,7 @@ import UIKit
               self.launcherEngine = nil
               self.resourceZipImporterChannel?.setMethodCallHandler(nil)
               self.gameHostChannel?.setMethodCallHandler(nil)
+              self.teardownDisplayGeometry()
               result(nil)
               self.window?.rootViewController = gameController
               self.window?.makeKeyAndVisible()
@@ -607,6 +602,171 @@ private struct IncomingZip {
   func discard() {
     if isCopy {
       try? FileManager.default.removeItem(at: url)
+    }
+  }
+}
+
+/// A transparent, inert subview of the Flutter view. UIKit refreshes reserved
+/// regions by invalidating the layout of the views they cover, so the
+/// overrides below are where the launcher learns a reserved area has moved.
+private final class DisplayGeometryObserverView: UIView {
+  /// Receives a method-channel payload whenever the geometry changed.
+  var onChange: (([String: Any]) -> Void)?
+  private weak var hostView: UIView?
+  /// The state last read; a pass that sees the same values stays silent.
+  private var lastSignature: String?
+
+  init(hostView: UIView) {
+    super.init(frame: hostView.bounds)
+    self.hostView = hostView
+    isUserInteractionEnabled = false
+    accessibilityElementsHidden = true
+    isOpaque = false
+    backgroundColor = .clear
+    translatesAutoresizingMaskIntoConstraints = false
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) is not supported")
+  }
+
+  /// Joins the host view's layout without covering Flutter content or taking
+  /// touches. The first read is the baseline, so a launcher that queries on
+  /// start does not receive the same state twice.
+  func attach() {
+    guard let hostView else { return }
+    hostView.insertSubview(self, at: 0)
+    NSLayoutConstraint.activate([
+      leadingAnchor.constraint(equalTo: hostView.leadingAnchor),
+      trailingAnchor.constraint(equalTo: hostView.trailingAnchor),
+      topAnchor.constraint(equalTo: hostView.topAnchor),
+      bottomAnchor.constraint(equalTo: hostView.bottomAnchor),
+    ])
+    // The first read is pushed instead of swallowed, so a launcher whose
+    // query raced with channel registration still learns the geometry.
+    lastSignature = nil
+    if #available(iOS 27.1, *) {
+      registerForTraitChanges(
+        UITraitCollection.systemTraitsAffectingVerticalBarEdge
+      ) { (view: DisplayGeometryObserverView, _) in
+        view.publishIfChanged()
+      }
+    }
+    setNeedsUpdateConstraints()
+    setNeedsLayout()
+  }
+
+  func detach() {
+    onChange = nil
+    hostView = nil
+    lastSignature = nil
+    removeFromSuperview()
+  }
+
+  /// The live geometry, recorded as the baseline so it is not pushed back.
+  func currentPayload() -> [String: Any] {
+    let payload = DisplayGeometryReader.read(from: self)
+    lastSignature = payload.signature
+    return payload.map
+  }
+
+  override func updateConstraints() {
+    super.updateConstraints()
+    publishIfChanged()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    publishIfChanged()
+  }
+
+  override func safeAreaInsetsDidChange() {
+    super.safeAreaInsetsDidChange()
+    publishIfChanged()
+  }
+
+  private func publishIfChanged() {
+    let payload = DisplayGeometryReader.read(from: self)
+    guard payload.signature != lastSignature else { return }
+    lastSignature = payload.signature
+    onChange?(payload.map)
+  }
+}
+
+/// One reading of the launcher display: the payload sent to Dart, plus a
+/// signature that differs only when the reported values differ.
+private struct DisplayGeometryPayload {
+  let map: [String: Any]
+  let signature: String
+}
+
+private enum DisplayGeometryReader {
+  /// Reads `view` in its own coordinate space, in points, origin top-left.
+  /// A missing view and any system before iOS 27.1 report no reserved regions.
+  static func read(from view: UIView?) -> DisplayGeometryPayload {
+    let size = view?.bounds.size ?? CGSize.zero
+    let width = Double(size.width)
+    let height = Double(size.height)
+    guard #available(iOS 27.1, *), let view else {
+      return DisplayGeometryPayload(
+        map: [
+          "supportsReservedRegions": false,
+          "edge": NSNull(),
+          "viewWidth": width,
+          "viewHeight": height,
+          "regions": [[String: Any]](),
+        ],
+        signature: "unsupported|\(width)|\(height)"
+      )
+    }
+    let edge = verticalBarEdgeName(view.traitCollection.verticalBarEdge)
+    let edgeValue: Any
+    if let edge {
+      edgeValue = edge
+    } else {
+      edgeValue = NSNull()
+    }
+    // The frame already includes the margins the system keeps around the
+    // reserved area, and only active regions are of interest to the launcher.
+    let regions = view.reservedRegions(kind: .occlusion).filter(\.isActive)
+    let regionValues: [[String: Any]] = regions.map { region in
+      [
+        "x": Double(region.frame.minX),
+        "y": Double(region.frame.minY),
+        "width": Double(region.frame.width),
+        "height": Double(region.frame.height),
+        "kind": "occlusion",
+        "active": true,
+      ]
+    }
+    let regionSignatures = regions.map { region in
+      "\(region.frame.minX),\(region.frame.minY),"
+        + "\(region.frame.width),\(region.frame.height)"
+    }
+    return DisplayGeometryPayload(
+      map: [
+        "supportsReservedRegions": true,
+        "edge": edgeValue,
+        "viewWidth": width,
+        "viewHeight": height,
+        "regions": regionValues,
+      ],
+      signature: [
+        "supported",
+        edge ?? "none",
+        "\(width)",
+        "\(height)",
+        regionSignatures.joined(separator: ";"),
+      ].joined(separator: "|")
+    )
+  }
+
+  @available(iOS 27.1, *)
+  private static func verticalBarEdgeName(_ edge: UIVerticalBarEdge) -> String? {
+    switch edge {
+    case .leading: return "leading"
+    case .trailing: return "trailing"
+    default: return nil
     }
   }
 }
