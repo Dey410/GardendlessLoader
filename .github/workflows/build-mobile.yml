@@ -202,11 +202,24 @@ jobs:
       sha256: ${{ steps.ios_artifact.outputs.sha256 }}
       host_abi: ${{ steps.ios_artifact.outputs.host_abi }}
     name: Build unsigned iOS IPA
-    runs-on: macos-latest
+    runs-on: xcode-27
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select Xcode 27.2 RC
+        run: |
+          XCODE_APP="/Applications/Xcode_27.2_Release_Candidate.app"
+          test -d "$XCODE_APP/Contents/Developer"
+          echo "DEVELOPER_DIR=$XCODE_APP/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Verify Xcode and iOS SDK
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          test "$(xcodebuild -version | awk '/Build version/{print $3}')" = "27B48"
+          test "$(xcrun --sdk iphoneos --show-sdk-version)" = "27.2"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -245,6 +258,12 @@ jobs:
           echo "Expected IPA version: $EXPECTED_VERSION"
           echo "Actual IPA version: $ACTUAL_VERSION"
           test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
+          APP="build/ios/iphoneos/Runner.app"
+          EXECUTABLE="$(plutil -extract CFBundleExecutable raw "$APP/Info.plist")"
+          MINIMUM_OS="$(plutil -extract MinimumOSVersion raw "$APP/Info.plist")"
+          echo "Minimum iOS version: $MINIMUM_OS"
+          test "$MINIMUM_OS" = "15.0"
+          lipo -verify_arch arm64 "$APP/$EXECUTABLE"
 
       - name: Package unsigned IPA
         run: |
@@ -271,6 +290,12 @@ jobs:
             echo "- hostAbi: $HOST_ABI"
             echo "- SHA-256: $SHA256"
             echo "- artifact: $ARTIFACT"
+            echo "- Xcode: $(xcodebuild -version | tr '\n' ' ')"
+            echo "- iOS SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
+            echo "- Git SHA: $GITHUB_SHA"
+            echo "- bundle ID: $(plutil -extract CFBundleIdentifier raw build/ios/iphoneos/Runner.app/Info.plist)"
+            echo "- minimum iOS: $(plutil -extract MinimumOSVersion raw build/ios/iphoneos/Runner.app/Info.plist)"
+            echo "- IPA size: $(stat -f %z "$ARTIFACT") bytes"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload unsigned IPA
