@@ -744,89 +744,93 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.garden;
     final badge = controller.seasonalTheme?.badge;
-    // Keep the unsafe edge free of navigation chrome while blurring the
-    // mirrored art beneath it; tint only the actual rail.
+    // Frosted glass: the home art flows underneath instead of stopping at a
+    // hard edge. The tint covers the same block as before, including a legacy
+    // safe-area gutter; a reserved strip is tinted end to end on its own edge.
     return ClipRect(
       key: const ValueKey('launcher-navigation-rail'),
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-        child: Padding(
+        child: Container(
+          decoration: BoxDecoration(
+            color:
+                palette.surface.withValues(alpha: palette.isDark ? 0.42 : 0.5),
+            border: onRightEdge
+                ? Border(
+                    left: BorderSide(
+                      color: palette.border.withValues(alpha: 0.25),
+                    ),
+                  )
+                : Border(
+                    right: BorderSide(
+                      color: palette.border.withValues(alpha: 0.25),
+                    ),
+                  ),
+          ),
           padding: EdgeInsets.only(left: leftInset),
-          child: Container(
-            width: width ?? railWidthFor(compact),
+          child: Padding(
             padding: EdgeInsets.fromLTRB(
               10,
               contentTop + (compact ? 14 : 24),
               10,
               bottomInset + (compact ? 12 : 20),
             ),
-            decoration: BoxDecoration(
-              color: palette.surface
-                  .withValues(alpha: palette.isDark ? 0.42 : 0.5),
-              border: onRightEdge
-                  ? Border(
-                      left: BorderSide(
-                        color: palette.border.withValues(alpha: 0.25),
-                      ),
-                    )
-                  : Border(
-                      right: BorderSide(
-                        color: palette.border.withValues(alpha: 0.25),
-                      ),
-                    ),
-            ),
-            child: SingleChildScrollView(
-              primary: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Pressable(
-                      key: const ValueKey('launcher-icon'),
-                      onTap: onIconTap,
-                      scale: 0.9,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          ClipRRect(
-                            borderRadius:
-                                BorderRadius.circular(compact ? 9 : 11),
-                            child: Image.asset(
-                              _appIconAsset,
-                              width: compact ? 36 : 42,
-                              height: compact ? 36 : 42,
-                              cacheWidth: 128,
-                              semanticLabel: 'GardendlessLoader',
-                            ),
-                          ),
-                          if (badge != null)
-                            Positioned(
-                              key: const ValueKey('seasonal-badge'),
-                              right: -7,
-                              bottom: -7,
-                              child: Text(
-                                badge,
-                                style: const TextStyle(fontSize: 16, height: 1),
+            child: SizedBox(
+              width: (width ?? railWidthFor(compact)) - 20,
+              child: SingleChildScrollView(
+                primary: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Pressable(
+                        key: const ValueKey('launcher-icon'),
+                        onTap: onIconTap,
+                        scale: 0.9,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            ClipRRect(
+                              borderRadius:
+                                  BorderRadius.circular(compact ? 9 : 11),
+                              child: Image.asset(
+                                _appIconAsset,
+                                width: compact ? 36 : 42,
+                                height: compact ? 36 : 42,
+                                cacheWidth: 128,
+                                semanticLabel: 'GardendlessLoader',
                               ),
                             ),
-                        ],
+                            if (badge != null)
+                              Positioned(
+                                key: const ValueKey('seasonal-badge'),
+                                right: -7,
+                                bottom: -7,
+                                child: Text(
+                                  badge,
+                                  style:
+                                      const TextStyle(fontSize: 16, height: 1),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: compact ? 16 : 28),
-                  for (final destination in LauncherDestination.values)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: _SidebarItem(
-                        destination: destination,
-                        selected: destination == selected,
-                        compact: compact,
-                        badge: _badgeFor(destination),
-                        onTap: () => onSelected(destination),
+                    SizedBox(height: compact ? 16 : 28),
+                    for (final destination in LauncherDestination.values)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: _SidebarItem(
+                          destination: destination,
+                          selected: destination == selected,
+                          compact: compact,
+                          badge: _badgeFor(destination),
+                          onTap: () => onSelected(destination),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

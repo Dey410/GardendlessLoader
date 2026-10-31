@@ -158,7 +158,6 @@ import UIKit
     guard #available(iOS 27.1, *) else { return }
     let observer = DisplayGeometryObserverView(hostView: hostView)
     observer.onChange = { [weak self] payload in
-      self?.logDisplayGeometry(payload)
       self?.displayGeometryChannel?.invokeMethod(
         "geometryChanged",
         arguments: payload
@@ -166,34 +165,6 @@ import UIKit
     }
     displayGeometryObserver = observer
     observer.attach()
-  }
-
-  /// Records what the system reported, so a device-only layout problem can be
-  /// diagnosed from the launcher's own log.
-  private func logDisplayGeometry(_ payload: [String: Any]) {
-    let regions = payload["regions"] as? [[String: Any]] ?? []
-    let frames = regions.map { region in
-      let x = region["x"] as? Double ?? 0
-      let y = region["y"] as? Double ?? 0
-      let width = region["width"] as? Double ?? 0
-      let height = region["height"] as? Double ?? 0
-      return "\(x),\(y) \(width)x\(height)"
-    }.joined(separator: ";")
-    logStore.emit([
-      "source": "ios",
-      "level": "INFO",
-      "category": "app.display",
-      "event": "display_geometry_changed",
-      "outcome": "observed",
-      "context": [
-        "supportsReservedRegions":
-          payload["supportsReservedRegions"] as? Bool ?? false,
-        "verticalBarEdge": payload["edge"] as? String ?? "none",
-        "viewWidth": payload["viewWidth"] as? Double ?? 0,
-        "viewHeight": payload["viewHeight"] as? Double ?? 0,
-        "occlusionFrames": frames,
-      ],
-    ])
   }
 
   /// Removes the reporter and the channel handler when the launcher engine is
