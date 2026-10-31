@@ -342,7 +342,7 @@ class _HomePageState extends State<HomePage> {
         Positioned(
           left: reservedRailLeft ? 0 : null,
           right: reservedRailLeft ? null : 0,
-          top: railTop,
+          top: 0,
           bottom: padding.bottom,
           width: railWidth,
           child: _Sidebar(
@@ -351,6 +351,7 @@ class _HomePageState extends State<HomePage> {
             compact: compact,
             leftInset: 0,
             bottomInset: 0,
+            contentTop: railTop,
             onRightEdge: !reservedRailLeft,
             onSelected: _navigate,
             onIconTap: _onIconTap,
@@ -688,6 +689,7 @@ class _Sidebar extends StatelessWidget {
     required this.onSelected,
     required this.onIconTap,
     this.onRightEdge = false,
+    this.contentTop = 0,
   });
 
   final AppController controller;
@@ -697,6 +699,10 @@ class _Sidebar extends StatelessWidget {
   final double bottomInset;
   final ValueChanged<LauncherDestination> onSelected;
   final bool onRightEdge;
+
+  /// Space above the icon and items; the frosted surface still starts at the
+  /// top so the rail reads as one panel behind a reserved region.
+  final double contentTop;
   final VoidCallback onIconTap;
 
   static double railWidthFor(bool compact) => compact ? 76 : 92;
@@ -720,7 +726,7 @@ class _Sidebar extends StatelessWidget {
             width: railWidthFor(compact),
             padding: EdgeInsets.fromLTRB(
               10,
-              compact ? 14 : 24,
+              contentTop + (compact ? 14 : 24),
               10,
               bottomInset + (compact ? 12 : 20),
             ),
