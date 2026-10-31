@@ -164,16 +164,29 @@ class DisplayGeometryService extends ChangeNotifier {
   static bool get _isIOS => !kIsWeb && Platform.isIOS;
 
   Future<void> _load() async {
-    DisplayGeometry geometry;
-    try {
-      final answer = await _channel.invokeMethod<Object?>('geometry');
-      geometry = DisplayGeometry.fromMap(answer) ?? DisplayGeometry.unsupported;
-    } catch (error) {
-      // A missing plugin or a failed platform call means "no reserved region";
-      // the launcher keeps its plain layout instead of retrying.
-      debugPrint('Display geometry unavailable: $error');
-      geometry = DisplayGeometry.unsupported;
+    // The channel handler is installed right after the engine starts, so the
+    // first query can arrive before it exists. Retry briefly instead of
+    // settling on "unsupported" for the rest of the session.
+    for (var attempt = 0; attempt < 6; attempt += 1) {
+      if (_disposed || _updatedByNativePush) return;
+      try {
+        final answer = await _channel.invokeMethod<Object?>('geometry');
+        _applyLoaded(
+          DisplayGeometry.fromMap(answer) ?? DisplayGeometry.unsupported,
+        );
+        return;
+      } catch (error) {
+        if (attempt == 5) {
+          debugPrint('Display geometry unavailable: $error');
+          _applyLoaded(DisplayGeometry.unsupported);
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
     }
+  }
+
+  void _applyLoaded(DisplayGeometry geometry) {
     if (_disposed || _updatedByNativePush) return;
     if (geometry == _value) return;
     _value = geometry;

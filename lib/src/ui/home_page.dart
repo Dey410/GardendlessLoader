@@ -142,7 +142,8 @@ class _HomePageState extends State<HomePage> {
                   final size = constraints.biggest;
                   final compact = _isCompact(_availableSize(size, padding));
                   final geometry = _currentDisplayGeometry;
-                  final railOnLeft = _reservedRailOnLeft(geometry, size);
+                  final railOnLeft =
+                      _reservedRailOnLeft(geometry, size, padding);
                   final railWidth = _Sidebar.railWidthFor(compact);
                   final artContentLeft = switch (railOnLeft) {
                     null => _Sidebar.widthFor(
@@ -194,10 +195,10 @@ class _HomePageState extends State<HomePage> {
   static bool? _reservedRailOnLeft(
     DisplayGeometry? geometry,
     Size size,
+    EdgeInsets safeArea,
   ) {
     if (geometry == null ||
         !geometry.supportsReservedRegions ||
-        geometry.occlusionRegions.isEmpty ||
         (geometry.viewWidth - size.width).abs() > 1 ||
         (geometry.viewHeight - size.height).abs() > 1) {
       return null;
@@ -213,10 +214,22 @@ class _HomePageState extends State<HomePage> {
         geometry.occlusionRegions.any((region) => region.left <= 1);
     final touchesRight = geometry.occlusionRegions
         .any((region) => region.right >= size.width - 1);
-    if (touchesLeft == touchesRight) return null;
-    return touchesLeft;
+    if (touchesLeft != touchesRight) return touchesLeft;
+    // Last resort: follow a clearly wider safe-area strip, which is how a
+    // system control lane shows up in the measured insets.
+    const minStrip = 40.0;
+    if (safeArea.left >= minStrip && safeArea.left >= safeArea.right + 20) {
+      return true;
+    }
+    if (safeArea.right >= minStrip && safeArea.right >= safeArea.left + 20) {
+      return false;
+    }
+    return null;
   }
 
+  /// Where the icon column may start. An occlusion region that overlaps the
+  /// lane wins; without one the camera lane itself is the clearance, because
+  /// the hardware camera sits in that lane above the controls.
   static double _reservedRailTop({
     required DisplayGeometry geometry,
     required Size size,
@@ -226,13 +239,16 @@ class _HomePageState extends State<HomePage> {
   }) {
     final railLeft = onLeft ? 0.0 : size.width - railWidth;
     final rail = Rect.fromLTWH(railLeft, 0, railWidth, size.height);
-    var blockedUntil = safeArea.top;
+    var blockedUntil = 0.0;
     for (final region in geometry.occlusionRegions) {
       final overlap = region.intersect(rail);
       if (!overlap.isEmpty && overlap.bottom > blockedUntil) {
         blockedUntil = overlap.bottom;
       }
     }
+    // The camera lane is at least as tall as it is wide, so never start the
+    // icon column inside it even when the system reports a shorter region.
+    blockedUntil = math.max(blockedUntil, math.max(railWidth, safeArea.top));
     return (blockedUntil - safeArea.top).clamp(
       0.0,
       size.height - safeArea.top - safeArea.bottom,
