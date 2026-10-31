@@ -203,11 +203,17 @@ class _HomePageState extends State<HomePage> {
         (geometry.viewHeight - size.height).abs() > 1) {
       return null;
     }
-    switch (geometry.verticalBarEdge) {
-      case 'leading':
-        return true;
-      case 'trailing':
-        return false;
+    final byEdge = switch (geometry.verticalBarEdge) {
+      'leading' => true,
+      'trailing' => false,
+      _ => null,
+    };
+    if (byEdge != null) {
+      // Trust the system edge only when the measured strip agrees; a bar edge
+      // can be published while the window is inset on the other side.
+      final strip = byEdge ? safeArea.left : safeArea.right;
+      final other = byEdge ? safeArea.right : safeArea.left;
+      return strip >= 24 || other < strip + 20 ? byEdge : !byEdge;
     }
     // No published edge: follow the occlusion region that meets an edge.
     final touchesLeft =
