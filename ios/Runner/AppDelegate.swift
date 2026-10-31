@@ -24,9 +24,6 @@ import UIKit
   private var launcherEngine: FlutterEngine?
   private var gameHostChannel: FlutterMethodChannel?
   private var resourceZipImporterChannel: FlutterMethodChannel?
-  private var displayChannel: FlutterMethodChannel?
-  private var orientationObserver: NSObjectProtocol?
-  private var reportedSensorHousingEdge: String?
   private var lastImportProgressReportAt: UInt64 = 0
   private var pendingImportResult: FlutterResult?
   private var pendingImportTargetDirectory: String?
@@ -72,7 +69,6 @@ import UIKit
     registerGameHost(on: messenger)
     registerResourceZipImporter(on: messenger)
     registerAppLogger(on: messenger)
-    registerDisplay(on: messenger)
     registerShortcuts(on: messenger)
   }
 
@@ -122,65 +118,6 @@ import UIKit
   func performShortcut(_ type: String) {
     guard launcherEngine != nil else { return }
     shortcutChannel?.invokeMethod("perform", arguments: type)
-  }
-
-  // iOS reports equal left and right safe-area insets in landscape, so
-  // Flutter cannot tell which long edge holds the notch or Dynamic Island.
-  // Report it from the interface orientation and push changes, including
-  // 180° flips that leave the screen size and insets unchanged.
-  private func registerDisplay(on messenger: FlutterBinaryMessenger) {
-    let channel = FlutterMethodChannel(
-      name: "io.github.dey410.gardendlessloader/display",
-      binaryMessenger: messenger
-    )
-    displayChannel = channel
-    channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "sensorHousingEdge" else {
-        result(FlutterMethodNotImplemented)
-        return
-      }
-      let edge = self?.currentSensorHousingEdge()
-      self?.reportedSensorHousingEdge = edge
-      result(edge)
-    }
-    UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-    orientationObserver = NotificationCenter.default.addObserver(
-      forName: UIDevice.orientationDidChangeNotification,
-      object: nil,
-      queue: .main
-    ) { [weak self] _ in
-      // The interface finishes rotating after the device notification.
-      for delay in [0.05, 0.6] {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-          self?.reportSensorHousingEdgeIfChanged()
-        }
-      }
-    }
-  }
-
-  private func reportSensorHousingEdgeIfChanged() {
-    let edge = currentSensorHousingEdge()
-    guard edge != reportedSensorHousingEdge else { return }
-    reportedSensorHousingEdge = edge
-    displayChannel?.invokeMethod("sensorHousingEdgeChanged", arguments: edge)
-  }
-
-  /// "left" or "right" for the edge holding the sensor housing in
-  /// landscape, nil otherwise. Interface `.landscapeRight` puts the home
-  /// side on the right, so the top of the device faces left.
-  private func currentSensorHousingEdge() -> String? {
-    let scene = window?.windowScene
-      ?? UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .first
-    switch scene?.interfaceOrientation {
-    case .landscapeRight:
-      return "left"
-    case .landscapeLeft:
-      return "right"
-    default:
-      return nil
-    }
   }
 
   private func registerExternalBrowser(on messenger: FlutterBinaryMessenger) {

@@ -55,20 +55,27 @@ class _PlayPageState extends State<PlayPage> {
           );
         }
         // Launcher composition: the key art owns the open area, the title
-        // sits bottom-left on the same row as the primary action.
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Spacer(),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+        // sits bottom-left on the same row as the primary action. Scrolling
+        // keeps that anchoring when the row cannot fit, e.g. a short window
+        // or a large text scale.
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Expanded(child: hero),
-                const SizedBox(width: 16),
-                actionBar,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(child: hero),
+                    const SizedBox(width: 16),
+                    actionBar,
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         );
       },
     );
