@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import '../l10n/app_strings.dart';
 import '../logging/log_event_catalog.dart';
 import '../models.dart';
 import '../services/shortcut_service.dart';
+import '../services/display_geometry_service.dart';
 import '../services/update_check_service.dart';
 import 'launcher_actions.dart';
 import 'pages/play_page.dart';
@@ -24,9 +26,17 @@ import 'widgets/key_art_backdrop.dart';
 const _appIconAsset = 'tool/generated_icons/app_icon_master.png';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.controller});
+  const HomePage({
+    super.key,
+    required this.controller,
+    this.displayGeometry,
+  });
 
   final AppController controller;
+
+  /// Overrides the platform geometry reader; injected reads keep the layout
+  /// testable without a native channel.
+  final DisplayGeometryService? displayGeometry;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -44,6 +54,13 @@ class _HomePageState extends State<HomePage> {
   DateTime? _lastIconTap;
 
   AppController get _controller => widget.controller;
+
+  late final DisplayGeometryService _displayGeometry =
+      widget.displayGeometry ?? DisplayGeometryService();
+
+  bool get _ownsDisplayGeometry => widget.displayGeometry == null;
+
+  DisplayGeometry? get _currentDisplayGeometry => _displayGeometry.value;
 
   late final LauncherActions _actions = LauncherActions(
     navigate: _navigate,
@@ -64,6 +81,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _displayGeometry.addListener(_onDisplayGeometryChanged);
+    if (_ownsDisplayGeometry) unawaited(_displayGeometry.start());
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
@@ -74,6 +93,17 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_controller.checkForUpdates(silent: true));
     });
+  }
+
+  @override
+  void dispose() {
+    _displayGeometry.removeListener(_onDisplayGeometryChanged);
+    if (_ownsDisplayGeometry) _displayGeometry.dispose();
+    super.dispose();
+  }
+
+  void _onDisplayGeometryChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -97,8 +127,6 @@ class _HomePageState extends State<HomePage> {
   Widget _buildScene(BuildContext context) {
     final palette = context.garden;
     final loading = !_controller.initialized && _controller.busy;
-    // The art and the layout both use the real four-edge padding the
-    // platform reports; no edge is inferred from the current orientation.
     final padding = MediaQuery.paddingOf(context);
     final reduced = GardenMotionScope.reduced(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -111,14 +139,21 @@ class _HomePageState extends State<HomePage> {
             ? const Center(child: ProgressRing(value: null, size: 28))
             : LayoutBuilder(
                 builder: (context, constraints) {
-                  final compact = _isCompact(
-                    _availableSize(constraints.biggest, padding),
-                  );
+                  final size = constraints.biggest;
+                  final compact = _isCompact(_availableSize(size, padding));
+                  final geometry = _currentDisplayGeometry;
+                  final railOnLeft = _reservedRailOnLeft(geometry, size);
+                  final railWidth = _Sidebar.railWidthFor(compact);
+                  final artContentLeft = switch (railOnLeft) {
+                    null => _Sidebar.widthFor(
+                        leftInset: padding.left,
+                        compact: compact,
+                      ),
+                    true => math.max(padding.left, railWidth),
+                    false => padding.left,
+                  };
                   return Stack(
                     children: [
-                      // Full-bleed so the art continues under the frosted
-                      // rail and the left safe-area gutter, to the display
-                      // edges; it is framed for the area beside the rail.
                       Positioned.fill(
                         child: AnimatedOpacity(
                           opacity:
@@ -128,10 +163,7 @@ class _HomePageState extends State<HomePage> {
                           curve: GardenMotion.easeOut,
                           child: KeyArtBackdrop(
                             key: const ValueKey('play-backdrop'),
-                            contentLeft: _Sidebar.widthFor(
-                              leftInset: padding.left,
-                              compact: compact,
-                            ),
+                            contentLeft: artContentLeft,
                           ),
                         ),
                       ),
@@ -143,6 +175,9 @@ class _HomePageState extends State<HomePage> {
                           compact: compact,
                           padding: padding,
                           reduced: reduced,
+                          viewSize: size,
+                          displayGeometry: geometry,
+                          reservedRailLeft: railOnLeft,
                         ),
                       ),
                     ],
@@ -150,6 +185,57 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
       ),
+    );
+  }
+
+  /// The physical edge the system keeps for its vertical bar, or null when it
+  /// does not publish one. That edge is already hardware-aligned, so the
+  /// language direction must not mirror it.
+  static bool? _reservedRailOnLeft(
+    DisplayGeometry? geometry,
+    Size size,
+  ) {
+    if (geometry == null ||
+        !geometry.supportsReservedRegions ||
+        geometry.occlusionRegions.isEmpty ||
+        (geometry.viewWidth - size.width).abs() > 1 ||
+        (geometry.viewHeight - size.height).abs() > 1) {
+      return null;
+    }
+    switch (geometry.verticalBarEdge) {
+      case 'leading':
+        return true;
+      case 'trailing':
+        return false;
+    }
+    // No published edge: follow the occlusion region that meets an edge.
+    final touchesLeft =
+        geometry.occlusionRegions.any((region) => region.left <= 1);
+    final touchesRight = geometry.occlusionRegions
+        .any((region) => region.right >= size.width - 1);
+    if (touchesLeft == touchesRight) return null;
+    return touchesLeft;
+  }
+
+  static double _reservedRailTop({
+    required DisplayGeometry geometry,
+    required Size size,
+    required EdgeInsets safeArea,
+    required bool onLeft,
+    required double railWidth,
+  }) {
+    final railLeft = onLeft ? 0.0 : size.width - railWidth;
+    final rail = Rect.fromLTWH(railLeft, 0, railWidth, size.height);
+    var blockedUntil = safeArea.top;
+    for (final region in geometry.occlusionRegions) {
+      final overlap = region.intersect(rail);
+      if (!overlap.isEmpty && overlap.bottom > blockedUntil) {
+        blockedUntil = overlap.bottom;
+      }
+    }
+    return (blockedUntil - safeArea.top).clamp(
+      0.0,
+      size.height - safeArea.top - safeArea.bottom,
     );
   }
 
@@ -166,55 +252,108 @@ class _HomePageState extends State<HomePage> {
     required bool compact,
     required EdgeInsets padding,
     required bool reduced,
+    required Size viewSize,
+    required DisplayGeometry? displayGeometry,
+    required bool? reservedRailLeft,
   }) {
     final gutter = compact ? 20.0 : 32.0;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Sidebar(
-          controller: _controller,
-          selected: _destination,
-          compact: compact,
-          leftInset: padding.left,
-          bottomInset: padding.bottom,
-          onSelected: _navigate,
-          onIconTap: _onIconTap,
-        ),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
+    final railWidth = _Sidebar.railWidthFor(compact);
+
+    Widget mainContent(EdgeInsets contentPadding) => Padding(
+          padding: contentPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _TopBar(
+                controller: _controller,
+                destination: _destination,
+                compact: compact,
+                onOpenAnnouncement: _openAnnouncement,
+              ),
+              SizedBox(height: compact ? 14 : 24),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: reduced ? Duration.zero : GardenMotion.quick,
+                  switchInCurve: GardenMotion.easeOut,
+                  switchOutCurve: GardenMotion.easeOut,
+                  layoutBuilder: (current, previous) => Stack(
+                    fit: StackFit.expand,
+                    children: [...previous, if (current != null) current],
+                  ),
+                  child: KeyedSubtree(
+                    key: ValueKey(_destination),
+                    child: _buildPage(compact),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    if (reservedRailLeft == null) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Sidebar(
+            controller: _controller,
+            selected: _destination,
+            compact: compact,
+            leftInset: padding.left,
+            bottomInset: padding.bottom,
+            onSelected: _navigate,
+            onIconTap: _onIconTap,
+          ),
+          Expanded(
+            child: mainContent(EdgeInsets.fromLTRB(
               gutter,
               compact ? 14 : 24,
               padding.right + gutter,
               padding.bottom + (compact ? 12 : 20),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _TopBar(
-                  controller: _controller,
-                  destination: _destination,
-                  compact: compact,
-                  onOpenAnnouncement: _openAnnouncement,
-                ),
-                SizedBox(height: compact ? 14 : 24),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: reduced ? Duration.zero : GardenMotion.quick,
-                    switchInCurve: GardenMotion.easeOut,
-                    switchOutCurve: GardenMotion.easeOut,
-                    layoutBuilder: (current, previous) => Stack(
-                      fit: StackFit.expand,
-                      children: [...previous, if (current != null) current],
-                    ),
-                    child: KeyedSubtree(
-                      key: ValueKey(_destination),
-                      child: _buildPage(compact),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            )),
+          ),
+        ],
+      );
+    }
+
+    final geometry = displayGeometry!;
+    final railTop = _reservedRailTop(
+      geometry: geometry,
+      size: viewSize,
+      safeArea: padding,
+      onLeft: reservedRailLeft,
+      railWidth: railWidth,
+    );
+    final contentLeft = reservedRailLeft
+        ? math.max(padding.left, railWidth) + gutter
+        : padding.left + gutter;
+    final contentRight = reservedRailLeft
+        ? padding.right + gutter
+        : math.max(padding.right, railWidth) + gutter;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: mainContent(EdgeInsets.fromLTRB(
+            contentLeft,
+            compact ? 14 : 24,
+            contentRight,
+            padding.bottom + (compact ? 12 : 20),
+          )),
+        ),
+        Positioned(
+          left: reservedRailLeft ? 0 : null,
+          right: reservedRailLeft ? null : 0,
+          top: railTop,
+          bottom: padding.bottom,
+          width: railWidth,
+          child: _Sidebar(
+            controller: _controller,
+            selected: _destination,
+            compact: compact,
+            leftInset: 0,
+            bottomInset: 0,
+            onRightEdge: !reservedRailLeft,
+            onSelected: _navigate,
+            onIconTap: _onIconTap,
           ),
         ),
       ],
@@ -548,6 +687,7 @@ class _Sidebar extends StatelessWidget {
     required this.bottomInset,
     required this.onSelected,
     required this.onIconTap,
+    this.onRightEdge = false,
   });
 
   final AppController controller;
@@ -556,6 +696,7 @@ class _Sidebar extends StatelessWidget {
   final double leftInset;
   final double bottomInset;
   final ValueChanged<LauncherDestination> onSelected;
+  final bool onRightEdge;
   final VoidCallback onIconTap;
 
   static double railWidthFor(bool compact) => compact ? 76 : 92;
@@ -586,10 +727,17 @@ class _Sidebar extends StatelessWidget {
             decoration: BoxDecoration(
               color: palette.surface
                   .withValues(alpha: palette.isDark ? 0.42 : 0.5),
-              border: Border(
-                right:
-                    BorderSide(color: palette.border.withValues(alpha: 0.25)),
-              ),
+              border: onRightEdge
+                  ? Border(
+                      left: BorderSide(
+                        color: palette.border.withValues(alpha: 0.25),
+                      ),
+                    )
+                  : Border(
+                      right: BorderSide(
+                        color: palette.border.withValues(alpha: 0.25),
+                      ),
+                    ),
             ),
             child: SingleChildScrollView(
               primary: false,
