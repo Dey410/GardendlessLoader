@@ -175,9 +175,11 @@ class DisplayGeometryService extends ChangeNotifier {
           DisplayGeometry.fromMap(answer) ?? DisplayGeometry.unsupported,
         );
         return;
-      } catch (error) {
+      } catch (_) {
+        // The channel may not exist yet, or the platform cannot report
+        // reserved regions at all; after the last attempt the launcher keeps
+        // its plain layout instead of retrying forever.
         if (attempt == 5) {
-          debugPrint('Display geometry unavailable: $error');
           _applyLoaded(DisplayGeometry.unsupported);
           return;
         }
