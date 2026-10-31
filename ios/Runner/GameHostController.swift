@@ -39,12 +39,16 @@ enum GameViewportSize {
 private final class GameViewportView: UIView {
   let webView: WKWebView
   private let screenFit: GameScreenFit
+  private let backdrop = LetterboxBackdropView()
 
   init(webView: WKWebView, screenFit: GameScreenFit) {
     self.webView = webView
     self.screenFit = screenFit
     super.init(frame: .zero)
     backgroundColor = .black
+    // Behind the page: the letterbox bars read as the edge of the scene
+    // instead of an empty black gap.
+    addSubview(backdrop)
     addSubview(webView)
   }
 
@@ -55,6 +59,7 @@ private final class GameViewportView: UIView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    backdrop.frame = bounds
     let size = GameViewportSize.fit(bounds.size, screenFit)
     if screenFit == .stretch {
       // The page keeps the balanced viewport; the transform stretches it over
@@ -67,14 +72,154 @@ private final class GameViewportView: UIView {
           y: bounds.height / size.height
         )
         : .identity
+      backdrop.canvasFrame = .zero
       return
     }
-    webView.frame = CGRect(
+    let viewport = CGRect(
       x: floor((bounds.width - size.width) / 2),
       y: floor((bounds.height - size.height) / 2),
       width: size.width,
       height: size.height
     )
+    webView.frame = viewport
+    backdrop.canvasFrame = viewport
+  }
+}
+
+/// The frame around the game canvas. Each bar fades from a quiet bezel tone at
+/// the screen edge to a lifted tone against the page, with a soft halo and a
+/// hairline at the canvas border. It never animates, never takes touches and is
+/// repainted only on resize.
+private final class LetterboxBackdropView: UIView {
+  /// Where the page sits, so the halo follows the actual canvas.
+  var canvasFrame: CGRect = .zero {
+    didSet {
+      guard canvasFrame != oldValue else { return }
+      setNeedsDisplay()
+    }
+  }
+
+  /// Quiet bezel tone at the screen edge.
+  private static let outer = UIColor(
+    red: 0x0B / 255.0,
+    green: 0x15 / 255.0,
+    blue: 0x12 / 255.0,
+    alpha: 1
+  )
+  /// Slightly lifted tone against the page, where the artwork meets the bar.
+  private static let inner = UIColor(
+    red: 0x2A / 255.0,
+    green: 0x55 / 255.0,
+    blue: 0x48 / 255.0,
+    alpha: 1
+  )
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false
+    isOpaque = true
+    backgroundColor = Self.outer
+    contentMode = .redraw
+    accessibilityElementsHidden = true
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) is unavailable")
+  }
+
+  override func draw(_ rect: CGRect) {
+    guard let context = UIGraphicsGetCurrentContext(), !bounds.isEmpty else {
+      return
+    }
+    context.setFillColor(Self.outer.cgColor)
+    context.fill(bounds)
+    guard !canvasFrame.isEmpty else { return }
+
+    // Each bar runs from the bezel tone at the screen edge to the lifted tone
+    // against the page, mirrored on all four sides: a finished frame around the
+    // artwork instead of a gap.
+    drawBar(
+      context,
+      in: CGRect(x: 0, y: 0, width: bounds.width, height: canvasFrame.minY),
+      from: CGPoint(x: 0, y: 0),
+      to: CGPoint(x: 0, y: canvasFrame.minY)
+    )
+    drawBar(
+      context,
+      in: CGRect(
+        x: 0,
+        y: canvasFrame.maxY,
+        width: bounds.width,
+        height: bounds.height - canvasFrame.maxY
+      ),
+      from: CGPoint(x: 0, y: bounds.height),
+      to: CGPoint(x: 0, y: canvasFrame.maxY)
+    )
+    drawBar(
+      context,
+      in: CGRect(x: 0, y: 0, width: canvasFrame.minX, height: bounds.height),
+      from: CGPoint(x: 0, y: 0),
+      to: CGPoint(x: canvasFrame.minX, y: 0)
+    )
+    drawBar(
+      context,
+      in: CGRect(
+        x: canvasFrame.maxX,
+        y: 0,
+        width: bounds.width - canvasFrame.maxX,
+        height: bounds.height
+      ),
+      from: CGPoint(x: bounds.width, y: 0),
+      to: CGPoint(x: canvasFrame.maxX, y: 0)
+    )
+
+    // Soft halo outside the page; the page itself covers the fill.
+    context.saveGState()
+    context.setShadow(
+      offset: .zero,
+      blur: 30,
+      color: UIColor.black.withAlphaComponent(0.55).cgColor
+    )
+    context.setFillColor(UIColor.black.cgColor)
+    context.fill(canvasFrame)
+    context.restoreGState()
+
+    // A rim light and a hairline at the page edge so the frame looks finished.
+    context.saveGState()
+    context.setShadow(
+      offset: .zero,
+      blur: 12,
+      color: UIColor.white.withAlphaComponent(0.12).cgColor
+    )
+    context.setStrokeColor(UIColor.white.withAlphaComponent(0.10).cgColor)
+    context.setLineWidth(1.5)
+    context.stroke(canvasFrame.insetBy(dx: -0.75, dy: -0.75))
+    context.restoreGState()
+
+    context.saveGState()
+    context.setStrokeColor(UIColor.white.withAlphaComponent(0.10).cgColor)
+    context.setLineWidth(1)
+    context.stroke(canvasFrame.insetBy(dx: 0.5, dy: 0.5))
+    context.restoreGState()
+  }
+
+  private func drawBar(
+    _ context: CGContext,
+    in rect: CGRect,
+    from start: CGPoint,
+    to end: CGPoint
+  ) {
+    guard rect.width > 0, rect.height > 0 else { return }
+    guard let gradient = CGGradient(
+      colorsSpace: CGColorSpaceCreateDeviceRGB(),
+      colors: [Self.outer.cgColor, Self.inner.cgColor] as CFArray,
+      locations: [0, 1]
+    ) else { return }
+    context.saveGState()
+    context.clip(to: rect)
+    context.drawLinearGradient(gradient, start: start, end: end, options: [])
+    context.restoreGState()
   }
 }
 
