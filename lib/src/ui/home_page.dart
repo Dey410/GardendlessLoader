@@ -720,8 +720,7 @@ class _SidebarItem extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     destination.label(context.strings),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: color,
                       fontSize: 11.5,
