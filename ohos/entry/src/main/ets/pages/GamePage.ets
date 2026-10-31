@@ -29,6 +29,14 @@ struct GamePage {
   @State private viewportHeight: string = '100%';
   @State private viewportScaleX: number = 1;
   @State private viewportScaleY: number = 1;
+  private frameSettings: RenderingContextSettings = new RenderingContextSettings(true);
+  private frameContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.frameSettings);
+  private frameReady: boolean = false;
+  private frameWidth: number = 0;
+  private frameHeight: number = 0;
+  private pageWidth: number = 0;
+  private pageHeight: number = 0;
+  private stretchFit: boolean = false;
 
   aboutToAppear(): void {
     try {
@@ -76,6 +84,13 @@ struct GamePage {
 
   build() {
     Stack() {
+      Canvas(this.frameContext)
+        .width('100%')
+        .height('100%')
+        .onReady((): void => {
+          this.frameReady = true;
+          this.paintFrame();
+        })
       Web({ src: '', controller: this.controller })
         .width(this.viewportWidth)
         .height(this.viewportHeight)
@@ -228,6 +243,61 @@ struct GamePage {
       this.viewportScaleX = width / viewportWidth;
       this.viewportScaleY = height / viewportHeight;
     }
+    this.frameWidth = width;
+    this.frameHeight = height;
+    this.pageWidth = viewportWidth;
+    this.pageHeight = viewportHeight;
+    this.stretchFit = screenFit === 'stretch';
+    this.paintFrame();
+  }
+
+  /// Frames the page with a graded bezel so the bars read as a finished border
+  /// instead of an empty gap. Static: repainted only when the window changes.
+  private paintFrame(): void {
+    if (!this.frameReady || this.frameWidth <= 0 || this.frameHeight <= 0) {
+      return;
+    }
+    const context = this.frameContext;
+    const width = this.frameWidth;
+    const height = this.frameHeight;
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = '#0B1512';
+    context.fillRect(0, 0, width, height);
+    if (this.stretchFit) {
+      return;
+    }
+    const left = (width - this.pageWidth) / 2;
+    const top = (height - this.pageHeight) / 2;
+    const right = left + this.pageWidth;
+    const bottom = top + this.pageHeight;
+    this.paintBar(context, 0, 0, width, top, 0, 0, 0, top);
+    this.paintBar(context, 0, bottom, width, height - bottom, 0, height, 0, bottom);
+    this.paintBar(context, 0, 0, left, height, 0, 0, left, 0);
+    this.paintBar(context, right, 0, width - right, height, width, 0, right, 0);
+    context.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+    context.lineWidth = 1.5;
+    context.strokeRect(left - 0.75, top - 0.75, this.pageWidth + 1.5, this.pageHeight + 1.5);
+  }
+
+  private paintBar(
+    context: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    barWidth: number,
+    barHeight: number,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ): void {
+    if (barWidth <= 0 || barHeight <= 0) {
+      return;
+    }
+    const gradient = context.createLinearGradient(startX, startY, endX, endY);
+    gradient.addColorStop(0, '#0B1512');
+    gradient.addColorStop(1, '#2A5548');
+    context.fillStyle = gradient;
+    context.fillRect(x, y, barWidth, barHeight);
   }
 
   private buildDocumentStartScript(session: GameSession): string {
