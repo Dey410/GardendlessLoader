@@ -316,19 +316,22 @@ class _HomePageState extends State<HomePage> {
     }
 
     final geometry = displayGeometry!;
+    // The rail owns the whole system strip on its side, so the frosted panel
+    // never stops short of the reserved area; the content starts after it.
+    final railSpan = reservedRailLeft
+        ? math.max(padding.left, railWidth)
+        : math.max(padding.right, railWidth);
     final railTop = _reservedRailTop(
       geometry: geometry,
       size: viewSize,
       safeArea: padding,
       onLeft: reservedRailLeft,
-      railWidth: railWidth,
+      railWidth: railSpan,
     );
-    final contentLeft = reservedRailLeft
-        ? math.max(padding.left, railWidth) + gutter
-        : padding.left + gutter;
-    final contentRight = reservedRailLeft
-        ? padding.right + gutter
-        : math.max(padding.right, railWidth) + gutter;
+    final contentLeft =
+        reservedRailLeft ? railSpan + gutter : padding.left + gutter;
+    final contentRight =
+        reservedRailLeft ? padding.right + gutter : railSpan + gutter;
     return Stack(
       children: [
         Positioned.fill(
@@ -343,14 +346,15 @@ class _HomePageState extends State<HomePage> {
           left: reservedRailLeft ? 0 : null,
           right: reservedRailLeft ? null : 0,
           top: 0,
-          bottom: padding.bottom,
-          width: railWidth,
+          bottom: 0,
+          width: railSpan,
           child: _Sidebar(
             controller: _controller,
             selected: _destination,
             compact: compact,
             leftInset: 0,
             bottomInset: 0,
+            width: railSpan,
             contentTop: railTop,
             onRightEdge: !reservedRailLeft,
             onSelected: _navigate,
@@ -690,6 +694,7 @@ class _Sidebar extends StatelessWidget {
     required this.onIconTap,
     this.onRightEdge = false,
     this.contentTop = 0,
+    this.width,
   });
 
   final AppController controller;
@@ -703,6 +708,9 @@ class _Sidebar extends StatelessWidget {
   /// Space above the icon and items; the frosted surface still starts at the
   /// top so the rail reads as one panel behind a reserved region.
   final double contentTop;
+
+  /// Surface width override; the reserved strip may be wider than the rail.
+  final double? width;
   final VoidCallback onIconTap;
 
   static double railWidthFor(bool compact) => compact ? 76 : 92;
@@ -723,7 +731,7 @@ class _Sidebar extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.only(left: leftInset),
           child: Container(
-            width: railWidthFor(compact),
+            width: width ?? railWidthFor(compact),
             padding: EdgeInsets.fromLTRB(
               10,
               contentTop + (compact ? 14 : 24),
