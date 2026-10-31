@@ -49,6 +49,10 @@ enum RenderResolution {
   }
 }
 
+// Preserve saved choices; new iOS installations default to the whole picture.
+ScreenFit get _defaultScreenFit =>
+    Platform.isIOS ? ScreenFit.showAll : ScreenFit.balanced;
+
 class AppSettings {
   const AppSettings({
     this.watermarkEnabled = true,
@@ -70,7 +74,9 @@ class AppSettings {
       watermarkEnabled: json['watermarkEnabled'] as bool? ?? true,
       quickLaunchEnabled: json['quickLaunchEnabled'] as bool? ?? false,
       renderResolution: RenderResolution.fromName(json['renderResolution']),
-      screenFit: ScreenFit.fromName(json['screenFit']),
+      screenFit: json['screenFit'] == null
+          ? _defaultScreenFit
+          : ScreenFit.fromName(json['screenFit']),
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       themePreference: ThemePreference.fromName(json['themePreference']),
@@ -167,7 +173,7 @@ class AppSettingsStore {
 
   Future<AppSettings> read() async {
     if (!await _file.exists()) {
-      return const AppSettings();
+      return AppSettings(screenFit: _defaultScreenFit);
     }
 
     try {
@@ -178,7 +184,7 @@ class AppSettingsStore {
     } catch (_) {
       // Invalid or outdated settings fall back to the safe default.
     }
-    return const AppSettings();
+    return AppSettings(screenFit: _defaultScreenFit);
   }
 
   Future<void> write(AppSettings settings) async {
