@@ -125,6 +125,8 @@ function harness(hasGpNext = true) {
       if (name === '@ohos.file.picker') return { default: picker };
       if (name === '@ohos/flutter_ohos') return { MethodChannel: class {} };
       if (name === '@kit.ArkUI') return { promptAction: { showDialog: async () => ({ index: 1 }) } };
+      if (name === '@ohos.vibrator') return { default: { startVibration: async () => {} } };
+      if (name === '@ohos.deviceInfo') return { default: { manufacture: 'Test', productModel: 'Device', osFullName: 'OpenHarmony-test' } };
       if (name.endsWith('/logging/AppLogStore')) return { appLogStore: { emit: (event) => events.push(event) } };
       if (name.endsWith('/picker/DocumentPickerOrientation')) return { withDocumentPickerOrientation: (_context, operation) => operation() };
       if (name.startsWith('.')) return load(path.relative(sourceRoot, path.resolve(path.dirname(filename), name)));

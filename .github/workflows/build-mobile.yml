@@ -63,6 +63,7 @@ jobs:
           node tool/check_audio_lifecycle.mjs
 
       - name: Test OHOS file protocol in memory
+        timeout-minutes: 5
         run: npm test --prefix ohos/test
 
       - name: Record runtime version
