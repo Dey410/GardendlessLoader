@@ -9,7 +9,7 @@
 - After the first import, manifest activates `slot-a` and `slot-b` remains empty.
 - After an update, manifest activates the candidate slot and clears the old slot.
 - Launch page shows resource imported and detected title.
-- In a compact or short launcher window, the Play page can scroll to keep its title, recovery card and start action reachable; long labels and panel titles wrap without clipping.
+- In a compact or short launcher window, the Play page can scroll to keep its title, recovery card and start action reachable; the sidebar navigation list scrolls when wrapped labels need more height; long labels and panel titles wrap without clipping.
 - Start game destroys the Flutter launcher and opens a landscape native GameHost.
 - Android loads from `https://appassets.androidplatform.net`, iOS from `gardendless-game://localhost`, and HarmonyOS from `https://gardendless.invalid`.
 - Android inlines the shared bridge scripts as the first `<head>` script of every HTML document it serves, so a System WebView without `DOCUMENT_START_SCRIPT` still starts the game; a GameHost launch failure logs the WebView package and version.

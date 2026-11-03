@@ -725,17 +725,27 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
               SizedBox(height: compact ? 16 : 28),
-              for (final destination in LauncherDestination.values)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: _SidebarItem(
-                    destination: destination,
-                    selected: destination == selected,
-                    compact: compact,
-                    badge: _badgeFor(destination),
-                    onTap: () => onSelected(destination),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final destination in LauncherDestination.values)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: _SidebarItem(
+                            destination: destination,
+                            selected: destination == selected,
+                            compact: compact,
+                            badge: _badgeFor(destination),
+                            onTap: () => onSelected(destination),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
+              ),
             ],
           ),
         ),
