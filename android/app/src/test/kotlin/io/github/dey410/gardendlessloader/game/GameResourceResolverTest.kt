@@ -45,6 +45,14 @@ class GameResourceResolverTest {
     }
 
     @Test
+    fun `remote hosts cannot inject CSP directives or broader URL sources`() {
+        for (host in listOf("github.com; connect-src *", "github.com/path", "user@github.com", "*", "github.com:443")) {
+            runCatching { GameResourceResolver(root, "boot()", setOf(host)) }
+                .onSuccess { throw AssertionError("unsafe CSP host was accepted: $host") }
+        }
+    }
+
+    @Test
     fun `supports ranges etag and immutable cache`() {
         val url = "https://appassets.androidplatform.net/assets/chunk.1234abcd.js"
         val partial = resolver.resolve(url, "GET", mapOf("Range" to "bytes=2-5"))

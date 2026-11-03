@@ -17,7 +17,9 @@ class GameWebViewClient(
     documentStartScript: String,
     private val onRendererGone: (Boolean) -> Unit,
 ) : WebViewClient() {
-    private val resolver = GameResourceResolver(java.io.File(session.resourceRoot), documentStartScript)
+    private val resolver = GameResourceResolver(
+        java.io.File(session.resourceRoot), documentStartScript, session.allowedRemoteHosts,
+    )
     private val origin = Uri.parse(session.origin)
     private val allowedRemoteHosts = session.allowedRemoteHosts
 

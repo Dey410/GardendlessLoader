@@ -25,6 +25,10 @@
   const media = new Set();
   const suspendedContexts = new Set();
   const pausedMedia = new Set();
+  // A game's own stop overrides automatic restoration and any earlier start
+  // deferred while inactive. Host suspension calls the native methods directly.
+  const contextStops = new WeakMap();
+  const mediaStops = new WeakMap();
   let active = true;
   let waiting = [];
 
@@ -46,7 +50,16 @@
 
   Base.prototype.resume = function () {
     const context = this;
-    return active ? nativeResume.call(context) : whenActive().then(() => nativeResume.call(context));
+    const stop = contextStops.get(context);
+    return active ? nativeResume.call(context) : whenActive().then(() => {
+      if (contextStops.get(context) === stop) return nativeResume.call(context);
+    });
+  };
+
+  Base.prototype.suspend = function () {
+    suspendedContexts.delete(this);
+    contextStops.set(this, (contextStops.get(this) || 0) + 1);
+    return nativeSuspend.call(this);
   };
 
   Media.prototype.play = function () {
@@ -55,7 +68,19 @@
       media.add(element);
       element.addEventListener("emptied", () => media.delete(element));
     }
-    return active ? nativePlay.call(element) : whenActive().then(() => nativePlay.call(element));
+    const stop = mediaStops.get(element);
+    return active ? nativePlay.call(element) : whenActive().then(() => {
+      if (mediaStops.get(element) !== stop) {
+        throw new DOMException("The play() request was interrupted by pause().", "AbortError");
+      }
+      return nativePlay.call(element);
+    });
+  };
+
+  Media.prototype.pause = function () {
+    pausedMedia.delete(this);
+    mediaStops.set(this, (mediaStops.get(this) || 0) + 1);
+    return nativePause.call(this);
   };
 
   window.__gardendlessSetSceneActive = function (isActive) {

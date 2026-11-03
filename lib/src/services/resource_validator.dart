@@ -6,6 +6,8 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models.dart';
+import 'resource_file_safety.dart';
+import 'resource_package_index.dart';
 
 typedef _PackageScan = ({
   String? packageId,
@@ -38,7 +40,8 @@ class ResourceValidator {
       return ResourceValidationResult.missing('${root.path} 不存在');
     }
 
-    await _requireSafePath(root, root.path, FileSystemEntityType.directory);
+    await requireSafeResourcePath(
+        root, root.path, FileSystemEntityType.directory);
 
     final requiredDirectories = [
       Directory(p.join(root.path, 'assets')),
@@ -46,7 +49,7 @@ class ResourceValidator {
       Directory(p.join(root.path, 'src')),
     ];
     for (final directory in requiredDirectories) {
-      await _requireSafePath(
+      await requireSafeResourcePath(
           root, directory.path, FileSystemEntityType.directory,
           allowMissing: true);
       if (!await directory.exists()) {
@@ -67,7 +70,7 @@ class ResourceValidator {
       importMapFile,
       File(p.join(root.path, 'cocos-js', 'cc.js'))
     ]) {
-      await _requireSafePath(root, file.path, FileSystemEntityType.file,
+      await requireSafeResourcePath(root, file.path, FileSystemEntityType.file,
           allowMissing: true);
       if (!await file.exists()) {
         return ResourceValidationResult.invalid(
@@ -127,7 +130,6 @@ class ResourceValidator {
   static const _manifestPath = '__gardendless/package/resource-manifest.json';
   static const _indexPath = '__gardendless/package/file-index.json';
   static const _maxManifestBytes = 64 * 1024;
-  static const _maxIndexBytes = 32 * 1024 * 1024;
 
   // Thousands of per-file calls run synchronously on a background isolate:
   // far cheaper than awaiting each one, and the UI stays smooth. Static, so
@@ -180,16 +182,19 @@ class ResourceValidator {
         stats: stats
       );
     }
-    await _requireSafePath(root, marker.path, FileSystemEntityType.directory);
+    await requireSafeResourcePath(
+        root, marker.path, FileSystemEntityType.directory);
     final reserved = Directory(p.join(marker.path, 'package'));
     if (!await reserved.exists()) {
       throw const FormatException('资源包元数据目录缺失');
     }
-    await _requireSafePath(root, reserved.path, FileSystemEntityType.directory);
+    await requireSafeResourcePath(
+        root, reserved.path, FileSystemEntityType.directory);
     Future<List<int>> metadataBytes(String relative, int maxBytes) async {
       final entry = payload.remove(relative);
       if (entry == null) throw const FormatException('资源包元数据缺失');
-      await _requireSafePath(root, entry.file.path, FileSystemEntityType.file);
+      await requireSafeResourcePath(
+          root, entry.file.path, FileSystemEntityType.file);
       if (entry.sizeBytes > maxBytes) {
         throw const FormatException('资源包元数据过大');
       }
@@ -201,7 +206,7 @@ class ResourceValidator {
     }
 
     final manifestBytes = await metadataBytes(_manifestPath, _maxManifestBytes);
-    final indexBytes = await metadataBytes(_indexPath, _maxIndexBytes);
+    final indexBytes = await metadataBytes(_indexPath, maxResourceIndexBytes);
     final manifest = jsonDecode(utf8.decode(manifestBytes));
     final hexDigest = RegExp(r'^[a-f0-9]{64}$');
     final version = RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$');
@@ -243,46 +248,12 @@ class ResourceValidator {
     if (sha256.convert(indexBytes).toString() != manifest['fileIndexSha256']) {
       throw const FormatException('资源包索引摘要不匹配');
     }
-    final index = jsonDecode(utf8.decode(indexBytes));
-    if (index is! Map<String, dynamic> ||
-        index.length != 2 ||
-        index['schemaVersion'] != 1 ||
-        index['files'] is! List) {
-      throw const FormatException('资源包索引格式无效');
-    }
-    String? previous;
-    for (final entry in index['files'] as List) {
-      if (entry is! Map<String, dynamic> ||
-          entry.length != 3 ||
-          entry['path'] is! String ||
-          entry['sizeBytes'] is! int ||
-          (entry['sizeBytes'] as int) < 0 ||
-          entry['sha256'] is! String ||
-          !hexDigest.hasMatch(entry['sha256'] as String)) {
-        throw const FormatException('资源包索引条目无效');
-      }
-      final path = entry['path'] as String;
-      final uri = Uri.tryParse(path);
-      if (path.isEmpty ||
-          path.contains('\\') ||
-          path.contains('\u0000') ||
-          p.posix.isAbsolute(path) ||
-          p.posix.normalize(path) != path ||
-          path
-              .split('/')
-              .any((part) => part.isEmpty || part == '.' || part == '..') ||
-          uri == null ||
-          uri.hasScheme ||
-          uri.hasAuthority ||
-          (previous != null && previous.compareTo(path) >= 0)) {
-        throw const FormatException('资源包索引路径不安全、重复或未排序');
-      }
-      previous = path;
-      final file = payload.remove(path);
+    for (final entry in decodeResourcePackageIndex(indexBytes)) {
+      final file = payload.remove(entry.path);
       if (file == null ||
-          file.sizeBytes != entry['sizeBytes'] ||
+          file.sizeBytes != entry.sizeBytes ||
           (await sha256.bind(file.file.openRead()).first).toString() !=
-              entry['sha256']) {
+              entry.sha256) {
         throw const FormatException('资源文件大小或摘要不匹配');
       }
     }
@@ -296,47 +267,6 @@ class ResourceValidator {
       gpNextVersion: manifest['gpNextVersion'] as String?,
       stats: stats,
     );
-  }
-
-  Future<void> _requireSafePath(
-    Directory root,
-    String path,
-    FileSystemEntityType expected, {
-    bool allowMissing = false,
-  }) async {
-    final absoluteRoot = p.normalize(root.absolute.path);
-    final absolutePath = p.normalize(p.absolute(path));
-    if (absoluteRoot != absolutePath &&
-        !p.isWithin(absoluteRoot, absolutePath)) {
-      throw const FileSystemException('文件越出资源根目录');
-    }
-    var current = absoluteRoot;
-    final components = p.equals(absoluteRoot, absolutePath)
-        ? const <String>[]
-        : p.split(p.relative(absolutePath, from: absoluteRoot));
-    for (final component in <String>['', ...components]) {
-      if (component.isNotEmpty) current = p.join(current, component);
-      if (await FileSystemEntity.type(current, followLinks: false) ==
-          FileSystemEntityType.link) {
-        throw const FileSystemException('资源路径不能包含符号链接');
-      }
-    }
-    final type = await FileSystemEntity.type(absolutePath, followLinks: false);
-    if (type == FileSystemEntityType.notFound && allowMissing) return;
-    if (type != expected) {
-      throw const FileSystemException('资源类型无效');
-    }
-    final canonicalRoot = p.normalize(await root.resolveSymbolicLinks());
-    final resolved = p.normalize(await (expected == FileSystemEntityType.file
-        ? File(absolutePath).resolveSymbolicLinks()
-        : Directory(absolutePath).resolveSymbolicLinks()));
-    if (resolved != canonicalRoot && !p.isWithin(canonicalRoot, resolved)) {
-      throw const FileSystemException('文件越出资源根目录');
-    }
-    if (expected == FileSystemEntityType.file) {
-      final handle = await File(resolved).open(mode: FileMode.read);
-      await handle.close();
-    }
   }
 
   String? _titleVersion(String? title) => title == null
@@ -373,7 +303,8 @@ class ResourceValidator {
       return const _GpNextDetection.notDetected();
     }
 
-    await _requireSafePath(root, entryFile.path, FileSystemEntityType.file);
+    await requireSafeResourcePath(
+        root, entryFile.path, FileSystemEntityType.file);
     final entry = await entryFile.readAsString();
     final fingerprints = StringBuffer(entry);
     for (final modulePath in _gpNextModulePaths(entry, normalizedPath)) {
@@ -381,7 +312,7 @@ class ResourceValidator {
         p.joinAll([root.path, ...p.posix.split(modulePath)]),
       );
       if (await moduleFile.exists()) {
-        await _requireSafePath(
+        await requireSafeResourcePath(
             root, moduleFile.path, FileSystemEntityType.file);
         fingerprints
           ..writeln()

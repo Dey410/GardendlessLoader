@@ -20,7 +20,11 @@ data class GameResourceResponse(
     val body: InputStream,
 )
 
-class GameResourceResolver(root: File, documentStartScript: String) {
+class GameResourceResolver(
+    root: File,
+    documentStartScript: String,
+    allowedRemoteHosts: Set<String> = emptySet(),
+) {
     private val canonicalRoot = root.absoluteFile.also {
         require(!it.isSymbolicLink()) { "Resource root must not be a symbolic link" }
     }.canonicalFile.also {
@@ -33,6 +37,19 @@ class GameResourceResolver(root: File, documentStartScript: String) {
         require(!documentStartScript.contains("</script", ignoreCase = true) &&
             !documentStartScript.contains("<!--")) { "Document-start script cannot be inlined into HTML" }
         "<script>$documentStartScript</script>"
+    }
+
+    // WebView's request interceptor sees only the initial URL of a redirect.
+    // CSP lets the browser enforce the same host boundary on subsequent URLs.
+    private val contentSecurityPolicy = run {
+        val remoteSources = allowedRemoteHosts.sorted().flatMap { host ->
+            require(URI("https://$host/").host == host) { "Invalid remote host" }
+            listOf("https://$host:*", "https://*.$host:*")
+        }
+        val sources = (listOf("'self'", "data:", "blob:") + remoteSources).joinToString(" ")
+        // Cocos and GP-Next need inline scripts, dynamic compilation and local blobs.
+        "default-src $sources 'unsafe-inline' 'unsafe-eval'; " +
+            "connect-src $sources; form-action $sources"
     }
 
     fun resolve(
@@ -61,6 +78,8 @@ class GameResourceResolver(root: File, documentStartScript: String) {
             "ETag" to etag,
             "Cache-Control" to cacheControl(relativePath),
             "X-Content-Type-Options" to "nosniff",
+            // Worker scripts establish their own CSP rather than inheriting HTML's.
+            "Content-Security-Policy" to contentSecurityPolicy,
         )
         // Android WebResourceResponse rejects every 3xx status, including 304.
         // Serve the current representation as 200/206 even when the ETag matches.

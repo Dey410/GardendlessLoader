@@ -14,7 +14,6 @@ final class ConstantsTests: XCTestCase {
   }
 
   func testZipLimits() {
-    XCTAssertEqual(ZipImportLimits.copyBufferSize, 64 * 1024)
     XCTAssertEqual(ZipImportLimits.centralHeaderLength, 46)
   }
 

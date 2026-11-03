@@ -49,18 +49,7 @@ Future<void> main() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]));
-  runZonedGuarded(
-    () => runApp(GardendlessLoaderApp(logger: logger)),
-    (error, stackTrace) => logger.emit(
-      level: LogLevel.fatal,
-      category: 'app.dart',
-      event: 'dart_unhandled_error',
-      outcome: LogOutcome.failed,
-      code: 'dart_unhandled_error',
-      error: error,
-      stackTrace: stackTrace,
-    ),
-  );
+  runApp(GardendlessLoaderApp(logger: logger));
 }
 
 class GardendlessLoaderApp extends StatefulWidget {

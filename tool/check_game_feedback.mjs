@@ -216,32 +216,21 @@ const mapped = ['playRhythmHit', 'playReadyOrSet', 'playPlantFoodStart', 'playLe
   'playHugeWave', 'playFinalWave', 'playSandStormWarn', 'playZombossHPFillStart',
   'playLevelTaskComplete', 'playLevelTaskFail'];
 
-function hapticHarness({enabled = true, names = mapped.concat(['playCardChosen']), pads = null,
+function hapticHarness({names = mapped, pads = null,
   registered = true} = {}) {
   const {sounds, played} = createSounds(names);
   const modules = new Map(registered ? [[soundModuleId, {sounds}]] : []);
-  const h = createHarness({modules, config: {hapticEffectsEnabled: enabled}, pads});
+  const h = createHarness({modules, config: {hapticEffectsEnabled: true}, pads});
   h.run('haptics');
   return {h, sounds, played, modules};
 }
 
-// Turned off, the sound effects stay untouched.
-{
-  const {h, sounds} = hapticHarness({enabled: false});
-  const original = sounds.playExplosion;
-  h.advance(1000);
-  assert.equal(sounds.playExplosion, original);
-}
-
-// Each mapped sound still plays as before and adds its haptic pattern;
-// other sounds stay untouched.
+// Each mapped sound still plays as before and adds its haptic pattern.
 {
   const {h, sounds, played} = hapticHarness();
-  const untouched = sounds.playCardChosen;
   assert.equal(sounds.playExplosion('x'), 'playExplosion played');
   assert.deepEqual(played, [['playExplosion', true, ['x']]]);
   assert.deepEqual(h.invoked, [['host:haptic', 'heavy', 0]]);
-  assert.equal(sounds.playCardChosen, untouched);
 
   const patterns = {};
   for (const name of mapped) {

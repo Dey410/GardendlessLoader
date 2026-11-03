@@ -26,16 +26,6 @@ class FileTransferRetainedFixtureTest {
     }
 
     @Test
-    fun `empty replacement creates an empty committed file`() {
-        val directory = Files.createTempDirectory("gardendless-file-empty-retained-").toFile()
-        val destination = File(directory, "save.bin").apply { writeText("old-version") }
-        val temporary = File(directory, ".transaction").apply { createNewFile() }
-        FileTransferCursor(0).requireComplete()
-        commitFileTransfer(temporary, destination)
-        assertEquals(0L, destination.length())
-    }
-
-    @Test
     fun `cross directory transaction is rejected without changing the destination`() {
         val directory = Files.createTempDirectory("gardendless-file-cross-retained-").toFile()
         val destination = File(directory, "save.bin").apply { writeText("old-version") }

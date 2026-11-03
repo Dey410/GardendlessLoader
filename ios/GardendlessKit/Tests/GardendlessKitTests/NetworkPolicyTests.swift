@@ -4,7 +4,7 @@ import XCTest
 @testable import GardendlessCore
 
 final class NetworkPolicyTests: XCTestCase {
-  func testEncodedRulesBlockByDefaultAndAllowOnlyExactHostSuffixes() throws {
+  func testEncodedRulesBlockByDefaultBeforeAllowRules() throws {
     let encoded = try NetworkPolicy.encodedRules(for: ["github.com"])
     let rules = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(encoded.utf8)) as? [[String: Any]]
@@ -22,11 +22,40 @@ final class NetworkPolicyTests: XCTestCase {
       (rules[2]["action"] as? [String: String])?["type"],
       "ignore-previous-rules"
     )
-    let trigger = try XCTUnwrap(rules[2]["trigger"] as? [String: Any])
-    XCTAssertEqual(
-      trigger["url-filter"] as? String,
-      "^https://([a-z0-9-]+\\.)*github\\.com[:/]"
+  }
+
+  func testAllowRuleRequiresActualHostAndOptionalNumericPort() throws {
+    let encoded = try NetworkPolicy.encodedRules(for: ["github.com"])
+    let rules = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Data(encoded.utf8)) as? [[String: Any]]
     )
+    let trigger = try XCTUnwrap(rules.last?["trigger"] as? [String: Any])
+    let pattern = try XCTUnwrap(trigger["url-filter"] as? String)
+    let allowRule = try NSRegularExpression(pattern: pattern)
+    for (raw, allowed) in [
+      ("https://github.com/", true),
+      ("https://api.github.com/repos", true),
+      ("https://github.com:8443/repos", true),
+      ("https://api.github.com:8443/repos", true),
+      ("http://github.com/repos", false),
+      ("https://github.com.evil.test/repos", false),
+      ("https://notgithub.com/repos", false),
+      ("https://github.com:password@evil.test/repos", false),
+      ("https://github.com:443@evil.test/repos", false),
+      ("https://api.github.com:8443@evil.test/repos", false),
+      ("https://github.com@evil.test/repos", false),
+    ] {
+      let url = try XCTUnwrap(URL(string: raw))
+      let serialized = url.absoluteString
+      let matched = allowRule.firstMatch(
+        in: serialized,
+        range: NSRange(serialized.startIndex..., in: serialized)
+      ) != nil
+      XCTAssertEqual(matched, allowed, raw)
+      if matched {
+        XCTAssertTrue(url.host == "github.com" || url.host?.hasSuffix(".github.com") == true)
+      }
+    }
   }
 
   func testEncodedRulesAllowNoHostsWhenSetIsEmpty() throws {

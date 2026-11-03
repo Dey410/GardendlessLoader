@@ -174,6 +174,7 @@ class GardenJournalStore {
   GardenJournalStore(this._file);
 
   final File _file;
+  Future<void> _pendingWrite = Future<void>.value();
 
   File get _temporaryFile => File('${_file.path}.tmp');
 
@@ -192,7 +193,16 @@ class GardenJournalStore {
     return const GardenJournal();
   }
 
-  Future<void> write(GardenJournal journal) async {
+  Future<void> write(GardenJournal journal) {
+    final write = _pendingWrite.then((_) => _write(journal));
+    // Keep later snapshots writable after a failure; the caller still gets
+    // the original error. Only one writer may own the temporary file.
+    _pendingWrite =
+        write.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return write;
+  }
+
+  Future<void> _write(GardenJournal journal) async {
     await _file.parent.create(recursive: true);
     const encoder = JsonEncoder.withIndent('  ');
     await _temporaryFile.writeAsString(

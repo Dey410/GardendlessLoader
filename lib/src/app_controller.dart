@@ -369,6 +369,9 @@ class AppController extends ChangeNotifier {
         failureCode: 'app_initialization_failed',
       );
       await operation.run(initializeCore);
+      // Initialization is complete before quick launch takes the same busy
+      // guard as a user-initiated launch or resource import.
+      _busy = false;
       if (quickLaunch) {
         try {
           await startGame();
@@ -646,6 +649,7 @@ class AppController extends ChangeNotifier {
     required Future<bool> Function(String current, String incoming)
         confirmDowngrade,
   }) async {
+    if (_busy || isImporting) return;
     final paths = _requirePaths();
     final manifestStore = _requireManifestStore();
     final previousVersion = hasCurrentResource ? _currentGameVersion : null;
@@ -675,6 +679,15 @@ class AppController extends ChangeNotifier {
     var restoreAwakeModeAfterImport = false;
     ImportTarget? importTarget;
     try {
+      // Preference changes and imports both replace manifest.json. Finish
+      // any earlier preference write before the import owns the manifest;
+      // busy blocks new preference writes until the transaction completes.
+      try {
+        await _manifestPreferenceWrite;
+      } catch (_) {
+        // Its caller already received the failure. The import reads the
+        // persisted manifest and must still work after a failed preference.
+      }
       restoreAwakeModeAfterImport = await _keepScreenAwakeForImport();
       importTarget = await _importService.beginImport(
         paths: paths,
@@ -1038,6 +1051,18 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> startGame() async {
+    if (_busy || isImporting) return;
+    _busy = true;
+    notifyListeners();
+    try {
+      await _launchGame();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _launchGame() async {
     final paths = _requirePaths();
     _message = null;
     final activeDirectory = _importService.activeDirectory(paths, _manifest);
@@ -1091,11 +1116,12 @@ class AppController extends ChangeNotifier {
       await store.prepare(session);
       _importCompletionTimer?.cancel();
       _importProgressTickTimer?.cancel();
-      // Saved first: the launcher engine is torn down once the game opens.
-      if (session.gestureHint != null) {
-        await _updateAppSettings(_appSettings.copyWith(gestureHintShown: true));
-      }
       try {
+        // Saved first: the launcher engine is torn down once the game opens.
+        if (session.gestureHint != null) {
+          await _updateAppSettings(
+              _appSettings.copyWith(gestureHintShown: true));
+        }
         await _gameHost.launch(session);
       } catch (_) {
         // Otherwise the next start would take it for a game that crashed.
@@ -1431,7 +1457,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> setAutoCollectSunEnabled(bool enabled) async {
-    if (_manifest.autoCollectSunEnabled == enabled) {
+    if (_busy || isImporting || _manifest.autoCollectSunEnabled == enabled) {
       return;
     }
     final manifestStore = _requireManifestStore();

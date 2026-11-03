@@ -26,7 +26,7 @@ function run(navigator = {audioSession: {type: 'auto'}}) {
     pause() { calls.push('pause'); this.paused = true; }
   }
   const window = {AudioContext, webkitAudioContext: AudioContext, HTMLMediaElement, navigator};
-  vm.runInNewContext(source, {window, Promise});
+  vm.runInNewContext(source, {window, Promise, DOMException});
   return {window, calls, Base: AudioContext, Media: HTMLMediaElement};
 }
 
@@ -74,6 +74,59 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(calls, [], 'audio the page left suspended stays suspended');
   await context.resume();
   assert.deepEqual(calls, ['resume'], 'resume runs at once while active');
+}
+
+{
+  const {window, calls, Media} = run();
+  const context = new window.AudioContext();
+  const element = new Media();
+  await element.play();
+  window.__gardendlessSetSceneActive(false);
+  await context.suspend();
+  element.pause();
+  calls.length = 0;
+
+  window.__gardendlessSetSceneActive(true);
+  await tick();
+  assert.deepEqual(calls, [], 'a game stop during inactivity cancels host restoration');
+  assert.equal(context.state, 'suspended');
+  assert.equal(element.paused, true);
+}
+
+{
+  const {window, calls, Media} = run();
+  const context = new window.AudioContext();
+  const element = new Media();
+  window.__gardendlessSetSceneActive(false);
+  const resumed = context.resume();
+  const played = assert.rejects(element.play(), {name: 'AbortError'});
+  await context.suspend();
+  element.pause();
+  calls.length = 0;
+
+  window.__gardendlessSetSceneActive(true);
+  await Promise.all([resumed, played]);
+  assert.deepEqual(calls, [], 'a later stop also cancels deferred starts');
+  assert.equal(context.state, 'suspended');
+  assert.equal(element.paused, true);
+}
+
+{
+  const {window, calls, Media} = run();
+  const context = new window.AudioContext();
+  const element = new Media();
+  window.__gardendlessSetSceneActive(false);
+  await context.suspend();
+  element.pause();
+  const resumed = context.resume();
+  const played = element.play();
+  calls.length = 0;
+
+  window.__gardendlessSetSceneActive(true);
+  await Promise.all([resumed, played]);
+  assert.deepEqual(calls, ['resume', 'play'], 'a new start after stopping still runs on activation');
+  assert.equal(context.state, 'running');
+  assert.equal(element.paused, false);
 }
 
 console.log('audio_lifecycle.js checks passed');

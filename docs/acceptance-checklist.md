@@ -179,6 +179,8 @@
 
 - A ZIP without a valid `docs/index.html` rejects import and leaves the active slot unchanged; a delta ZIP is recognized by its `__gardendless/package/resource-manifest.json` instead.
 - A delta whose base is not the active `packageId`, or a delta over a package without an index, fails with `delta_base_mismatch` and its fix hint, and leaves the active slot unchanged.
+- Before delta reuse, reject oversized metadata, malformed or unsorted indexes, traversal paths, and symbolic links in either slot. The active slot survives a rejected import.
+- While importing, changing automatic sun collection or starting the game is disabled. An earlier settings write finishes before the import begins; automatic launch still works on a normal cold start.
 - Fingerprint mismatch rejects import.
 - Candidate self-check failure clears the candidate slot and leaves the active slot unchanged.
 - A required-file self-check failure rejects the candidate without changing the active slot.
@@ -195,3 +197,12 @@
 - An Android System WebView without `WEB_MESSAGE_LISTENER` writes exit-result code `webview_unsupported`, and the launcher tells the user to update the WebView.
 - On an Android WebView older than Chromium 100, 开始游戏 stays in the launcher and shows 系统 WebView 版本过旧 with the current version and the update hint.
 - HarmonyOS CI emits a skip notice instead of failing when `OHOS_COMMANDLINE_TOOLS_URL` is not configured.
+
+## Security review follow-up (2026-11-03)
+
+- Android: verify that a resource requested from an allowed host and redirected to a non-allowlisted host is blocked by CSP, including fetches from local Workers. On a device, also exercise Cocos/WASM, GP-Next modules, images, audio/video, inline scripts and blob URLs with the response policy enabled.
+- iOS: URLs such as `https://github.com:password@blocked.example/` must not match the network allowlist. Actual allowed hosts, subdomains and numeric ports still work; installed clients must compile the updated content rules rather than reuse the old cache.
+- Audio: when the game explicitly pauses media or suspends a context while backgrounded, returning to the foreground must not restart it. A subsequent explicit play/resume request should still work.
+- Recheck journal updates during import and game-event replay: concurrent saves must retain the latest snapshot without competing for the same temporary file; a failed write must not block later saves.
+- Pending device coverage: exercise HarmonyOS ZIP extraction with traversal, symbolic-link and malformed archive fixtures. Its system decompressor's protections are not established by the file-protocol checks alone.
+- Pending supply-chain hardening: pin the two Git dependencies in `pubspec_overrides.ohos.yaml` to reviewed revisions, and verify the downloaded OHOS command-line tools against a trusted digest before execution. This review did not authenticate third-party binaries or user-imported game resources.

@@ -388,7 +388,9 @@ class _LaunchGroup extends StatelessWidget {
               ? strings.autoCollectSunSubtitle
               : strings.autoCollectNeedsGame,
           value: controller.autoCollectSunEnabled,
-          onChanged: hasGame ? controller.setAutoCollectSunEnabled : null,
+          onChanged: hasGame && !controller.busy && !controller.isImporting
+              ? controller.setAutoCollectSunEnabled
+              : null,
         ),
       ],
     );

@@ -19,7 +19,9 @@ public enum NetworkPolicy {
       let escaped = NSRegularExpression.escapedPattern(for: host)
       rules.append([
         "trigger": [
-          "url-filter": "^https://([a-z0-9-]+\\.)*\(escaped)[:/]",
+          // A colon alone also matches userinfo such as github.com:pw@evil.test.
+          // Require the authority to end after the host and optional numeric port.
+          "url-filter": "^https://([a-z0-9-]+\\.)*\(escaped)(:[0-9]+)?/",
           "url-filter-is-case-sensitive": true,
         ],
         "action": ["type": "ignore-previous-rules"],
@@ -38,7 +40,7 @@ public enum NetworkPolicy {
     completion: @escaping (Result<WKContentRuleList, Error>) -> Void
   ) {
     let hosts = session.allowedRemoteHosts.sorted()
-    let identifier = "gardendless-network-v2-"
+    let identifier = "gardendless-network-v3-"
       + (hosts.isEmpty ? "offline" : hosts.joined(separator: "-"))
     store.lookUpContentRuleList(forIdentifier: identifier) { existing, _ in
       if let existing {

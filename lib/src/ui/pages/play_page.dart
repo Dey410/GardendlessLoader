@@ -39,7 +39,7 @@ class _PlayPageState extends State<PlayPage> {
   }
 
   Future<void> _launchAtLowerResolution() async {
-    if (_launching) return;
+    if (_launching || widget.controller.busy) return;
     final controller = widget.controller;
     await controller.setRenderResolution(controller.renderResolution.lower!);
     await _launch();
@@ -60,13 +60,14 @@ class _PlayPageState extends State<PlayPage> {
         ? _RecoveryCard(
             report: report,
             lower: controller.renderResolution.lower,
-            onLowerAndPlay: _launching ? null : _launchAtLowerResolution,
+            onLowerAndPlay:
+                _launching || controller.busy ? null : _launchAtLowerResolution,
           )
         : null;
     final actionBar = _ActionBar(
       ready: ready,
       launching: _launching,
-      onLaunch: _launch,
+      onLaunch: controller.busy ? null : _launch,
       onImport: () => widget.actions.navigate(LauncherDestination.resources),
     );
     return LayoutBuilder(
@@ -304,7 +305,7 @@ class _ActionBar extends StatelessWidget {
 
   final bool ready;
   final bool launching;
-  final VoidCallback onLaunch;
+  final VoidCallback? onLaunch;
   final VoidCallback onImport;
 
   @override

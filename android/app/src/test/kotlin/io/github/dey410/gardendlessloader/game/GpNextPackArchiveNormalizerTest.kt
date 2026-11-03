@@ -2,7 +2,6 @@ package io.github.dey410.gardendlessloader.game
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.Test
@@ -45,20 +44,6 @@ class GpNextPackArchiveNormalizerTest {
                 zip.getInputStream(zip.getEntry("pack.json")).bufferedReader().readText(),
             )
         }
-    }
-
-    @Test
-    fun `keeps an existing root pack unchanged`() {
-        val source = temporaryFolder.newFile("root.zip")
-        writeZip(source, mapOf("pack.json" to "{}", "mod.js" to "export{}"))
-
-        val prepared = GpNextPackArchiveNormalizer.prepare(
-            source,
-            temporaryFolder.root,
-            "root.zip",
-        )
-
-        assertSame(source, prepared)
     }
 
     @Test

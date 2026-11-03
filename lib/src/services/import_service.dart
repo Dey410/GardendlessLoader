@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 
 import '../models.dart';
 import 'manifest_store.dart';
+import 'resource_file_safety.dart';
+import 'resource_package_index.dart';
 import 'resource_validator.dart';
 
 class ImportTarget {
@@ -140,7 +142,6 @@ class ImportService {
       );
 
       final now = DateTime.now();
-      final gameVersion = validation.gameVersion;
       manifest = manifest.copyWith(
         generation: manifest.generation + 1,
         transactionState: TransactionState.readyToActivate,
@@ -148,38 +149,13 @@ class ImportService {
       await manifestStore.write(manifest);
 
       final oldSlot = manifest.activeSlot;
-      final activationGeneration = manifest.generation + 1;
-      await _writeSlotMetadata(
-        directory: target.directory,
-        packageId: validation.packageId,
-        generation: activationGeneration,
-        gameVersion: gameVersion,
-        importedAt: now,
-        lastSelfCheckAt: now,
+      manifest = await _activateCandidate(
+        manifestStore: manifestStore,
+        manifest: manifest,
+        target: target,
+        validation: validation,
+        now: now,
       );
-      manifest = ResourceManifest.initial().copyWith(
-        generation: activationGeneration,
-        activeSlot: target.slot,
-        transactionSlot: oldSlot,
-        transactionState: TransactionState.cleaningOldSlot,
-        gameVersion: gameVersion,
-        lastImportAt: now,
-        fileCount: stats.fileCount,
-        totalBytes: stats.totalBytes,
-        detectedTitle: validation.detectedTitle,
-        packageId: validation.packageId,
-        buildProfile: validation.buildProfile,
-        gpNextVersion: validation.gpNextVersion,
-        gpNextCompatibilityError: validation.gpNextCompatibilityError,
-        clearGpNextVersion: validation.gpNextVersion == null,
-        clearGpNextCompatibilityError:
-            validation.gpNextCompatibilityError == null,
-        resourceStatus: ResourceStatus.ready,
-        lastSelfCheckAt: now,
-        autoCollectSunEnabled: manifest.autoCollectSunEnabled,
-        clearError: true,
-      );
-      await manifestStore.write(manifest);
       activated = true;
 
       if (oldSlot != null) {
@@ -259,8 +235,13 @@ class ImportService {
     ImportProgressCallback? onProgress,
   }) async {
     final marker = File(p.join(target.path, _deltaPath));
+    await requireSafeResourcePath(
+        target, marker.path, FileSystemEntityType.file,
+        allowMissing: true);
     if (!await marker.exists()) return 0;
-    final delta = _decodeJson(await marker.readAsString());
+    final delta = _decodeJson(utf8.decode(
+      await _readMetadata(target, marker, 64 * 1024),
+    ));
     if (delta is! Map<String, dynamic> ||
         delta.length != 2 ||
         delta['schemaVersion'] != 1 ||
@@ -279,9 +260,13 @@ class ImportService {
     final reusable = {
       for (final entry in await _readIndex(active)) entry.sha256: entry.path,
     };
-    final missing = <({String path, String sha256})>[];
+    final missing = <ResourcePackageEntry>[];
     for (final entry in await _readIndex(target)) {
-      if (!await File(p.join(target.path, entry.path)).exists()) {
+      final file = File(p.join(target.path, entry.path));
+      await requireSafeResourcePath(
+          target, file.path, FileSystemEntityType.file,
+          allowMissing: true);
+      if (!await file.exists()) {
         missing.add(entry);
       }
     }
@@ -300,37 +285,52 @@ class ImportService {
         );
       }
       final file = File(p.join(target.path, entry.path));
+      final sourceFile = File(p.join(active.path, source));
+      await requireSafeResourcePath(
+          active, sourceFile.path, FileSystemEntityType.file);
+      if (await sourceFile.length() != entry.sizeBytes) {
+        throw ImportFailure('delta_base_mismatch', '当前资源文件大小与增量包索引不符');
+      }
+      await requireSafeResourcePath(
+          target, file.path, FileSystemEntityType.file,
+          allowMissing: true);
       await file.parent.create(recursive: true);
-      await File(p.join(active.path, source)).copy(file.path);
+      await sourceFile.copy(file.path);
     }
     await marker.delete();
     return missing.length;
   }
 
-  /// Index entries of the package at [root]; the validator checks the rest of
-  /// the index later, but a path must stay inside [root] before it is used.
-  Future<List<({String path, String sha256})>> _readIndex(
+  Future<List<ResourcePackageEntry>> _readIndex(Directory root) async {
+    try {
+      return decodeResourcePackageIndex(await _readMetadata(
+        root,
+        File(p.join(root.path, _indexPath)),
+        maxResourceIndexBytes,
+      ));
+    } on FormatException catch (error) {
+      throw ImportFailure('package_metadata_invalid', error.message);
+    }
+  }
+
+  Future<List<int>> _readMetadata(
     Directory root,
+    File file,
+    int maxBytes,
   ) async {
-    final file = File(p.join(root.path, _indexPath));
-    final index =
-        await file.exists() ? _decodeJson(await file.readAsString()) : null;
-    if (index is! Map<String, dynamic> || index['files'] is! List) {
-      throw ImportFailure('package_metadata_invalid', '资源包索引缺失或格式无效');
+    await requireSafeResourcePath(root, file.path, FileSystemEntityType.file);
+    // Bound the read itself as well: the file can change after length().
+    if (await file.length() > maxBytes) {
+      throw ImportFailure('package_metadata_invalid', '资源包元数据过大');
     }
-    final entries = <({String path, String sha256})>[];
-    for (final entry in index['files'] as List) {
-      if (entry is! Map<String, dynamic> ||
-          entry['path'] is! String ||
-          entry['sha256'] is! String ||
-          !p.isWithin(root.path, p.join(root.path, entry['path'] as String))) {
-        throw ImportFailure('package_metadata_invalid', '资源包索引条目无效');
-      }
-      entries.add(
-        (path: entry['path'] as String, sha256: entry['sha256'] as String),
-      );
+    final bytes = await file.openRead(0, maxBytes + 1).fold<List<int>>(
+      <int>[],
+      (buffer, chunk) => buffer..addAll(chunk),
+    );
+    if (bytes.length > maxBytes) {
+      throw ImportFailure('package_metadata_invalid', '资源包元数据过大');
     }
-    return entries;
+    return bytes;
   }
 
   Object? _decodeJson(String text) {
@@ -427,42 +427,13 @@ class ImportService {
         return manifest;
       }
 
-      final stats = validation.stats;
-      final gameVersion = validation.gameVersion;
-      final oldSlot = manifest.activeSlot;
-      final now = DateTime.now();
-      final activationGeneration = manifest.generation + 1;
-      await _writeSlotMetadata(
-        directory: candidate,
-        packageId: validation.packageId,
-        generation: activationGeneration,
-        gameVersion: gameVersion,
-        importedAt: now,
-        lastSelfCheckAt: now,
+      manifest = await _activateCandidate(
+        manifestStore: manifestStore,
+        manifest: manifest,
+        target: ImportTarget(slot: candidateSlot, directory: candidate),
+        validation: validation,
+        now: DateTime.now(),
       );
-      manifest = ResourceManifest.initial().copyWith(
-        generation: activationGeneration,
-        activeSlot: candidateSlot,
-        transactionSlot: oldSlot,
-        transactionState: TransactionState.cleaningOldSlot,
-        gameVersion: gameVersion,
-        lastImportAt: now,
-        fileCount: stats.fileCount,
-        totalBytes: stats.totalBytes,
-        detectedTitle: validation.detectedTitle,
-        packageId: validation.packageId,
-        buildProfile: validation.buildProfile,
-        gpNextVersion: validation.gpNextVersion,
-        gpNextCompatibilityError: validation.gpNextCompatibilityError,
-        clearGpNextVersion: validation.gpNextVersion == null,
-        clearGpNextCompatibilityError:
-            validation.gpNextCompatibilityError == null,
-        resourceStatus: ResourceStatus.ready,
-        lastSelfCheckAt: now,
-        autoCollectSunEnabled: manifest.autoCollectSunEnabled,
-        clearError: true,
-      );
-      await manifestStore.write(manifest);
       return _completeDeferredCleanup(
         paths: paths,
         manifestStore: manifestStore,
@@ -479,6 +450,45 @@ class ImportService {
     }
 
     return manifest;
+  }
+
+  /// Normal imports and interrupted activations commit the same slot record.
+  Future<ResourceManifest> _activateCandidate({
+    required ManifestStore manifestStore,
+    required ResourceManifest manifest,
+    required ImportTarget target,
+    required ResourceValidationResult validation,
+    required DateTime now,
+  }) async {
+    final generation = manifest.generation + 1;
+    await _writeSlotMetadata(
+      directory: target.directory,
+      packageId: validation.packageId,
+      generation: generation,
+      gameVersion: validation.gameVersion,
+      importedAt: now,
+      lastSelfCheckAt: now,
+    );
+    final activated = ResourceManifest.initial().copyWith(
+      generation: generation,
+      activeSlot: target.slot,
+      transactionSlot: manifest.activeSlot,
+      transactionState: TransactionState.cleaningOldSlot,
+      gameVersion: validation.gameVersion,
+      lastImportAt: now,
+      fileCount: validation.stats.fileCount,
+      totalBytes: validation.stats.totalBytes,
+      detectedTitle: validation.detectedTitle,
+      packageId: validation.packageId,
+      buildProfile: validation.buildProfile,
+      gpNextVersion: validation.gpNextVersion,
+      gpNextCompatibilityError: validation.gpNextCompatibilityError,
+      resourceStatus: ResourceStatus.ready,
+      lastSelfCheckAt: now,
+      autoCollectSunEnabled: manifest.autoCollectSunEnabled,
+    );
+    await manifestStore.write(activated);
+    return activated;
   }
 
   Future<ResourceManifest> _recoverFromSlotMetadata({

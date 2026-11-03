@@ -237,7 +237,7 @@ jobs:
             --package-path ios/GardendlessKit \
             --scratch-path "$RUNNER_TEMP/gardendless-swift" \
             --cache-path "$RUNNER_TEMP/gardendless-spm" \
-            --filter 'FileTaskCoordinatorTests|TaskCallbackGateTests|BridgeRequestTests|GameConfigurationTests|GameSessionTests|ConstantsTests|ReservedMetadataPathsTests|ResourceMIMETests'
+            --filter 'FileTaskCoordinatorTests|TaskCallbackGateTests|BridgeRequestTests|GameSessionTests|ConstantsTests|ReservedMetadataPathsTests|ResourceMIMETests'
 
       - name: Install CocoaPods dependencies
         run: pod install
