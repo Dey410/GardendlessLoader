@@ -139,11 +139,14 @@ private final class LetterboxBackdropView: UIView {
     super.layoutSubviews()
     let frame = canvasFrame
     let hasCanvas = !frame.isEmpty
+    let hasBars =
+      frame.minX > bounds.minX || frame.minY > bounds.minY ||
+      frame.maxX < bounds.maxX || frame.maxY < bounds.maxY
     topBar.isHidden = !hasCanvas
     bottomBar.isHidden = !hasCanvas
     leadingBar.isHidden = !hasCanvas
     trailingBar.isHidden = !hasCanvas
-    rim.isHidden = !hasCanvas
+    rim.isHidden = !hasCanvas || !hasBars
     guard hasCanvas else { return }
     // Resizing must not animate the bars.
     CATransaction.begin()

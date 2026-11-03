@@ -64,7 +64,15 @@ internal class GameViewportLayout(
     frameAccent: Int? = null,
 ) : FrameLayout(context) {
     private val tone = LetterboxTone.of(frameAccent)
-    private val barPaint = Paint()
+    private val topBar = RectF()
+    private val bottomBar = RectF()
+    private val leadingBar = RectF()
+    private val trailingBar = RectF()
+    private val canvasRect = RectF()
+    private val topPaint = Paint()
+    private val bottomPaint = Paint()
+    private val leadingPaint = Paint()
+    private val trailingPaint = Paint()
     private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         // 1.5 points on iOS becomes 1.5 dp here, so both hosts draw the same
@@ -83,49 +91,93 @@ internal class GameViewportLayout(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (screenFit == GameScreenFit.STRETCH || childCount == 0) return
-        val page = getChildAt(0)
-        if (page.width <= 0 || page.height <= 0) return
-        val pageRect = RectF(
-            page.left.toFloat(),
-            page.top.toFloat(),
-            page.right.toFloat(),
-            page.bottom.toFloat(),
-        )
-        drawBar(canvas, RectF(0f, 0f, width.toFloat(), pageRect.top), 0f, 0f, 0f, pageRect.top)
-        drawBar(canvas, RectF(0f, pageRect.bottom, width.toFloat(), height.toFloat()),
-            0f, height.toFloat(), 0f, pageRect.bottom)
-        drawBar(canvas, RectF(0f, 0f, pageRect.left, height.toFloat()), 0f, 0f, pageRect.left, 0f)
-        drawBar(canvas, RectF(pageRect.right, 0f, width.toFloat(), height.toFloat()),
-            width.toFloat(), 0f, pageRect.right, 0f)
-        val inset = rimPaint.strokeWidth / 2
-        canvas.drawRect(
-            pageRect.left - inset,
-            pageRect.top - inset,
-            pageRect.right + inset,
-            pageRect.bottom + inset,
-            rimPaint,
-        )
+        canvas.drawRect(topBar, topPaint)
+        canvas.drawRect(bottomBar, bottomPaint)
+        canvas.drawRect(leadingBar, leadingPaint)
+        canvas.drawRect(trailingBar, trailingPaint)
+        val hasBars = canvasRect.left > 0f || canvasRect.top > 0f ||
+            canvasRect.right < width.toFloat() || canvasRect.bottom < height.toFloat()
+        if (hasBars) {
+            val inset = rimPaint.strokeWidth / 2
+            canvas.drawRect(
+                canvasRect.left - inset,
+                canvasRect.top - inset,
+                canvasRect.right + inset,
+                canvasRect.bottom + inset,
+                rimPaint,
+            )
+        }
     }
 
-    private fun drawBar(
-        canvas: Canvas,
+    private fun updateFrame(width: Int, height: Int) {
+        if (childCount == 0) {
+            clearFrame()
+            return
+        }
+        val page = getChildAt(0)
+        if (page.width <= 0 || page.height <= 0) {
+            clearFrame()
+            return
+        }
+
+        val left = page.left.toFloat()
+        val top = page.top.toFloat()
+        val right = page.right.toFloat()
+        val bottom = page.bottom.toFloat()
+        val viewWidth = width.toFloat()
+        val viewHeight = height.toFloat()
+        if (
+            canvasRect.left == left && canvasRect.top == top &&
+            canvasRect.right == right && canvasRect.bottom == bottom &&
+            topBar.right == viewWidth && leadingBar.bottom == viewHeight
+        ) {
+            return
+        }
+
+        canvasRect.set(left, top, right, bottom)
+        topBar.set(0f, 0f, viewWidth, top)
+        bottomBar.set(0f, bottom, viewWidth, viewHeight)
+        leadingBar.set(0f, 0f, left, viewHeight)
+        trailingBar.set(right, 0f, viewWidth, viewHeight)
+        updateGradient(topPaint, topBar, 0f, 0f, 0f, top)
+        updateGradient(bottomPaint, bottomBar, 0f, viewHeight, 0f, bottom)
+        updateGradient(leadingPaint, leadingBar, 0f, 0f, left, 0f)
+        updateGradient(trailingPaint, trailingBar, viewWidth, 0f, right, 0f)
+    }
+
+    private fun updateGradient(
+        paint: Paint,
         rect: RectF,
         startX: Float,
         startY: Float,
         endX: Float,
         endY: Float,
     ) {
-        if (rect.width() <= 0f || rect.height() <= 0f) return
-        barPaint.shader = LinearGradient(
-            startX,
-            startY,
-            endX,
-            endY,
-            tone.outer,
-            tone.inner,
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawRect(rect, barPaint)
+        paint.shader = if (rect.width() > 0f && rect.height() > 0f) {
+            LinearGradient(
+                startX,
+                startY,
+                endX,
+                endY,
+                tone.outer,
+                tone.inner,
+                Shader.TileMode.CLAMP,
+            )
+        } else {
+            null
+        }
+    }
+
+    private fun clearFrame() {
+        canvasRect.setEmpty()
+        topBar.setEmpty()
+        bottomBar.setEmpty()
+        leadingBar.setEmpty()
+        trailingBar.setEmpty()
+        topPaint.shader = null
+        bottomPaint.shader = null
+        leadingPaint.shader = null
+        trailingPaint.shader = null
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -166,7 +218,11 @@ internal class GameViewportLayout(
                 childTop + child.measuredHeight,
             )
         }
-        // The frame follows the page, which moves without a size change here.
+        if (screenFit == GameScreenFit.STRETCH) {
+            clearFrame()
+        } else {
+            updateFrame(width, height)
+        }
         invalidate()
     }
 }
