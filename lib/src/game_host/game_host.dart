@@ -121,11 +121,12 @@ class GameSession {
     if (renderScale != null && (renderScale is! num || renderScale <= 0)) {
       throw const FormatException('renderScale must be positive');
     }
-    final frameAccent = json['frameAccent'];
-    if (frameAccent != null &&
-        (frameAccent is! int || frameAccent < 0 || frameAccent > 0xffffffff)) {
-      throw const FormatException('frameAccent must be an opaque ARGB colour');
-    }
+    final rawFrameAccent = json['frameAccent'];
+    final frameAccent = rawFrameAccent is int &&
+            rawFrameAccent >= 0 &&
+            rawFrameAccent <= 0xffffffff
+        ? rawFrameAccent
+        : null;
     final gestureHint = json['gestureHint'];
     if (gestureHint != null &&
         (gestureHint is! List || gestureHint.any((line) => line is! String))) {
