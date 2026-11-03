@@ -148,7 +148,7 @@ class GameSession {
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       renderScale: (renderScale as num?)?.toDouble(),
-      frameAccent: frameAccent as int?,
+      frameAccent: frameAccent,
       screenFit: ScreenFit.fromName(json['screenFit']),
       gestureMode: GestureMode.fromName(json['touchGestureMode']),
       touchDiagnosticsEnabled:
