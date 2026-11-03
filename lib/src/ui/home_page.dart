@@ -799,7 +799,8 @@ class _SidebarItem extends StatelessWidget {
         semanticLabel: destination.label(context.strings),
         scale: 0.95,
         child: Container(
-          height: compact ? 52 : 60,
+          constraints: BoxConstraints(minHeight: compact ? 52 : 60),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
             color: selected ? palette.surfaceMuted : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
@@ -808,6 +809,7 @@ class _SidebarItem extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
@@ -818,6 +820,7 @@ class _SidebarItem extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     destination.label(context.strings),
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: color,
                       fontSize: 11.5,
