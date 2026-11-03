@@ -39,12 +39,17 @@ enum GameViewportSize {
 private final class GameViewportView: UIView {
   let webView: WKWebView
   private let screenFit: GameScreenFit
+  private let backdrop: LetterboxBackdropView
 
-  init(webView: WKWebView, screenFit: GameScreenFit) {
+  init(webView: WKWebView, screenFit: GameScreenFit, frameAccent: UInt32?) {
     self.webView = webView
     self.screenFit = screenFit
+    backdrop = LetterboxBackdropView(accent: frameAccent)
     super.init(frame: .zero)
     backgroundColor = .black
+    // Behind the page: the letterbox bars read as the edge of the scene
+    // instead of an empty black gap.
+    addSubview(backdrop)
     addSubview(webView)
   }
 
@@ -55,10 +60,13 @@ private final class GameViewportView: UIView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    backdrop.frame = bounds
     let size = GameViewportSize.fit(bounds.size, screenFit)
     if screenFit == .stretch {
       // The page keeps the balanced viewport; the transform stretches it over
       // the whole screen.
+      backdrop.canvasFrame = .zero
+      backdrop.isHidden = true
       webView.bounds = CGRect(origin: .zero, size: size)
       webView.center = CGPoint(x: bounds.midX, y: bounds.midY)
       webView.transform = size.width > 0 && size.height > 0
@@ -69,11 +77,160 @@ private final class GameViewportView: UIView {
         : .identity
       return
     }
-    webView.frame = CGRect(
+    let viewport = CGRect(
       x: floor((bounds.width - size.width) / 2),
       y: floor((bounds.height - size.height) / 2),
       width: size.width,
       height: size.height
+    )
+    backdrop.isHidden = false
+    webView.frame = viewport
+    backdrop.canvasFrame = viewport
+  }
+}
+
+/// The frame around the game canvas. Four gradient layers shade each bar from
+/// the bezel tone at the screen edge to a lifted tone against the page, and a
+/// hairline border traces the canvas. Layers redraw only when the layout
+/// changes: no full-screen bitmap and no blur.
+private final class LetterboxBackdropView: UIView {
+  /// Where the page sits, so the frame follows the actual canvas.
+  var canvasFrame: CGRect = .zero {
+    didSet {
+      guard canvasFrame != oldValue else { return }
+      setNeedsLayout()
+    }
+  }
+
+  private let tone: LetterboxTone
+  private let topBar = CAGradientLayer()
+  private let bottomBar = CAGradientLayer()
+  private let leadingBar = CAGradientLayer()
+  private let trailingBar = CAGradientLayer()
+  private let rim = CALayer()
+  private static let rimWidth: CGFloat = 1.5
+
+  init(accent: UInt32?) {
+    tone = LetterboxTone(accent: accent)
+    super.init(frame: .zero)
+    isUserInteractionEnabled = false
+    isOpaque = true
+    accessibilityElementsHidden = true
+    backgroundColor = tone.outer
+    configure(topBar, from: CGPoint(x: 0.5, y: 0), to: CGPoint(x: 0.5, y: 1))
+    configure(bottomBar, from: CGPoint(x: 0.5, y: 1), to: CGPoint(x: 0.5, y: 0))
+    configure(leadingBar, from: CGPoint(x: 0, y: 0.5), to: CGPoint(x: 1, y: 0.5))
+    configure(trailingBar, from: CGPoint(x: 1, y: 0.5), to: CGPoint(x: 0, y: 0.5))
+    rim.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+    rim.borderWidth = Self.rimWidth
+    layer.addSublayer(topBar)
+    layer.addSublayer(bottomBar)
+    layer.addSublayer(leadingBar)
+    layer.addSublayer(trailingBar)
+    layer.addSublayer(rim)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) is unavailable")
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    let frame = canvasFrame
+    let hasCanvas = !frame.isEmpty
+    topBar.isHidden = !hasCanvas
+    bottomBar.isHidden = !hasCanvas
+    leadingBar.isHidden = !hasCanvas
+    trailingBar.isHidden = !hasCanvas
+    rim.isHidden = !hasCanvas
+    guard hasCanvas else { return }
+    // Resizing must not animate the bars.
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    topBar.frame = CGRect(x: 0, y: 0, width: bounds.width, height: max(0, frame.minY))
+    bottomBar.frame = CGRect(
+      x: 0,
+      y: frame.maxY,
+      width: bounds.width,
+      height: max(0, bounds.height - frame.maxY)
+    )
+    leadingBar.frame = CGRect(x: 0, y: 0, width: max(0, frame.minX), height: bounds.height)
+    trailingBar.frame = CGRect(
+      x: frame.maxX,
+      y: 0,
+      width: max(0, bounds.width - frame.maxX),
+      height: bounds.height
+    )
+    // The border draws inside its bounds, so the rim sits just outside the
+    // page and stays visible where the page covers the backdrop.
+    rim.frame = frame.insetBy(dx: -Self.rimWidth, dy: -Self.rimWidth)
+    CATransaction.commit()
+  }
+
+  private func configure(_ bar: CAGradientLayer, from start: CGPoint, to end: CGPoint) {
+    bar.colors = [tone.outer.cgColor, tone.inner.cgColor]
+    bar.startPoint = start
+    bar.endPoint = end
+  }
+}
+
+/// The two tones of the game frame, derived from the launcher theme accent.
+private struct LetterboxTone {
+  let outer: UIColor
+  let inner: UIColor
+
+  private init(outer: UIColor, inner: UIColor) {
+    self.outer = outer
+    self.inner = inner
+  }
+
+  /// Neutral dark bezel used when the launcher sends no theme accent.
+  static let neutral = LetterboxTone(
+    outer: UIColor(
+      red: 0x0E / 255.0,
+      green: 0x0F / 255.0,
+      blue: 0x11 / 255.0,
+      alpha: 1
+    ),
+    inner: UIColor(
+      red: 0x2A / 255.0,
+      green: 0x2B / 255.0,
+      blue: 0x30 / 255.0,
+      alpha: 1
+    )
+  )
+
+  /// Keeps the accent's hue but caps saturation and brightness, so every theme
+  /// yields a deep bezel instead of a bright band around the canvas. The caps
+  /// are shared with the Android host.
+  init(accent: UInt32?) {
+    guard let accent, accent >> 24 != 0 else {
+      self = .neutral
+      return
+    }
+    let color = UIColor(
+      red: CGFloat((accent >> 16) & 0xFF) / 255,
+      green: CGFloat((accent >> 8) & 0xFF) / 255,
+      blue: CGFloat(accent & 0xFF) / 255,
+      alpha: 1
+    )
+    var hue: CGFloat = 0
+    var saturation: CGFloat = 0
+    var brightness: CGFloat = 0
+    var alpha: CGFloat = 0
+    _ = color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+    outer = UIColor(
+      hue: hue,
+      saturation: min(saturation, 0.40),
+      brightness: 0.075,
+      alpha: 1
+    )
+    inner = UIColor(
+      hue: hue,
+      saturation: min(saturation, 0.55),
+      brightness: 0.34,
+      alpha: 1
     )
   }
 }
@@ -208,7 +365,8 @@ final class GameHostController: UIViewController,
 
     let viewport = GameViewportView(
       webView: webView,
-      screenFit: session.screenFit
+      screenFit: session.screenFit,
+      frameAccent: session.frameAccent
     )
     let edgeGesture = UIScreenEdgePanGestureRecognizer(
       target: self,

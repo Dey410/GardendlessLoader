@@ -42,6 +42,8 @@ data class NativeGameSession(
     val hapticEffectsEnabled: Boolean = false,
     val detailedAudioDiagnosticsEnabled: Boolean = false,
     val renderScale: Double? = null,
+    /** Accent of the launcher theme as an opaque ARGB colour; null keeps a neutral bezel. */
+    val frameAccent: Int? = null,
     val screenFit: GameScreenFit = GameScreenFit.BALANCED,
     val gestureMode: GameGestureMode = GameGestureMode.SIMULATED,
     /** Records the touch adapter's trace into the logs. */
@@ -90,6 +92,10 @@ object GameSessionCodec {
                     require(it > 0) { "Invalid render scale" }
                 }
             },
+            // An absent or malformed accent only costs the themed bezel.
+            frameAccent = (json.opt("frameAccent") as? Number)?.toLong()
+                ?.takeIf { it in 0..0xFFFFFFFFL }
+                ?.toInt(),
             screenFit = json.optString("screenFit", GameScreenFit.BALANCED.wireName).let { name ->
                 requireNotNull(GameScreenFit.entries.firstOrNull { it.wireName == name }) { "Invalid screen fit" }
             },

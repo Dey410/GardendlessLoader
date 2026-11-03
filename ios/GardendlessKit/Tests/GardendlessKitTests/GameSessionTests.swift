@@ -60,6 +60,18 @@ final class GameSessionTests: XCTestCase {
     XCTAssertFalse(session.detailedAudioDiagnosticsEnabled)
   }
 
+  func testDecodesOptionalFrameAccent() throws {
+    var json = makeJSON()
+    XCTAssertNil(try GameSessionDecoder.decode(json).frameAccent)
+
+    json["frameAccent"] = 0xFFDC2626
+    XCTAssertEqual(try GameSessionDecoder.decode(json).frameAccent, UInt32(0xFFDC2626))
+
+    // A malformed accent only costs the themed bezel.
+    json["frameAccent"] = -1
+    XCTAssertNil(try GameSessionDecoder.decode(json).frameAccent)
+  }
+
   func testRejectsWrongSchemaPlatformOrOrigin() {
     XCTAssertThrowsError(
       try GameSessionDecoder.decode(makeJSON(schema: 2))

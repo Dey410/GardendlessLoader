@@ -1074,6 +1074,7 @@ class AppController extends ChangeNotifier {
       hapticEffectsEnabled: hapticEffectsEnabled,
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
       renderScale: renderResolution.scale,
+      frameAccent: launcherTheme.accent ?? launcherTheme.accentDark,
       screenFit: screenFit,
       gestureMode: gestureMode,
       touchDiagnosticsEnabled: toolShedUnlocked && touchDiagnosticsEnabled,

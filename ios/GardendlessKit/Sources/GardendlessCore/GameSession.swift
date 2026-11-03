@@ -42,6 +42,9 @@ public struct GameSession: Codable, Equatable {
   /// Share of the device pixel ratio the game canvas renders at; nil keeps
   /// the device's own ratio.
   public let renderScale: Double?
+  /// Accent of the launcher theme as an opaque ARGB colour; the game host
+  /// tints the frame around the canvas with it. Nil keeps a neutral bezel.
+  public let frameAccent: UInt32?
   public let screenFit: GameScreenFit
   public let gestureMode: GameGestureMode
   /// Records the touch adapter's trace into the logs.
@@ -70,6 +73,7 @@ public struct GameSession: Codable, Equatable {
     hapticEffectsEnabled: Bool = false,
     detailedAudioDiagnosticsEnabled: Bool = false,
     renderScale: Double? = nil,
+    frameAccent: UInt32? = nil,
     screenFit: GameScreenFit = .balanced,
     gestureMode: GameGestureMode = .simulated,
     touchDiagnosticsEnabled: Bool = false,
@@ -91,6 +95,7 @@ public struct GameSession: Codable, Equatable {
     self.hapticEffectsEnabled = hapticEffectsEnabled
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
     self.renderScale = renderScale
+    self.frameAccent = frameAccent
     self.screenFit = screenFit
     self.gestureMode = gestureMode
     self.touchDiagnosticsEnabled = touchDiagnosticsEnabled
@@ -125,6 +130,13 @@ public enum GameSessionDecoder {
     if let renderScale, renderScale <= 0 {
       throw GameError.failed(.invalidSession, "Invalid render scale")
     }
+    // A missing or out-of-range accent only costs the themed bezel, so it
+    // never blocks the launch.
+    let frameAccent = (json["frameAccent"] as? NSNumber).flatMap { number -> UInt32? in
+      let raw = number.int64Value
+      guard raw >= 0, raw <= Int64(UInt32.max) else { return nil }
+      return UInt32(raw)
+    }
     guard let screenFit = GameScreenFit(
       rawValue: json["screenFit"] as? String ?? GameScreenFit.balanced.rawValue
     ) else {
@@ -155,6 +167,7 @@ public enum GameSessionDecoder {
       detailedAudioDiagnosticsEnabled:
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
       renderScale: renderScale,
+      frameAccent: frameAccent,
       screenFit: screenFit,
       gestureMode: gestureMode,
       touchDiagnosticsEnabled: json["touchDiagnosticsEnabled"] as? Bool ?? false,

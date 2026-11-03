@@ -91,6 +91,7 @@ class GameSession {
     this.hapticEffectsEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
     this.renderScale,
+    this.frameAccent,
     this.screenFit = ScreenFit.balanced,
     this.gestureMode = GestureMode.simulated,
     this.touchDiagnosticsEnabled = false,
@@ -120,6 +121,11 @@ class GameSession {
     if (renderScale != null && (renderScale is! num || renderScale <= 0)) {
       throw const FormatException('renderScale must be positive');
     }
+    final frameAccent = json['frameAccent'];
+    if (frameAccent != null &&
+        (frameAccent is! int || frameAccent < 0 || frameAccent > 0xffffffff)) {
+      throw const FormatException('frameAccent must be an opaque ARGB colour');
+    }
     final gestureHint = json['gestureHint'];
     if (gestureHint != null &&
         (gestureHint is! List || gestureHint.any((line) => line is! String))) {
@@ -141,6 +147,7 @@ class GameSession {
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       renderScale: (renderScale as num?)?.toDouble(),
+      frameAccent: frameAccent as int?,
       screenFit: ScreenFit.fromName(json['screenFit']),
       gestureMode: GestureMode.fromName(json['touchGestureMode']),
       touchDiagnosticsEnabled:
@@ -173,6 +180,11 @@ class GameSession {
   /// Share of the device pixel ratio the game canvas renders at; null renders
   /// at the device's own ratio.
   final double? renderScale;
+
+  /// Accent of the launcher theme as an opaque ARGB colour; native hosts
+  /// tint the frame around the canvas. Null keeps a neutral bezel.
+  final int? frameAccent;
+
   final ScreenFit screenFit;
   final GestureMode gestureMode;
 
@@ -216,6 +228,7 @@ class GameSession {
       'hapticEffectsEnabled': hapticEffectsEnabled,
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
       'renderScale': renderScale,
+      'frameAccent': frameAccent,
       'screenFit': screenFit.name,
       'touchGestureMode': gestureMode.name,
       'touchDiagnosticsEnabled': touchDiagnosticsEnabled,
