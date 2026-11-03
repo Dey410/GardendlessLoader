@@ -67,9 +67,9 @@ The loader ships without any game resources. Get a ZIP from one of these sources
 
 ## Guide
 
-### Launch preferences
+### Game settings
 
-Adjust these under **Settings → Launch Preferences**; changes apply the next time the game starts:
+Adjust these in the **Game** column of **Settings** (grouped as Display, Controls, and Launch & assists); changes apply the next time the game starts:
 
 | Option | What it does |
 | --- | --- |
@@ -129,7 +129,7 @@ X, Y, LB, RB, and Start use the key bindings you set in the game. Use touch for 
 - **Home-screen shortcuts**: long-press the app icon to jump straight to **Start Game** or **Import Resources**.
 - **Back to the launcher**: use system Back on Android and HarmonyOS, swipe right from the left edge on iOS, or use the game's own quit button.
 - **Festivals follow the game**: during the game's own events (Halloween, Lunar New Year, Feastivus, Valentine's, PvZ's birthday and more) the launcher takes on matching colours and a small badge, and the Play page shows the event's title and description. The dates come from the imported game resources, with Lunar New Year on the lunar calendar, so no network is needed.
-- **Collect themes**: change the launcher's colours in **Settings → Appearance → Theme**. Opening the launcher during one of the game's events unlocks that festival's theme for good; playing 10, 50 and 100 hours in total, playing 2 hours in one go and importing 5 different game versions unlock one each. Tap a locked theme to see what unlocks it and how far you are. The default, **Auto**, wears the festival's theme during an event.
+- **Collect themes**: change the launcher's colours in **Settings → Appearance & language → Theme**. Opening the launcher during one of the game's events unlocks that festival's theme for good; playing 10, 50 and 100 hours in total, playing 2 hours in one go and importing 5 different game versions unlock one each. Tap a locked theme to see what unlocks it and how far you are. The default, **Auto**, wears the festival's theme during an event.
 - **Pause when you leave**: switching apps, taking a call or locking the screen during a level opens the game's pause menu, so the zombies wait for you.
 
 ### GP-Next and Mods
@@ -167,7 +167,7 @@ No. Your save lives in the game, and updating resources does not delete it. A ne
 
 <br>
 
-Lower **Render resolution** to 75% or 50% under **Settings → Launch Preferences**; this noticeably reduces GPU memory use. After a crash, the **Play** tab explains what ended the game and offers to lower the resolution and start again in one tap. A mobile-optimized package also helps, since it uses lower-resolution textures and adjusted audio quality.
+Lower **Render resolution** to 75% or 50% under **Settings → Display**; this noticeably reduces GPU memory use. After a crash, the **Play** tab explains what ended the game and offers to lower the resolution and start again in one tap. A mobile-optimized package also helps, since it uses lower-resolution textures and adjusted audio quality.
 
 </details>
 
@@ -176,7 +176,7 @@ Lower **Render resolution** to 75% or 50% under **Settings → Launch Preference
 
 <br>
 
-Change **Settings → Launch Preferences → Screen fit**: **Balanced** trades a small crop for smaller bars, **Show all** never crops, and **Stretch** removes the bars but may distort the picture.
+Change **Settings → Display → Screen fit**: **Balanced** trades a small crop for smaller bars, **Show all** never crops, and **Stretch** removes the bars but may distort the picture.
 
 </details>
 

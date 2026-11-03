@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
+import '../constants.dart';
 import '../l10n/app_strings.dart';
 import '../logging/log_event_catalog.dart';
 import '../models.dart';
@@ -22,8 +23,6 @@ import 'theme/garden_theme.dart';
 import 'widgets/announcement_dialog.dart';
 import 'widgets/garden_widgets.dart';
 import 'widgets/key_art_backdrop.dart';
-
-const _appIconAsset = 'tool/generated_icons/app_icon_master.png';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.controller, this.sensorHousing});
@@ -704,7 +703,7 @@ class _Sidebar extends StatelessWidget {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(compact ? 9 : 11),
                         child: Image.asset(
-                          _appIconAsset,
+                          appIconAsset,
                           width: compact ? 36 : 42,
                           height: compact ? 36 : 42,
                           cacheWidth: 128,

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import '../../constants.dart';
 import '../../game_host/game_host.dart';
 import '../../l10n/app_strings.dart';
 import '../../models.dart';
@@ -384,7 +385,7 @@ class _WelcomeStep extends StatelessWidget {
         builder: (context, constraints) => ClipRRect(
           borderRadius: BorderRadius.circular(constraints.maxWidth * 0.22),
           child: Image.asset(
-            'tool/generated_icons/app_icon_master.png',
+            appIconAsset,
             cacheWidth: 384,
             fit: BoxFit.cover,
             semanticLabel: 'GardendlessLoader',

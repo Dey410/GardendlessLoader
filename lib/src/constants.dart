@@ -18,6 +18,7 @@ const remoteAnnouncementUrls = [
 ]; // 远程公告 URL，按顺序尝试；GitHub 无法访问时改用 jsDelivr
 const remoteAboutContentUrl =
     'https://raw.githubusercontent.com/Dey410/GardendlessLoader/main/about_content.json'; // 远程关于内容 URL
+const appIconAsset = 'tool/generated_icons/app_icon_master.png'; // 应用图标
 const resourceFolderName = 'GardendlessLoader'; // 资源文件夹名称
 const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.9.0');
 const announcementTimeout = Duration(seconds: 3); //公告请求超时时间

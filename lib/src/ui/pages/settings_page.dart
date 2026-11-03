@@ -7,10 +7,14 @@ import '../../l10n/app_strings.dart';
 import '../../models.dart';
 import '../../services/app_settings_store.dart';
 import '../../services/launcher_themes.dart';
+import '../../services/update_check_service.dart';
 import '../launcher_actions.dart';
 import '../theme/garden_theme.dart';
 import '../widgets/garden_widgets.dart';
 
+/// Two columns that scroll together: what the game uses on the left, the
+/// launcher's own settings on the right. A narrow screen stacks them. A new
+/// loader release shows above both.
 class SettingsPage extends StatelessWidget {
   const SettingsPage({
     super.key,
@@ -25,131 +29,108 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TwoColumn(
-      gap: compact ? 16 : 24,
-      left: [
-        _LoaderPanel(controller: controller, actions: actions),
-        const SizedBox(height: 16),
-        _LaunchPreferences(controller: controller),
-        const SizedBox(height: 16),
-        _AppearancePanel(controller: controller),
-      ],
-      right: [
-        _AboutPanel(controller: controller, actions: actions),
-        const SizedBox(height: 16),
-        _GuidePanel(
-          gestureMode: controller.gestureMode,
-          onOpenOnboarding: actions.openOnboarding,
-        ),
-      ],
+    final strings = context.strings;
+    final update = controller.availableUpdate;
+    final gap = compact ? 16.0 : 20.0;
+    final game = <Widget>[
+      _ColumnHeading(
+          title: strings.settingsGame, note: strings.appliesNextLaunch),
+      _DisplayGroup(controller: controller),
+      SizedBox(height: gap),
+      _ControlGroup(controller: controller),
+      SizedBox(height: gap),
+      _LaunchGroup(controller: controller),
+    ];
+    final launcher = <Widget>[
+      _ColumnHeading(title: strings.settingsLauncher),
+      _AppearanceGroup(controller: controller),
+      SizedBox(height: gap),
+      _AboutGroup(controller: controller, actions: actions),
+      SizedBox(height: gap),
+      _HelpGroup(
+        gestureMode: controller.gestureMode,
+        onOpenOnboarding: actions.openOnboarding,
+      ),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final twoColumns = constraints.maxWidth >= 720;
+        return ListView(
+          padding: const EdgeInsets.only(bottom: 8),
+          children: [
+            if (update != null) ...[
+              _UpdateBanner(
+                update: update,
+                controller: controller,
+                actions: actions,
+              ),
+              SizedBox(height: gap),
+            ],
+            if (twoColumns)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: game,
+                    ),
+                  ),
+                  SizedBox(width: gap + 4),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: launcher,
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              ...game,
+              SizedBox(height: gap * 1.5),
+              ...launcher,
+            ],
+          ],
+        );
+      },
     );
   }
 }
 
-class _LoaderPanel extends StatelessWidget {
-  const _LoaderPanel({required this.controller, required this.actions});
+/// Names a column; the game column says when its changes apply.
+class _ColumnHeading extends StatelessWidget {
+  const _ColumnHeading({required this.title, this.note});
 
-  final AppController controller;
-  final LauncherActions actions;
+  final String title;
+  final String? note;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
-    final strings = context.strings;
-    final update = controller.availableUpdate;
-    final (String status, Color? statusColor) = update != null
-        ? (strings.updateAvailable, palette.accent)
-        : controller.updateCheckInProgress
-            ? (strings.checking, null)
-            : (strings.noUpdate, null);
-    return SurfaceCard(
-      key: update == null ? null : const ValueKey('app-update-entry'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
         children: [
-          PanelHeader(
-            title: appDisplayName,
-            trailing: StatusLabel(label: status, color: statusColor),
-          ),
-          const SizedBox(height: 16),
-          MetricRow(
-            metrics: [
-              Metric(
-                label: strings.currentVersion,
-                value: 'v${controller.currentAppVersion}',
-              ),
-              Metric(
-                label: strings.latestVersion,
-                value: controller.latestAppVersion == null
-                    ? '--'
-                    : 'v${controller.latestAppVersion}',
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (update == null)
-            Text(
-              strings.autoCheckHint,
-              style: TextStyle(
-                color: palette.inkMuted,
-                fontSize: 12.5,
-                height: 1.5,
-              ),
-            )
-          else ...[
-            Text(
-              '${update.currentVersion} → ${update.latestVersion}',
-              style: TextStyle(color: palette.inkMuted, fontSize: 12.5),
+          Text(
+            title,
+            style: TextStyle(
+              color: palette.inkMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
             ),
-            if (update.releaseName.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                update.releaseName,
-                style: TextStyle(
-                  color: palette.ink,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-            if (update.releaseNotes.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                update.releaseNotes,
-                maxLines: 6,
+          ),
+          if (note != null) ...[
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                note!,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: palette.inkMuted,
-                  fontSize: 12.5,
-                  height: 1.5,
-                ),
+                style: TextStyle(color: palette.inkFaint, fontSize: 12),
               ),
-            ],
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                GardenButton(
-                  label: strings.cloudDriveUpdate,
-                  icon: Icons.download_rounded,
-                  tone: GardenButtonTone.primary,
-                  compact: true,
-                  onPressed: () =>
-                      actions.openUrl(controller.links.loaderCloudDrive),
-                ),
-                GardenButton(
-                  label: strings.viewGithubRelease,
-                  compact: true,
-                  onPressed: () => actions.openRelease(update),
-                ),
-                GardenButton(
-                  label: strings.remindLater,
-                  tone: GardenButtonTone.ghost,
-                  compact: true,
-                  onPressed: () => actions.deferUpdate(update),
-                ),
-              ],
             ),
           ],
         ],
@@ -158,177 +139,264 @@ class _LoaderPanel extends StatelessWidget {
   }
 }
 
-class _LaunchPreferences extends StatelessWidget {
-  const _LaunchPreferences({required this.controller});
+/// A card of settings rows under one title, with hairlines between rows.
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({
+    super.key,
+    required this.title,
+    required this.children,
+  });
 
-  final AppController controller;
+  final String title;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
-    final strings = context.strings;
     return SurfaceCard(
-      key: const ValueKey('launch-preferences'),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelHeader(
-            title: strings.launchPreferences,
-            trailing: Text(
-              strings.appliesNextLaunch,
-              style: TextStyle(color: palette.inkFaint, fontSize: 12),
-            ),
-          ),
+          PanelHeader(title: title),
           const SizedBox(height: 4),
-          SwitchRow(
-            key: const ValueKey('home-quick-launch'),
-            switchKey: const ValueKey('home-quick-launch-switch'),
-            title: strings.quickLaunch,
-            subtitle: strings.quickLaunchSubtitle,
-            value: controller.quickLaunchEnabled,
-            onChanged: controller.initialized
-                ? controller.setQuickLaunchEnabled
-                : null,
-          ),
-          Divider(color: palette.border),
-          SwitchRow(
-            key: const ValueKey('home-auto-collect-sun'),
-            switchKey: const ValueKey('home-auto-collect-sun-switch'),
-            title: strings.autoCollectSun,
-            subtitle: strings.autoCollectSunSubtitle,
-            value: controller.autoCollectSunEnabled,
-            onChanged: controller.hasCurrentResource
-                ? controller.setAutoCollectSunEnabled
-                : null,
-          ),
-          Divider(color: palette.border),
-          _SegmentedSettingRow<RenderResolution>(
-            key: const ValueKey('render-resolution'),
-            title: strings.renderResolution,
-            subtitle: strings.renderResolutionSubtitle,
-            values: RenderResolution.values,
-            selected: controller.renderResolution,
-            keyOf: (value) => ValueKey('render-resolution-${value.name}'),
-            labelOf: strings.renderResolutionLabel,
-            onChanged: controller.initialized
-                ? controller.setRenderResolution
-                : (_) {},
-          ),
-          Divider(color: palette.border),
-          _SegmentedSettingRow<ScreenFit>(
-            key: const ValueKey('screen-fit'),
-            title: strings.screenFit,
-            subtitle: strings.screenFitSubtitle,
-            values: ScreenFit.values,
-            selected: controller.screenFit,
-            keyOf: (value) => ValueKey('screen-fit-${value.name}'),
-            labelOf: strings.screenFitLabel,
-            onChanged:
-                controller.initialized ? controller.setScreenFit : (_) {},
-          ),
-          Divider(color: palette.border),
-          _SegmentedSettingRow<GestureMode>(
-            key: const ValueKey('gesture-mode'),
-            title: strings.gestureMode,
-            subtitle: strings.gestureModeSubtitle,
-            values: GestureMode.values,
-            selected: controller.gestureMode,
-            keyOf: (value) => ValueKey('gesture-mode-${value.name}'),
-            labelOf: strings.gestureModeLabel,
-            onChanged:
-                controller.initialized ? controller.setGestureMode : (_) {},
-          ),
-          Divider(color: palette.border),
-          SwitchRow(
-            key: const ValueKey('haptic-effects'),
-            switchKey: const ValueKey('haptic-effects-switch'),
-            title: strings.hapticEffects,
-            subtitle: strings.hapticEffectsSubtitle,
-            value: controller.hapticEffectsEnabled,
-            onChanged: controller.initialized
-                ? controller.setHapticEffectsEnabled
-                : null,
-          ),
-          Divider(color: palette.border),
-          SwitchRow(
-            key: const ValueKey('home-watermark'),
-            switchKey: const ValueKey('home-watermark-switch'),
-            title: strings.watermark,
-            subtitle: strings.watermarkSubtitle,
-            value: controller.watermarkEnabled,
-            onChanged:
-                controller.initialized ? controller.setWatermarkEnabled : null,
-          ),
+          for (final (index, child) in children.indexed) ...[
+            if (index > 0) Divider(color: palette.border, height: 1),
+            child,
+          ],
         ],
       ),
     );
   }
 }
 
-class _SegmentedSettingRow<T> extends StatelessWidget {
-  const _SegmentedSettingRow({
+/// A single choice. The control sits beside the title when the row is wide
+/// enough and under it otherwise; [detailOf] explains only the chosen value.
+class _ChoiceRow<T> extends StatelessWidget {
+  const _ChoiceRow({
     super.key,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.values,
     required this.selected,
     required this.keyOf,
     required this.labelOf,
     required this.onChanged,
+    this.detailOf,
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final List<T> values;
   final T selected;
   final Key Function(T value) keyOf;
   final String Function(T value) labelOf;
   final ValueChanged<T> onChanged;
+  final String Function(T value)? detailOf;
+
+  static const _segmentWidth = 84.0;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
-    // The control sits under the text: beside it, a phone's narrow column
-    // left the text a few characters wide.
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: palette.ink,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+    final detail = detailOf?.call(selected);
+    final control = GardenSegmented<T>(
+      values: values,
+      selected: selected,
+      keyOf: keyOf,
+      labelOf: labelOf,
+      onChanged: onChanged,
+    );
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: palette.ink,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
           ),
+        ),
+        if (subtitle != null) ...[
           const SizedBox(height: 3),
           Text(
-            subtitle,
+            subtitle!,
             style: TextStyle(
               color: palette.inkMuted,
               fontSize: 12.5,
               height: 1.4,
             ),
           ),
-          const SizedBox(height: 10),
-          GardenSegmented<T>(
-            values: values,
-            selected: selected,
-            keyOf: keyOf,
-            labelOf: labelOf,
-            onChanged: onChanged,
-          ),
         ],
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final controlWidth = values.length * _segmentWidth;
+          final beside = constraints.maxWidth >= controlWidth + 140;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (beside)
+                Row(
+                  children: [
+                    Expanded(child: text),
+                    const SizedBox(width: 16),
+                    SizedBox(width: controlWidth, child: control),
+                  ],
+                )
+              else ...[
+                text,
+                const SizedBox(height: 10),
+                control,
+              ],
+              if (detail != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  detail,
+                  style: TextStyle(
+                    color: palette.inkMuted,
+                    fontSize: 12.5,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _AppearancePanel extends StatelessWidget {
-  const _AppearancePanel({required this.controller});
+class _DisplayGroup extends StatelessWidget {
+  const _DisplayGroup({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return _SettingsGroup(
+      key: const ValueKey('settings-display'),
+      title: strings.displaySettings,
+      children: [
+        _ChoiceRow<RenderResolution>(
+          key: const ValueKey('render-resolution'),
+          title: strings.renderResolution,
+          subtitle: strings.renderResolutionSubtitle,
+          values: RenderResolution.values,
+          selected: controller.renderResolution,
+          keyOf: (value) => ValueKey('render-resolution-${value.name}'),
+          labelOf: strings.renderResolutionLabel,
+          onChanged:
+              controller.initialized ? controller.setRenderResolution : (_) {},
+        ),
+        _ChoiceRow<ScreenFit>(
+          key: const ValueKey('screen-fit'),
+          title: strings.screenFit,
+          values: ScreenFit.values,
+          selected: controller.screenFit,
+          keyOf: (value) => ValueKey('screen-fit-${value.name}'),
+          labelOf: strings.screenFitLabel,
+          detailOf: strings.screenFitDetail,
+          onChanged: controller.initialized ? controller.setScreenFit : (_) {},
+        ),
+        SwitchRow(
+          key: const ValueKey('home-watermark'),
+          switchKey: const ValueKey('home-watermark-switch'),
+          title: strings.watermark,
+          subtitle: strings.watermarkSubtitle,
+          value: controller.watermarkEnabled,
+          onChanged:
+              controller.initialized ? controller.setWatermarkEnabled : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _ControlGroup extends StatelessWidget {
+  const _ControlGroup({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return _SettingsGroup(
+      key: const ValueKey('settings-controls'),
+      title: strings.controlSettings,
+      children: [
+        _ChoiceRow<GestureMode>(
+          key: const ValueKey('gesture-mode'),
+          title: strings.gestureMode,
+          values: GestureMode.values,
+          selected: controller.gestureMode,
+          keyOf: (value) => ValueKey('gesture-mode-${value.name}'),
+          labelOf: strings.gestureModeLabel,
+          detailOf: strings.gestureModeDetail,
+          onChanged:
+              controller.initialized ? controller.setGestureMode : (_) {},
+        ),
+        SwitchRow(
+          key: const ValueKey('haptic-effects'),
+          switchKey: const ValueKey('haptic-effects-switch'),
+          title: strings.hapticEffects,
+          subtitle: strings.hapticEffectsSubtitle,
+          value: controller.hapticEffectsEnabled,
+          onChanged: controller.initialized
+              ? controller.setHapticEffectsEnabled
+              : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _LaunchGroup extends StatelessWidget {
+  const _LaunchGroup({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    // Auto collect is kept with the imported game.
+    final hasGame = controller.hasCurrentResource;
+    return _SettingsGroup(
+      key: const ValueKey('launch-preferences'),
+      title: strings.launchSettings,
+      children: [
+        SwitchRow(
+          key: const ValueKey('home-quick-launch'),
+          switchKey: const ValueKey('home-quick-launch-switch'),
+          title: strings.quickLaunch,
+          subtitle: strings.quickLaunchSubtitle,
+          value: controller.quickLaunchEnabled,
+          onChanged:
+              controller.initialized ? controller.setQuickLaunchEnabled : null,
+        ),
+        SwitchRow(
+          key: const ValueKey('home-auto-collect-sun'),
+          switchKey: const ValueKey('home-auto-collect-sun-switch'),
+          title: strings.autoCollectSun,
+          subtitle: hasGame
+              ? strings.autoCollectSunSubtitle
+              : strings.autoCollectNeedsGame,
+          value: controller.autoCollectSunEnabled,
+          onChanged: hasGame ? controller.setAutoCollectSunEnabled : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _AppearanceGroup extends StatelessWidget {
+  const _AppearanceGroup({required this.controller});
 
   final AppController controller;
 
@@ -336,64 +404,413 @@ class _AppearancePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.garden;
     final strings = context.strings;
-    final groupLabel = TextStyle(
-      color: palette.inkMuted,
-      fontSize: 12,
-      fontWeight: FontWeight.w700,
+    return _SettingsGroup(
+      key: const ValueKey('settings-appearance'),
+      title: strings.appearance,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                strings.theme,
+                style: TextStyle(
+                  color: palette.ink,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _ThemePicker(controller: controller),
+            ],
+          ),
+        ),
+        _ChoiceRow<ThemePreference>(
+          key: const ValueKey('theme-preference'),
+          title: strings.brightness,
+          values: ThemePreference.values,
+          selected: controller.themePreference,
+          keyOf: (value) => ValueKey('theme-preference-${value.name}'),
+          labelOf: (value) => switch (value) {
+            ThemePreference.system => strings.followSystem,
+            ThemePreference.light => strings.lightTheme,
+            ThemePreference.dark => strings.darkTheme,
+          },
+          onChanged:
+              controller.initialized ? controller.setThemePreference : (_) {},
+        ),
+        _ChoiceRow<LanguagePreference>(
+          key: const ValueKey('language-preference'),
+          title: strings.language,
+          values: LanguagePreference.values,
+          selected: controller.languagePreference,
+          keyOf: (value) => ValueKey('language-preference-${value.name}'),
+          // Language names stay in their own language.
+          labelOf: (value) => switch (value) {
+            LanguagePreference.system => strings.followSystem,
+            LanguagePreference.chinese => '中文',
+            LanguagePreference.english => 'English',
+          },
+          onChanged: controller.initialized
+              ? controller.setLanguagePreference
+              : (_) {},
+        ),
+        SwitchRow(
+          key: const ValueKey('reduce-motion'),
+          switchKey: const ValueKey('reduce-motion-switch'),
+          title: strings.reduceMotion,
+          subtitle: strings.reduceMotionSubtitle,
+          value: controller.reduceMotion,
+          onChanged: controller.initialized ? controller.setReduceMotion : null,
+        ),
+      ],
     );
-    return SurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+  }
+}
+
+/// A newer loader release, above both columns until it is installed or put
+/// off.
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner({
+    required this.update,
+    required this.controller,
+    required this.actions,
+  });
+
+  final UpdateInfo update;
+  final AppController controller;
+  final LauncherActions actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final summary = [
+      'v${update.currentVersion} → v${update.latestVersion}',
+      if (update.releaseName.isNotEmpty) update.releaseName,
+    ].join('  ·  ');
+    return Container(
+      key: const ValueKey('app-update-entry'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: palette.accent.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PanelHeader(title: strings.appearance),
-          const SizedBox(height: 14),
-          Text(strings.theme, style: groupLabel),
-          const SizedBox(height: 8),
-          _ThemePicker(controller: controller),
-          const SizedBox(height: 14),
-          Text(strings.brightness, style: groupLabel),
-          const SizedBox(height: 8),
-          GardenSegmented<ThemePreference>(
-            values: ThemePreference.values,
-            selected: controller.themePreference,
-            keyOf: (value) => ValueKey('theme-preference-${value.name}'),
-            labelOf: (value) => switch (value) {
-              ThemePreference.system => strings.followSystem,
-              ThemePreference.light => strings.lightTheme,
-              ThemePreference.dark => strings.darkTheme,
-            },
-            onChanged:
-                controller.initialized ? controller.setThemePreference : (_) {},
-          ),
-          const SizedBox(height: 14),
-          Text(strings.language, style: groupLabel),
-          const SizedBox(height: 8),
-          GardenSegmented<LanguagePreference>(
-            values: LanguagePreference.values,
-            selected: controller.languagePreference,
-            keyOf: (value) => ValueKey('language-preference-${value.name}'),
-            // Language names stay in their own language.
-            labelOf: (value) => switch (value) {
-              LanguagePreference.system => strings.followSystem,
-              LanguagePreference.chinese => '中文',
-              LanguagePreference.english => 'English',
-            },
-            onChanged: controller.initialized
-                ? controller.setLanguagePreference
-                : (_) {},
-          ),
-          const SizedBox(height: 8),
-          SwitchRow(
-            key: const ValueKey('reduce-motion'),
-            switchKey: const ValueKey('reduce-motion-switch'),
-            title: strings.reduceMotion,
-            subtitle: strings.reduceMotionSubtitle,
-            value: controller.reduceMotion,
-            onChanged:
-                controller.initialized ? controller.setReduceMotion : null,
+          Icon(Icons.system_update_alt_rounded,
+              size: 22, color: palette.accent),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  strings.loaderUpdateTitle(update.latestVersion),
+                  style: GardenType.title(15, color: palette.ink),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  summary,
+                  style: TextStyle(color: palette.inkMuted, fontSize: 12.5),
+                ),
+                if (update.releaseNotes.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    update.releaseNotes,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.inkMuted,
+                      fontSize: 12.5,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    GardenButton(
+                      label: strings.cloudDriveUpdate,
+                      icon: Icons.download_rounded,
+                      tone: GardenButtonTone.primary,
+                      compact: true,
+                      onPressed: () =>
+                          actions.openUrl(controller.links.loaderCloudDrive),
+                    ),
+                    GardenButton(
+                      label: strings.viewGithubRelease,
+                      compact: true,
+                      onPressed: () => actions.openRelease(update),
+                    ),
+                    GardenButton(
+                      label: strings.remindLater,
+                      tone: GardenButtonTone.ghost,
+                      compact: true,
+                      onPressed: () => actions.deferUpdate(update),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The loader's identity, version and links.
+class _AboutGroup extends StatelessWidget {
+  const _AboutGroup({required this.controller, required this.actions});
+
+  final AppController controller;
+  final LauncherActions actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final launcherLinks = controller.links;
+    final links = <AnnouncementLink>[
+      AnnouncementLink(
+          label: strings.loaderGithub, url: launcherLinks.loaderGithub),
+      AnnouncementLink(
+          label: strings.upstreamGithub, url: launcherLinks.gameGithub),
+      AnnouncementLink(
+          label: strings.bilibiliHome, url: launcherLinks.bilibili),
+    ];
+    final (String status, Color statusColor) =
+        controller.availableUpdate != null
+            ? (strings.updateAvailable, palette.accent)
+            : controller.updateCheckInProgress
+                ? (strings.checking, palette.inkMuted)
+                : controller.latestAppVersion == null
+                    ? (strings.latestNotFetched, palette.inkMuted)
+                    : (strings.upToDate, palette.inkMuted);
+    return _SettingsGroup(
+      key: const ValueKey('about-panel'),
+      title: strings.aboutTitle,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.asset(
+                      appIconAsset,
+                      width: 40,
+                      height: 40,
+                      cacheWidth: 128,
+                      excludeFromSemantics: true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          appDisplayName,
+                          style: TextStyle(
+                            color: palette.ink,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                  text: 'v${controller.currentAppVersion}'),
+                              const TextSpan(text: '  ·  '),
+                              TextSpan(
+                                text: status,
+                                style: TextStyle(color: statusColor),
+                              ),
+                            ],
+                          ),
+                          key: const ValueKey('app-version-status'),
+                          style: GardenType.mono(12.5, color: palette.inkMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ExcludeFocusTraversal(
+                child: SelectableText(
+                  strings.isChinese
+                      ? controller.aboutContent.content
+                      : controller.aboutContent.contentEn ??
+                          controller.aboutContent.content,
+                  style: TextStyle(
+                    color: palette.inkMuted,
+                    fontSize: 13,
+                    height: 1.55,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final link in links)
+                    GardenButton(
+                      label: link.label,
+                      leading: linkIcon(link),
+                      compact: true,
+                      onPressed: () => actions.openUrl(link.url),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The welcome guide, and the touch controls folded away until asked for.
+class _HelpGroup extends StatelessWidget {
+  const _HelpGroup({
+    required this.gestureMode,
+    required this.onOpenOnboarding,
+  });
+
+  final GestureMode gestureMode;
+  final VoidCallback onOpenOnboarding;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.garden;
+    final strings = context.strings;
+    final icons = switch (gestureMode) {
+      GestureMode.simulated => const <IconData>[
+          Icons.touch_app_rounded,
+          Icons.ads_click_rounded,
+          Icons.swipe_vertical_rounded,
+          Icons.do_not_touch_rounded,
+          Icons.keyboard_rounded,
+        ],
+      GestureMode.native => const <IconData>[
+          Icons.touch_app_rounded,
+          Icons.back_hand_rounded,
+          Icons.pinch_rounded,
+          Icons.do_not_touch_rounded,
+          Icons.keyboard_rounded,
+        ],
+    };
+    final gestures = [
+      for (final (index, (gesture, mapping))
+          in strings.gestures(gestureMode).indexed)
+        (icons[index], gesture, mapping),
+    ];
+    return _SettingsGroup(
+      key: const ValueKey('settings-help'),
+      title: strings.help,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: GardenButton(
+              key: const ValueKey('open-onboarding-button'),
+              label: strings.openOnboarding,
+              icon: Icons.waving_hand_outlined,
+              compact: true,
+              onPressed: onOpenOnboarding,
+            ),
+          ),
+        ),
+        Disclosure(
+          key: const ValueKey('touch-guide'),
+          title: strings.touchGuide,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (icon, gesture, mapping) in gestures)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 18, color: palette.inkMuted),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            gesture,
+                            style: TextStyle(
+                              color: palette.ink,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            mapping,
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              color: palette.inkMuted,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Divider(color: palette.border, height: 20),
+                for (final tip in strings.guideTips)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 7),
+                          child: Container(
+                            width: 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: palette.inkFaint,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            tip,
+                            style: TextStyle(
+                              color: palette.inkMuted,
+                              fontSize: 12.5,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -552,175 +969,6 @@ class _ThemeSwatch extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           child: Center(child: child),
         ),
-      ),
-    );
-  }
-}
-
-class _AboutPanel extends StatelessWidget {
-  const _AboutPanel({required this.controller, required this.actions});
-
-  final AppController controller;
-  final LauncherActions actions;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.garden;
-    final strings = context.strings;
-    final launcherLinks = controller.links;
-    final links = <AnnouncementLink>[
-      AnnouncementLink(
-          label: strings.loaderGithub, url: launcherLinks.loaderGithub),
-      AnnouncementLink(
-          label: strings.upstreamGithub, url: launcherLinks.gameGithub),
-      AnnouncementLink(
-          label: strings.bilibiliHome, url: launcherLinks.bilibili),
-    ];
-    return SurfaceCard(
-      key: const ValueKey('about-panel'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          PanelHeader(title: strings.aboutTitle),
-          const SizedBox(height: 12),
-          ExcludeFocusTraversal(
-            child: SelectableText(
-              strings.isChinese
-                  ? controller.aboutContent.content
-                  : controller.aboutContent.contentEn ??
-                      controller.aboutContent.content,
-              style: TextStyle(color: palette.ink, fontSize: 13.5, height: 1.6),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final link in links)
-                GardenButton(
-                  label: link.label,
-                  compact: true,
-                  onPressed: () => actions.openUrl(link.url),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GuidePanel extends StatelessWidget {
-  const _GuidePanel({
-    required this.gestureMode,
-    required this.onOpenOnboarding,
-  });
-
-  final GestureMode gestureMode;
-  final VoidCallback onOpenOnboarding;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.garden;
-    final strings = context.strings;
-    final icons = switch (gestureMode) {
-      GestureMode.simulated => const <IconData>[
-          Icons.touch_app_rounded,
-          Icons.ads_click_rounded,
-          Icons.swipe_vertical_rounded,
-          Icons.do_not_touch_rounded,
-          Icons.keyboard_rounded,
-        ],
-      GestureMode.native => const <IconData>[
-          Icons.touch_app_rounded,
-          Icons.back_hand_rounded,
-          Icons.pinch_rounded,
-          Icons.do_not_touch_rounded,
-          Icons.keyboard_rounded,
-        ],
-    };
-    final gestures = [
-      for (final (index, (gesture, mapping))
-          in strings.gestures(gestureMode).indexed)
-        (icons[index], gesture, mapping),
-    ];
-    final tips = strings.guideTips;
-    return SurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelHeader(
-            title: strings.guide,
-            trailing: GardenButton(
-              key: const ValueKey('open-onboarding-button'),
-              label: strings.openOnboarding,
-              icon: Icons.waving_hand_outlined,
-              tone: GardenButtonTone.ghost,
-              compact: true,
-              onPressed: onOpenOnboarding,
-            ),
-          ),
-          const SizedBox(height: 10),
-          for (final (icon, gesture, mapping) in gestures)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: [
-                  Icon(icon, size: 18, color: palette.inkMuted),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      gesture,
-                      style: TextStyle(
-                        color: palette.ink,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      mapping,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(color: palette.inkMuted, fontSize: 12.5),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          Divider(color: palette.border, height: 20),
-          for (final tip in tips)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      tip,
-                      style: TextStyle(
-                        color: palette.inkMuted,
-                        fontSize: 12.5,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
       ),
     );
   }

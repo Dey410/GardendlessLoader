@@ -223,20 +223,17 @@ class AppStrings {
   String get resourceRoot => _t('资源根目录', 'Resource folder');
 
   // Settings page: loader.
-  String get noUpdate => _t('无可用更新', 'No update');
-  String get currentVersion => _t('当前版本', 'Current');
-  String get latestVersion => _t('最新版本', 'Latest');
-  String get autoCheckHint => _t(
-        '进入启动器时会自动检查，也可以点右上角的刷新图标手动检查。',
-        'Checked automatically when the launcher opens; tap the refresh icon '
-            'at the top right to check now.',
-      );
+  String loaderUpdateTitle(String version) =>
+      _t('加载器有新版本 v$version', 'GardendlessLoader v$version is out');
   String get cloudDriveUpdate => _t('网盘更新', 'Update from cloud drive');
   String get viewGithubRelease => _t('查看 GitHub Release', 'GitHub release');
 
-  // Settings page: launch preferences.
-  String get launchPreferences => _t('启动偏好', 'Launch Preferences');
-  String get appliesNextLaunch => _t('下次启动生效', 'Applies next launch');
+  // Settings page: the game column.
+  String get settingsGame => _t('游戏', 'Game');
+  String get appliesNextLaunch => _t('下次启动时生效', 'Applies on the next launch');
+  String get displaySettings => _t('画面', 'Display');
+  String get controlSettings => _t('操作', 'Controls');
+  String get launchSettings => _t('启动与辅助', 'Launch & assists');
   String get quickLaunch => _t('快速启动', 'Quick launch');
   String get quickLaunchSubtitle => _t(
         '打开应用时直接进入游戏，点击游戏左下角 X 返回加载器',
@@ -244,6 +241,8 @@ class AppStrings {
             'bottom left of the game to return to the loader',
       );
   String get autoCollectSun => _t('自动收集', 'Auto Collect Sun');
+  String get autoCollectNeedsGame =>
+      _t('导入游戏后才能设置', 'Available once a game is imported');
   String get autoCollectSunSubtitle => _t(
         '游戏中约每 3 秒模拟一次 A 键，暂停、后台或输入时不触发',
         'Presses A about every 3 seconds in play; skipped while paused, in '
@@ -251,9 +250,9 @@ class AppStrings {
       );
   String get renderResolution => _t('渲染分辨率', 'Render resolution');
   String get renderResolutionSubtitle => _t(
-        '按屏幕原生分辨率的百分比渲染游戏画面，百分比越低越省显存，画面也越模糊',
-        'Renders the game at a percentage of the screen\'s native resolution; '
-            'a lower percentage uses less GPU memory and looks softer',
+        '屏幕原生分辨率的百分比，越低越省显存，画面也越模糊',
+        "A share of the screen's native resolution; lower uses less GPU "
+            'memory and looks softer',
       );
   String renderResolutionLabel(RenderResolution resolution) =>
       switch (resolution) {
@@ -262,31 +261,34 @@ class AppStrings {
         RenderResolution.low => '50%',
       };
   String get screenFit => _t('画面比例', 'Screen fit');
-  String get screenFitSubtitle => _t(
-        '均衡比例裁掉少量画面换取更小的黑边；完整显示显示全部画面，黑边更大；'
-            '强制拉伸铺满屏幕，但可能造成画面变形',
-        'Balanced trims a little of the picture for smaller black bars; Show '
-            'all shows the whole picture with larger bars; Stretch fills the '
-            'screen but can distort the picture',
-      );
+  String screenFitDetail(ScreenFit fit) => switch (fit) {
+        ScreenFit.balanced => _t('裁掉少量画面，换来更小的黑边。',
+            'Trims a little of the picture for smaller black bars.'),
+        ScreenFit.showAll => _t('显示完整画面，黑边会大一些。',
+            'Shows the whole picture with larger black bars.'),
+        ScreenFit.stretch => _t('铺满整个屏幕，画面可能被拉伸变形。',
+            'Fills the screen; the picture may look stretched.'),
+      };
   String screenFitLabel(ScreenFit fit) => switch (fit) {
         ScreenFit.balanced => _t('均衡比例', 'Balanced'),
         ScreenFit.showAll => _t('完整显示', 'Show all'),
         ScreenFit.stretch => _t('强制拉伸', 'Stretch'),
       };
   String get gestureMode => _t('手势（实验）', 'Gestures (experimental)');
-  String get gestureModeSubtitle => _t(
-        '模拟：拖动种植靠在松手处补一次点击，双指模拟右键和滚轮；'
-            '原生：像手机游戏一样只用一根手指，拖到草坪上松手即种下，没用上会'
-            '自动放回，单指滚动列表和设置页、平移禅境花园、沿卡槽滑动切换沙盒'
-            '卡片，长按编辑卡组，捏合缩放禅境花园',
-        'Simulated plants a drag by clicking where it ends, and two fingers '
-            'stand in for the right button and the wheel. Native plays with '
-            'one finger like a phone game: drop on the lawn to plant, and '
-            'unused drags go back; one finger scrolls lists and settings, pans '
-            'the Zen Garden and swipes the sandbox bank; long press edits a '
-            'deck; pinch zooms the Zen Garden',
-      );
+  String gestureModeDetail(GestureMode mode) => switch (mode) {
+        GestureMode.simulated => _t(
+            '单指点按或拖动就是鼠标左键，双指轻点是右键，双指滑动是滚轮。',
+            'One finger is the left mouse button; a two-finger tap '
+                'right-clicks and a two-finger swipe scrolls.',
+          ),
+        GestureMode.native => _t(
+            '像手机游戏一样只用一根手指：拖到草坪上松手就种下，没用上会放回；'
+                '长按编辑卡组，捏合缩放禅境花园。',
+            'One finger, like a phone game: drop on the lawn to plant and '
+                'unused drags go back; long press edits a deck, pinch zooms '
+                'the Zen Garden.',
+          ),
+      };
   String gestureModeLabel(GestureMode mode) => switch (mode) {
         GestureMode.simulated => _t('模拟', 'Simulated'),
         GestureMode.native => _t('原生', 'Native'),
@@ -303,8 +305,9 @@ class AppStrings {
         'Show the loader name in a corner of the game',
       );
 
-  // Settings page: appearance.
-  String get appearance => _t('外观', 'Appearance');
+  // Settings page: the launcher column.
+  String get settingsLauncher => _t('启动器', 'Launcher');
+  String get appearance => _t('外观与语言', 'Appearance & language');
   String get brightness => _t('深浅色', 'Brightness');
   String get followSystem => _t('跟随系统', 'System');
   String get lightTheme => _t('浅色', 'Light');
@@ -371,11 +374,11 @@ class AppStrings {
       );
 
   // Settings page: about and guide.
-  String get aboutTitle =>
-      _t('关于 GardendlessLoader', 'About GardendlessLoader');
+  String get aboutTitle => _t('关于', 'About');
   String get loaderGithub => _t('加载器 GitHub', 'Loader on GitHub');
   String get upstreamGithub => _t('上游游戏 GitHub', 'Upstream game on GitHub');
-  String get guide => _t('使用说明', 'How to Play');
+  String get help => _t('帮助', 'Help');
+  String get touchGuide => _t('触屏操作和小贴士', 'Touch controls and tips');
   List<(String, String)> gestures(GestureMode mode) => switch (mode) {
         GestureMode.simulated => isChinese
             ? const [
@@ -537,8 +540,8 @@ class AppStrings {
         ),
       ];
   String get onboardingReopenHint => _t(
-        '之后可以在「$navSettings → $guide」里再次查看这份引导。',
-        'You can open this guide again under $navSettings → $guide.',
+        '之后可以在「$navSettings → $help」里再次查看这份引导。',
+        'You can open this guide again under $navSettings → $help.',
       );
 
   // Logs page.
