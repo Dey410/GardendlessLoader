@@ -43,6 +43,7 @@ class LauncherActions {
     required this.copyLogEvent,
     required this.deleteLogHistory,
     required this.toggleImportDetails,
+    required this.openOnboarding,
   });
 
   final ValueChanged<LauncherDestination> navigate;
@@ -58,6 +59,9 @@ class LauncherActions {
   final Future<void> Function(Map<String, Object?> event) copyLogEvent;
   final Future<void> Function() deleteLogHistory;
   final VoidCallback toggleImportDetails;
+
+  /// Opens the welcome pages again.
+  final Future<void> Function() openOnboarding;
 }
 
 List<AnnouncementLink> socialLinks(AppStrings strings, LauncherLinks links) => [

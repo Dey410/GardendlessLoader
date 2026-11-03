@@ -118,6 +118,7 @@ class Pressable extends StatefulWidget {
     this.semanticLabel,
     this.scale = 0.97,
     this.tooltip,
+    this.autofocus = false,
   });
 
   final Widget child;
@@ -125,6 +126,9 @@ class Pressable extends StatefulWidget {
   final String? semanticLabel;
   final double scale;
   final String? tooltip;
+
+  /// Takes the focus when first built, so a controller's A presses it.
+  final bool autofocus;
 
   @override
   State<Pressable> createState() => _PressableState();
@@ -160,6 +164,7 @@ class _PressableState extends State<Pressable> {
     }
     result = FocusableActionDetector(
       enabled: enabled,
+      autofocus: widget.autofocus,
       mouseCursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
       onShowFocusHighlight: (value) => setState(() => _focused = value),
       actions: <Type, Action<Intent>>{
@@ -210,6 +215,7 @@ class GardenButton extends StatelessWidget {
     this.busy = false,
     this.compact = false,
     this.tooltip,
+    this.autofocus = false,
   });
 
   final String label;
@@ -222,6 +228,7 @@ class GardenButton extends StatelessWidget {
   final bool busy;
   final bool compact;
   final String? tooltip;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -255,6 +262,7 @@ class GardenButton extends StatelessWidget {
       onTap: enabled ? onPressed : null,
       semanticLabel: label,
       tooltip: tooltip,
+      autofocus: autofocus,
       child: AnimatedOpacity(
         duration: GardenMotion.quick,
         opacity: enabled || busy ? 1 : 0.4,

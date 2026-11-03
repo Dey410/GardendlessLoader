@@ -435,6 +435,112 @@ class AppStrings {
               'the game, so only install Mods from sources you trust.',
         ];
 
+  String get openOnboarding => _t('查看新手引导', 'Show the welcome guide');
+
+  // Onboarding: the welcome pages on the first launch.
+  String get onboardingSkip => _t('跳过', 'Skip');
+  String get onboardingNext => _t('下一步', 'Next');
+  String get onboardingBack => _t('上一步', 'Back');
+  String get onboardingImport => _t('去导入资源', 'Import the game');
+  String get onboardingDone => _t('开始使用', 'Get started');
+  String onboardingPage(int page, int count) =>
+      _t('第 $page 页，共 $count 页', 'Page $page of $count');
+  String get onboardingWelcomeTitle =>
+      _t('欢迎来到 GardendlessLoader', 'Welcome to GardendlessLoader');
+  String get onboardingWelcomeBody => _t(
+        '在手机和平板上畅玩 PvZ2 Gardendless。加载器负责运行游戏，本身不包含游戏资源，'
+            '跟着下面 3 步就能开玩。',
+        'Play PvZ2 Gardendless on your phone or tablet. The loader runs the '
+            'game but does not include it; three steps get you playing.',
+      );
+  List<String> get onboardingSteps => isChinese
+      ? const ['获取资源包', '导入 ZIP', '开始游戏']
+      : const ['Get the game', 'Import the ZIP', 'Play'];
+  String get onboardingGetTitle =>
+      _t('第 1 步 · 获取游戏资源包', 'Step 1 · Get the game');
+  String get onboardingGetBody => _t(
+        '先下载一份游戏资源 ZIP。推荐移动端优化包：贴图和音频为手机调整过，更省内存，也更不容易闪退。',
+        'First download a game resource ZIP. The mobile-optimized package is '
+            'recommended: its textures and audio are tuned for phones, so it '
+            'uses less memory and crashes less.',
+      );
+  String onboardingPackageNote(GameHostPlatform platform) =>
+      platform == GameHostPlatform.ohos
+          ? _t(
+              '鸿蒙设备请使用优化包：原版包里的部分图片在鸿蒙上显示不出来。',
+              'On HarmonyOS, use the optimized package: some images in the '
+                  'original package do not show on HarmonyOS.',
+            )
+          : _t(
+              '上游原版 ZIP 也能用，但体积更大，也更占内存。',
+              'The original upstream ZIP works too, but it is larger and uses '
+                  'more memory.',
+            );
+  String get githubPackages => _t('GitHub 优化包', 'Optimized package on GitHub');
+  List<String> get onboardingDownloadNotes => isChinese
+      ? const [
+          '在 GitHub 上请下载文件名里没有「from」的完整包；带「from」的是给老版本用的增量更新包。',
+          '网盘中的资源由加载器作者上传，与 PvZ2 Gardendless 官方无关。',
+        ]
+      : const [
+          'On GitHub, download the full package, the one without "from" in its '
+              'name; a "from" package only updates an older version.',
+          'The cloud drive copy is uploaded by the loader author and is not '
+              'affiliated with PvZ2 Gardendless.',
+        ];
+  String get onboardingImportTitle =>
+      _t('第 2 步 · 导入 ZIP', 'Step 2 · Import the ZIP');
+  List<String> onboardingImportPoints(GameHostPlatform platform) => [
+        _t(
+          '在「$navResources」页点「$chooseZipToImport」，选中刚下载的 ZIP。',
+          'On the $navResources page, tap $chooseZipToImport and pick the ZIP '
+              'you downloaded.',
+        ),
+        platform == GameHostPlatform.ohos
+            ? _t(
+                '也可以在文件管理器或聊天软件里，选择用 GardendlessLoader 打开 ZIP。',
+                'You can also open the ZIP with GardendlessLoader from a file '
+                    'manager or a chat app.',
+              )
+            : _t(
+                '也可以在文件管理器或聊天软件里，选择用 GardendlessLoader 打开 ZIP，或者把它分享给加载器。',
+                'You can also open the ZIP with GardendlessLoader, or share it '
+                    'to the loader, from a file manager or a chat app.',
+              ),
+        _t(
+          '导入会依次读取、解压、校验和自检，通常需要几分钟。失败或取消都不会影响已有的资源。',
+          'The import reads, extracts, validates and self-checks the package, '
+              'usually within a few minutes. A failure or cancel never touches '
+              'resources already imported.',
+        ),
+      ];
+  String get onboardingPlayTitle => _t('第 3 步 · 开始游戏', 'Step 3 · Play');
+  String get onboardingPlayBody => _t(
+        '导入完成后，在「$navGame」页点「$startGame」。触屏这样操作：',
+        'Once the import finishes, tap $startGame on the $navGame page. On '
+            'the touch screen:',
+      );
+  List<String> onboardingPlayTips(GameHostPlatform platform) => [
+        platform == GameHostPlatform.ios
+            ? _t('返回启动器：从屏幕左边缘向右滑。',
+                'Back to the launcher: swipe right from the left edge.')
+            : _t('返回启动器：使用系统返回。', 'Back to the launcher: use system Back.'),
+        _t(
+          '存档保存在游戏里。更新资源前，先在游戏里导出一份存档备份。',
+          'Saves live in the game. Before updating the resources, export a '
+              'save from the game as a backup.',
+        ),
+        _t(
+          '卡顿或闪退时，到「$navSettings」里调低$renderResolution。',
+          'If the game stutters or crashes, lower the '
+              '${renderResolution.toLowerCase()} in $navSettings.',
+        ),
+      ];
+  String get onboardingReopenHint => _t(
+        '之后可以在「$navSettings → $guide」里再次查看这份引导。',
+        'You can open this guide again under $navSettings → $guide.',
+      );
+
   // Logs page.
   String get levelDebug => _t('调试', 'Debug');
   String get levelInfo => _t('信息', 'Info');

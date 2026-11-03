@@ -15,6 +15,7 @@ import '../services/update_check_service.dart';
 import 'launcher_actions.dart';
 import 'pages/play_page.dart';
 import 'pages/logs_page.dart';
+import 'pages/onboarding_page.dart';
 import 'pages/resources_page.dart';
 import 'pages/settings_page.dart';
 import 'theme/garden_theme.dart';
@@ -41,6 +42,7 @@ class _HomePageState extends State<HomePage> {
   LauncherMessage? _lastMessage;
   bool _importDetailsExpanded = true;
   bool _announcementPopupScheduled = false;
+  bool _onboardingScheduled = false;
   bool _incomingZipDialogScheduled = false;
   bool _shortcutScheduled = false;
   ImportPhase _lastImportPhase = ImportPhase.idle;
@@ -67,6 +69,7 @@ class _HomePageState extends State<HomePage> {
     deleteLogHistory: _deleteLogHistory,
     toggleImportDetails: () =>
         setState(() => _importDetailsExpanded = !_importDetailsExpanded),
+    openOnboarding: _openOnboarding,
   );
 
   @override
@@ -101,6 +104,7 @@ class _HomePageState extends State<HomePage> {
       animation: _controller,
       builder: (context, _) {
         _showMessageIfNeeded();
+        _showOnboardingIfNeeded();
         _showNewAnnouncementIfNeeded();
         _showIncomingZipIfNeeded();
         _performShortcutIfNeeded();
@@ -282,9 +286,52 @@ class _HomePageState extends State<HomePage> {
     _lastImportPhase = phase;
   }
 
-  /// Pops up an announcement the user has not seen yet, once per launch.
+  /// Opens the welcome pages on the first launch without a game. A ZIP
+  /// another app handed over or a home-screen shortcut goes first: that
+  /// player already knows where they are going.
+  void _showOnboardingIfNeeded() {
+    if (_onboardingScheduled ||
+        !_controller.shouldShowOnboarding ||
+        _controller.busy ||
+        _controller.isImporting ||
+        _controller.incomingZipName != null ||
+        _controller.pendingShortcut != null) {
+      return;
+    }
+    _onboardingScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) {
+        _onboardingScheduled = false;
+        return;
+      }
+      unawaited(_openOnboarding());
+    });
+  }
+
+  Future<void> _openOnboarding() async {
+    final exit = await showOnboarding(
+      context,
+      platform: _controller.gameHostPlatform,
+      gestureMode: _controller.gestureMode,
+      links: _controller.links,
+      hasResource: _controller.hasCurrentResource,
+      reduceMotion: _controller.reduceMotion,
+      onOpenUrl: _openExternalUrl,
+    );
+    // Saved on close: a player the system ended mid-guide sees it again.
+    await _controller.markOnboardingShown();
+    if (!mounted) return;
+    if (exit == OnboardingExit.finished && !_controller.hasCurrentResource) {
+      _navigate(LauncherDestination.resources);
+    }
+  }
+
+  /// Pops up an announcement the user has not seen yet, once per launch. A
+  /// new player meets the welcome pages instead of release notes.
   void _showNewAnnouncementIfNeeded() {
     if (_announcementPopupScheduled ||
+        _onboardingScheduled ||
+        _controller.shouldShowOnboarding ||
         !_controller.initialized ||
         _controller.busy ||
         _controller.isImporting ||

@@ -70,6 +70,7 @@ class AppSettings {
     this.toolShedUnlocked = false,
     this.touchDiagnosticsEnabled = false,
     this.gestureHintShown = false,
+    this.onboardingShown = false,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -92,6 +93,7 @@ class AppSettings {
       touchDiagnosticsEnabled:
           json['touchDiagnosticsEnabled'] as bool? ?? false,
       gestureHintShown: json['gestureHintShown'] as bool? ?? false,
+      onboardingShown: json['onboardingShown'] as bool? ?? false,
     );
   }
 
@@ -130,6 +132,9 @@ class AppSettings {
   /// The gesture hint shows over the game once, on the first launch.
   final bool gestureHintShown;
 
+  /// The welcome pages have been shown; they open by themselves only once.
+  final bool onboardingShown;
+
   static const _unchanged = Object();
 
   /// [launcherTheme] takes a theme id or null, which follows the festivals.
@@ -149,6 +154,7 @@ class AppSettings {
     bool? toolShedUnlocked,
     bool? touchDiagnosticsEnabled,
     bool? gestureHintShown,
+    bool? onboardingShown,
   }) {
     return AppSettings(
       watermarkEnabled: watermarkEnabled ?? this.watermarkEnabled,
@@ -170,6 +176,7 @@ class AppSettings {
       touchDiagnosticsEnabled:
           touchDiagnosticsEnabled ?? this.touchDiagnosticsEnabled,
       gestureHintShown: gestureHintShown ?? this.gestureHintShown,
+      onboardingShown: onboardingShown ?? this.onboardingShown,
     );
   }
 
@@ -189,6 +196,7 @@ class AppSettings {
         'toolShedUnlocked': toolShedUnlocked,
         'touchDiagnosticsEnabled': touchDiagnosticsEnabled,
         'gestureHintShown': gestureHintShown,
+        'onboardingShown': onboardingShown,
       };
 }
 

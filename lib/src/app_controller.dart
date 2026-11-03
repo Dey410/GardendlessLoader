@@ -197,6 +197,11 @@ class AppController extends ChangeNotifier {
   LanguagePreference get languagePreference => _appSettings.languagePreference;
   bool get reduceMotion => _appSettings.reduceMotion;
   bool get toolShedUnlocked => _appSettings.toolShedUnlocked;
+
+  /// The welcome pages open by themselves once, on a launch with no game
+  /// imported yet; a player updating from an older loader already has one.
+  bool get shouldShowOnboarding =>
+      _initialized && !_appSettings.onboardingShown && !hasCurrentResource;
   bool get touchDiagnosticsEnabled => _appSettings.touchDiagnosticsEnabled;
   bool get autoCollectSunEnabled => _manifest.autoCollectSunEnabled;
   GameHostPlatform get gameHostPlatform => GameHostPlatform.current();
@@ -1299,6 +1304,10 @@ class AppController extends ChangeNotifier {
     return _updateAppSettings(
       _appSettings.copyWith(toolShedUnlocked: unlocked),
     );
+  }
+
+  Future<void> markOnboardingShown() {
+    return _updateAppSettings(_appSettings.copyWith(onboardingShown: true));
   }
 
   Future<void> setTouchDiagnosticsEnabled(bool enabled) {

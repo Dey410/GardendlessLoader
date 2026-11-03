@@ -37,7 +37,10 @@ class SettingsPage extends StatelessWidget {
       right: [
         _AboutPanel(controller: controller, actions: actions),
         const SizedBox(height: 16),
-        _GuidePanel(gestureMode: controller.gestureMode),
+        _GuidePanel(
+          gestureMode: controller.gestureMode,
+          onOpenOnboarding: actions.openOnboarding,
+        ),
       ],
     );
   }
@@ -609,9 +612,13 @@ class _AboutPanel extends StatelessWidget {
 }
 
 class _GuidePanel extends StatelessWidget {
-  const _GuidePanel({required this.gestureMode});
+  const _GuidePanel({
+    required this.gestureMode,
+    required this.onOpenOnboarding,
+  });
 
   final GestureMode gestureMode;
+  final VoidCallback onOpenOnboarding;
 
   @override
   Widget build(BuildContext context) {
@@ -643,7 +650,17 @@ class _GuidePanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PanelHeader(title: strings.guide),
+          PanelHeader(
+            title: strings.guide,
+            trailing: GardenButton(
+              key: const ValueKey('open-onboarding-button'),
+              label: strings.openOnboarding,
+              icon: Icons.waving_hand_outlined,
+              tone: GardenButtonTone.ghost,
+              compact: true,
+              onPressed: onOpenOnboarding,
+            ),
+          ),
           const SizedBox(height: 10),
           for (final (icon, gesture, mapping) in gestures)
             Padding(

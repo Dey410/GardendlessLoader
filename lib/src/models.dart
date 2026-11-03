@@ -244,6 +244,7 @@ class LauncherLinks {
   const LauncherLinks({
     this.loaderGithub = appGithubUrl,
     this.gameGithub = githubUrl,
+    this.gamePackages = gamePackagesUrl,
     this.loaderCloudDrive = cloudDriveUrl,
     this.gameCloudDrive = cloudDriveUrl,
     this.bilibili = bilibiliHomeUrl,
@@ -265,6 +266,7 @@ class LauncherLinks {
     return LauncherLinks(
       loaderGithub: pick('loaderGithub', loaderGithub),
       gameGithub: pick('gameGithub', gameGithub),
+      gamePackages: pick('gamePackages', gamePackages),
       loaderCloudDrive: pick('loaderCloudDrive', loaderCloudDrive),
       gameCloudDrive: pick('gameCloudDrive', gameCloudDrive),
       bilibili: pick('bilibili', bilibili),
@@ -276,6 +278,7 @@ class LauncherLinks {
   Map<String, String> toJson() => {
         'loaderGithub': loaderGithub,
         'gameGithub': gameGithub,
+        'gamePackages': gamePackages,
         'loaderCloudDrive': loaderCloudDrive,
         'gameCloudDrive': gameCloudDrive,
         'bilibili': bilibili,
@@ -284,6 +287,9 @@ class LauncherLinks {
 
   final String loaderGithub;
   final String gameGithub;
+
+  /// The latest release of the loader's mobile-optimized game packages.
+  final String gamePackages;
   final String loaderCloudDrive;
   final String gameCloudDrive;
   final String bilibili;

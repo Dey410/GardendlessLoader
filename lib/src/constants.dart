@@ -7,6 +7,8 @@ const appGithubUrl =
     'https://github.com/Dey410/GardendlessLoader'; // GardendlessLoader 的 GitHub 仓库地址
 const gameReleaseNotesUrl =
     'https://github.com/Gzh0821/pvzg_site/releases/tag/{version}'; // 上游游戏版本的更新说明，{version} 替换为版本号
+const gamePackagesUrl =
+    'https://github.com/Dey410/extract-pvzge-gpnext/releases/latest'; // 移动端优化包的 GitHub Release
 const cloudDriveUrl =
     'https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU'; // 网盘地址，加载器更新与游戏资源下载默认共用
 const bilibiliHomeUrl = 'https://space.bilibili.com/523667580'; // B站主页地址
