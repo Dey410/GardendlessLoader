@@ -10,7 +10,7 @@
 - After an update, manifest activates the candidate slot and clears the old slot.
 - Launch page shows resource imported and detected title.
 - Start game destroys the Flutter launcher and opens a landscape native GameHost.
-- On iOS and Android, the game canvas sits in a themed frame: each bar grades from a dark bezel to a lifted tone at the page edge, a hairline rim traces the page, and the tone follows the launcher theme accent, falling back to neutral when the theme has none. Stretch fills the screen without a frame.
+- On iOS and Android, the game canvas sits in a themed frame: each bar grades from a dark bezel to a lifted tone at the page edge, a hairline rim traces the page, and the tone follows the launcher theme accent, staying neutral when no accent is set. Stretch fills the screen without a frame.
 - Android loads from `https://appassets.androidplatform.net`, iOS from `gardendless-game://localhost`, and HarmonyOS from `https://gardendless.invalid`.
 - Android inlines the shared bridge scripts as the first `<head>` script of every HTML document it serves, so a System WebView without `DOCUMENT_START_SCRIPT` still starts the game; a GameHost launch failure logs the WebView package and version.
 - The entry URL includes `?generation=<activationGeneration>` while the platform origin remains stable.
