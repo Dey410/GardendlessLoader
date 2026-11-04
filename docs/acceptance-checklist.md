@@ -10,6 +10,10 @@
 - After an update, manifest activates the candidate slot and clears the old slot.
 - Launch page shows resource imported and detected title.
 - In a compact or short launcher window, the Play page can scroll to keep its title, recovery card and start action reachable; the sidebar navigation list scrolls when wrapped labels need more height; long labels and panel titles wrap without clipping.
+- On iOS 27.1 or later, the launcher reads the live Flutter view's active `reservedRegions(kind: .occlusion)` and `verticalBarEdge`. These regions only select the corner-camera layout below; ordinary sensor-housing handling remains authoritative elsewhere. Android, HarmonyOS, older iOS, and unsupported geometry keep the existing layout.
+- On the Duo outer screen, all live occlusions intersecting the leading rail must stay above its vertical midpoint to activate the corner-camera layout. The rail remains 76/92 logical points wide instead of adding the whole left safe-area inset; navigation starts below the lowest region's `maxY` plus the normal gutter and scrolls if the remaining height is short.
+- The camera lane is covered by a non-interactive frosted layer outside the rail's layout width. No device-model, fixed-pixel, or interface-orientation check selects this layout.
+- A side-centered landscape notch or Dynamic Island crosses the rail midpoint and keeps the dev/0.9.1 safe-area layout. A lower-corner region, a device with no matching region, iPad, Android, and HarmonyOS also keep the existing layout.
 - Start game destroys the Flutter launcher and opens a landscape native GameHost.
 - Android loads from `https://appassets.androidplatform.net`, iOS from `gardendless-game://localhost`, and HarmonyOS from `https://gardendless.invalid`.
 - Android inlines the shared bridge scripts as the first `<head>` script of every HTML document it serves, so a System WebView without `DOCUMENT_START_SCRIPT` still starts the game; a GameHost launch failure logs the WebView package and version.
