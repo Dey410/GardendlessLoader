@@ -72,6 +72,22 @@ final class GameSessionTests: XCTestCase {
     XCTAssertNil(try GameSessionDecoder.decode(json).frameAccent)
   }
 
+  func testDefaultsCanvasFrameOnForOlderPreparedSessions() throws {
+    var json = makeJSON()
+    json.removeValue(forKey: "canvasFrameEnabled")
+
+    let session = try GameSessionDecoder.decode(json)
+
+    XCTAssertTrue(session.canvasFrameEnabled)
+  }
+
+  func testDecodesDisabledCanvasFrame() throws {
+    var json = makeJSON()
+    json["canvasFrameEnabled"] = false
+
+    XCTAssertFalse(try GameSessionDecoder.decode(json).canvasFrameEnabled)
+  }
+
   func testRejectsWrongSchemaPlatformOrOrigin() {
     XCTAssertThrowsError(
       try GameSessionDecoder.decode(makeJSON(schema: 2))

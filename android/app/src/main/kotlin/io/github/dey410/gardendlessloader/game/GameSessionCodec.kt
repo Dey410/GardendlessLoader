@@ -44,6 +44,8 @@ data class NativeGameSession(
     val renderScale: Double? = null,
     /** Accent of the launcher theme as an opaque ARGB colour; null keeps a neutral bezel. */
     val frameAccent: Int? = null,
+    /** Whether the host draws the gradient and rim around the canvas; false keeps the bars black. */
+    val canvasFrameEnabled: Boolean = true,
     val screenFit: GameScreenFit = GameScreenFit.BALANCED,
     val gestureMode: GameGestureMode = GameGestureMode.SIMULATED,
     /** Records the touch adapter's trace into the logs. */
@@ -96,6 +98,7 @@ object GameSessionCodec {
             frameAccent = (json.opt("frameAccent") as? Number)?.toLong()
                 ?.takeIf { it in 0..0xFFFFFFFFL }
                 ?.toInt(),
+            canvasFrameEnabled = json.optBoolean("canvasFrameEnabled", true),
             screenFit = json.optString("screenFit", GameScreenFit.BALANCED.wireName).let { name ->
                 requireNotNull(GameScreenFit.entries.firstOrNull { it.wireName == name }) { "Invalid screen fit" }
             },

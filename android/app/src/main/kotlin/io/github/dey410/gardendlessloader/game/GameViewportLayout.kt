@@ -62,6 +62,7 @@ internal class GameViewportLayout(
     context: Context,
     private val screenFit: GameScreenFit,
     frameAccent: Int? = null,
+    private val frameEnabled: Boolean = true,
 ) : FrameLayout(context) {
     private val tone = LetterboxTone.of(frameAccent)
     private val topBar = RectF()
@@ -82,7 +83,7 @@ internal class GameViewportLayout(
     }
 
     init {
-        setBackgroundColor(tone.outer)
+        setBackgroundColor(if (frameEnabled) tone.outer else Color.BLACK)
         // The bars are drawn behind the page, so they read as a frame instead
         // of an empty gap.
         setWillNotDraw(false)
@@ -90,7 +91,7 @@ internal class GameViewportLayout(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (screenFit == GameScreenFit.STRETCH || childCount == 0) return
+        if (!frameEnabled || screenFit == GameScreenFit.STRETCH || childCount == 0) return
         canvas.drawRect(topBar, topPaint)
         canvas.drawRect(bottomBar, bottomPaint)
         canvas.drawRect(leadingBar, leadingPaint)
@@ -110,6 +111,10 @@ internal class GameViewportLayout(
     }
 
     private fun updateFrame(width: Int, height: Int) {
+        if (!frameEnabled) {
+            clearFrame()
+            return
+        }
         if (childCount == 0) {
             clearFrame()
             return

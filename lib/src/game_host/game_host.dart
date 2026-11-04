@@ -92,6 +92,7 @@ class GameSession {
     this.detailedAudioDiagnosticsEnabled = false,
     this.renderScale,
     this.frameAccent,
+    this.canvasFrameEnabled = true,
     this.screenFit = ScreenFit.balanced,
     this.gestureMode = GestureMode.simulated,
     this.touchDiagnosticsEnabled = false,
@@ -149,6 +150,7 @@ class GameSession {
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       renderScale: (renderScale as num?)?.toDouble(),
       frameAccent: frameAccent,
+      canvasFrameEnabled: json['canvasFrameEnabled'] as bool? ?? true,
       screenFit: ScreenFit.fromName(json['screenFit']),
       gestureMode: GestureMode.fromName(json['touchGestureMode']),
       touchDiagnosticsEnabled:
@@ -185,6 +187,10 @@ class GameSession {
   /// Accent of the launcher theme as an opaque ARGB colour; native hosts
   /// tint the frame around the canvas. Null keeps a neutral bezel.
   final int? frameAccent;
+
+  /// Whether native hosts draw the gradient and rim around the canvas; false
+  /// leaves the letterbox bars pure black.
+  final bool canvasFrameEnabled;
 
   final ScreenFit screenFit;
   final GestureMode gestureMode;
@@ -230,6 +236,7 @@ class GameSession {
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
       'renderScale': renderScale,
       'frameAccent': frameAccent,
+      'canvasFrameEnabled': canvasFrameEnabled,
       'screenFit': screenFit.name,
       'touchGestureMode': gestureMode.name,
       'touchDiagnosticsEnabled': touchDiagnosticsEnabled,

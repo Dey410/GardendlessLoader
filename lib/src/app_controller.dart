@@ -195,6 +195,7 @@ class AppController extends ChangeNotifier {
       _appSettings.detailedAudioDiagnosticsEnabled;
   ThemePreference get themePreference => _appSettings.themePreference;
   LanguagePreference get languagePreference => _appSettings.languagePreference;
+  bool get gameCanvasFrameEnabled => _appSettings.gameCanvasFrameEnabled;
   bool get reduceMotion => _appSettings.reduceMotion;
   bool get toolShedUnlocked => _appSettings.toolShedUnlocked;
 
@@ -1075,6 +1076,7 @@ class AppController extends ChangeNotifier {
       detailedAudioDiagnosticsEnabled: detailedAudioDiagnosticsEnabled,
       renderScale: renderResolution.scale,
       frameAccent: launcherTheme.accentColor,
+      canvasFrameEnabled: gameCanvasFrameEnabled,
       screenFit: screenFit,
       gestureMode: gestureMode,
       touchDiagnosticsEnabled: toolShedUnlocked && touchDiagnosticsEnabled,
@@ -1299,6 +1301,12 @@ class AppController extends ChangeNotifier {
   /// Picks an unlocked theme by id, or null to follow the festivals.
   Future<void> setLauncherTheme(String? id) {
     return _updateAppSettings(_appSettings.copyWith(launcherTheme: id));
+  }
+
+  Future<void> setGameCanvasFrameEnabled(bool enabled) {
+    return _updateAppSettings(
+      _appSettings.copyWith(gameCanvasFrameEnabled: enabled),
+    );
   }
 
   Future<void> setToolShedUnlocked(bool unlocked) {

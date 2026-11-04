@@ -41,10 +41,18 @@ private final class GameViewportView: UIView {
   private let screenFit: GameScreenFit
   private let backdrop: LetterboxBackdropView
 
-  init(webView: WKWebView, screenFit: GameScreenFit, frameAccent: UInt32?) {
+  init(
+    webView: WKWebView,
+    screenFit: GameScreenFit,
+    frameAccent: UInt32?,
+    frameEnabled: Bool
+  ) {
     self.webView = webView
     self.screenFit = screenFit
-    backdrop = LetterboxBackdropView(accent: frameAccent)
+    backdrop = LetterboxBackdropView(
+      accent: frameAccent,
+      frameEnabled: frameEnabled
+    )
     super.init(frame: .zero)
     backgroundColor = .black
     // Behind the page: the letterbox bars read as the edge of the scene
@@ -92,7 +100,8 @@ private final class GameViewportView: UIView {
 /// The frame around the game canvas. Four gradient layers shade each bar from
 /// the bezel tone at the screen edge to a lifted tone against the page, and a
 /// hairline border traces the canvas. Layers redraw only when the layout
-/// changes: no full-screen bitmap and no blur.
+/// changes: no full-screen bitmap and no blur. With the frame off the view is
+/// plain black and creates no layers.
 private final class LetterboxBackdropView: UIView {
   /// Where the page sits, so the frame follows the actual canvas.
   var canvasFrame: CGRect = .zero {
@@ -103,31 +112,35 @@ private final class LetterboxBackdropView: UIView {
   }
 
   private let tone: LetterboxTone
-  private let topBar = CAGradientLayer()
-  private let bottomBar = CAGradientLayer()
-  private let leadingBar = CAGradientLayer()
-  private let trailingBar = CAGradientLayer()
-  private let rim = CALayer()
+  private let frameEnabled: Bool
+  private lazy var topBar = CAGradientLayer()
+  private lazy var bottomBar = CAGradientLayer()
+  private lazy var leadingBar = CAGradientLayer()
+  private lazy var trailingBar = CAGradientLayer()
+  private lazy var rim = CALayer()
   private static let rimWidth: CGFloat = 1.5
 
-  init(accent: UInt32?) {
+  init(accent: UInt32?, frameEnabled: Bool) {
     tone = LetterboxTone(accent: accent)
+    self.frameEnabled = frameEnabled
     super.init(frame: .zero)
     isUserInteractionEnabled = false
     isOpaque = true
     accessibilityElementsHidden = true
-    backgroundColor = tone.outer
-    configure(topBar, from: CGPoint(x: 0.5, y: 0), to: CGPoint(x: 0.5, y: 1))
-    configure(bottomBar, from: CGPoint(x: 0.5, y: 1), to: CGPoint(x: 0.5, y: 0))
-    configure(leadingBar, from: CGPoint(x: 0, y: 0.5), to: CGPoint(x: 1, y: 0.5))
-    configure(trailingBar, from: CGPoint(x: 1, y: 0.5), to: CGPoint(x: 0, y: 0.5))
-    rim.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
-    rim.borderWidth = Self.rimWidth
-    layer.addSublayer(topBar)
-    layer.addSublayer(bottomBar)
-    layer.addSublayer(leadingBar)
-    layer.addSublayer(trailingBar)
-    layer.addSublayer(rim)
+    backgroundColor = self.frameEnabled ? tone.outer : .black
+    if self.frameEnabled {
+      configure(topBar, from: CGPoint(x: 0.5, y: 0), to: CGPoint(x: 0.5, y: 1))
+      configure(bottomBar, from: CGPoint(x: 0.5, y: 1), to: CGPoint(x: 0.5, y: 0))
+      configure(leadingBar, from: CGPoint(x: 0, y: 0.5), to: CGPoint(x: 1, y: 0.5))
+      configure(trailingBar, from: CGPoint(x: 1, y: 0.5), to: CGPoint(x: 0, y: 0.5))
+      rim.borderColor = UIColor.white.withAlphaComponent(0.10).cgColor
+      rim.borderWidth = Self.rimWidth
+      layer.addSublayer(topBar)
+      layer.addSublayer(bottomBar)
+      layer.addSublayer(leadingBar)
+      layer.addSublayer(trailingBar)
+      layer.addSublayer(rim)
+    }
   }
 
   @available(*, unavailable)
@@ -137,6 +150,7 @@ private final class LetterboxBackdropView: UIView {
 
   override func layoutSubviews() {
     super.layoutSubviews()
+    guard frameEnabled else { return }
     let frame = canvasFrame
     let hasCanvas = !frame.isEmpty
     let hasBars =
@@ -369,7 +383,8 @@ final class GameHostController: UIViewController,
     let viewport = GameViewportView(
       webView: webView,
       screenFit: session.screenFit,
-      frameAccent: session.frameAccent
+      frameAccent: session.frameAccent,
+      frameEnabled: session.canvasFrameEnabled
     )
     let edgeGesture = UIScreenEdgePanGestureRecognizer(
       target: self,

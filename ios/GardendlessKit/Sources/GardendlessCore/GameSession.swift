@@ -45,6 +45,9 @@ public struct GameSession: Codable, Equatable {
   /// Accent of the launcher theme as an opaque ARGB colour; the game host
   /// tints the frame around the canvas with it. Nil keeps a neutral bezel.
   public let frameAccent: UInt32?
+  /// Whether the host draws the gradient and rim around the canvas; false
+  /// leaves the letterbox bars pure black.
+  public let canvasFrameEnabled: Bool
   public let screenFit: GameScreenFit
   public let gestureMode: GameGestureMode
   /// Records the touch adapter's trace into the logs.
@@ -74,6 +77,7 @@ public struct GameSession: Codable, Equatable {
     detailedAudioDiagnosticsEnabled: Bool = false,
     renderScale: Double? = nil,
     frameAccent: UInt32? = nil,
+    canvasFrameEnabled: Bool = true,
     screenFit: GameScreenFit = .balanced,
     gestureMode: GameGestureMode = .simulated,
     touchDiagnosticsEnabled: Bool = false,
@@ -96,6 +100,7 @@ public struct GameSession: Codable, Equatable {
     self.detailedAudioDiagnosticsEnabled = detailedAudioDiagnosticsEnabled
     self.renderScale = renderScale
     self.frameAccent = frameAccent
+    self.canvasFrameEnabled = canvasFrameEnabled
     self.screenFit = screenFit
     self.gestureMode = gestureMode
     self.touchDiagnosticsEnabled = touchDiagnosticsEnabled
@@ -168,6 +173,7 @@ public enum GameSessionDecoder {
         json["detailedAudioDiagnosticsEnabled"] as? Bool ?? false,
       renderScale: renderScale,
       frameAccent: frameAccent,
+      canvasFrameEnabled: json["canvasFrameEnabled"] as? Bool ?? true,
       screenFit: screenFit,
       gestureMode: gestureMode,
       touchDiagnosticsEnabled: json["touchDiagnosticsEnabled"] as? Bool ?? false,
