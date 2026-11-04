@@ -64,6 +64,7 @@ class AppSettings {
     this.detailedAudioDiagnosticsEnabled = false,
     this.themePreference = ThemePreference.system,
     this.launcherTheme,
+    this.gameCanvasFrameEnabled = true,
     this.reduceMotion = false,
     this.languagePreference = LanguagePreference.system,
     this.seenAnnouncementId,
@@ -85,6 +86,7 @@ class AppSettings {
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       themePreference: ThemePreference.fromName(json['themePreference']),
       launcherTheme: json['launcherTheme'] as String?,
+      gameCanvasFrameEnabled: json['gameCanvasFrameEnabled'] as bool? ?? true,
       reduceMotion: json['reduceMotion'] as bool? ?? false,
       languagePreference:
           LanguagePreference.fromName(json['languagePreference']),
@@ -115,6 +117,10 @@ class AppSettings {
   /// Id of the launcher theme the player picked; null follows the game's
   /// festivals.
   final String? launcherTheme;
+
+  /// Draws the gradient and rim around the game canvas; off keeps the
+  /// letterbox bars pure black.
+  final bool gameCanvasFrameEnabled;
   final bool reduceMotion;
   final LanguagePreference languagePreference;
 
@@ -148,6 +154,7 @@ class AppSettings {
     bool? detailedAudioDiagnosticsEnabled,
     ThemePreference? themePreference,
     Object? launcherTheme = _unchanged,
+    bool? gameCanvasFrameEnabled,
     bool? reduceMotion,
     LanguagePreference? languagePreference,
     String? seenAnnouncementId,
@@ -169,6 +176,8 @@ class AppSettings {
       launcherTheme: identical(launcherTheme, _unchanged)
           ? this.launcherTheme
           : launcherTheme as String?,
+      gameCanvasFrameEnabled:
+          gameCanvasFrameEnabled ?? this.gameCanvasFrameEnabled,
       reduceMotion: reduceMotion ?? this.reduceMotion,
       languagePreference: languagePreference ?? this.languagePreference,
       seenAnnouncementId: seenAnnouncementId ?? this.seenAnnouncementId,
@@ -190,6 +199,7 @@ class AppSettings {
         'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
         'themePreference': themePreference.name,
         'launcherTheme': launcherTheme,
+        'gameCanvasFrameEnabled': gameCanvasFrameEnabled,
         'reduceMotion': reduceMotion,
         'languagePreference': languagePreference.name,
         'seenAnnouncementId': seenAnnouncementId,

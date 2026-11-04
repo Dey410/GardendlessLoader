@@ -91,6 +91,8 @@ class GameSession {
     this.hapticEffectsEnabled = false,
     this.detailedAudioDiagnosticsEnabled = false,
     this.renderScale,
+    this.frameAccent,
+    this.canvasFrameEnabled = true,
     this.screenFit = ScreenFit.balanced,
     this.gestureMode = GestureMode.simulated,
     this.touchDiagnosticsEnabled = false,
@@ -120,6 +122,12 @@ class GameSession {
     if (renderScale != null && (renderScale is! num || renderScale <= 0)) {
       throw const FormatException('renderScale must be positive');
     }
+    final rawFrameAccent = json['frameAccent'];
+    final frameAccent = rawFrameAccent is int &&
+            rawFrameAccent >= 0 &&
+            rawFrameAccent <= 0xffffffff
+        ? rawFrameAccent
+        : null;
     final gestureHint = json['gestureHint'];
     if (gestureHint != null &&
         (gestureHint is! List || gestureHint.any((line) => line is! String))) {
@@ -141,6 +149,8 @@ class GameSession {
       detailedAudioDiagnosticsEnabled:
           json['detailedAudioDiagnosticsEnabled'] as bool? ?? false,
       renderScale: (renderScale as num?)?.toDouble(),
+      frameAccent: frameAccent,
+      canvasFrameEnabled: json['canvasFrameEnabled'] as bool? ?? true,
       screenFit: ScreenFit.fromName(json['screenFit']),
       gestureMode: GestureMode.fromName(json['touchGestureMode']),
       touchDiagnosticsEnabled:
@@ -173,6 +183,15 @@ class GameSession {
   /// Share of the device pixel ratio the game canvas renders at; null renders
   /// at the device's own ratio.
   final double? renderScale;
+
+  /// Accent of the launcher theme as an opaque ARGB colour; native hosts
+  /// tint the frame around the canvas. Null keeps a neutral bezel.
+  final int? frameAccent;
+
+  /// Whether native hosts draw the gradient and rim around the canvas; false
+  /// leaves the letterbox bars pure black.
+  final bool canvasFrameEnabled;
+
   final ScreenFit screenFit;
   final GestureMode gestureMode;
 
@@ -216,6 +235,8 @@ class GameSession {
       'hapticEffectsEnabled': hapticEffectsEnabled,
       'detailedAudioDiagnosticsEnabled': detailedAudioDiagnosticsEnabled,
       'renderScale': renderScale,
+      'frameAccent': frameAccent,
+      'canvasFrameEnabled': canvasFrameEnabled,
       'screenFit': screenFit.name,
       'touchGestureMode': gestureMode.name,
       'touchDiagnosticsEnabled': touchDiagnosticsEnabled,

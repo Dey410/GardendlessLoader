@@ -16,6 +16,10 @@ export interface GameSessionPayload {
   hapticEffectsEnabled?: boolean;
   detailedAudioDiagnosticsEnabled?: boolean;
   renderScale?: number | null;
+  /** Opaque ARGB accent of the launcher theme; malformed values keep neutral. */
+  frameAccent?: number | null;
+  /** Whether the native host draws the canvas frame; absent or invalid means on. */
+  canvasFrameEnabled?: boolean;
   screenFit?: string;
   touchGestureMode?: string;
   touchDiagnosticsEnabled?: boolean;
@@ -41,6 +45,10 @@ export class GameSession {
   readonly hapticEffectsEnabled: boolean;
   readonly detailedAudioDiagnosticsEnabled: boolean;
   readonly renderScale: number | null;
+  /** Launcher theme accent used to tint the canvas frame; null keeps neutral. */
+  readonly frameAccent: number | null;
+  /** Draws the gradient and rim around the canvas; false leaves black bars. */
+  readonly canvasFrameEnabled: boolean;
   /** balanced (16:10–17:9), showAll (17:9) or stretch: how the game viewport fits the screen. */
   readonly screenFit: string;
   /** simulated (clicks the release point of a drag) or native (experimental drag and drop). */
@@ -80,6 +88,16 @@ export class GameSession {
     if (this.renderScale !== null && !(this.renderScale > 0)) {
       throw new Error('Invalid render scale');
     }
+    // A missing or out-of-range accent only costs the themed bezel, so it
+    // never blocks the launch; an absent or invalid switch keeps the frame on.
+    const rawFrameAccent = value.frameAccent;
+    this.frameAccent = typeof rawFrameAccent === 'number' &&
+      Number.isInteger(rawFrameAccent) &&
+      rawFrameAccent >= 0 &&
+      rawFrameAccent <= 0xFFFFFFFF
+      ? rawFrameAccent
+      : null;
+    this.canvasFrameEnabled = value.canvasFrameEnabled !== false;
     this.screenFit = value.screenFit ?? 'balanced';
     if (!['balanced', 'showAll', 'stretch'].includes(this.screenFit)) {
       throw new Error('Invalid screen fit');

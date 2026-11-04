@@ -313,6 +313,12 @@ class AppStrings {
   String get lightTheme => _t('浅色', 'Light');
   String get darkTheme => _t('深色', 'Dark');
   String get theme => _t('主题', 'Theme');
+  String get gameCanvasFrame => _t('游戏画布边框', 'Game canvas frame');
+  String get gameCanvasFrameSubtitle => _t(
+        '在留边区域显示主题渐变和细线；关闭后使用纯黑留边，下次启动游戏时生效。',
+        'Show a themed gradient around the canvas. Turn it off to use black '
+            'bars; changes apply on the next game launch.',
+      );
   String get autoTheme => _t('自动', 'Auto');
   String get autoThemeDetail => _t(
         '跟随游戏的节日活动，平时用花园配色',

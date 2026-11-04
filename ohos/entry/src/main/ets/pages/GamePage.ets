@@ -11,6 +11,94 @@ import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientati
 
 let storage = LocalStorage.getShared();
 
+/** The two tones of the game frame, derived from the launcher theme accent. */
+class LetterboxTone {
+  readonly outer: string;
+  readonly inner: string;
+
+  private constructor(outer: string, inner: string) {
+    this.outer = outer;
+    this.inner = inner;
+  }
+
+  static of(accent: number | null): LetterboxTone {
+    // No accent, or a transparent one, keeps the neutral dark bezel.
+    if (accent === null || Math.floor(accent / 0x1000000) % 256 === 0) {
+      return new LetterboxTone('#0E0F11', '#2A2B30');
+    }
+    const red = Math.floor(accent / 0x10000) % 256 / 255;
+    const green = Math.floor(accent / 0x100) % 256 / 255;
+    const blue = accent % 256 / 255;
+    const maximum = Math.max(red, green, blue);
+    const minimum = Math.min(red, green, blue);
+    const delta = maximum - minimum;
+    let hue = 0;
+    if (delta !== 0) {
+      if (maximum === red) {
+        hue = ((green - blue) / delta) % 6;
+      } else if (maximum === green) {
+        hue = (blue - red) / delta + 2;
+      } else {
+        hue = (red - green) / delta + 4;
+      }
+      hue *= 60;
+      if (hue < 0) {
+        hue += 360;
+      }
+    }
+    const saturation = maximum === 0 ? 0 : delta / maximum;
+    // Keep the accent's hue but cap saturation and brightness, so every theme
+    // yields a deep bezel instead of a bright band around the canvas. The caps
+    // are shared with the iOS and Android hosts.
+    return new LetterboxTone(
+      LetterboxTone.hsv(hue, Math.min(saturation, 0.40), 0.075),
+      LetterboxTone.hsv(hue, Math.min(saturation, 0.55), 0.34),
+    );
+  }
+
+  private static hsv(hue: number, saturation: number, value: number): string {
+    const chroma = value * saturation;
+    const second = chroma * (1 - Math.abs(hue / 60 % 2 - 1));
+    const offset = value - chroma;
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    switch (Math.floor(hue / 60) % 6) {
+      case 0:
+        red = chroma;
+        green = second;
+        break;
+      case 1:
+        red = second;
+        green = chroma;
+        break;
+      case 2:
+        green = chroma;
+        blue = second;
+        break;
+      case 3:
+        green = second;
+        blue = chroma;
+        break;
+      case 4:
+        red = second;
+        blue = chroma;
+        break;
+      default:
+        red = chroma;
+        blue = second;
+        break;
+    }
+    return `#${LetterboxTone.hex(red + offset)}${LetterboxTone.hex(green + offset)}` +
+      `${LetterboxTone.hex(blue + offset)}`;
+  }
+
+  private static hex(channel: number): string {
+    const value = Math.round(channel * 255).toString(16).toUpperCase();
+    return value.length === 1 ? `0${value}` : value;
+  }
+}
+
 @Entry(storage)
 @Component
 struct GamePage {
@@ -32,10 +120,22 @@ struct GamePage {
   @State private viewportHeight: string = '100%';
   @State private viewportScaleX: number = 1;
   @State private viewportScaleY: number = 1;
+  private frameSettings: RenderingContextSettings = new RenderingContextSettings(true);
+  private frameContext: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.frameSettings);
+  private frameReady: boolean = false;
+  private frameWidth: number = 0;
+  private frameHeight: number = 0;
+  private canvasWidth: number = 0;
+  private canvasHeight: number = 0;
+  private canvasStretch: boolean = false;
+  private canvasFrameEnabled: boolean = true;
+  private frameTone: LetterboxTone = LetterboxTone.of(null);
 
   aboutToAppear(): void {
     try {
       this.session = new GameSession(this.sessionJson);
+      this.canvasFrameEnabled = this.session.canvasFrameEnabled;
+      this.frameTone = LetterboxTone.of(this.session.frameAccent);
       const createdEvent: AppLogEvent = {
         source: 'ohos', level: 'INFO', category: 'game.host',
         event: 'game_host_created', outcome: 'succeeded',
@@ -79,6 +179,13 @@ struct GamePage {
 
   build() {
     Stack() {
+      Canvas(this.frameContext)
+        .width('100%')
+        .height('100%')
+        .onReady((): void => {
+          this.frameReady = true;
+          this.paintFrame();
+        })
       Web({ src: '', controller: this.controller })
         .width(this.viewportWidth)
         .height(this.viewportHeight)
@@ -248,6 +355,69 @@ struct GamePage {
       this.viewportScaleX = width / viewportWidth;
       this.viewportScaleY = height / viewportHeight;
     }
+    this.frameWidth = width;
+    this.frameHeight = height;
+    this.canvasWidth = viewportWidth;
+    this.canvasHeight = viewportHeight;
+    this.canvasStretch = screenFit === 'stretch';
+    this.paintFrame();
+  }
+
+  /// Frames the page with a graded bezel so the bars read as a finished border
+  /// instead of an empty gap. Static: repainted only when the window or the
+  /// page geometry changes, never per frame.
+  private paintFrame(): void {
+    if (!this.frameReady || this.frameWidth <= 0 || this.frameHeight <= 0) {
+      return;
+    }
+    const context = this.frameContext;
+    const width = this.frameWidth;
+    const height = this.frameHeight;
+    const showFrame = this.canvasFrameEnabled && !this.canvasStretch;
+    context.clearRect(0, 0, width, height);
+    // With the frame off the letterbox bars stay pure black.
+    context.fillStyle = showFrame ? this.frameTone.outer : '#000000';
+    context.fillRect(0, 0, width, height);
+    if (!showFrame) {
+      return;
+    }
+    const left = (width - this.canvasWidth) / 2;
+    const top = (height - this.canvasHeight) / 2;
+    const right = left + this.canvasWidth;
+    const bottom = top + this.canvasHeight;
+    this.paintBar(context, 0, 0, width, top, 0, 0, 0, top);
+    this.paintBar(context, 0, bottom, width, height - bottom, 0, height, 0, bottom);
+    this.paintBar(context, 0, 0, left, height, 0, 0, left, 0);
+    this.paintBar(context, right, 0, width - right, height, width, 0, right, 0);
+    const hasBars = left > 0 || top > 0 || right < width || bottom < height;
+    if (hasBars) {
+      context.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+      context.lineWidth = 1.5;
+      context.strokeRect(left - 0.75, top - 0.75, this.canvasWidth + 1.5, this.canvasHeight + 1.5);
+    }
+  }
+
+  /// Each bar fades from the bezel tone at the screen edge to the lifted tone
+  /// against the page, matching the iOS and Android hosts.
+  private paintBar(
+    context: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    barWidth: number,
+    barHeight: number,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ): void {
+    if (barWidth <= 0 || barHeight <= 0) {
+      return;
+    }
+    const gradient = context.createLinearGradient(startX, startY, endX, endY);
+    gradient.addColorStop(0, this.frameTone.outer);
+    gradient.addColorStop(1, this.frameTone.inner);
+    context.fillStyle = gradient;
+    context.fillRect(x, y, barWidth, barHeight);
   }
 
   private buildDocumentStartScript(session: GameSession): string {

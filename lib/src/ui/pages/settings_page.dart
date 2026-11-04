@@ -404,6 +404,10 @@ class _AppearanceGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.garden;
     final strings = context.strings;
+    final platform = controller.gameHostPlatform;
+    final showCanvasFrame = platform == GameHostPlatform.ios ||
+        platform == GameHostPlatform.android ||
+        platform == GameHostPlatform.ohos;
     return _SettingsGroup(
       key: const ValueKey('settings-appearance'),
       title: strings.appearance,
@@ -426,6 +430,17 @@ class _AppearanceGroup extends StatelessWidget {
             ],
           ),
         ),
+        if (showCanvasFrame)
+          SwitchRow(
+            key: const ValueKey('game-canvas-frame'),
+            switchKey: const ValueKey('game-canvas-frame-switch'),
+            title: strings.gameCanvasFrame,
+            subtitle: strings.gameCanvasFrameSubtitle,
+            value: controller.gameCanvasFrameEnabled,
+            onChanged: controller.initialized
+                ? controller.setGameCanvasFrameEnabled
+                : null,
+          ),
         _ChoiceRow<ThemePreference>(
           key: const ValueKey('theme-preference'),
           title: strings.brightness,

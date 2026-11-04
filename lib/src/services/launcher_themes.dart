@@ -72,6 +72,14 @@ class LauncherTheme {
   final String? badge;
   final ThemeUnlock unlock;
 
+  /// The green of the app icon, matching `GardenPalette.light.accent`, which
+  /// the garden theme leaves untinted.
+  static const gardenAccent = 0xff16a34a;
+
+  /// The accent the launcher wears: the theme's own, or the garden's green
+  /// when the theme leaves it to the garden.
+  int get accentColor => accent ?? accentDark ?? gardenAccent;
+
   static const garden = LauncherTheme(
     'garden',
     name: (zh: '花园', en: 'Garden'),
