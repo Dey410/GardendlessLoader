@@ -406,7 +406,8 @@ class _AppearanceGroup extends StatelessWidget {
     final strings = context.strings;
     final platform = controller.gameHostPlatform;
     final showCanvasFrame = platform == GameHostPlatform.ios ||
-        platform == GameHostPlatform.android;
+        platform == GameHostPlatform.android ||
+        platform == GameHostPlatform.ohos;
     return _SettingsGroup(
       key: const ValueKey('settings-appearance'),
       title: strings.appearance,

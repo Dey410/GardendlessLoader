@@ -462,6 +462,64 @@ test('Flutter launch adapter carries audio preference and optional package ident
   } finally { h.core.destroy(); }
 });
 
+test('canvas frame fields default to a neutral frame that is on', () => {
+  const h = harness();
+  try {
+    const { GameSession } = h.load('game/GameSession');
+    const base = { schemaVersion: 1, sessionId: 'frame', platform: 'ohos', origin: GameSession.ORIGIN,
+      resourceRoot: '/sandbox/docs', entryUrl: GameSession.ORIGIN + '/index.html', activationGeneration: 1,
+      watermarkEnabled: true, autoCollectSunEnabled: false, allowedRemoteHosts: [],
+      gpNextRoot: '/sandbox/gp-next', exportTemporaryRoot: '/sandbox/gp-next/.exports' };
+    const decode = (extra) => new GameSession(JSON.stringify(Object.assign({}, base, extra)));
+    const defaults = decode({});
+    assert.equal(defaults.frameAccent, null);
+    assert.equal(defaults.canvasFrameEnabled, true);
+    const themed = decode({ frameAccent: 0xFFDC2626, canvasFrameEnabled: false });
+    assert.equal(themed.frameAccent, 0xFFDC2626);
+    assert.equal(themed.canvasFrameEnabled, false);
+    for (const accent of [-1, 1.5, 0x100000000, 'red', null, true]) {
+      assert.equal(decode({ frameAccent: accent }).frameAccent, null, String(accent));
+    }
+    // The session retains a transparent accent; the page renders it as neutral.
+    assert.equal(decode({ frameAccent: 0x00DC2626 }).frameAccent, 0x00DC2626);
+    for (const value of ['false', 0, null]) {
+      assert.equal(decode({ canvasFrameEnabled: value }).canvasFrameEnabled, true, String(value));
+    }
+  } finally { h.core.destroy(); }
+});
+
+test('Flutter launch adapter forwards the frame accent and switch into the native session', async () => {
+  const h = harness();
+  try {
+    const { GameHostPlugin } = h.load('plugins/GameHostPlugin');
+    const { GameSession } = h.load('game/GameSession');
+    const launch = async (values) => {
+      const plugin = new GameHostPlugin();
+      let forwarded;
+      const context = {
+        startAbility: async (want) => { forwarded = JSON.parse(want.parameters.gameSession); },
+        terminateSelf: async () => {},
+      };
+      plugin.onAttachedToAbility({ getAbility: () => ({ context }) });
+      const result = deferred();
+      plugin.onMethodCall({ method: 'launch', argument: (key) => values[key] ?? null }, { success: result.resolve, error: result.reject });
+      await result.promise;
+      return forwarded;
+    };
+    const base = { schemaVersion: 1, sessionId: 'frame-launch', platform: 'ohos', origin: GameSession.ORIGIN,
+      resourceRoot: '/sandbox/docs', entryUrl: GameSession.ORIGIN + '/index.html', activationGeneration: 1,
+      watermarkEnabled: true, autoCollectSunEnabled: false, allowedRemoteHosts: [],
+      gpNextRoot: '/sandbox/gp-next', exportTemporaryRoot: '/sandbox/gp-next/.exports' };
+    const defaults = await launch(base);
+    assert.equal(defaults.frameAccent, null);
+    assert.equal(defaults.canvasFrameEnabled, true);
+    const forwarded = await launch(Object.assign({}, base, { frameAccent: 0xFFDC2626, canvasFrameEnabled: false }));
+    const session = new GameSession(JSON.stringify(forwarded));
+    assert.equal(session.frameAccent, 0xFFDC2626);
+    assert.equal(session.canvasFrameEnabled, false);
+  } finally { h.core.destroy(); }
+});
+
 test('duplicate active request IDs leave the original pending file request unsettled until its single completion', async () => {
   const h = harness(); const bridge = h.bridge(); const gate = deferred();
   try {

@@ -29,6 +29,8 @@ interface GameSessionArguments {
   hapticEffectsEnabled: boolean;
   detailedAudioDiagnosticsEnabled: boolean;
   renderScale: number | null;
+  frameAccent: number | null;
+  canvasFrameEnabled: boolean;
   screenFit: string;
   touchGestureMode: string;
   touchDiagnosticsEnabled: boolean;
@@ -111,6 +113,8 @@ export class GameHostPlugin implements FlutterPlugin, AbilityAware, MethodCallHa
       hapticEffectsEnabled: (call.argument('hapticEffectsEnabled') as boolean | null) ?? false,
       detailedAudioDiagnosticsEnabled: (call.argument('detailedAudioDiagnosticsEnabled') as boolean | null) ?? false,
       renderScale: (call.argument('renderScale') as number | null) ?? null,
+      frameAccent: (call.argument('frameAccent') as number | null) ?? null,
+      canvasFrameEnabled: (call.argument('canvasFrameEnabled') as boolean | null) ?? true,
       screenFit: (call.argument('screenFit') as string | null) ?? 'balanced',
       touchGestureMode: (call.argument('touchGestureMode') as string | null) ?? 'simulated',
       touchDiagnosticsEnabled: (call.argument('touchDiagnosticsEnabled') as boolean | null) ?? false,
