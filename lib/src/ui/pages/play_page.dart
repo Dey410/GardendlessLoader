@@ -72,6 +72,31 @@ class _PlayPageState extends State<PlayPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 560) {
+          // A near-square landscape window leaves the poster's logo across
+          // the upper frame, so the copy and action belong on the bottom
+          // fade rather than stacked from the top over the art. The column
+          // keeps the single-column order and the right-aligned action, and
+          // still scrolls when the content or text scale outgrows the view.
+          if (constraints.maxWidth >= constraints.maxHeight) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (recovery != null) ...[
+                      recovery,
+                      SizedBox(height: gap),
+                    ],
+                    hero,
+                    SizedBox(height: gap),
+                    actionBar,
+                  ],
+                ),
+              ),
+            );
+          }
           return ListView(
             children: [
               if (recovery != null) ...[recovery, SizedBox(height: gap)],
@@ -82,30 +107,37 @@ class _PlayPageState extends State<PlayPage> {
           );
         }
         // Launcher composition: the key art owns the open area, the title
-        // sits bottom-left on the same row as the primary action.
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Spacer(),
-            if (recovery != null) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  child: recovery,
-                ),
-              ),
-              SizedBox(height: gap),
-            ],
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+        // sits bottom-left on the same row as the primary action. Scrolling
+        // keeps that anchoring when the row cannot fit, e.g. a short window
+        // or a large text scale.
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Expanded(child: hero),
-                const SizedBox(width: 16),
-                actionBar,
+                if (recovery != null) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 460),
+                      child: recovery,
+                    ),
+                  ),
+                  SizedBox(height: gap),
+                ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(child: hero),
+                    const SizedBox(width: 16),
+                    actionBar,
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         );
       },
     );

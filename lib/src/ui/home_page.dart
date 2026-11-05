@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import '../constants.dart';
 import '../l10n/app_strings.dart';
 import '../logging/log_event_catalog.dart';
 import '../models.dart';
+import '../services/display_geometry_service.dart';
 import '../services/sensor_housing_service.dart';
 import '../services/shortcut_service.dart';
 import '../services/update_check_service.dart';
@@ -25,12 +27,20 @@ import 'widgets/garden_widgets.dart';
 import 'widgets/key_art_backdrop.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.controller, this.sensorHousing});
+  const HomePage({
+    super.key,
+    required this.controller,
+    this.sensorHousing,
+    this.displayGeometry,
+  });
 
   final AppController controller;
 
   /// Overrides the platform sensor-housing tracker, mainly for tests.
   final SensorHousingService? sensorHousing;
+
+  /// Overrides the platform reserved-region reader, mainly for tests.
+  final DisplayGeometryService? displayGeometry;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -52,6 +62,9 @@ class _HomePageState extends State<HomePage> {
 
   late final SensorHousingService _sensorHousing =
       widget.sensorHousing ?? SensorHousingService();
+
+  late final DisplayGeometryService _displayGeometry =
+      widget.displayGeometry ?? DisplayGeometryService();
 
   late final LauncherActions _actions = LauncherActions(
     navigate: _navigate,
@@ -76,6 +89,8 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _sensorHousing.addListener(_onSensorHousingChanged);
     if (widget.sensorHousing == null) unawaited(_sensorHousing.start());
+    _displayGeometry.addListener(_onDisplayGeometryChanged);
+    if (widget.displayGeometry == null) unawaited(_displayGeometry.start());
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
@@ -92,10 +107,14 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _sensorHousing.removeListener(_onSensorHousingChanged);
     if (widget.sensorHousing == null) _sensorHousing.dispose();
+    _displayGeometry.removeListener(_onDisplayGeometryChanged);
+    if (widget.displayGeometry == null) _displayGeometry.dispose();
     super.dispose();
   }
 
   void _onSensorHousingChanged() => setState(() {});
+
+  void _onDisplayGeometryChanged() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -129,13 +148,37 @@ class _HomePageState extends State<HomePage> {
             ? const Center(child: ProgressRing(value: null, size: 28))
             : LayoutBuilder(
                 builder: (context, constraints) {
-                  final insets = _effectiveInsets(context);
+                  final viewSize = constraints.biggest;
+                  final padding = MediaQuery.paddingOf(context);
                   final compact = _isCompact(
-                    Size(
-                      constraints.maxWidth,
-                      constraints.maxHeight - insets.top,
-                    ),
+                    Size(viewSize.width, viewSize.height - padding.top),
                   );
+                  final geometry = _displayGeometry.value;
+                  final railWidth = _Sidebar.railWidthFor(compact);
+                  final nativeRailOcclusion = _railOcclusion(
+                    geometry: geometry,
+                    viewSize: viewSize,
+                    padding: padding,
+                    railWidth: railWidth,
+                  );
+                  final safeAreaCornerFallback = nativeRailOcclusion == null
+                      ? _safeAreaCornerFallback(
+                          geometry: geometry,
+                          viewSize: viewSize,
+                          padding: padding,
+                          railWidth: railWidth,
+                        )
+                      : null;
+                  final railOcclusion =
+                      nativeRailOcclusion ?? safeAreaCornerFallback;
+                  final railPanelWidth =
+                      safeAreaCornerFallback?.laneRight ?? railWidth;
+                  final insets = housingAwareInsets(
+                    padding,
+                    _sensorHousing.value ??
+                        _sensorHousingEdge(railOcclusion, geometry),
+                  );
+                  final occlusionRects = railOcclusion?.rects ?? const <Rect>[];
                   return Stack(
                     children: [
                       // The art covers only the content area: the sidebar
@@ -152,10 +195,11 @@ class _HomePageState extends State<HomePage> {
                           curve: GardenMotion.easeOut,
                           child: KeyArtBackdrop(
                             key: const ValueKey('play-backdrop'),
-                            contentLeft: _Sidebar.widthFor(
-                              leftInset: insets.left,
-                              compact: compact,
-                            ),
+                            contentLeft: railOcclusion?.laneRight ??
+                                _Sidebar.widthFor(
+                                  leftInset: insets.left,
+                                  compact: compact,
+                                ),
                           ),
                         ),
                       ),
@@ -163,8 +207,35 @@ class _HomePageState extends State<HomePage> {
                         left: false,
                         right: false,
                         bottom: false,
-                        child: LayoutBuilder(builder: _buildWorkspace),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) => _buildWorkspace(
+                            context,
+                            constraints,
+                            padding: insets,
+                            railPanelWidth: railPanelWidth,
+                            safeAreaCornerFallback:
+                                safeAreaCornerFallback != null,
+                            railOcclusion: railOcclusion,
+                          ),
+                        ),
                       ),
+                      // Frost only the camera lane outside the narrow rail;
+                      // the rail already paints its own matching blur and tint.
+                      for (final rect in occlusionRects)
+                        if (rect.right > railPanelWidth)
+                          _CameraLaneGlass(
+                            rect: Rect.fromLTRB(
+                              rect.left < railPanelWidth
+                                  ? railPanelWidth
+                                  : rect.left,
+                              rect.top,
+                              rect.right,
+                              rect.bottom,
+                            ),
+                            tint: palette.surface.withValues(
+                              alpha: palette.isDark ? 0.42 : 0.5,
+                            ),
+                          ),
                     ],
                   );
                 },
@@ -175,18 +246,145 @@ class _HomePageState extends State<HomePage> {
 
   static bool _isCompact(Size size) => size.height < 470 || size.width < 760;
 
-  // iOS reports the notch inset on both long edges; keep it only where the
-  // sensor housing actually is.
-  EdgeInsets _effectiveInsets(BuildContext context) => housingAwareInsets(
-        MediaQuery.paddingOf(context),
-        _sensorHousing.value,
-      );
+  /// The Duo outer display's corner camera sits above the rail's midpoint.
+  /// Centered landscape notches and Dynamic Islands cross that midpoint, so
+  /// they keep the existing safe-area layout.
+  static _RailOcclusion? _railOcclusion({
+    required DisplayGeometry? geometry,
+    required Size viewSize,
+    required EdgeInsets padding,
+    required double railWidth,
+  }) {
+    final regions = _occlusionRects(geometry, viewSize);
+    if (regions.isEmpty) return null;
+    final railTop = padding.top;
+    final railHeight = math.max(0.0, viewSize.height - railTop);
+    if (railHeight == 0) return null;
+    final midY = railTop + railHeight / 2;
+    final rail = Rect.fromLTWH(
+      0,
+      railTop,
+      railWidth,
+      railHeight,
+    );
+    final hits = regions
+        .where((region) => region.overlaps(rail))
+        .toList(growable: false);
+    if (hits.isEmpty) return null;
+    if (hits.any((region) => region.bottom >= midY)) return null;
+    final cornerOcclusions = hits;
+    return _RailOcclusion(
+      rects: cornerOcclusions,
+      bottom: cornerOcclusions.map((region) => region.bottom).reduce(
+            (a, b) => math.max(a, b),
+          ),
+      laneRight: math.max(
+        railWidth,
+        cornerOcclusions.map((region) => region.right).reduce(
+              (a, b) => math.max(a, b),
+            ),
+      ),
+    );
+  }
 
-  Widget _buildWorkspace(BuildContext context, BoxConstraints constraints) {
+  /// Uses the live leading safe-area extent only when UIKit reports no
+  /// region and the compact leading inset exceeds the navigation rail.
+  static _RailOcclusion? _safeAreaCornerFallback({
+    required DisplayGeometry? geometry,
+    required Size viewSize,
+    required EdgeInsets padding,
+    required double railWidth,
+  }) {
+    if (geometry == null ||
+        !geometry.supportsReservedRegions ||
+        geometry.occlusionRegions.isNotEmpty ||
+        geometry.verticalBarEdge != 'leading' ||
+        railWidth != _Sidebar.railWidthFor(true) ||
+        padding.left <= railWidth) {
+      return null;
+    }
+    final railTop = padding.top;
+    final railHeight = math.max(0.0, viewSize.height - railTop);
+    if (railHeight == 0) return null;
+    final midY = railTop + railHeight / 2;
+    final bottom = math.min(railTop + padding.left, midY);
+    if (bottom <= railTop || bottom >= midY) return null;
+    final laneRight = padding.left;
+    return _RailOcclusion(
+      rects: <Rect>[
+        Rect.fromLTRB(railWidth, railTop, laneRight, bottom),
+      ],
+      bottom: bottom,
+      laneRight: laneRight,
+    );
+  }
+
+  /// Scales native view-point regions into the launcher's current logical space.
+  static List<Rect> _occlusionRects(
+    DisplayGeometry? geometry,
+    Size viewSize,
+  ) {
+    if (geometry == null ||
+        !geometry.supportsReservedRegions ||
+        geometry.viewWidth <= 0 ||
+        geometry.viewHeight <= 0 ||
+        viewSize.width <= 0 ||
+        viewSize.height <= 0) {
+      return const <Rect>[];
+    }
+    final scaleX = viewSize.width / geometry.viewWidth;
+    final scaleY = viewSize.height / geometry.viewHeight;
+    final view = Offset.zero & viewSize;
+    final rects = <Rect>[];
+    for (final region in geometry.occlusionRegions) {
+      final rect = Rect.fromLTRB(
+        region.left * scaleX,
+        region.top * scaleY,
+        region.right * scaleX,
+        region.bottom * scaleY,
+      ).intersect(view);
+      if (!rect.isEmpty) rects.add(rect);
+    }
+    return rects;
+  }
+
+  /// The fallback sensor edge for a Duo corner camera. The existing native
+  /// answer stays authoritative; this only fills its silence for that region.
+  static SensorHousingEdge? _sensorHousingEdge(
+    _RailOcclusion? occlusion,
+    DisplayGeometry? geometry,
+  ) {
+    if (occlusion == null) return null;
+    // A trailing system bar leaves the leading rail's insets untouched.
+    return switch (geometry?.verticalBarEdge) {
+      'trailing' => null,
+      _ => SensorHousingEdge.left,
+    };
+  }
+
+  Widget _buildWorkspace(
+    BuildContext context,
+    BoxConstraints constraints, {
+    required EdgeInsets padding,
+    required double railPanelWidth,
+    required bool safeAreaCornerFallback,
+    required _RailOcclusion? railOcclusion,
+  }) {
     final compact = _isCompact(constraints.biggest);
-    final padding = _effectiveInsets(context);
     final reduced = GardenMotionScope.reduced(context);
-    final gutter = compact ? 20.0 : 32.0;
+    final gutter = safeAreaCornerFallback
+        ? 12.0
+        : compact
+            ? 20.0
+            : 32.0;
+    // Camera avoidance fills the live safe-area lane and keeps the rail's
+    // content below the corner, without leaving a hard separator.
+    final occlusionTop = railOcclusion == null
+        ? 0.0
+        : math.max(0.0, railOcclusion.bottom - padding.top);
+    final contentLeft = railOcclusion == null
+        ? gutter
+        : math.max(gutter, railOcclusion.laneRight - railPanelWidth + gutter);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -194,14 +392,16 @@ class _HomePageState extends State<HomePage> {
           controller: _controller,
           selected: _destination,
           compact: compact,
-          leftInset: padding.left,
+          leftInset: railOcclusion == null ? padding.left : 0,
+          width: railOcclusion == null ? null : railPanelWidth,
+          occlusionTop: occlusionTop,
           onSelected: _navigate,
           onIconTap: _onIconTap,
         ),
         Expanded(
           child: Padding(
             padding: EdgeInsets.fromLTRB(
-              gutter,
+              contentLeft,
               compact ? 14 : 24,
               padding.right + gutter,
               padding.bottom + (compact ? 12 : 20),
@@ -652,22 +852,81 @@ class _Sidebar extends StatelessWidget {
     required this.leftInset,
     required this.onSelected,
     required this.onIconTap,
+    this.width,
+    this.occlusionTop = 0,
   });
 
   final AppController controller;
   final LauncherDestination selected;
   final bool compact;
   final double leftInset;
+
+  /// Panel width can extend to the leading safe-area edge for corner cameras.
+  final double? width;
+
+  /// Clearance before the icon, derived from the camera region or corner inset.
+  final double occlusionTop;
+
   final ValueChanged<LauncherDestination> onSelected;
   final VoidCallback onIconTap;
 
+  static double railWidthFor(bool compact) => compact ? 76 : 92;
+
   static double widthFor({required double leftInset, required bool compact}) =>
-      leftInset + (compact ? 76 : 92);
+      leftInset + railWidthFor(compact);
 
   @override
   Widget build(BuildContext context) {
     final palette = context.garden;
     final badge = controller.launcherTheme.badge;
+    final topPadding = (compact ? 14.0 : 24.0) + occlusionTop;
+    final bottomPadding = compact ? 12.0 : 20.0;
+    final occlusionAware = width != null;
+    final icon = Center(
+      child: Pressable(
+        key: const ValueKey('launcher-icon'),
+        onTap: onIconTap,
+        scale: 0.9,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(compact ? 9 : 11),
+              child: Image.asset(
+                appIconAsset,
+                width: compact ? 36 : 42,
+                height: compact ? 36 : 42,
+                cacheWidth: 128,
+                semanticLabel: 'GardendlessLoader',
+              ),
+            ),
+            if (badge != null)
+              Positioned(
+                key: const ValueKey('seasonal-badge'),
+                right: -7,
+                bottom: -7,
+                child: Text(
+                  badge,
+                  style: const TextStyle(fontSize: 16, height: 1),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    final items = <Widget>[
+      for (final destination in LauncherDestination.values)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: _SidebarItem(
+            destination: destination,
+            selected: destination == selected,
+            compact: compact,
+            badge: _badgeFor(destination),
+            onTap: () => onSelected(destination),
+          ),
+        ),
+    ];
     // Frosted glass: the home art flows underneath instead of stopping at a
     // hard edge; elsewhere it reads as a plain tinted panel.
     return ClipRect(
@@ -675,69 +934,52 @@ class _Sidebar extends StatelessWidget {
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
-          width: widthFor(leftInset: leftInset, compact: compact),
+          width: width ?? widthFor(leftInset: leftInset, compact: compact),
           padding: EdgeInsets.fromLTRB(
             leftInset + 10,
-            compact ? 14 : 24,
+            topPadding,
             10,
-            compact ? 12 : 20,
+            bottomPadding,
           ),
           decoration: BoxDecoration(
             color:
                 palette.surface.withValues(alpha: palette.isDark ? 0.42 : 0.5),
-            border: Border(
-              right: BorderSide(color: palette.border.withValues(alpha: 0.25)),
-            ),
+            border: occlusionAware
+                ? null
+                : Border(
+                    right: BorderSide(
+                      color: palette.border.withValues(alpha: 0.25),
+                    ),
+                  ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Pressable(
-                  key: const ValueKey('launcher-icon'),
-                  onTap: onIconTap,
-                  scale: 0.9,
-                  child: Stack(
-                    clipBehavior: Clip.none,
+          child: occlusionAware
+              ? SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(compact ? 9 : 11),
-                        child: Image.asset(
-                          appIconAsset,
-                          width: compact ? 36 : 42,
-                          height: compact ? 36 : 42,
-                          cacheWidth: 128,
-                          semanticLabel: 'GardendlessLoader',
-                        ),
-                      ),
-                      if (badge != null)
-                        Positioned(
-                          key: const ValueKey('seasonal-badge'),
-                          right: -7,
-                          bottom: -7,
-                          child: Text(
-                            badge,
-                            style: const TextStyle(fontSize: 16, height: 1),
-                          ),
-                        ),
+                      icon,
+                      SizedBox(height: compact ? 16 : 28),
+                      ...items,
                     ],
                   ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    icon,
+                    SizedBox(height: compact ? 16 : 28),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: items,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              SizedBox(height: compact ? 16 : 28),
-              for (final destination in LauncherDestination.values)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: _SidebarItem(
-                    destination: destination,
-                    selected: destination == selected,
-                    compact: compact,
-                    badge: _badgeFor(destination),
-                    onTap: () => onSelected(destination),
-                  ),
-                ),
-            ],
-          ),
         ),
       ),
     );
@@ -799,7 +1041,8 @@ class _SidebarItem extends StatelessWidget {
         semanticLabel: destination.label(context.strings),
         scale: 0.95,
         child: Container(
-          height: compact ? 52 : 60,
+          constraints: BoxConstraints(minHeight: compact ? 52 : 60),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
             color: selected ? palette.surfaceMuted : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
@@ -808,6 +1051,7 @@ class _SidebarItem extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
@@ -818,6 +1062,7 @@ class _SidebarItem extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     destination.label(context.strings),
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: color,
                       fontSize: 11.5,
@@ -920,6 +1165,56 @@ class _TopBar extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The active reserved regions that overlap the rail, converted to the
+/// launcher's current logical coordinates.
+class _RailOcclusion {
+  const _RailOcclusion({
+    required this.rects,
+    required this.bottom,
+    required this.laneRight,
+  });
+
+  /// The real system rectangles intersecting the rail, in view coordinates.
+  final List<Rect> rects;
+
+  /// The lowest edge of [rects], in view coordinates.
+  final double bottom;
+
+  /// The furthest right edge of [rects], never less than the rail width.
+  final double laneRight;
+}
+
+/// Frosted decoration to the right of the rail for one reserved region. Its
+/// square inner edge meets the rail's surface; it never takes touches.
+class _CameraLaneGlass extends StatelessWidget {
+  const _CameraLaneGlass({required this.rect, required this.tint});
+
+  final Rect rect;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final cornerRadius = math.min(rect.width, rect.height) / 2;
+    return Positioned.fromRect(
+      rect: rect,
+      child: IgnorePointer(
+        child: ExcludeSemantics(
+          child: ClipRRect(
+            borderRadius: BorderRadius.only(
+              topRight: Radius.circular(cornerRadius),
+              bottomRight: Radius.circular(cornerRadius),
+            ),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+              child: ColoredBox(color: tint),
+            ),
+          ),
         ),
       ),
     );
