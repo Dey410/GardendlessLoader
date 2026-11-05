@@ -155,19 +155,30 @@ class _HomePageState extends State<HomePage> {
                   );
                   final geometry = _displayGeometry.value;
                   final railWidth = _Sidebar.railWidthFor(compact);
-                  final railOcclusion = _railOcclusion(
+                  final nativeRailOcclusion = _railOcclusion(
                     geometry: geometry,
                     viewSize: viewSize,
                     padding: padding,
                     railWidth: railWidth,
                   );
+                  final safeAreaCornerFallback = nativeRailOcclusion == null
+                      ? _safeAreaCornerFallback(
+                          geometry: geometry,
+                          viewSize: viewSize,
+                          padding: padding,
+                          railWidth: railWidth,
+                        )
+                      : null;
+                  final railOcclusion =
+                      nativeRailOcclusion ?? safeAreaCornerFallback;
+                  final railPanelWidth =
+                      safeAreaCornerFallback?.laneRight ?? railWidth;
                   final insets = housingAwareInsets(
                     padding,
                     _sensorHousing.value ??
                         _sensorHousingEdge(railOcclusion, geometry),
                   );
-                  final occlusionRects =
-                      railOcclusion?.rects ?? const <Rect>[];
+                  final occlusionRects = railOcclusion?.rects ?? const <Rect>[];
                   return Stack(
                     children: [
                       // The art covers only the content area: the sidebar
@@ -201,7 +212,9 @@ class _HomePageState extends State<HomePage> {
                             context,
                             constraints,
                             padding: insets,
-                            railWidth: railWidth,
+                            railPanelWidth: railPanelWidth,
+                            safeAreaCornerFallback:
+                                safeAreaCornerFallback != null,
                             railOcclusion: railOcclusion,
                           ),
                         ),
@@ -209,10 +222,12 @@ class _HomePageState extends State<HomePage> {
                       // Frost only the camera lane outside the narrow rail;
                       // the rail already paints its own matching blur and tint.
                       for (final rect in occlusionRects)
-                        if (rect.right > railWidth)
+                        if (rect.right > railPanelWidth)
                           _CameraLaneGlass(
                             rect: Rect.fromLTRB(
-                              rect.left < railWidth ? railWidth : rect.left,
+                              rect.left < railPanelWidth
+                                  ? railPanelWidth
+                                  : rect.left,
                               rect.top,
                               rect.right,
                               rect.bottom,
@@ -272,9 +287,39 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Converts the native view-point rects to the launcher's current logical
-  /// coordinates. The sizes are only a scale between the reported view and the
-  /// current one; no dimension is assumed.
+  /// Uses the live leading safe-area extent only when UIKit reports no
+  /// region and the compact leading inset exceeds the navigation rail.
+  static _RailOcclusion? _safeAreaCornerFallback({
+    required DisplayGeometry? geometry,
+    required Size viewSize,
+    required EdgeInsets padding,
+    required double railWidth,
+  }) {
+    if (geometry == null ||
+        !geometry.supportsReservedRegions ||
+        geometry.occlusionRegions.isNotEmpty ||
+        geometry.verticalBarEdge != 'leading' ||
+        railWidth != _Sidebar.railWidthFor(true) ||
+        padding.left <= railWidth) {
+      return null;
+    }
+    final railTop = padding.top;
+    final railHeight = math.max(0.0, viewSize.height - railTop);
+    if (railHeight == 0) return null;
+    final midY = railTop + railHeight / 2;
+    final bottom = math.min(railTop + padding.left, midY);
+    if (bottom <= railTop || bottom >= midY) return null;
+    final laneRight = padding.left;
+    return _RailOcclusion(
+      rects: <Rect>[
+        Rect.fromLTRB(railWidth, railTop, laneRight, bottom),
+      ],
+      bottom: bottom,
+      laneRight: laneRight,
+    );
+  }
+
+  /// Scales native view-point regions into the launcher's current logical space.
   static List<Rect> _occlusionRects(
     DisplayGeometry? geometry,
     Size viewSize,
@@ -321,20 +366,25 @@ class _HomePageState extends State<HomePage> {
     BuildContext context,
     BoxConstraints constraints, {
     required EdgeInsets padding,
-    required double railWidth,
+    required double railPanelWidth,
+    required bool safeAreaCornerFallback,
     required _RailOcclusion? railOcclusion,
   }) {
     final compact = _isCompact(constraints.biggest);
     final reduced = GardenMotionScope.reduced(context);
-    final gutter = compact ? 20.0 : 32.0;
-    // For the Duo corner camera, keep the rail's regular width and move its
-    // content below the hardware; frosted glass covers the reserved lane.
+    final gutter = safeAreaCornerFallback
+        ? 12.0
+        : compact
+            ? 20.0
+            : 32.0;
+    // Camera avoidance fills the live safe-area lane and keeps the rail's
+    // content below the corner, without leaving a hard separator.
     final occlusionTop = railOcclusion == null
         ? 0.0
         : math.max(0.0, railOcclusion.bottom - padding.top);
     final contentLeft = railOcclusion == null
         ? gutter
-        : math.max(gutter, railOcclusion.laneRight - railWidth + gutter);
+        : math.max(gutter, railOcclusion.laneRight - railPanelWidth + gutter);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -343,7 +393,7 @@ class _HomePageState extends State<HomePage> {
           selected: _destination,
           compact: compact,
           leftInset: railOcclusion == null ? padding.left : 0,
-          width: railOcclusion == null ? null : railWidth,
+          width: railOcclusion == null ? null : railPanelWidth,
           occlusionTop: occlusionTop,
           onSelected: _navigate,
           onIconTap: _onIconTap,
@@ -811,11 +861,10 @@ class _Sidebar extends StatelessWidget {
   final bool compact;
   final double leftInset;
 
-  /// A Duo corner camera keeps the rail at its regular width instead of
-  /// adding the whole safe-area inset.
+  /// Panel width can extend to the leading safe-area edge for corner cameras.
   final double? width;
 
-  /// Offset before the icon for a Duo corner camera, measured below its edge.
+  /// Clearance before the icon, derived from the camera region or corner inset.
   final double occlusionTop;
 
   final ValueChanged<LauncherDestination> onSelected;
@@ -895,9 +944,13 @@ class _Sidebar extends StatelessWidget {
           decoration: BoxDecoration(
             color:
                 palette.surface.withValues(alpha: palette.isDark ? 0.42 : 0.5),
-            border: Border(
-              right: BorderSide(color: palette.border.withValues(alpha: 0.25)),
-            ),
+            border: occlusionAware
+                ? null
+                : Border(
+                    right: BorderSide(
+                      color: palette.border.withValues(alpha: 0.25),
+                    ),
+                  ),
           ),
           child: occlusionAware
               ? SingleChildScrollView(

@@ -186,7 +186,13 @@ import WebKit
       ?? UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }
         .first
-    switch scene?.interfaceOrientation {
+    let orientation: UIInterfaceOrientation?
+    if #available(iOS 16.0, *) {
+      orientation = scene?.effectiveGeometry.interfaceOrientation
+    } else {
+      orientation = scene?.interfaceOrientation
+    }
+    switch orientation {
     case .landscapeRight:
       return "left"
     case .landscapeLeft:
