@@ -858,6 +858,10 @@ final class GameHostController: UIViewController,
       "haptic_effects.js",
       "render_scale.js",
       "export_download_patch.js",
+      "gp_next_store.js",
+      "electron_api.js",
+      "github_levels.js",
+      "music_pack_picker.js",
     ]
     names.append("watermark.js")
     names.append("gesture_hint.js")

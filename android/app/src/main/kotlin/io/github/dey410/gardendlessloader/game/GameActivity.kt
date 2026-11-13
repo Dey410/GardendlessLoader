@@ -180,6 +180,10 @@ class GameActivity : Activity() {
             add("haptic_effects.js")
             add("render_scale.js")
             add("export_download_patch.js")
+            add("gp_next_store.js")
+            add("electron_api.js")
+            add("github_levels.js")
+            add("music_pack_picker.js")
             add("watermark.js")
             add("gesture_hint.js")
         }

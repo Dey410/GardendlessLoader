@@ -284,6 +284,10 @@ struct GamePage {
       'haptic_effects.js',
       'render_scale.js',
       'export_download_patch.js',
+      'gp_next_store.js',
+      'electron_api.js',
+      'github_levels.js',
+      'music_pack_picker.js',
     ];
     names.push('watermark.js');
     names.push('gesture_hint.js');
