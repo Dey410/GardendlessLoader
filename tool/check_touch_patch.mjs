@@ -62,6 +62,14 @@ function createElement(properties = {}) {
     parentElement: null,
     tagName: 'DIV',
     getAttribute: () => null,
+    contains(node) {
+      for (let current = node; current; current = current.parentElement) {
+        if (current === element) {
+          return true;
+        }
+      }
+      return false;
+    },
     ...properties,
   });
   return element;
@@ -740,21 +748,44 @@ function flushPvzGeFrame(harness, game) {
 }
 
 {
-  const initialOverlay = createElement({id: 'seed-card-overlay'});
   const harness = createTouchHarness();
+  const gameContainer = createElement({id: 'Cocos3dGameContainer'});
+  harness.canvas.parentElement = gameContainer;
+  const modWindow = createElement({id: 'mod-window'});
+  const modButton = createElement({parentElement: modWindow});
   const canvasEvents = [];
-  const overlayEvents = [];
+  const containerEvents = [];
   for (const type of ['mousemove', 'mousedown', 'mouseup']) {
     harness.canvas.addEventListener(type, (event) => {
       canvasEvents.push(event.type);
     });
-    initialOverlay.addEventListener(type, (event) => {
-      overlayEvents.push(event.type);
+    gameContainer.addEventListener(type, (event) => {
+      containerEvents.push(event.type);
     });
   }
 
-  const start = createTouch(111, initialOverlay, 50, 40);
-  const end = createTouch(111, initialOverlay, 220, 130);
+  const modTouch = createTouch(110, modButton, 300, 200);
+  const modStart = createTouchEvent('touchstart', {
+    touches: [modTouch],
+    changedTouches: [modTouch],
+  });
+  const modEnd = createTouchEvent('touchend', {
+    touches: [],
+    changedTouches: [modTouch],
+  });
+  harness.document.dispatchEvent(modStart);
+  harness.flushAnimationFrame();
+  harness.flushAnimationFrame();
+  harness.document.dispatchEvent(modEnd);
+  assert.equal(
+    modStart.defaultPrevented || modEnd.defaultPrevented,
+    false,
+    'DOM UI outside the game, such as a JS Mod window, must keep native touch',
+  );
+  assert.deepEqual(canvasEvents, [], 'touching DOM UI must not press the game');
+
+  const start = createTouch(111, gameContainer, 50, 40);
+  const end = createTouch(111, gameContainer, 220, 130);
   harness.document.dispatchEvent(createTouchEvent('touchstart', {
     touches: [start],
     changedTouches: [start],
@@ -779,7 +810,7 @@ function flushPvzGeFrame(harness, game) {
     'mouseup',
   ], 'game gestures must always reach the APK GameCanvas target');
   assert.deepEqual(
-    overlayEvents,
+    containerEvents,
     [],
     'the touch-down DOM target must not retain the game mouse sequence',
   );

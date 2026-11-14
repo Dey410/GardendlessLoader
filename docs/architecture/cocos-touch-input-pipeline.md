@@ -49,13 +49,15 @@ in its next component update, and request-animation-frame callback order varies
 between engines. A fast tap that has already ended completes its down/up pair
 after those boundaries.
 
-The DOM adapter assigns each gesture to one owner at its first touch. Inputs,
-text areas, selects, editable content, the explicit GP-Next selector list, and
-the full-screen GP-Next startup recovery surface remain browser-owned. The
-recovery surface must keep native button, details, toggle, and scrolling
-behavior even though `GameCanvas` still exists behind it. Other touches are
-game-owned only when a connected `GameCanvas` and the state-machine module are
-available. Ownership does not change while fingers cross elements. Missing
+The DOM adapter assigns each gesture to one owner at its first touch. A touch
+that starts on `GameCanvas` or one of its ancestors, such as `#GameDiv` or
+`body`, is game-owned. Any other element remains browser-owned, matching
+desktop, where a mouse press on DOM UI never reaches the canvas: GP-Next, the
+full-screen GP-Next startup recovery surface, windows a JS Mod adds, and the
+game's and the Loader's DOM dialogs. Inputs, text areas, selects, editable
+content, and the explicit GP-Next selector list stay browser-owned even when
+`GameCanvas` is missing. Game-owned touches need a connected `GameCanvas` and
+the state-machine module. Ownership does not change while fingers cross elements. Missing
 dependencies fail closed: the touch is consumed, no target is guessed, and no
 old implementation is used.
 

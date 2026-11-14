@@ -37,13 +37,13 @@
 - The release-tile pair waits for at least two animation-frame boundaries and 50 ms after the original `MOUSE_UP`; the executable model covers a 60 Hz WebView with a 30 Hz Cocos loop, while higher refresh-rate ratios require device acceptance.
 - A fast drag whose WebView reports only the distant `touchend` coordinate, with no intermediate `touchmove`, still plants at that release tile without another tap.
 - A slow drag, long hold, and fast flick each plant exactly once at the current release tile; the delayed release-tile pair is cancelled rather than replayed if a new gesture, cancellation, or second-finger transition takes ownership.
-- Every game mouse event targets `GameCanvas`, even if the touch starts on or ends over another non-native DOM element; native form and GP-Next controls remain excluded before mapping.
+- Every game mouse event targets `GameCanvas`, even if the touch starts on the canvas's container or ends over another DOM element. A touch that starts on DOM UI outside the canvas (GP-Next, JS Mod windows, game and Loader dialogs, form controls) stays native and never reaches the game.
 - Adding a second finger stops the left drag without synthesizing `MOUSE_UP`, and returning to one finger does not restart the gesture before every finger is lifted.
 - `ACTION_CANCEL`/`touchcancel` does not synthesize `MOUSE_UP`; it clears internal candidates, consumes residual game touches, and requires a fresh gesture.
 - Two-finger center movement of at most 20 physical pixels vertically remains a right-click candidate, regardless of horizontal movement.
 - A two-finger gesture whose center exceeds 20 physical pixels vertically scrolls and does not emit a right click; calibrate each platform for the same in-game direction and distance rather than the same raw constant.
 - A stationary two-finger gesture emits one right click to `GameCanvas` after both fingers are lifted, even when held longer than 250 ms.
-- Text inputs, selects, editable content, and GP-Next controls retain native touch behavior on every platform.
+- Text inputs, selects, editable content, GP-Next controls, and UI added by JS Mods retain native touch behavior on every platform.
 - Real mouse and trackpad input remain native and are never mapped a second time; stylus input follows the one-finger path. The iOS GameHost makes the web view first responder when it appears, because the adapter's prevented touches cancel WebKit's tap gesture, the only gesture that would.
 - Removing `GameCanvas` or withholding the state-machine asset consumes game touches, emits no mouse events, records the failure, and never guesses another target.
 - With touch diagnostics enabled, the bounded trace contains input coordinates, owners, transitions, and command names, but no DOM text, form value, storage, or game data.

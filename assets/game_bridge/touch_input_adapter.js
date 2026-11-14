@@ -180,7 +180,26 @@
     return canvas && canvas.isConnected !== false ? canvas : null;
   }
 
+  // A touch drives the game only when it starts on GameCanvas or on the page
+  // behind it (the canvas's own ancestors, such as #GameDiv and body). Any
+  // other element keeps the browser's touch: GP-Next, windows a JS Mod adds,
+  // and the game's and the Loader's DOM dialogs. On desktop a mouse press on
+  // such an element never reaches the canvas either.
   function isNativeTouchTarget(target) {
+    if (isKnownNativeTarget(target)) {
+      return true;
+    }
+    const canvas = gameCanvas();
+    if (!canvas || !target || target === canvas ||
+        typeof target.contains !== "function") {
+      return false;
+    }
+    return !target.contains(canvas);
+  }
+
+  // Native even when GameCanvas is missing, so these keep working while the
+  // game itself cannot take input.
+  function isKnownNativeTarget(target) {
     let current = target;
     while (current && current !== document) {
       if (current.id === "gp-overlay" || current.id === "ge-toast-wrap") {

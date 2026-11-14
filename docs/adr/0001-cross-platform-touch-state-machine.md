@@ -28,8 +28,8 @@ Use a deterministic touch state module whose interface is normalized touch
 frames in and game commands out. The command vocabulary is primary
 down/move/up, neutral move, secondary down/up, and scroll.
 
-`touch_input_adapter.js` owns DOM classification, strict native-target
-allowlisting, `GameCanvas` targeting, failure closure, and optional bounded
+`touch_input_adapter.js` owns DOM classification, native-target
+classification, `GameCanvas` targeting, failure closure, and optional bounded
 diagnostic traces. It runs the shared JavaScript state module on all platforms.
 
 Platform adapters execute the commands according to host capability:
@@ -44,9 +44,13 @@ Platform adapters execute the commands according to host capability:
 Platform-specific scroll constants are allowed only to match the same in-game
 direction and distance. They do not change gesture classification.
 
-Native controls are a strict allowlist. Missing `GameCanvas`, missing state
-module, or adapter failure consumes the game gesture and emits no fallback
-event. The old touch implementation is not a runtime fallback.
+A touch is game-owned only when it starts on `GameCanvas` or one of its
+ancestors (the page behind the canvas). Every other DOM element stays native,
+as a desktop mouse press on it never reaches the canvas: GP-Next, JS Mod
+windows, and the game's and the Loader's DOM dialogs. Form controls and the
+explicit GP-Next selectors stay native even when `GameCanvas` is missing.
+Missing `GameCanvas`, missing state module, or adapter failure consumes the
+game gesture and emits no fallback event. The old touch implementation is not a runtime fallback.
 
 ## Alternatives considered
 
