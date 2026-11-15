@@ -186,7 +186,27 @@
   const disabled = new Set(["plugin:drpc|destroy_thread", "plugin:drpc|spawn_thread", "plugin:drpc|set_activity",
     "set_discord_activity", "update_macos_menu", "plugin:event|unlisten", "plugin:event|emit", "plugin:event|emit_to",
     "plugin:resources|close", "plugin:deep-link|register", "plugin:deep-link|unregister",
-    "plugin:window|set_size", "plugin:window|set_fullscreen", "plugin:window|center", "open_devtools"]);
+    "plugin:window|set_size", "plugin:window|set_fullscreen", "plugin:window|center", "open_devtools",
+    "toggle_devtools", "close_devtools"]);
+  let cloudNotice = null;
+
+  // GP-Next cloud saves need the desktop app's own service and window. The
+  // Settings button otherwise ends in a bare error toast.
+  function showCloudUnavailable(locale) {
+    const dialogs = window.__gardendlessDialogs;
+    if (!dialogs) throw new Error("GP-Next cloud saves are unavailable on mobile");
+    if (cloudNotice) return null;
+    const zh = /^zh/i.test(String(locale || navigator.language || ""));
+    const parts = dialogs.createDialog(zh ? "云存档" : "Cloud save", zh ? "关闭" : "Close");
+    parts.body.appendChild(dialogs.element("p", null, zh
+      ? "加载器暂不支持 GP-Next 云存档。要换设备继续玩，请在游戏里导出存档，再到另一台设备导入。"
+      : "GardendlessLoader doesn't support GP-Next cloud saves yet. To move to another device, " +
+        "export your save in the game and import it there."));
+    cloudNotice = parts.dialog;
+    parts.dialog.addEventListener("close", function () { cloudNotice = null; }, {once: true});
+    dialogs.show(parts.dialog);
+    return null;
+  }
 
   function fileSpec(args, options) {
     const nested = args && args.options || options || {};
@@ -213,6 +233,12 @@
     if (command === "plugin:deep-link|get_current") return [];
     // The loader has no GP-Next cloud save service, so no restore journal exists.
     if (command === "cloud_journal_read") return null;
+    if (command === "cloud_open") return showCloudUnavailable(args.locale);
+    // Desktop process statistics. The Performance panel asks every 1.5 seconds
+    // and would otherwise report a failed call each time.
+    if (command === "get_native_performance_snapshot") {
+      return {source: "GardendlessLoader", status: "unavailable", reason: "platform-specific"};
+    }
     // The game's quit button closes the Tauri window; on mobile that means returning to the launcher.
     if (command === "plugin:window|close") return invoke("host:returnHome");
     if (disabled.has(command)) return null;
