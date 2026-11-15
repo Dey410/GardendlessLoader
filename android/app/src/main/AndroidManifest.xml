@@ -45,6 +45,16 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
+            <!-- GP-Next website links; DeepLinks.validate accepts only their exact forms. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="pvzge" />
+                <data android:host="nest" />
+                <data android:host="daily-level" />
+                <data android:host="github-level" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

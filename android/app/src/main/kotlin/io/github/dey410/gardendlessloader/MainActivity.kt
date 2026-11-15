@@ -604,6 +604,8 @@ class MainActivity : FlutterActivity() {
         const val ACTION_IMPORT_ZIP = "io.github.dey410.gardendlessloader.IMPORT_ZIP"
         const val ACTION_SHORTCUT = "io.github.dey410.gardendlessloader.SHORTCUT"
         const val EXTRA_SHORTCUT = "shortcut"
+        /** The launcher's start-game shortcut; a website link uses it to open the game. */
+        const val SHORTCUT_START_GAME = "startGame"
         private const val pickZipRequestCode = 26410
         private const val zipCopyBufferSize = 64 * 1024
         private const val progressReportIntervalMs = 100L

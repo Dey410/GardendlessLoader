@@ -9,6 +9,7 @@ public protocol ScriptBridgeDelegate: AnyObject {
   func bridgeRequestedExport(command: String, id: String, arguments: [String: Any])
   func bridgeRequestedFile(command: String, id: String, arguments: [String: Any])
   func bridgeRequestedGpNext(id: String, request: [String: Any])
+  func bridgeRequestedDeepLinks(id: String)
   func bridgeRejectedMessage(reason: String, command: String?)
 }
 
@@ -77,6 +78,8 @@ public final class ScriptMessageBridge: NSObject, WKScriptMessageHandlerWithRepl
         delegate?.bridgeRequestedHaptic(kind: request.args["kind"] as? String)
       case BridgeCommand.log.rawValue:
         delegate?.bridgeRequestedLog(id: request.id, arguments: request.args)
+      case BridgeCommand.takeDeepLinks.rawValue:
+        delegate?.bridgeRequestedDeepLinks(id: request.id)
       case _ where BridgeCommand.isFile(request.command):
         delegate?.bridgeRequestedFile(
           command: request.command, id: request.id, arguments: request.args

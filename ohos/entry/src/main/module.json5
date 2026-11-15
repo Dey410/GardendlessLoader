@@ -41,6 +41,28 @@
                 "linkFeature": "FileOpen"
               }
             ]
+          },
+          {
+            "entities": [
+              "entity.system.browsable"
+            ],
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                "scheme": "pvzge",
+                "host": "nest"
+              },
+              {
+                "scheme": "pvzge",
+                "host": "daily-level"
+              },
+              {
+                "scheme": "pvzge",
+                "host": "github-level"
+              }
+            ]
           }
         ],
         "metadata": [

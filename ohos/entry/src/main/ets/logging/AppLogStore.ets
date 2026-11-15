@@ -52,6 +52,7 @@ export interface AppLogContext {
   mediaEnded?: number;
   mediaFailed?: number;
   memoryLevel?: number;
+  versionId?: string;
 }
 
 export interface AppLogError {

@@ -6,6 +6,7 @@ import { webview } from '@kit.ArkWeb';
 import { ExportRecord, GameBridge } from '../game/GameBridge';
 import { NativeGameResourceHandler } from '../game/NativeGameResourceHandler';
 import { GameSession } from '../game/GameSession';
+import { NestImportDownloader } from '../game/NestImportDownloader';
 import { appLogStore, AppLogContext, AppLogEvent } from '../logging/AppLogStore';
 import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientation';
 
@@ -45,7 +46,8 @@ struct GamePage {
       this.resourceHandler = new NativeGameResourceHandler(this.session);
       this.bridge = new GameBridge(this.controller, this.context, this.session, (): void => {
         this.returnToLauncher('userReturned', null);
-      });
+      }, this.session.hasGpNext && this.session.gpNextCompatible
+        ? new NestImportDownloader(`${this.context.cacheDir}/nest-import`) : null);
       this.documentStartScripts = [{
         script: this.buildDocumentStartScript(this.session),
         scriptRules: [GameSession.ORIGIN],

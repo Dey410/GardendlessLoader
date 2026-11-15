@@ -7,6 +7,7 @@ import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import io.github.dey410.gardendlessloader.logging.AppLogStore
+import org.json.JSONArray
 import org.json.JSONObject
 
 class GameBridge(
@@ -126,6 +127,12 @@ class GameBridge(
                     respond(id, true, JSONObject.NULL)
                 }
                 "host:export" -> activity.beginExport(id, request.optJSONObject("args") ?: JSONObject())
+                // Only GP-Next listens for website links; other pages leave them waiting.
+                "host:takeDeepLinks" -> respond(
+                    id,
+                    true,
+                    JSONArray(if (session.hasGpNext && session.gpNextCompatible) DeepLinkInbox.drain() else emptyList()),
+                )
                 "file:begin", "file:chunk", "file:finish" -> activity.dispatchFileOrGpNext(id, request)
                 else -> {
                     if (request.optString("namespace") == "gp-next") {

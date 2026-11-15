@@ -33,6 +33,7 @@ public enum BridgeCommand: String {
   case log = "host:log"
   case haptic = "host:haptic"
   case export = "host:export"
+  case takeDeepLinks = "host:takeDeepLinks"
   case fileBegin = "file:begin"
   case fileChunk = "file:chunk"
   case fileFinish = "file:finish"

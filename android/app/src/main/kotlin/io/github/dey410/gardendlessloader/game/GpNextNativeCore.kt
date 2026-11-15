@@ -1,15 +1,25 @@
 package io.github.dey410.gardendlessloader.game
 
 import android.net.Uri
+import android.os.SystemClock
 import android.system.Os
 import android.system.OsConstants
 import android.util.Base64
+import io.github.dey410.gardendlessloader.logging.AppLogStore
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InputStream
 import java.io.RandomAccessFile
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledThreadPoolExecutor
@@ -33,11 +43,17 @@ class GpNextNativeCore(
     private val queue = LinkedBlockingDeque<Runnable>(MAX_QUEUED_TASKS)
     private val executor = ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS, queue)
     private val timer = ScheduledThreadPoolExecutor(1)
+    // Nest downloads wait on the network, so they never hold a file IO worker.
+    private val nestExecutor = ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, LinkedBlockingQueue(1))
+    private val nestDirectory = File(activity.cacheDir, "nest-import")
+    private var nestImportActive = false
     private val lifetime = FileCommitGate()
     private val destroyed: Boolean get() = !lifetime.active
 
     init {
         executor.prestartAllCoreThreads()
+        // Downloads left by an earlier process; this session's own files go when their handle does.
+        nestExecutor.execute { nestDirectory.listFiles().orEmpty().forEach { runCatching { it.delete() } } }
         timer.scheduleAtFixedRate({
             execute(null, control = true) { expireHandles() }
         }, 1, 1, TimeUnit.MINUTES)
@@ -86,6 +102,10 @@ class GpNextNativeCore(
                 }
                 "plugin:opener|open_path" -> {
                     postIfActive { activity.beginGpNextPackageImport(requestId) }
+                    return@execute
+                }
+                "download_nest_import" -> {
+                    startNestImport(requestId, args.optString("versionId"))
                     return@execute
                 }
                 else -> throw FileFailure("unsupported", "未兼容的命令：$command")
@@ -361,9 +381,151 @@ class GpNextNativeCore(
         } }
     }
 
+    private fun startNestImport(requestId: String, versionId: String) {
+        if (!NestImport.isVersionId(versionId)) throw FileFailure("invalid_argument", "NEST_INTENT")
+        synchronized(this) {
+            if (nestImportActive) throw FileFailure("nest_import_busy", "NEST_BUSY")
+            nestImportActive = true
+        }
+        try {
+            nestExecutor.execute {
+                try {
+                    val file = downloadNestImport(versionId)
+                    val value = try { openNestImport(file) } catch (error: Exception) {
+                        file.delete()
+                        throw error
+                    }
+                    bridge.complete(requestId, value)
+                } catch (error: Exception) {
+                    val code = (error as? FileFailure)?.code ?: "nest_import_failed"
+                    val reason = when (error) {
+                        is FileFailure, is NestImportFailure -> error.message ?: "NEST_FAILED"
+                        else -> "NEST_NETWORK"
+                    }
+                    if (!destroyed) AppLogStore.emit(
+                        source = "android", level = "WARN", category = "game.gpnext",
+                        event = "nest_import_download_finished", outcome = "failed", code = code,
+                        message = reason, gameSessionId = session.sessionId,
+                        context = mapOf("versionId" to versionId, "errorType" to error.javaClass.simpleName),
+                    )
+                    bridge.fail(requestId, code, reason)
+                } finally {
+                    synchronized(this) { nestImportActive = false }
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            synchronized(this) { nestImportActive = false }
+            throw FileFailure(if (destroyed) "host_destroyed" else "nest_import_busy", "NEST_BUSY")
+        }
+    }
+
+    /** Fetches the descriptor and package; returns GP-Next's framed bytes in a temporary file. */
+    private fun downloadNestImport(versionId: String): File {
+        val deadline = SystemClock.elapsedRealtime() + NEST_DEADLINE_MS
+        val descriptor = nestRequest(NestImport.descriptorUrl(versionId)) { connection ->
+            connection.setRequestProperty("Accept", "application/json")
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.let { readLimited(it, NestImport.MAX_DESCRIPTOR_BYTES) } ?: ByteArray(0)
+            if (status != 200) throw NestImportFailure(NestImport.errorCode(body) ?: "NEST_HTTP_$status")
+            NestImport.parse(body, versionId)
+        }
+        checkActive()
+        if (!nestDirectory.isDirectory && !nestDirectory.mkdirs() && !nestDirectory.isDirectory) {
+            throw NestImportFailure("NEST_WRITE")
+        }
+        val target = File(nestDirectory, "nest-${UUID.randomUUID()}.bin")
+        try {
+            nestRequest(descriptor.url) { connection ->
+                val status = connection.responseCode
+                if (status != 200) throw NestImportFailure("NEST_HTTP_$status")
+                val declared = connection.contentLengthLong
+                if (declared >= 0 && declared != descriptor.byteLength) throw NestImportFailure("NEST_LENGTH")
+                val digest = MessageDigest.getInstance("SHA-256")
+                useResource(connection.inputStream) { input ->
+                    useResource(FileOutputStream(target)) { output ->
+                        val length = descriptor.header.size
+                        output.write(byteArrayOf(length.toByte(), (length shr 8).toByte(), (length shr 16).toByte(), (length shr 24).toByte()))
+                        output.write(descriptor.header)
+                        val buffer = ByteArray(MAX_CHUNK_BYTES)
+                        var total = 0L
+                        while (true) {
+                            checkActive()
+                            if (SystemClock.elapsedRealtime() > deadline) throw NestImportFailure("NEST_TIMEOUT")
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            if (total > descriptor.byteLength) throw NestImportFailure("NEST_LENGTH")
+                            digest.update(buffer, 0, count)
+                            output.write(buffer, 0, count)
+                        }
+                        if (total != descriptor.byteLength) throw NestImportFailure("NEST_LENGTH")
+                        output.fd.sync()
+                    }
+                }
+                val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                if (actual != descriptor.sha256) throw NestImportFailure("NEST_HASH")
+            }
+            checkActive()
+            return target
+        } catch (error: Exception) {
+            target.delete()
+            throw error
+        }
+    }
+
+    private fun <R> nestRequest(url: URL, operation: (HttpURLConnection) -> R): R {
+        checkActive()
+        if (url.protocol != "https") throw NestImportFailure("NEST_DOWNLOAD_URL")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.instanceFollowRedirects = false
+        connection.useCaches = false
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 30_000
+        connection.requestMethod = "GET"
+        // Without transparent gzip the received bytes are the bytes Nest hashed.
+        connection.setRequestProperty("Accept-Encoding", "identity")
+        return try { operation(connection) } finally { connection.disconnect() }
+    }
+
+    private fun readLimited(stream: InputStream, limit: Int): ByteArray = useResource(stream) { input ->
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        while (true) {
+            checkActive()
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (output.size() + count > limit) throw IOException("Nest response is too large")
+            output.write(buffer, 0, count)
+        }
+        output.toByteArray()
+    }
+
+    /** A read handle over the downloaded file; finishing the handle deletes the file. */
+    private fun openNestImport(file: File): JSONObject {
+        val token = UUID.randomUUID().toString()
+        val descriptor = RandomAccessFile(file, "r")
+        var owned = true
+        try {
+            val size = descriptor.length()
+            if (size !in 0..MAX_FILE_BYTES) throw FileFailure("resource_limit_exceeded", "NEST_LENGTH")
+            synchronized(this) {
+                checkActive()
+                if (handles.size + openingPaths.size >= MAX_HANDLES) throw FileFailure("resource_limit_exceeded", "Too many open files")
+                handles[token] = FileTransfer(file, file, descriptor, "read", false, file.name,
+                    "application/octet-stream", FileTransferCursor(size))
+                owned = false
+            }
+            return JSONObject().put("handle", token).put("sizeBytes", size)
+        } finally {
+            if (owned) runCatching { descriptor.close() }
+        }
+    }
+
     fun destroy() {
         if (!lifetime.stop()) return
         timer.shutdownNow()
+        nestExecutor.shutdownNow()
         executor.shutdownNow().filterIsInstance<RequestTask>().forEach { it.reject("host_destroyed") }
         val transfers = synchronized(this) { handles.values.toList().also { handles.clear(); pendingExports.clear() } }
         transfers.forEach { if (it.terminal.compareAndSet(null, "cancelled")) it.cancelled = true }
@@ -539,6 +701,7 @@ class GpNextNativeCore(
         private const val MAX_HANDLES = 8
         private const val MAX_FINISHED_HANDLES = 128
         private const val MAX_QUEUED_TASKS = 16
+        private const val NEST_DEADLINE_MS = 4 * 60 * 1000L
         private val BASE64 = Regex("[A-Za-z0-9+/]*={0,2}")
     }
 }
