@@ -1,6 +1,22 @@
 {
   "schemaVersion": 1,
-  "contentVersion": 2,
+  "contentVersion": 3,
   "content": "GardendlessLoader 本地资源加载器，完全免费，开源",
-  "contentEn": "GardendlessLoader is a local resource loader. It is completely free and open source."
+  "contentEn": "GardendlessLoader is a local resource loader. It is completely free and open source.",
+  "authors": {
+    "loader": {
+      "name": "你好我是小朱",
+      "bio": "GardendlessLoader 的作者，把 PvZ2 Gardendless 带到手机和平板上。",
+      "bioEn": "Author of GardendlessLoader, which brings PvZ2 Gardendless to phones and tablets.",
+      "bilibili": "https://space.bilibili.com/523667580",
+      "github": "https://github.com/Dey410"
+    },
+    "game": {
+      "name": "南Garden",
+      "bio": "PvZ2 Gardendless 的作者，用 Web 技术重写了《植物大战僵尸 2》。",
+      "bioEn": "Author of PvZ2 Gardendless, a rewrite of Plants vs. Zombies 2 built with web technologies.",
+      "bilibili": "https://space.bilibili.com/355909245",
+      "github": "https://github.com/Gzh0821"
+    }
+  }
 }

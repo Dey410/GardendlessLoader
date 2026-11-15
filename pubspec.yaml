@@ -31,6 +31,7 @@ flutter:
     - tool/generated_icons/app_icon_master.png
     - assets/game_bridge/
     - assets/artwork/launcher_poster.png
+    - assets/avatars/
   fonts:
     - family: JetBrainsMono
       fonts:

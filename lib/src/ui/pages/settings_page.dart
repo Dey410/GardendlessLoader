@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../app_controller.dart';
-import '../../constants.dart';
 import '../../game_host/game_host.dart';
 import '../../l10n/app_strings.dart';
-import '../../models.dart';
 import '../../services/app_settings_store.dart';
 import '../../services/launcher_themes.dart';
 import '../../services/update_check_service.dart';
@@ -44,8 +42,6 @@ class SettingsPage extends StatelessWidget {
     final launcher = <Widget>[
       _ColumnHeading(title: strings.settingsLauncher),
       _AppearanceGroup(controller: controller),
-      SizedBox(height: gap),
-      _AboutGroup(controller: controller, actions: actions),
       SizedBox(height: gap),
       _HelpGroup(
         gestureMode: controller.gestureMode,
@@ -563,125 +559,6 @@ class _UpdateBanner extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// The loader's identity, version and links.
-class _AboutGroup extends StatelessWidget {
-  const _AboutGroup({required this.controller, required this.actions});
-
-  final AppController controller;
-  final LauncherActions actions;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.garden;
-    final strings = context.strings;
-    final launcherLinks = controller.links;
-    final links = <AnnouncementLink>[
-      AnnouncementLink(
-          label: strings.loaderGithub, url: launcherLinks.loaderGithub),
-      AnnouncementLink(
-          label: strings.upstreamGithub, url: launcherLinks.gameGithub),
-      AnnouncementLink(
-          label: strings.bilibiliHome, url: launcherLinks.bilibili),
-    ];
-    final (String status, Color statusColor) =
-        controller.availableUpdate != null
-            ? (strings.updateAvailable, palette.accent)
-            : controller.updateCheckInProgress
-                ? (strings.checking, palette.inkMuted)
-                : controller.latestAppVersion == null
-                    ? (strings.latestNotFetched, palette.inkMuted)
-                    : (strings.upToDate, palette.inkMuted);
-    return _SettingsGroup(
-      key: const ValueKey('about-panel'),
-      title: strings.aboutTitle,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.asset(
-                      appIconAsset,
-                      width: 40,
-                      height: 40,
-                      cacheWidth: 128,
-                      excludeFromSemantics: true,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          appDisplayName,
-                          style: TextStyle(
-                            color: palette.ink,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                  text: 'v${controller.currentAppVersion}'),
-                              const TextSpan(text: '  ·  '),
-                              TextSpan(
-                                text: status,
-                                style: TextStyle(color: statusColor),
-                              ),
-                            ],
-                          ),
-                          key: const ValueKey('app-version-status'),
-                          style: GardenType.mono(12.5, color: palette.inkMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ExcludeFocusTraversal(
-                child: SelectableText(
-                  strings.isChinese
-                      ? controller.aboutContent.content
-                      : controller.aboutContent.contentEn ??
-                          controller.aboutContent.content,
-                  style: TextStyle(
-                    color: palette.inkMuted,
-                    fontSize: 13,
-                    height: 1.55,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final link in links)
-                    GardenButton(
-                      label: link.label,
-                      leading: linkIcon(link),
-                      compact: true,
-                      onPressed: () => actions.openUrl(link.url),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

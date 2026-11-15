@@ -301,11 +301,89 @@ class LauncherLinks {
       gameReleaseNotes.replaceAll('{version}', version);
 }
 
+/// One author on the About page. Every field may be missing: the launcher
+/// keeps its built-in value for a field the remote payload leaves out or
+/// gets wrong, so one line can change without restating the rest.
+class AboutAuthor {
+  const AboutAuthor({
+    this.name,
+    this.bio,
+    this.bioEn,
+    this.bilibili,
+    this.github,
+  });
+
+  /// Keeps each valid field of [value] and drops the rest; never throws, so
+  /// a bad author entry cannot hide the whole About text.
+  factory AboutAuthor.fromJson(Object? value) {
+    if (value is! Map<String, dynamic>) return const AboutAuthor();
+    String? text(String key) {
+      final field = value[key];
+      return field is String && field.trim().isNotEmpty ? field.trim() : null;
+    }
+
+    String? url(String key) {
+      final field = text(key);
+      return field != null && AnnouncementLink._isAllowedHttpsUrl(field)
+          ? field
+          : null;
+    }
+
+    return AboutAuthor(
+      name: text('name'),
+      bio: text('bio'),
+      bioEn: text('bioEn'),
+      bilibili: url('bilibili'),
+      github: url('github'),
+    );
+  }
+
+  /// The name the author goes by on Bilibili.
+  final String? name;
+  final String? bio;
+
+  /// English [bio] for the English launcher.
+  final String? bioEn;
+  final String? bilibili;
+  final String? github;
+
+  bool get isEmpty =>
+      name == null &&
+      bio == null &&
+      bioEn == null &&
+      bilibili == null &&
+      github == null;
+
+  /// This author's fields, with [fallback]'s where this one has none.
+  AboutAuthor over(AboutAuthor fallback) => AboutAuthor(
+        name: name ?? fallback.name,
+        bio: bio ?? fallback.bio,
+        bioEn: bioEn ?? fallback.bioEn,
+        bilibili: bilibili ?? fallback.bilibili,
+        github: github ?? fallback.github,
+      );
+
+  String? bioFor({required bool chinese}) =>
+      chinese ? bio ?? bioEn : bioEn ?? bio;
+
+  Map<String, String> toJson() => {
+        if (name != null) 'name': name!,
+        if (bio != null) 'bio': bio!,
+        if (bioEn != null) 'bioEn': bioEn!,
+        if (bilibili != null) 'bilibili': bilibili!,
+        if (github != null) 'github': github!,
+      };
+}
+
+/// The remote About text. `authors` came later: older launchers ignore it,
+/// and a payload without it leaves the built-in authors in place.
 class AboutContent {
   const AboutContent({
     required this.contentVersion,
     required this.content,
     this.contentEn,
+    this.loaderAuthor = const AboutAuthor(),
+    this.gameAuthor = const AboutAuthor(),
   });
 
   factory AboutContent.fromJson(Object? value) {
@@ -330,11 +408,16 @@ class AboutContent {
         (contentEn is! String || contentEn.trim().isEmpty)) {
       throw const FormatException('about content English text is invalid');
     }
+    final authors = value['authors'];
+    Object? author(String role) =>
+        authors is Map<String, dynamic> ? authors[role] : null;
 
     return AboutContent(
       contentVersion: contentVersion,
       content: content,
       contentEn: contentEn as String?,
+      loaderAuthor: AboutAuthor.fromJson(author('loader')),
+      gameAuthor: AboutAuthor.fromJson(author('game')),
     );
   }
 
@@ -344,12 +427,24 @@ class AboutContent {
   /// English text for the English launcher; absent in older payloads.
   final String? contentEn;
 
+  /// What the payload says about the loader's author; empty when it says
+  /// nothing.
+  final AboutAuthor loaderAuthor;
+
+  /// What the payload says about the game's author.
+  final AboutAuthor gameAuthor;
+
   Map<String, Object> toJson() {
     return {
       'schemaVersion': 1,
       'contentVersion': contentVersion,
       'content': content,
       if (contentEn != null) 'contentEn': contentEn!,
+      if (!loaderAuthor.isEmpty || !gameAuthor.isEmpty)
+        'authors': {
+          if (!loaderAuthor.isEmpty) 'loader': loaderAuthor.toJson(),
+          if (!gameAuthor.isEmpty) 'game': gameAuthor.toJson(),
+        },
     };
   }
 }

@@ -73,6 +73,7 @@ class AppStrings {
   String get navResources => _t('资源', 'Resources');
   String get navLogs => _t('日志', 'Logs');
   String get navSettings => _t('设置', 'Settings');
+  String get navAbout => _t('关于', 'About');
   String loaderVersion(String version) =>
       _t('加载器 v$version', 'Loader v$version');
   String get checking => _t('检查中', 'Checking');
@@ -373,10 +374,52 @@ class AppStrings {
             'setting also applies',
       );
 
-  // Settings page: about and guide.
-  String get aboutTitle => _t('关于', 'About');
+  // Project links (About page) and the settings guide.
   String get loaderGithub => _t('加载器 GitHub', 'Loader on GitHub');
   String get upstreamGithub => _t('上游游戏 GitHub', 'Upstream game on GitHub');
+
+  // About page.
+  String get aboutAuthors => _t('作者', 'Authors');
+  String get loaderAuthorRole => _t('加载器作者', 'Loader author');
+  String get gameAuthorRole => _t('游戏作者', 'Game author');
+  String get aboutEnvironment => _t('版本与运行环境', 'Version and environment');
+  String get aboutLoader => _t('加载器', 'Loader');
+  String get aboutGame => _t('游戏', 'Game');
+  String get aboutWebEngine => _t('网页内核', 'Web engine');
+  String get aboutDevice => _t('设备', 'Device');
+  String get aboutEnvironmentNote => _t(
+        '反馈问题时附上摘要，能更快找到原因',
+        'Attach the summary when reporting a problem; it helps find the '
+            'cause faster',
+      );
+  String get aboutLinks => _t('常用链接', 'Links');
+  String get reportIssue => _t('问题反馈', 'Report an issue');
+  String get loaderReleases => _t('加载器版本发布', 'Loader releases');
+  String get aboutCredits => _t('致谢与声明', 'Credits and notices');
+  List<String> get aboutThanks => isChinese
+      ? const [
+          'Flutter 与 Dart：跨平台的启动器界面',
+          'Android WebView、Apple WebKit 与 HarmonyOS ArkWeb：在各平台运行游戏',
+          '每一位参与测试、反馈问题和提出建议的玩家',
+        ]
+      : const [
+          'Flutter and Dart, for the cross-platform launcher',
+          'Android WebView, Apple WebKit and HarmonyOS ArkWeb, which run the '
+              'game on each platform',
+          'Everyone who tested, reported problems and shared ideas',
+        ];
+  String get aboutLicenseNotice => _t(
+        'GardendlessLoader 基于 GPL-3.0 开源，完全免费。游戏资源和上游项目仍受各自许可证约束。',
+        'GardendlessLoader is free and open source under GPL-3.0. Game '
+            'resources and the upstream project keep their own licenses.',
+      );
+  String get aboutTrademarkNotice => _t(
+        '《植物大战僵尸》是 Electronic Arts Inc. 的商标。本项目为非官方项目，与 Electronic Arts 和 PopCap Games 均无关联。',
+        'Plants vs. Zombies is a trademark of Electronic Arts Inc. This is '
+            'an unofficial project, not affiliated with Electronic Arts or '
+            'PopCap Games.',
+      );
+  String get openSourceLicenses => _t('开源许可', 'Open-source licenses');
   String get help => _t('帮助', 'Help');
   String get touchGuide => _t('触屏操作和小贴士', 'Touch controls and tips');
   List<(String, String)> gestures(GestureMode mode) => switch (mode) {

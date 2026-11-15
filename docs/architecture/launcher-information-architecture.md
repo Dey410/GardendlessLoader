@@ -70,7 +70,7 @@
 | L05 | 刷新后复制完整诊断+全部近期事件，不受筛选缩减 | 复制诊断 | app_controller:1020–1036 |
 | L06 | 确认后清已结束Session，保留当前Session，刷新 | 历史日志管理 | home_page:210–229；app_controller:974–980 |
 | L07 | 详细音频诊断持久化并传入下一会话 | 日志页唯一开关 | home_page:833–877；app_controller:1073–1099 |
-| A01 | 真实关于正文，完全免费/开源，缓存与离线fallback | 设置中的关于 | about_content.json；about_content_service |
+| A01 | 真实关于正文，完全免费/开源，缓存与离线fallback；两位作者（B站/GitHub）、运行环境、常用链接、致谢与声明 | 侧边栏最后一项「关于」 | about_content.json（可选 authors）；about_content_service；about_page |
 | A02 | 上游游戏Github与Loader Github区分 | 资源来源/公告来源 | constants:4–11 |
 | A03 | 系统外观跟随 | 应用外观 | main:105–121 |
 | A04 | 手动外观、减少动效、可见水印偏好 | 新增交互，按归属放置 | 已有设计授权；水印后端已有，原HomePage未暴露 |

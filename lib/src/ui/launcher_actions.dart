@@ -11,7 +11,8 @@ enum LauncherDestination {
   game(Icons.sports_esports_outlined, Icons.sports_esports),
   resources(Icons.inventory_2_outlined, Icons.inventory_2),
   logs(Icons.receipt_long_outlined, Icons.receipt_long),
-  settings(Icons.settings_outlined, Icons.settings);
+  settings(Icons.settings_outlined, Icons.settings),
+  about(Icons.info_outline_rounded, Icons.info_rounded);
 
   const LauncherDestination(this.icon, this.selectedIcon);
 
@@ -23,6 +24,7 @@ enum LauncherDestination {
         resources => strings.navResources,
         logs => strings.navLogs,
         settings => strings.navSettings,
+        about => strings.navAbout,
       };
 }
 

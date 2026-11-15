@@ -14,6 +14,7 @@ import '../services/sensor_housing_service.dart';
 import '../services/shortcut_service.dart';
 import '../services/update_check_service.dart';
 import 'launcher_actions.dart';
+import 'pages/about_page.dart';
 import 'pages/play_page.dart';
 import 'pages/logs_page.dart';
 import 'pages/onboarding_page.dart';
@@ -258,6 +259,11 @@ class _HomePageState extends State<HomePage> {
           compact: compact,
         ),
       LauncherDestination.settings => SettingsPage(
+          controller: _controller,
+          actions: _actions,
+          compact: compact,
+        ),
+      LauncherDestination.about => AboutPage(
           controller: _controller,
           actions: _actions,
           compact: compact,
@@ -725,17 +731,27 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
               SizedBox(height: compact ? 16 : 28),
-              for (final destination in LauncherDestination.values)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: _SidebarItem(
-                    destination: destination,
-                    selected: destination == selected,
-                    compact: compact,
-                    badge: _badgeFor(destination),
-                    onTap: () => onSelected(destination),
+              // Scrolls only on a screen too short for every tab.
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final destination in LauncherDestination.values)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: _SidebarItem(
+                            destination: destination,
+                            selected: destination == selected,
+                            compact: compact,
+                            badge: _badgeFor(destination),
+                            onTap: () => onSelected(destination),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
+              ),
             ],
           ),
         ),
@@ -767,6 +783,7 @@ class _Sidebar extends StatelessWidget {
             ? const _Dot(key: ValueKey('game-errors-dot'))
             : null;
       case LauncherDestination.game:
+      case LauncherDestination.about:
         return null;
     }
   }
@@ -816,12 +833,22 @@ class _SidebarItem extends StatelessWidget {
                     color: color,
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    destination.label(context.strings),
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 11.5,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  // One line, shrunk to fit: "Resources" is wider than the
+                  // compact rail.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        destination.label(context.strings),
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 11.5,
+                          fontWeight:
+                              selected ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                      ),
                     ),
                   ),
                 ],

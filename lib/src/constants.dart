@@ -12,6 +12,17 @@ const gamePackagesUrl =
 const cloudDriveUrl =
     'https://pan.quark.cn/s/c3da839ca8b1?pwd=qLBU'; // 网盘地址，加载器更新与游戏资源下载默认共用
 const bilibiliHomeUrl = 'https://space.bilibili.com/523667580'; // B站主页地址
+const appIssuesUrl =
+    'https://github.com/Dey410/GardendlessLoader/issues'; // 加载器问题反馈
+const appReleasesUrl =
+    'https://github.com/Dey410/GardendlessLoader/releases'; // 加载器版本发布
+const loaderAuthorGithubUrl = 'https://github.com/Dey410'; // 加载器作者 GitHub 主页
+const gameAuthorBilibiliUrl =
+    'https://space.bilibili.com/355909245'; // 游戏作者 B站主页
+const gameAuthorGithubUrl = 'https://github.com/Gzh0821'; // 游戏作者 GitHub 主页
+const loaderAuthorAvatarAsset =
+    'assets/avatars/loader_author.jpg'; // 加载器作者 B站头像
+const gameAuthorAvatarAsset = 'assets/avatars/game_author.jpg'; // 游戏作者 B站头像
 const remoteAnnouncementUrls = [
   'https://raw.githubusercontent.com/Dey410/GardendlessLoader/main/announcements.json',
   'https://cdn.jsdelivr.net/gh/Dey410/GardendlessLoader@main/announcements.json',

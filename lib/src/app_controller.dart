@@ -178,6 +178,18 @@ class AppController extends ChangeNotifier {
   /// One tip shown while the current import runs.
   String get importTip => AppStrings.current.importTips[_importTipIndex];
   AboutContent get aboutContent => _aboutContent;
+
+  /// The loader's author: the remote About payload over the built-in entry,
+  /// with the Bilibili link from [links] in between.
+  AboutAuthor get loaderAuthor => _aboutContent.loaderAuthor
+      .over(AboutAuthor(bilibili: _links.bilibili).over(builtInLoaderAuthor));
+
+  /// The game's author: the remote About payload over the built-in entry.
+  AboutAuthor get gameAuthor =>
+      _aboutContent.gameAuthor.over(builtInGameAuthor);
+
+  /// The device and web engine the native host reported, once it has.
+  HostDevice? get hostDevice => _hostDevice;
   UpdateInfo? get availableUpdate => _availableUpdate;
   GameUpdateInfo? get availableGameUpdate => _availableGameUpdate;
   String get currentAppVersion => _currentAppVersion;
