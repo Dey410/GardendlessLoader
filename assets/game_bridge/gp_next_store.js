@@ -2,7 +2,7 @@
   "use strict";
 
   // GP-Next 0.16.24 moved its installed-package store and local source capture
-  // from Tauri fs plugin calls to four desktop-only commands. They are emulated
+  // from Tauri fs plugin calls to desktop-only commands. They are emulated
   // here with the fs commands the native GP-Next core already serves, so the
   // native sandbox still checks every path. Directory walks follow GP-Next's
   // own pack-snapshot rules (hidden and OS junk names skipped, symlinks
@@ -185,11 +185,40 @@
     return Array.from(bytes, function (byte) { return byte.toString(16).padStart(2, "0"); }).join("");
   }
 
-  async function readInstalledPack(args) {
-    const target = installedRoot + "/" + requireDigest(args.digest);
+  async function installedFiles(digest) {
+    const target = installedRoot + "/" + requireDigest(digest);
     if (!await exists(target)) return null;
     await requireDirectory(target);
-    return encodeFiles(await walk(target));
+    return walk(target);
+  }
+
+  async function readInstalledPack(args) {
+    const files = await installedFiles(args.digest);
+    return files && encodeFiles(files);
+  }
+
+  // GP-Next 0.16.27 reads installed packages as an index plus file bytes so
+  // the desktop app can defer large media. Every file is sent eagerly here:
+  // the desktop app decides which files GP-Next may read synchronously
+  // (pack.json, JS entries, thumbnails), and 0.16.24 already loaded whole
+  // packages through gp_next_read_installed_pack.
+  async function readPackageIndex(args) {
+    const digest = requireDigest(args.digest);
+    const files = await installedFiles(digest);
+    if (!files) return null;
+    const index = [];
+    const eager = [];
+    for (const file of files) {
+      const bytes = await readBytes(file.full);
+      index.push({path: file.path, length: bytes.length});
+      eager.push({path: file.path, base64: toBase64(bytes)});
+    }
+    return {index: {digest: digest, files: index}, eager: eager};
+  }
+
+  // Only reached for files left out of the eager list.
+  function readPackageFile(args) {
+    return readBytes(installedRoot + "/" + requireDigest(args.digest) + "/" + packagePath(args.path));
   }
 
   // Returns true when the same bytes were already installed.
@@ -330,6 +359,8 @@
 
   const handlers = Object.freeze({
     gp_next_read_installed_pack: readInstalledPack,
+    gp_next_read_package_index: readPackageIndex,
+    gp_next_read_package_file: readPackageFile,
     gp_next_install_pack: installPack,
     gp_next_capture_local_pack: captureLocalPack,
     gp_next_local_package_inventory: localPackageInventory

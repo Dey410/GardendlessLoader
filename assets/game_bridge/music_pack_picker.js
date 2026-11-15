@@ -6,6 +6,8 @@
   // folder there, so folder inputs use GP-Next's native folder picker instead:
   // the host stages the chosen folder inside the GP-Next sandbox, and its
   // files are handed back to the input as File objects with relative paths.
+  // 0.16.27 picks through electronAPI.pickMusicPackFiles instead, which uses
+  // the same native picker through Tauri fs and path calls (transport.js).
   if (window.__gardendlessMusicPackPicker) return;
   Object.defineProperty(window, "__gardendlessMusicPackPicker", {value: true});
 

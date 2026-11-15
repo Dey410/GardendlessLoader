@@ -193,9 +193,13 @@
   const disabled = new Set(["plugin:drpc|destroy_thread", "plugin:drpc|spawn_thread", "plugin:drpc|set_activity",
     "set_discord_activity", "update_macos_menu", "plugin:event|unlisten", "plugin:event|emit", "plugin:event|emit_to",
     "plugin:resources|close", "plugin:deep-link|register", "plugin:deep-link|unregister",
-    "plugin:window|set_size", "plugin:window|set_fullscreen", "plugin:window|center", "open_devtools",
+    "plugin:window|set_size", "plugin:window|set_fullscreen_on_monitor", "plugin:window|center", "open_devtools",
     "toggle_devtools", "close_devtools"]);
   let cloudNotice = null;
+  // GP-Next 0.16.27 asks the window for the fullscreen state that 0.16.24
+  // kept itself. The game always fills the screen, so this only remembers
+  // what the game last set and its Settings toggle keeps working.
+  let fullscreen = false;
 
   // GP-Next cloud saves need the desktop app's own service and window. The
   // Settings button otherwise ends in a bare error toast.
@@ -269,6 +273,26 @@
     }
   }
 
+  // Tauri's path plugin, used by GP-Next 0.16.27 to walk a picked music pack.
+  // join concatenates the segments and folds "." and ".." without touching
+  // the filesystem, like Tauri does; native still confines every path.
+  function joinPath(paths) {
+    const text = (Array.isArray(paths) ? paths : []).map(String).join("/");
+    const parts = [];
+    for (const part of text.split("/")) {
+      if (part === "..") parts.pop();
+      else if (part && part !== ".") parts.push(part);
+    }
+    return (text.startsWith("/") ? "/" : "") + parts.join("/") || ".";
+  }
+
+  function baseName(path, ext) {
+    const parts = String(path == null ? "" : path).split("/").filter(function (part) { return part && part !== "."; });
+    const name = parts.length ? parts[parts.length - 1] : "";
+    if (!name || name === "..") throw new Error("Path has no basename");
+    return typeof ext === "string" && ext && name.endsWith(ext) ? name.slice(0, -ext.length) : name;
+  }
+
   function fileSpec(args, options) {
     const nested = args && args.options || options || {};
     const headers = nested.headers;
@@ -287,6 +311,8 @@
       if (args.directory !== 14) throw new Error("Only AppData directory 14 is supported");
       return String(config.gpNextBaseDirectory || "");
     }
+    if (command === "plugin:path|join") return joinPath(args.paths);
+    if (command === "plugin:path|basename") return baseName(args.path, args.ext);
     // The handler's callback id doubles as the event id, so
     // unregisterListener(event, id) removes that same handler.
     if (command === "plugin:event|listen") {
@@ -306,6 +332,8 @@
     }
     // The game's quit button closes the Tauri window; on mobile that means returning to the launcher.
     if (command === "plugin:window|close") return invoke("host:returnHome");
+    if (command === "plugin:window|is_fullscreen") return fullscreen;
+    if (command === "plugin:window|set_fullscreen") { fullscreen = args.value === true; return null; }
     if (disabled.has(command)) return null;
     if (command.startsWith("plugin:window|") || command.startsWith("plugin:image|")) throw new Error("Unsupported mobile command: " + command);
     if (command === "plugin:fs|read_file" || command === "plugin:fs|read_text_file") {
