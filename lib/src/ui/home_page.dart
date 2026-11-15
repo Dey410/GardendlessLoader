@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -137,6 +138,8 @@ class _HomePageState extends State<HomePage> {
                       constraints.maxHeight - insets.top,
                     ),
                   );
+                  final camera =
+                      _leadingCornerCamera(constraints.biggest, compact);
                   return Stack(
                     children: [
                       // The art covers only the content area: the sidebar
@@ -156,6 +159,7 @@ class _HomePageState extends State<HomePage> {
                             contentLeft: _Sidebar.widthFor(
                               leftInset: insets.left,
                               compact: compact,
+                              camera: camera,
                             ),
                           ),
                         ),
@@ -164,7 +168,10 @@ class _HomePageState extends State<HomePage> {
                         left: false,
                         right: false,
                         bottom: false,
-                        child: LayoutBuilder(builder: _buildWorkspace),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) =>
+                              _buildWorkspace(context, constraints, camera),
+                        ),
                       ),
                     ],
                   );
@@ -183,7 +190,27 @@ class _HomePageState extends State<HomePage> {
         _sensorHousing.value,
       );
 
-  Widget _buildWorkspace(BuildContext context, BoxConstraints constraints) {
+  /// A camera the display reserves in the top half of the leading edge, such
+  /// as the iPhone Duo outer screen's corner camera. The rail then clears
+  /// only that corner instead of giving up the whole safe-area width down
+  /// the screen. A landscape notch or Dynamic Island crosses the middle of
+  /// the edge and keeps the plain safe-area layout.
+  Rect? _leadingCornerCamera(Size view, bool compact) {
+    final rail = _Sidebar.railWidthFor(compact);
+    Rect? camera;
+    for (final region in _sensorHousing.reservedRegions) {
+      if (region.left >= rail) continue;
+      if (region.bottom >= view.height / 2) return null;
+      camera = camera?.expandToInclude(region) ?? region;
+    }
+    return camera;
+  }
+
+  Widget _buildWorkspace(
+    BuildContext context,
+    BoxConstraints constraints,
+    Rect? camera,
+  ) {
     final compact = _isCompact(constraints.biggest);
     final padding = _effectiveInsets(context);
     final reduced = GardenMotionScope.reduced(context);
@@ -196,6 +223,8 @@ class _HomePageState extends State<HomePage> {
           selected: _destination,
           compact: compact,
           leftInset: padding.left,
+          camera: camera,
+          topInset: padding.top,
           onSelected: _navigate,
           onIconTap: _onIconTap,
         ),
@@ -658,6 +687,8 @@ class _Sidebar extends StatelessWidget {
     required this.leftInset,
     required this.onSelected,
     required this.onIconTap,
+    this.camera,
+    this.topInset = 0,
   });
 
   final AppController controller;
@@ -667,8 +698,46 @@ class _Sidebar extends StatelessWidget {
   final ValueChanged<LauncherDestination> onSelected;
   final VoidCallback onIconTap;
 
-  static double widthFor({required double leftInset, required bool compact}) =>
-      leftInset + (compact ? 76 : 92);
+  /// A corner camera on the leading edge, in view coordinates; the rail
+  /// starts at the screen edge, reaches past the camera and begins below it.
+  final Rect? camera;
+
+  /// The top safe-area inset already above the rail.
+  final double topInset;
+
+  static double railWidthFor(bool compact) => compact ? 76 : 92;
+
+  static double widthFor({
+    required double leftInset,
+    required bool compact,
+    Rect? camera,
+  }) {
+    final rail = railWidthFor(compact);
+    if (camera == null) return leftInset + rail;
+    return math.max(rail, camera.right);
+  }
+
+  static const double _itemSpacing = 4;
+  static const double _minItemHeight = 44;
+  static const double _tightGap = 8;
+
+  /// The gap under the app icon and the tab height for the [height] below
+  /// the icon. A short screen (a phone with its status bar showing, a split
+  /// window) first shrinks the gap and every tab a little, so all of them
+  /// stay visible; only below [_minItemHeight] does the list scroll.
+  ({double gap, double itemHeight}) _fit(double height) {
+    final gap = compact ? 16.0 : 28.0;
+    final natural = compact ? 52.0 : 60.0;
+    final count = LauncherDestination.values.length;
+    if (!height.isFinite || height >= gap + count * (natural + _itemSpacing)) {
+      return (gap: gap, itemHeight: natural);
+    }
+    final fitted = (height - _tightGap) / count - _itemSpacing;
+    return (
+      gap: _tightGap,
+      itemHeight: fitted.clamp(_minItemHeight, natural).toDouble(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -681,10 +750,12 @@ class _Sidebar extends StatelessWidget {
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
-          width: widthFor(leftInset: leftInset, compact: compact),
+          width:
+              widthFor(leftInset: leftInset, compact: compact, camera: camera),
           padding: EdgeInsets.fromLTRB(
-            leftInset + 10,
-            compact ? 14 : 24,
+            (camera == null ? leftInset : 0) + 10,
+            (compact ? 14 : 24) +
+                (camera == null ? 0 : math.max(0.0, camera!.bottom - topInset)),
             10,
             compact ? 12 : 20,
           ),
@@ -730,26 +801,42 @@ class _Sidebar extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(height: compact ? 16 : 28),
-              // Scrolls only on a screen too short for every tab.
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final destination in LauncherDestination.values)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: _SidebarItem(
-                            destination: destination,
-                            selected: destination == selected,
-                            compact: compact,
-                            badge: _badgeFor(destination),
-                            onTap: () => onSelected(destination),
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final fit = _fit(box.maxHeight);
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(height: fit.gap),
+                        // Scrolls only when even the shortest tabs do not fit.
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (final destination
+                                    in LauncherDestination.values)
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                      bottom: _itemSpacing,
+                                    ),
+                                    child: _SidebarItem(
+                                      destination: destination,
+                                      selected: destination == selected,
+                                      compact: compact,
+                                      height: fit.itemHeight,
+                                      badge: _badgeFor(destination),
+                                      onTap: () => onSelected(destination),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
-                    ],
-                  ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
@@ -794,6 +881,7 @@ class _SidebarItem extends StatelessWidget {
     required this.destination,
     required this.selected,
     required this.compact,
+    required this.height,
     required this.onTap,
     this.badge,
   });
@@ -801,6 +889,7 @@ class _SidebarItem extends StatelessWidget {
   final LauncherDestination destination;
   final bool selected;
   final bool compact;
+  final double height;
   final VoidCallback onTap;
   final Widget? badge;
 
@@ -816,7 +905,7 @@ class _SidebarItem extends StatelessWidget {
         semanticLabel: destination.label(context.strings),
         scale: 0.95,
         child: Container(
-          height: compact ? 52 : 60,
+          height: height,
           decoration: BoxDecoration(
             color: selected ? palette.surfaceMuted : Colors.transparent,
             borderRadius: BorderRadius.circular(12),

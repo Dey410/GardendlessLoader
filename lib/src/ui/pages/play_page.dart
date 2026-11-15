@@ -72,22 +72,39 @@ class _PlayPageState extends State<PlayPage> {
     );
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Sits on the art's bottom fade, clear of the poster's logo, and
+        // scrolls when a short window or a large text size cannot fit it.
+        Widget bottomAnchored(List<Widget> children) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight:
+                      constraints.hasBoundedHeight ? constraints.maxHeight : 0,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: children,
+                ),
+              ),
+            );
         if (constraints.maxWidth < 560) {
-          return ListView(
-            children: [
-              if (recovery != null) ...[recovery, SizedBox(height: gap)],
-              hero,
-              SizedBox(height: gap),
-              actionBar,
-            ],
-          );
+          final children = [
+            if (recovery != null) ...[recovery, SizedBox(height: gap)],
+            hero,
+            SizedBox(height: gap),
+            actionBar,
+          ];
+          // A narrow area that is not tall, like the near-square iPhone Duo
+          // screen, would stack the copy over the poster's logo.
+          if (constraints.maxWidth >= constraints.maxHeight) {
+            return bottomAnchored(children);
+          }
+          return ListView(children: children);
         }
         // Launcher composition: the key art owns the open area, the title
         // sits bottom-left on the same row as the primary action.
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Spacer(),
+        return bottomAnchored(
+          [
             if (recovery != null) ...[
               Align(
                 alignment: Alignment.centerLeft,

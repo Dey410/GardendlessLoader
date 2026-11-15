@@ -31,6 +31,8 @@ import WebKit
   private var displayChannel: FlutterMethodChannel?
   private var orientationObserver: NSObjectProtocol?
   private var reportedSensorHousingEdge: String?
+  private var reportedReservedRegions: [[String: Double]] = []
+  private weak var launcherView: UIView?
   private var lastImportProgressReportAt: UInt64 = 0
   private var pendingImportResult: FlutterResult?
   private var pendingImportTargetDirectory: String?
@@ -66,6 +68,7 @@ import WebKit
     GeneratedPluginRegistrant.register(with: engine)
     let controller = FlutterViewController(engine: engine, nibName: nil, bundle: nil)
     launcherEngine = engine
+    launcherView = controller.view
     window?.rootViewController = controller
     window?.makeKeyAndVisible()
     registerChannels(on: controller.binaryMessenger)
@@ -140,13 +143,18 @@ import WebKit
     )
     displayChannel = channel
     channel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "sensorHousingEdge" else {
+      switch call.method {
+      case "sensorHousingEdge":
+        let edge = self?.currentSensorHousingEdge()
+        self?.reportedSensorHousingEdge = edge
+        result(edge)
+      case "reservedRegions":
+        let regions = self?.currentReservedRegions() ?? []
+        self?.reportedReservedRegions = regions
+        result(regions)
+      default:
         result(FlutterMethodNotImplemented)
-        return
       }
-      let edge = self?.currentSensorHousingEdge()
-      self?.reportedSensorHousingEdge = edge
-      result(edge)
     }
     UIDevice.current.beginGeneratingDeviceOrientationNotifications()
     orientationObserver = NotificationCenter.default.addObserver(
@@ -165,9 +173,31 @@ import WebKit
 
   private func reportSensorHousingEdgeIfChanged() {
     let edge = currentSensorHousingEdge()
-    guard edge != reportedSensorHousingEdge else { return }
-    reportedSensorHousingEdge = edge
-    displayChannel?.invokeMethod("sensorHousingEdgeChanged", arguments: edge)
+    if edge != reportedSensorHousingEdge {
+      reportedSensorHousingEdge = edge
+      displayChannel?.invokeMethod("sensorHousingEdgeChanged", arguments: edge)
+    }
+    // A 180° flip moves a corner camera without changing the screen size.
+    let regions = currentReservedRegions()
+    if regions != reportedReservedRegions {
+      reportedReservedRegions = regions
+      displayChannel?.invokeMethod("reservedRegionsChanged", arguments: regions)
+    }
+  }
+
+  /// Display areas the system reserves for cameras (iOS 27.1+), in the
+  /// launcher view's points. The launcher keeps a top-corner camera such as
+  /// the iPhone Duo outer screen's clear of its navigation rail.
+  private func currentReservedRegions() -> [[String: Double]] {
+    guard #available(iOS 27.1, *), let view = launcherView else { return [] }
+    return view.reservedRegions(kind: .occlusion).filter(\.isActive).map { region in
+      [
+        "x": Double(region.frame.minX),
+        "y": Double(region.frame.minY),
+        "width": Double(region.frame.width),
+        "height": Double(region.frame.height),
+      ]
+    }
   }
 
   /// "left" or "right" for the edge holding the sensor housing in
