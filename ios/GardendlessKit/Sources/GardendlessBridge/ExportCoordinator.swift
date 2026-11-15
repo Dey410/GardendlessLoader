@@ -145,6 +145,34 @@ public final class FileTaskCoordinator {
     }
   }
 
+  /// Serves a finished Nest download through a read handle. Closing,
+  /// cancelling or expiring the handle, or tearing down the host, deletes it.
+  public func openDownloadedFile(_ file: URL,
+                                 completion: @escaping (Result<GpNextAction, Error>) -> Void) {
+    enqueue(terminal: nil, work: {
+      guard self.transfers.count < Self.maximumHandles else { throw self.failure("Too many open files") }
+      let descriptor = Darwin.open(file.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+      guard descriptor >= 0 else { throw self.failure("Unable to open Nest download") }
+      let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+      var info = stat()
+      guard fstat(descriptor, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+            info.st_size >= 0, info.st_size <= Self.maximumBytes else {
+        try? handle.close()
+        throw self.failure("Invalid Nest download")
+      }
+      let transfer = Transfer(handle: handle, temporary: file, destination: file, reading: true,
+                              exporting: false, size: Int(info.st_size), deadline: self.now() + Self.handleLifetime)
+      let token = "\(self.session.sessionId)-\(UUID().uuidString)"
+      self.lock.lock()
+      self.transfers[token] = transfer
+      self.lock.unlock()
+      return .value(["handle": token, "sizeBytes": transfer.size])
+    }, completion: { result in
+      if case .failure = result { try? FileManager.default.removeItem(at: file) }
+      completion(result)
+    })
+  }
+
   /// System picker completion is serialized with JS cancellation and expiry.
   public func finishExport(handle: String, cancelled: Bool,
                            completion: @escaping (Result<Void, Error>) -> Void) {
@@ -282,6 +310,8 @@ public final class FileTaskCoordinator {
     if transfer.reading {
       guard action == "close" else { throw failure("Read handles require close") }
       try transfer.handle.close()
+      // Only a Nest download owns its file; GP-Next reads have no temporary.
+      if let temporary = transfer.temporary { try? FileManager.default.removeItem(at: temporary) }
       retire(token, transfer, outcome: .closed)
       return .value(NSNull())
     }

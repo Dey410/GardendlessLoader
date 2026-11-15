@@ -51,6 +51,7 @@ export interface AppLogContext {
   mediaPlaying?: number;
   mediaEnded?: number;
   mediaFailed?: number;
+  versionId?: string;
 }
 
 export interface AppLogError {

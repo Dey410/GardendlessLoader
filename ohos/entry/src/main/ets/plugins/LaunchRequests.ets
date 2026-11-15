@@ -1,12 +1,15 @@
 import { Want } from '@kit.AbilityKit';
+import { DeepLinkInbox, DeepLinks } from '../game/DeepLinks';
 
 const ACTION_VIEW_DATA = 'ohos.want.action.viewData';
 
 /**
  * Launch requests from outside the launcher: a ZIP another app opens with
- * the loader and home-screen shortcuts. The launcher ability is closed while
- * the game runs, so a ZIP waits here, in the app process, until the launcher
- * imports or discards it.
+ * the loader, pvzge: website links and home-screen shortcuts. The launcher
+ * ability is closed while the game runs, so a ZIP waits here, in the app
+ * process, until the launcher imports or discards it. A website link waits in
+ * DeepLinkInbox for GP-Next: a running game takes it, otherwise the launcher
+ * starts the game as its start-game shortcut does.
  */
 export class LaunchRequests {
   static zipUri: string | null = null;
@@ -18,6 +21,13 @@ export class LaunchRequests {
   /** Keeps what a want asks for; returns whether it asked for anything. */
   static receive(want: Want): boolean {
     const uri = want.uri;
+    if (uri !== undefined && uri.startsWith('pvzge:')) {
+      const link = DeepLinks.validate(uri);
+      if (link === null) return false;
+      DeepLinkInbox.offer(link);
+      if (!LaunchRequests.gameRunning) LaunchRequests.shortcut = 'startGame';
+      return true;
+    }
     if (want.action === ACTION_VIEW_DATA && uri !== undefined && uri.length > 0) {
       LaunchRequests.zipUri = uri;
       return true;

@@ -53,6 +53,7 @@ class GameActivity : Activity() {
     /** Foreground play time; [resumedAt] is the elapsed-realtime clock while resumed, else 0. */
     private var playedMs = 0L
     private var resumedAt = 0L
+    private val deepLinkListener: () -> Unit = { runOnUiThread { notifyDeepLinks() } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -137,7 +138,18 @@ class GameActivity : Activity() {
             addView(webView)
         }
         setContentView(viewport)
+        DeepLinkInbox.onAvailable = deepLinkListener
         webView.loadUrl(session.entryUrl)
+    }
+
+    /** The page takes waiting website links once GP-Next listens for them. */
+    private fun notifyDeepLinks() {
+        if (destroyed || !::webView.isInitialized) return
+        webView.evaluateJavascript(
+            "window.__gardendlessTransport && window.__gardendlessTransport.deepLinksAvailable && " +
+                "window.__gardendlessTransport.deepLinksAvailable()",
+            null,
+        )
     }
 
     private fun buildDocumentStartScript(): String {
@@ -488,6 +500,7 @@ class GameActivity : Activity() {
     override fun onDestroy() {
         running = false
         destroyed = true
+        if (DeepLinkInbox.onAvailable === deepLinkListener) DeepLinkInbox.onAvailable = null
         pendingExport = null
         pendingGpSelection = null
         pendingGpImportRequestId = null

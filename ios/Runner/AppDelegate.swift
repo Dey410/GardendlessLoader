@@ -339,6 +339,30 @@ import UIKit
     }
   }
 
+  /// A pvzge: website link waits in DeepLinkInbox for GP-Next. A running
+  /// game takes it at once; otherwise the launcher starts the game, as its
+  /// start-game shortcut does.
+  func receiveDeepLink(_ url: URL) {
+    let link = DeepLinks.validate(url.absoluteString)
+    logStore.emit([
+      "source": "ios",
+      "level": link == nil ? "WARN" : "INFO",
+      "category": "app.deep_link",
+      "event": link == nil ? "deep_link_rejected" : "deep_link_received",
+      "outcome": link == nil ? "failed" : "observed",
+      "code": link == nil ? "deep_link_invalid" : NSNull(),
+      "context": ["host": url.host ?? "", "gameRunning": window?.rootViewController is GameHostController],
+    ])
+    guard let link else { return }
+    DeepLinkInbox.shared.offer(link)
+    guard !(window?.rootViewController is GameHostController) else { return }
+    if launcherEngine == nil {
+      pendingShortcut = "startGame"
+    } else if !gameLaunchInProgress {
+      performShortcut("startGame")
+    }
+  }
+
   /// Keeps the latest ZIP opened or shared with the loader; a running
   /// launcher is told at once, otherwise it asks when it starts.
   func receiveIncomingZip(_ context: UIOpenURLContext) {
@@ -620,10 +644,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   ) {
     guard let scene = scene as? UIWindowScene,
           let app = UIApplication.shared.delegate as? AppDelegate else { return }
-    if let context = connectionOptions.urlContexts.first {
-      app.receiveIncomingZip(context)
-    }
     app.pendingShortcut = connectionOptions.shortcutItem?.type
+    if let context = connectionOptions.urlContexts.first {
+      if context.url.scheme?.lowercased() == "pvzge" {
+        app.receiveDeepLink(context.url)
+      } else {
+        app.receiveIncomingZip(context)
+      }
+    }
     app.window = UIWindow(windowScene: scene)
     app.showLauncher()
   }
@@ -640,7 +668,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
     guard let context = URLContexts.first,
           let app = UIApplication.shared.delegate as? AppDelegate else { return }
-    app.receiveIncomingZip(context)
+    if context.url.scheme?.lowercased() == "pvzge" {
+      app.receiveDeepLink(context.url)
+    } else {
+      app.receiveIncomingZip(context)
+    }
   }
 }
 

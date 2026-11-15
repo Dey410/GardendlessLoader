@@ -130,6 +130,13 @@ class FileTransfer {
   }
 }
 
+/** Downloads a Nest package into GP-Next's framed temporary file; see NestImportDownloader. */
+export interface NestImportSource {
+  download(versionId: string, isActive: () => boolean): Promise<string>;
+  discard(path: string): Promise<void>;
+  cancel(): void;
+}
+
 export class FileFailure extends Error {
   readonly code: string;
   constructor(code: string, message: string) { super(message); this.code = code; }
@@ -437,6 +444,37 @@ export class GpNextNativeCore {
       }
       return { value: null };
     } finally { state.busy = false; }
+  }
+
+  /**
+   * Serves a finished Nest download through a read handle. Closing,
+   * cancelling or expiring the handle, or tearing down the host, deletes it.
+   */
+  openDownloadedFile(path: string): Promise<GpNextValue> {
+    return this.runIO(async (): Promise<GpNextValue> => {
+      const handle = util.generateRandomUUID();
+      let file: fs.File | null = null;
+      try {
+        if (this.handles.size + this.openingPaths.size >= GpNextNativeCore.MAX_HANDLES) {
+          throw new FileFailure('resource_limit_exceeded', 'Too many open files');
+        }
+        file = await this.openFile(path, fs.OpenMode.READ_ONLY | fs.OpenMode.NOFOLLOW, handle);
+        const stat = await fs.stat(file.fd);
+        if (!stat.isFile() || stat.size > GpNextNativeCore.MAX_FILE_BYTES) {
+          throw new FileFailure('invalid_file_transfer', 'Invalid Nest download');
+        }
+        this.checkActive();
+        this.handles.set(handle, new FileTransfer(path, path, file, 'read', false,
+          'nest-import.bin', 'application/octet-stream', stat.size));
+        file = null;
+        const value: FileBeginValue = { handle: handle, sizeBytes: stat.size };
+        return value;
+      } catch (error) {
+        if (file != null) await this.closeFile(file);
+        await this.discardTemporary(path);
+        this.rethrow(error as Error);
+      }
+    });
   }
 
   setExportCancellation(handle: string, callback: () => void): void {

@@ -9,7 +9,8 @@ import { withDocumentPickerOrientation } from '../picker/DocumentPickerOrientati
 import { ExportDocumentSpec } from './ExportDocumentSpec';
 import { GpNextPackArchiveNormalizer } from './GpNextPackArchiveNormalizer';
 import { GameSession } from './GameSession';
-import { GpNextNativeCore, GpNextValue, FileFailure } from './GpNextNativeCore';
+import { DeepLinkInbox } from './DeepLinks';
+import { GpNextNativeCore, GpNextValue, FileFailure, NestImportSource } from './GpNextNativeCore';
 
 interface BridgeRequest {
   id: string;
@@ -33,6 +34,7 @@ interface BridgeArguments {
   column?: number;
   outcome?: string;
   context?: AppLogContext;
+  versionId?: string;
 }
 
 interface BridgeError {
@@ -55,7 +57,9 @@ export class GameBridge {
   private readonly session: GameSession;
   private readonly onReturnHome: () => void;
   private readonly gpNextCore: GpNextNativeCore;
+  private readonly nestDownloader: NestImportSource | null;
   private readonly activeIds: Set<string> = new Set<string>();
+  private readonly deepLinkListener: () => void = (): void => { this.notifyDeepLinks(); };
   private destroyed: boolean = false;
   private pickerActive: boolean = false;
 
@@ -64,12 +68,15 @@ export class GameBridge {
     context: common.UIAbilityContext,
     session: GameSession,
     onReturnHome: () => void,
+    nestDownloader: NestImportSource | null = null,
   ) {
     this.controller = controller;
     this.context = context;
     this.session = session;
     this.onReturnHome = onReturnHome;
     this.gpNextCore = new GpNextNativeCore(session);
+    this.nestDownloader = nestDownloader;
+    DeepLinkInbox.onAvailable = this.deepLinkListener;
   }
 
   postMessage(message: string): void {
@@ -159,13 +166,20 @@ export class GameBridge {
       case 'host:export':
         this.exportFile(request.id, request.args ?? {});
         break;
+      case 'host:takeDeepLinks':
+        // Only GP-Next listens for website links; other pages leave them waiting.
+        this.complete(request.id,
+          this.session.hasGpNext && this.session.gpNextCompatible ? DeepLinkInbox.drain() : []);
+        break;
       case 'file:begin':
       case 'file:chunk':
       case 'file:finish':
         this.dispatchNative(request);
         break;
       default:
-        if (request.namespace === 'gp-next') {
+        if (request.namespace === 'gp-next' && request.command === 'download_nest_import') {
+          this.downloadNestImport(request.id, request.args ?? {});
+        } else if (request.namespace === 'gp-next') {
           this.dispatchNative(request);
         } else {
           this.logInvalid('unknown_command', request.command);
@@ -176,6 +190,8 @@ export class GameBridge {
 
   destroy(): void {
     this.destroyed = true;
+    if (DeepLinkInbox.onAvailable === this.deepLinkListener) DeepLinkInbox.onAvailable = null;
+    this.nestDownloader?.cancel();
     this.gpNextCore.destroy();
     this.activeIds.clear();
     this.controller.runJavaScript(
@@ -202,6 +218,49 @@ export class GameBridge {
     } catch (error) {
       const failure = error as FileFailure;
       this.fail(request.id, failure.code ?? 'io_failed', failure.code == null ? 'Native file operation failed' : failure.message);
+    }
+  }
+
+  /** The page takes waiting website links once GP-Next listens for them. */
+  private notifyDeepLinks(): void {
+    if (this.destroyed) return;
+    this.controller.runJavaScript(
+      'window.__gardendlessTransport && window.__gardendlessTransport.deepLinksAvailable && ' +
+        'window.__gardendlessTransport.deepLinksAvailable()',
+    ).catch((_error: Error): void => {});
+  }
+
+  private async downloadNestImport(id: string, args: BridgeArguments): Promise<void> {
+    const downloader = this.nestDownloader;
+    if (downloader == null || !this.session.hasGpNext || !this.session.gpNextCompatible) {
+      this.fail(id, 'gp_next_unavailable', 'GP-Next compatibility is unavailable');
+      return;
+    }
+    const versionId = args.versionId ?? '';
+    let file: string | null = null;
+    try {
+      file = await downloader.download(versionId, (): boolean => !this.destroyed);
+      const value = await this.gpNextCore.openDownloadedFile(file);
+      file = null;
+      this.complete(id, value);
+    } catch (error) {
+      if (file != null) await downloader.discard(file);
+      const failure = error as FileFailure;
+      const reason = failure.code == null ? 'NEST_NETWORK' : failure.message;
+      const context: AppLogContext = { versionId: versionId };
+      const event: AppLogEvent = {
+        source: 'ohos',
+        level: 'WARN',
+        category: 'game.gpnext',
+        event: 'nest_import_download_finished',
+        outcome: 'failed',
+        code: failure.code ?? 'nest_import_failed',
+        message: reason,
+        gameSessionId: this.session.sessionId,
+        context: context,
+      };
+      appLogStore.emit(event);
+      this.fail(id, failure.code ?? 'nest_import_failed', reason);
     }
   }
 

@@ -32,6 +32,7 @@ public enum BridgeCommand: String {
   case returnHomeLegacy = "host:return_home"
   case log = "host:log"
   case export = "host:export"
+  case takeDeepLinks = "host:takeDeepLinks"
   case fileBegin = "file:begin"
   case fileChunk = "file:chunk"
   case fileFinish = "file:finish"

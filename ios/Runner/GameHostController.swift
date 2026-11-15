@@ -88,6 +88,7 @@ final class GameHostController: UIViewController,
   private let schemeHandler: ResourceSchemeHandler
   private let fileTasks: FileTaskCoordinator
   private let gpNextSelectionStager: GpNextSelectionStager?
+  private let nestDownloader: NestImportDownloader?
   private let logStore: LogStore
   private let selectionQueue = DispatchQueue(label: "io.github.dey410.gardendless.selection", qos: .userInitiated)
 
@@ -141,6 +142,12 @@ final class GameHostController: UIViewController,
     fileTasks = try FileTaskCoordinator(session: session, gpNextRouter: router)
     gpNextSelectionStager = session.hasGpNext && session.gpNextCompatible
       ? GpNextSelectionStager(gpNextRoot: session.gpNextRoot)
+      : nil
+    nestDownloader = session.hasGpNext && session.gpNextCompatible
+      ? NestImportDownloader(
+        directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+          .appendingPathComponent("GardendlessLoader/nest-import", isDirectory: true)
+      )
       : nil
     super.init(nibName: nil, bundle: nil)
     fileTasks.onExportCancelled = { [weak self] file, code in
@@ -225,6 +232,7 @@ final class GameHostController: UIViewController,
       "outcome": "succeeded",
       "gameSessionId": session.sessionId,
     ])
+    DeepLinkInbox.shared.listen(self) { [weak self] in self?.notifyDeepLinks() }
     webView.load(
       URLRequest(
         url: session.entryURL,
@@ -383,8 +391,63 @@ final class GameHostController: UIViewController,
   }
 
   func bridgeRequestedGpNext(id: String, request: [String: Any]) {
+    if request["command"] as? String == "download_nest_import" {
+      downloadNestImport(id: id, arguments: request["args"] as? [String: Any] ?? [:])
+      return
+    }
     fileTasks.submitGpNext(request) { [weak self] result in
       self?.completeFileAction(result, id: id)
+    }
+  }
+
+  /// Only GP-Next listens for website links; other pages leave them waiting.
+  func bridgeRequestedDeepLinks(id: String) {
+    let links = session.hasGpNext && session.gpNextCompatible ? DeepLinkInbox.shared.drain() : []
+    scriptBridge.complete(id: id, value: links)
+  }
+
+  /// The page takes waiting website links once GP-Next listens for them.
+  private func notifyDeepLinks() {
+    guard !cleanedUp else { return }
+    webView.evaluateJavaScript(
+      "window.__gardendlessTransport && window.__gardendlessTransport.deepLinksAvailable && "
+        + "window.__gardendlessTransport.deepLinksAvailable()"
+    )
+  }
+
+  private func downloadNestImport(id: String, arguments: [String: Any]) {
+    guard let nestDownloader else {
+      scriptBridge.fail(id: id, code: "gp_next_unavailable", message: "GP-Next compatibility is unavailable")
+      return
+    }
+    let versionId = arguments["versionId"] as? String ?? ""
+    nestDownloader.download(versionId: versionId) { [weak self] result in
+      DispatchQueue.main.async {
+        guard let self, !self.cleanedUp else {
+          if case .success(let file) = result { try? FileManager.default.removeItem(at: file) }
+          return
+        }
+        switch result {
+        case .success(let file):
+          self.fileTasks.openDownloadedFile(file) { [weak self] opened in
+            self?.completeFileAction(opened, id: id)
+          }
+        case .failure(let error):
+          let reason = (error as? NestImportError)?.reason ?? "NEST_NETWORK"
+          self.logStore.emit([
+            "source": "ios",
+            "level": "WARN",
+            "category": "game.gpnext",
+            "event": "nest_import_download_finished",
+            "outcome": "failed",
+            "code": "nest_import_failed",
+            "message": reason,
+            "gameSessionId": self.session.sessionId,
+            "context": ["versionId": versionId],
+          ])
+          self.scriptBridge.fail(id: id, code: "nest_import_failed", message: reason)
+        }
+      }
     }
   }
 
@@ -727,6 +790,8 @@ final class GameHostController: UIViewController,
     activePicker = nil
     pendingGpNextSelection = nil
     clearSelection()
+    DeepLinkInbox.shared.stopListening(self)
+    nestDownloader?.cancel()
     fileTasks.destroy()
     sceneActivityObservers.forEach(NotificationCenter.default.removeObserver)
     sceneActivityObservers = []
